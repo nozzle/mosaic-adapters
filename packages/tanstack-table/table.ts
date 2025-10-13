@@ -1,5 +1,14 @@
 import { coordinator, MosaicClient, toDataColumns } from '@uwdata/mosaic-core';
-import { Table, TableOptions, createTable, ColumnDef, SortingState, Updater, TableState } from '@tanstack/table-core';
+import {
+    Table,
+    TableOptions,
+    createTable,
+    ColumnDef,
+    SortingState,
+    Updater,
+    TableState,
+    getCoreRowModel
+} from '@tanstack/table-core';
 
 export interface DataTableOptions<TData = unknown> extends Omit<TableOptions<TData>, 'data' | 'columns'> {
   coordinator?: any;
