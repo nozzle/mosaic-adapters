@@ -1,6 +1,9 @@
 // App.tsx
-// This file orchestrates the main application layout, tabs, and defines
-// the global interaction graph (selections) for the MosaicProvider.
+// This file serves as the root component for the React application. Its primary
+// responsibilities are to define the application's top-level layout, including the
+// tab-based navigation, and to establish the complete "interaction graph" for all
+// dashboards. It does this by declaratively configuring all Mosaic Selections for the
+// entire app and providing them globally via the `MosaicProvider`.
 import React, { useState } from 'react';
 import { MosaicProvider, type SelectionConfig } from '@mosaic-tanstack/react';
 import { AthletesDashboard } from './dashboards/AthletesDashboard';
@@ -23,13 +26,14 @@ const athleteSelections: SelectionConfig[] = [
   { name: 'athlete_hover_raw', type: 'intersect', options: { empty: true } },
   
   // --- Composite Selections for UI Filtering ---
-  // The main context filter for the dashboard. Combines inputs and selected rows.
-  // The table's internal filter is no longer part of this loop.
+  // The main context filter for the dashboard. Combines inputs, selected rows,
+  // and the table's own internal filters. This is the selection that most
+  // components (including the table itself and vgplot visuals) will be filtered by.
   { 
     name: 'athlete_query', 
     type: 'intersect', 
     options: { 
-      include: ['athlete_category', 'athlete_rowSelection'] 
+      include: ['athlete_category', 'athlete_rowSelection', 'athlete_internal_filter'] 
     } 
   },
 
@@ -41,7 +45,7 @@ const athleteSelections: SelectionConfig[] = [
     type: 'intersect',
     options: {
       empty: true,
-      include: ['athlete_query', 'athlete_hover_raw', 'athlete_internal_filter']
+      include: ['athlete_query', 'athlete_hover_raw']
     }
   },
 ];
@@ -62,8 +66,8 @@ const taxiSelections: SelectionConfig[] = [
   
   // --- Composite Selections for UI Filtering ---
   // The main context filter for the dashboard.
-  // This selection is now empty and receives predicates only from chart brushes.
-  // The table's internal filters are no longer part of this feedback loop.
+  // In the current configuration, this selection is only updated by chart brushes,
+  // and does NOT include the table's internal filters.
   { 
     name: 'taxi_filter', 
     type: 'intersect',
@@ -91,8 +95,7 @@ const flightsSelections: SelectionConfig[] = [
   { name: 'flights_rowSelection', type: 'union', options: { empty: true } },
 
   // Composite selection that combines histogram brush and row selections.
-  // The table's internal filter is no longer part of this feedback loop.
-  // Both the plots and the table will be filtered by this selection.
+  // In the current configuration, this does NOT include the table's internal filter.
   {
     name: 'flights_query',
     type: 'intersect',
