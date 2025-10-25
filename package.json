@@ -1,25 +1,33 @@
 {
-  "name": "mosaic-adapters",
-  "version": "1.0.0",
-  "description": "",
+  "name": "mosaic-tanstack-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "build": "tsc",
-    "build:watch": "tsc --watch",
-    "dev": "tsc --watch",
-    "clean": "rm -rf dist",
-    "prebuild": "npm run clean",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev:react": "bun --cwd apps/react-app dev",
+    "dev:svelte": "bun --cwd apps/svelte-app dev",
+    "typecheck": "bun tsc --noEmit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.17.1",
   "dependencies": {
-    "@tanstack/table-core": "^8.21.3",
-    "@uwdata/mosaic-core": "^0.20.1"
+    "@uwdata/mosaic-core": "^0.20.1",
+    "@uwdata/mosaic-sql": "^0.20.1",
+    "@uwdata/vgplot": "^0.20.1",
+    "apache-arrow": "^16.1.0",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0"
   },
   "devDependencies": {
-    "@types/node": "^24.7.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11",
+    "@vitejs/plugin-react": "^4.2.1",
+    "@sveltejs/vite-plugin-svelte": "^3.1.0",
+    "@tsconfig/svelte": "^5.0.4",
+    "svelte-check": "^3.8.6",
+    "tslib": "^2.6.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "svelte": "^4.2.17"
   }
 }

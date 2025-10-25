@@ -1,28 +1,39 @@
+// tsconfig.json
+// This is the root TypeScript configuration for the entire monorepo.
+// It sets the base compiler options and, most importantly, defines the
+// path aliases that allow for clean, non-relative imports between packages
+// (e.g., `import from '@mosaic-tanstack/core'`).
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
-    "module": "ES2022",
-    "moduleResolution": "Bundler",
-    "outDir": "./dist",
-    "rootDir": "./packages",
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "useDefineForClassFields": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
     "strict": true,
-    "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "resolveJsonModule": true,
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "baseUrl": ".",
+    "paths": {
+      "@mosaic-tanstack/core": ["packages/mosaic-tanstack-core/src/index.ts"],
+      "@mosaic-tanstack/core/*": ["packages/mosaic-tanstack-core/src/*"],
+      "@mosaic-tanstack/react": ["packages/mosaic-tanstack-react/src/index.ts"],
+      "@mosaic-tanstack/react/*": ["packages/mosaic-tanstack-react/src/*"],
+      "@mosaic-tanstack/svelte": ["packages/mosaic-tanstack-svelte/src/index.ts"],
+      "@mosaic-tanstack/svelte/*": ["packages/mosaic-tanstack-svelte/src/*"]
+    }
   },
   "include": [
-    "packages/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "packages/**/*.svelte",
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "apps/**/*.svelte"
   ]
 }

@@ -1,0 +1,10 @@
+{
+  "name": "@mosaic-tanstack/core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@tanstack/table-core": "^8.17.3"
+  }
+}
