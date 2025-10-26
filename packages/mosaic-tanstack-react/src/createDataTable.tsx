@@ -306,9 +306,6 @@ export function createDataTable<TData extends object>(
         hoverInteraction: logicConfig.hoverInteraction,
         clickInteraction: logicConfig.clickInteraction,
         meta: {
-            // These handlers are now defined inside the engine, but we pass them
-            // through the Tanstack `meta` object so our React UI can access them
-            // via table.options.meta.onRowHover, etc.
           }
       };
       

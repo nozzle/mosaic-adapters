@@ -35,8 +35,6 @@ export function FlightsDashboard() {
 
       const plotDashboard = vg.vconcat(
           vg.plot(
-              // These plots are now correctly filtered by `querySel`, which combines
-              // the brush and row selections, but NOT the table's internal filter.
               vg.rectY(vg.from("flights_10m", { filterBy: querySel }), { x: vg.bin("delay"), y: vg.count(), fill: "steelblue", insetLeft: 0.5, insetRight: 0.5 }),
               vg.intervalX({ as: brushSel }),
               vg.xDomain(vg.Fixed),

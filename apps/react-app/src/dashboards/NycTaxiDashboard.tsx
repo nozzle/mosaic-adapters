@@ -1,6 +1,5 @@
-// src/NycTaxiDashboard.tsx
-// UI component for the NYC Taxi dashboard, handling one-time data load
-// and rendering vgplot visuals alongside the React data tables.
+// apps/react-app/src/dashboards/NycTaxiDashboard.tsx
+
 import React, { useState, useEffect, useRef } from 'react';
 import * as vg from '@uwdata/vgplot';
 import { Vgplot } from '../utils/vgplot';
@@ -12,8 +11,10 @@ export function NycTaxiDashboard() {
   const [isDataReady, setIsDataReady] = useState(false);
   const setupRan = useRef(false);
   
-  // Retrieve all necessary selections for the dashboard.
-  const filterSel = useMosaicSelection('taxi_filter'); // This now only gets filters from the charts.
+  // --- CORRECTED: Use the new, explicit selection names from the provider ---
+  const brushSel = useMosaicSelection('taxi_brush');
+  const externalFilterSel = useMosaicSelection('taxi_external_filter');
+  const querySel = useMosaicSelection('taxi_query');
   const hoverSel = useMosaicSelection('taxi_hover');
   const hoverRawSel = useMosaicSelection('taxi_hover_raw');
   const rowSelectionSel = useMosaicSelection('taxi_rowSelection');
@@ -25,9 +26,10 @@ export function NycTaxiDashboard() {
     setupRan.current = true;
 
     async function setupDashboard() {
-      // UPDATED: Use the exact same URL and two-step query process as the Svelte version.
+      // One-time data loading and transformation using Mosaic's SQL helpers.
+      // This is a complex setup that involves loading spatial data, performing transformations,
+      // and creating a final, cleaned 'trips' table for the dashboard to use.
       const fileURL = 'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet';
-
       await vg.coordinator().exec([
         vg.loadExtension("spatial"),
         vg.loadParquet("rides", fileURL, {
@@ -50,12 +52,15 @@ export function NycTaxiDashboard() {
 
       setIsDataReady(true);
 
+      // Define the vgplot portion of the dashboard.
       const plotDashboard = vg.vconcat(
         vg.hconcat(
           vg.plot(
-            vg.raster(vg.from("trips", { filterBy: filterSel }), { x: "px", y: "py", bandwidth: 0 }),
+            // The raster and dot layers are filtered by the master 'query' selection.
+            vg.raster(vg.from("trips", { filterBy: querySel }), { x: "px", y: "py", bandwidth: 0 }),
             vg.dot(vg.from("trips", { filterBy: hoverSel }), { x: "px", y: "py", fill: "red", r: 3, stroke: "white", strokeWidth: 1 }),
-            vg.intervalXY({ as: filterSel }),
+            // The brush interaction writes to the dedicated 'brush' selection.
+            vg.intervalXY({ as: brushSel }),
             vg.text([{ label: "Taxi Pickups" }], { dx: 10, dy: 10, text: "label", fill: "black", fontSize: "1.2em", frameAnchor: "top-left" }),
             vg.width(335), vg.height(550), vg.margin(0), vg.xAxis(null), vg.yAxis(null),
             vg.xDomain([975000, 1005000]), vg.yDomain([190000, 240000]),
@@ -63,9 +68,9 @@ export function NycTaxiDashboard() {
           ),
           vg.hspace(10),
           vg.plot(
-            vg.raster(vg.from("trips", { filterBy: filterSel }), { x: "dx", y: "dy", bandwidth: 0 }),
+            vg.raster(vg.from("trips", { filterBy: querySel }), { x: "dx", y: "dy", bandwidth: 0 }),
             vg.dot(vg.from("trips", { filterBy: hoverSel }), { x: "dx", y: "dy", fill: "yellow", r: 4, stroke: "black", strokeWidth: 1 }),
-            vg.intervalXY({ as: filterSel }),
+            vg.intervalXY({ as: brushSel }),
             vg.text([{ label: "Taxi Dropoffs" }], { dx: 10, dy: 10, text: "label", fill: "black", fontSize: "1.2em", frameAnchor: "top-left" }),
             vg.width(335), vg.height(550), vg.margin(0), vg.xAxis(null), vg.yAxis(null),
             vg.xDomain([975000, 1005000]), vg.yDomain([190000, 240000]),
@@ -74,8 +79,8 @@ export function NycTaxiDashboard() {
         ),
         vg.vspace(10),
         vg.plot(
-          vg.rectY(vg.from("trips", { filterBy: filterSel }), { x: vg.bin("time"), y: vg.count(), fill: "steelblue", inset: 0.5 }),
-          vg.intervalX({ as: filterSel }),
+          vg.rectY(vg.from("trips", { filterBy: querySel }), { x: vg.bin("time"), y: vg.count(), fill: "steelblue", inset: 0.5 }),
+          vg.intervalX({ as: brushSel }),
           vg.xDomain(vg.Fixed),
           vg.yTickFormat("s"), vg.xLabel("Pickup Hour →"),
           vg.width(680), vg.height(100)
@@ -86,7 +91,7 @@ export function NycTaxiDashboard() {
     }
 
     setupDashboard();
-  }, [filterSel, hoverSel]);
+  }, [brushSel, querySel, hoverSel]); // Dependencies are the stable selection objects.
 
   return (
     <div>
@@ -96,9 +101,9 @@ export function NycTaxiDashboard() {
           <>
             <div style={{flex: 1}}>
               <h3>Top Dropoff Zones</h3>
-              {/* The table components now receive only the external chart filters */}
+              {/* Pass the correct selection props to the table components */}
               <TripsTable
-                filterBy={filterSel}
+                filterBy={externalFilterSel}
                 internalFilterAs={tripsInternalFilterSel}
                 rowSelectionAs={rowSelectionSel}
                 hoverAs={hoverRawSel}
@@ -107,7 +112,7 @@ export function NycTaxiDashboard() {
             <div style={{flex: 1}}>
               <h3>Vendor Performance</h3>
               <VendorStatsTable
-                filterBy={filterSel}
+                filterBy={externalFilterSel}
                 internalFilterAs={vendorInternalFilterSel}
                 rowSelectionAs={rowSelectionSel}
               />

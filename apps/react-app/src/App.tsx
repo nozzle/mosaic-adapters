@@ -1,9 +1,5 @@
-// App.tsx
-// This file serves as the root component for the React application. Its primary
-// responsibilities are to define the application's top-level layout, including the
-// tab-based navigation, and to establish the complete "interaction graph" for all
-// dashboards. It does this by declaratively configuring all Mosaic Selections for the
-// entire app and providing them globally via the `MosaicProvider`.
+// apps/react-app/src/App.tsx
+
 import React, { useState } from 'react';
 import { MosaicProvider, type SelectionConfig } from '@mosaic-tanstack/react';
 import { AthletesDashboard } from './dashboards/AthletesDashboard';
@@ -11,35 +7,54 @@ import { NycTaxiDashboard } from './dashboards/NycTaxiDashboard';
 import { FlightsDashboard } from './dashboards/FlightsDashboard';
 
 // --- ATHLETES DASHBOARD INTERACTION GRAPH ---
+// Defines the complete set of reactive variables (Selections) for this dashboard.
+// This graph makes the flow of interactions explicit and manageable.
 const athleteSelections: SelectionConfig[] = [
-  // --- Input Selections ---
-  // Receives filter predicates from the Sport and Sex dropdown menus.
+  // --- ATOMIC SELECTIONS: Direct sources of user interaction ---
+  // 1. From dropdown menus for Sport and Sex, and the Name search box.
   { name: 'athlete_category', type: 'intersect' },
-  // Receives predicates from the Tanstack table's internal column/global filters.
+  // 2. From the interactive brush on the vgplot scatterplot.
+  { name: 'athlete_brush', type: 'intersect' },
+  // 3. From the Tanstack table's own internal filters (column search, global search).
   { name: 'athlete_internal_filter', type: 'intersect' },
-  // Receives a union of predicates for all selected rows (via checkboxes).
+  // 4. From the table's row selection checkboxes. Uses 'union' to combine multiple rows.
   { name: 'athlete_rowSelection', type: 'union', options: { empty: true } },
   
-  // --- Raw Interaction Signal ---
-  // Receives the primitive, context-free predicate for the currently hovered table row.
-  // This is a "signal" channel, not for direct UI filtering.
+  // --- RAW HOVER SIGNAL: A primitive for hover effects ---
+  // Captures the predicate of the single, currently hovered row, without any other context.
+  // It is set to be empty by default to prevent highlighting on load.
   { name: 'athlete_hover_raw', type: 'intersect', options: { empty: true } },
+
+  // --- COMPOSITE SELECTIONS: Derived states for filtering UI components ---
   
-  // --- Composite Selections for UI Filtering ---
-  // The main context filter for the dashboard. Combines inputs, selected rows,
-  // and the table's own internal filters. This is the selection that most
-  // components (including the table itself and vgplot visuals) will be filtered by.
+  // A selection that combines ALL filters EXTERNAL to the table.
+  // This is the clean, unidirectional input that the table's `filterBy` prop will listen to.
+  {
+    name: 'athlete_external_filter',
+    type: 'intersect',
+    options: {
+      include: ['athlete_category', 'athlete_brush']
+    }
+  },
+
+  // The "master" filter for the dashboard's vgplot visuals.
+  // It combines everything: external filters (menus, brush) and the table's own state
+  // (internal filters, selected rows) to create the complete filtering context.
   { 
     name: 'athlete_query', 
     type: 'intersect', 
     options: { 
-      include: ['athlete_category', 'athlete_rowSelection', 'athlete_internal_filter'] 
+      include: [
+        'athlete_external_filter', // Includes menus and brush
+        'athlete_rowSelection',
+        'athlete_internal_filter'
+      ] 
     } 
   },
 
   // The final, context-aware selection for the hover highlight effect.
-  // It combines the main query context WITH the raw hover signal.
-  // The vgplot `dot` mark for highlighting listens to this selection.
+  // It combines the master filter context with the raw hover signal, ensuring that
+  // only currently visible points can be highlighted.
   {
     name: 'athlete_hover',
     type: 'intersect',
@@ -50,71 +65,82 @@ const athleteSelections: SelectionConfig[] = [
   },
 ];
 
+
 // --- NYC TAXI DASHBOARD INTERACTION GRAPH ---
 const taxiSelections: SelectionConfig[] = [
-  // --- Input Selections ---
-  // Receives a union of predicates for all selected rows (if selection were enabled).
+  // Atomic selections from user interactions
   { name: 'taxi_rowSelection', type: 'union', options: { empty: true } },
-  // Receives predicates from the "Trips" table's internal filters.
   { name: 'taxi_trips_internal_filter', type: 'intersect' },
-  // Receives predicates from the "Vendor" table's internal filters.
   { name: 'taxi_vendor_internal_filter', type: 'intersect' },
-
-  // --- Raw Interaction Signal ---
-  // Receives the primitive, context-free predicate for a hovered row in the Trips table.
   { name: 'taxi_hover_raw', type: 'intersect', options: { empty: true } },
-  
-  // --- Composite Selections for UI Filtering ---
-  // The main context filter for the dashboard.
-  // In the current configuration, this selection is only updated by chart brushes,
-  // and does NOT include the table's internal filters.
-  { 
-    name: 'taxi_filter', 
-    type: 'intersect',
-  },
+  { name: 'taxi_brush', type: 'intersect' }, // Dedicated selection for map/chart brushes
 
-  // The final, context-aware selection for the hover highlight effect on the map.
-  // It combines all active filters WITH the raw hover signal from the table.
+  // Composite Selections for UI Filtering
+  // A clean separation: external filters for the tables.
+  { 
+    name: 'taxi_external_filter', 
+    type: 'intersect',
+    options: {
+      include: ['taxi_brush']
+    }
+  },
+  // The master filter for the entire dashboard, combining all sources.
+  {
+    name: 'taxi_query',
+    type: 'intersect',
+    options: {
+      include: ['taxi_external_filter', 'taxi_trips_internal_filter', 'taxi_vendor_internal_filter', 'taxi_rowSelection']
+    }
+  },
+  // Context-aware hover selection
   {
     name: 'taxi_hover',
     type: 'intersect',
     options: {
       empty: true,
-      include: ['taxi_filter', 'taxi_hover_raw', 'taxi_trips_internal_filter']
+      include: ['taxi_query', 'taxi_hover_raw']
     }
   },
 ];
 
+
 // --- FLIGHTS DASHBOARD INTERACTION GRAPH ---
 const flightsSelections: SelectionConfig[] = [
-  // Receives filter predicates from brushing the histograms.
+  // Atomic selections from user interactions
   { name: 'flights_brush', type: 'intersect', options: { cross: true } },
-  // Receives predicates from the table's internal column filters.
   { name: 'flights_internal_filter', type: 'intersect' },
-  // Receives a union of predicates for all selected rows (via checkboxes).
   { name: 'flights_rowSelection', type: 'union', options: { empty: true } },
 
-  // Composite selection that combines histogram brush and row selections.
-  // In the current configuration, this does NOT include the table's internal filter.
+  // Composite Selections for UI Filtering
+  // External filters that the table will be filtered by
   {
-    name: 'flights_query',
+    name: 'flights_external_filter',
     type: 'intersect',
     options: {
       include: ['flights_brush', 'flights_rowSelection']
     }
+  },
+  // The master filter for vgplot visuals, combining external and internal table filters.
+  {
+    name: 'flights_query',
+    type: 'intersect',
+    options: {
+      include: ['flights_external_filter', 'flights_internal_filter']
+    }
   }
 ];
-
 
 // Combine all configurations into a single source of truth for the provider.
 const allDashboardSelections = [...athleteSelections, ...taxiSelections, ...flightsSelections];
 
-// App is now a simple tab container, managing which dashboard is visible.
+// The root App component is a simple tab container that renders the active dashboard.
 export default function App() {
   const [activeTab, setActiveTab] = useState<'athletes' | 'taxis' | 'flights'>('athletes');
 
   return (
     // The provider is initialized ONCE with the complete application interaction graph.
+    // It makes all defined selections available to any descendant component via the
+    // `useMosaicSelection` hook.
     <MosaicProvider selections={allDashboardSelections}>
       <div>
         <nav>
@@ -129,7 +155,7 @@ export default function App() {
           </button>
         </nav>
         <hr />
-        {/* Conditional rendering based on the active tab */}
+        {/* Conditional rendering based on the active tab state */}
         <div style={{ display: activeTab === 'athletes' ? 'block' : 'none' }}>
           <AthletesDashboard />
         </div>
