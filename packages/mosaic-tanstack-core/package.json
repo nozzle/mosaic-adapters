@@ -5,6 +5,12 @@
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
-    "@tanstack/table-core": "^8.17.3"
+    "@tanstack/table-core": "^8.17.3",
+    "@uwdata/mosaic-core": "^0.20.1",
+    "@uwdata/mosaic-sql": "^0.20.1",
+    "@uwdata/vgplot": "^0.20.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
   }
 }
