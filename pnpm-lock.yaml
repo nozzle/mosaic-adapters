@@ -29,13 +29,13 @@ importers:
     devDependencies:
       '@sveltejs/vite-plugin-svelte':
         specifier: ^3.1.0
-        version: 3.1.2(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.23))
+        version: 3.1.2(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.24))
       '@tsconfig/svelte':
         specifier: ^5.0.4
         version: 5.0.5
       '@vitejs/plugin-react':
         specifier: ^4.2.1
-        version: 4.7.0(vite@5.4.21(@types/node@20.19.23))
+        version: 4.7.0(vite@5.4.21(@types/node@20.19.24))
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -56,22 +56,22 @@ importers:
         version: 5.9.3
       vite:
         specifier: ^5.2.11
-        version: 5.4.21(@types/node@20.19.23)
+        version: 5.4.21(@types/node@20.19.24)
 
   apps/react-app:
     dependencies:
       '@mosaic-tanstack/core':
         specifier: workspace:*
         version: link:../../packages/mosaic-tanstack-core
-      '@mosaic-tanstack/svelte':
+      '@mosaic-tanstack/react':
         specifier: workspace:*
-        version: link:../../packages/mosaic-tanstack-svelte
-      '@tanstack/svelte-table':
+        version: link:../../packages/mosaic-tanstack-react
+      '@tanstack/react-table':
         specifier: ^8.17.3
-        version: 8.21.3(svelte@4.2.20)
-      '@tanstack/svelte-virtual':
+        version: 8.21.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@tanstack/react-virtual':
         specifier: ^3.5.0
-        version: 3.13.12(svelte@4.2.20)
+        version: 3.13.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@uwdata/mosaic-core':
         specifier: ^0.20.1
         version: 0.20.1
@@ -84,9 +84,12 @@ importers:
       d3:
         specifier: ^7.9.0
         version: 7.9.0
-      svelte:
-        specifier: ^4.2.17
-        version: 4.2.20
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
     devDependencies:
       '@types/d3':
         specifier: ^7.4.3
@@ -733,8 +736,8 @@ packages:
   '@types/geojson@7946.0.16':
     resolution: {integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==}
 
-  '@types/node@20.19.23':
-    resolution: {integrity: sha512-yIdlVVVHXpmqRhtyovZAcSy0MiPcYWGkoO4CGe/+jpP0hmNuihm4XhHbADpK++MsiLHP5MVlv+bcgdF99kSiFQ==}
+  '@types/node@20.19.24':
+    resolution: {integrity: sha512-FE5u0ezmi6y9OZEzlJfg37mqqf6ZDSF2V/NLjUyGrR9uTZ7Sb9F7bLNZ03S4XVUNRWGA7Ck4c1kK+YnuWjl+DA==}
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -1714,26 +1717,26 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.52.5':
     optional: true
 
-  '@sveltejs/vite-plugin-svelte-inspector@2.1.0(@sveltejs/vite-plugin-svelte@3.1.2(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.23)))(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.23))':
+  '@sveltejs/vite-plugin-svelte-inspector@2.1.0(@sveltejs/vite-plugin-svelte@3.1.2(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.24)))(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.24))':
     dependencies:
-      '@sveltejs/vite-plugin-svelte': 3.1.2(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.23))
+      '@sveltejs/vite-plugin-svelte': 3.1.2(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.24))
       debug: 4.4.3
       svelte: 4.2.20
-      vite: 5.4.21(@types/node@20.19.23)
+      vite: 5.4.21(@types/node@20.19.24)
     transitivePeerDependencies:
       - supports-color
 
-  '@sveltejs/vite-plugin-svelte@3.1.2(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.23))':
+  '@sveltejs/vite-plugin-svelte@3.1.2(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.24))':
     dependencies:
-      '@sveltejs/vite-plugin-svelte-inspector': 2.1.0(@sveltejs/vite-plugin-svelte@3.1.2(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.23)))(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.23))
+      '@sveltejs/vite-plugin-svelte-inspector': 2.1.0(@sveltejs/vite-plugin-svelte@3.1.2(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.24)))(svelte@4.2.20)(vite@5.4.21(@types/node@20.19.24))
       debug: 4.4.3
       deepmerge: 4.3.1
       kleur: 4.1.5
       magic-string: 0.30.21
       svelte: 4.2.20
       svelte-hmr: 0.16.0(svelte@4.2.20)
-      vite: 5.4.21(@types/node@20.19.23)
-      vitefu: 0.2.5(vite@5.4.21(@types/node@20.19.23))
+      vite: 5.4.21(@types/node@20.19.24)
+      vitefu: 0.2.5(vite@5.4.21(@types/node@20.19.24))
     transitivePeerDependencies:
       - supports-color
 
@@ -1915,7 +1918,7 @@ snapshots:
 
   '@types/geojson@7946.0.16': {}
 
-  '@types/node@20.19.23':
+  '@types/node@20.19.24':
     dependencies:
       undici-types: 6.21.0
 
@@ -1961,7 +1964,7 @@ snapshots:
       '@uwdata/mosaic-plot': 0.20.1
       '@uwdata/mosaic-sql': 0.20.1
 
-  '@vitejs/plugin-react@4.7.0(vite@5.4.21(@types/node@20.19.23))':
+  '@vitejs/plugin-react@4.7.0(vite@5.4.21(@types/node@20.19.24))':
     dependencies:
       '@babel/core': 7.28.5
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.28.5)
@@ -1969,7 +1972,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 5.4.21(@types/node@20.19.23)
+      vite: 5.4.21(@types/node@20.19.24)
     transitivePeerDependencies:
       - supports-color
 
@@ -1989,7 +1992,7 @@ snapshots:
       '@swc/helpers': 0.5.17
       '@types/command-line-args': 5.2.3
       '@types/command-line-usage': 5.0.4
-      '@types/node': 20.19.23
+      '@types/node': 20.19.24
       command-line-args: 5.2.1
       command-line-usage: 7.0.3
       flatbuffers: 24.12.23
@@ -2001,7 +2004,7 @@ snapshots:
       '@swc/helpers': 0.5.17
       '@types/command-line-args': 5.2.3
       '@types/command-line-usage': 5.0.4
-      '@types/node': 20.19.23
+      '@types/node': 20.19.24
       command-line-args: 5.2.1
       command-line-usage: 7.0.3
       flatbuffers: 24.12.23
@@ -2615,18 +2618,18 @@ snapshots:
       escalade: 3.2.0
       picocolors: 1.1.1
 
-  vite@5.4.21(@types/node@20.19.23):
+  vite@5.4.21(@types/node@20.19.24):
     dependencies:
       esbuild: 0.21.5
       postcss: 8.5.6
       rollup: 4.52.5
     optionalDependencies:
-      '@types/node': 20.19.23
+      '@types/node': 20.19.24
       fsevents: 2.3.3
 
-  vitefu@0.2.5(vite@5.4.21(@types/node@20.19.23)):
+  vitefu@0.2.5(vite@5.4.21(@types/node@20.19.24)):
     optionalDependencies:
-      vite: 5.4.21(@types/node@20.19.23)
+      vite: 5.4.21(@types/node@20.19.24)
 
   wordwrapjs@5.1.1: {}
 
