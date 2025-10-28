@@ -1,6 +1,8 @@
-// This file defines the generic `DataTable` base class AND all its related type definitions.
-// It acts as a framework-agnostic bridge, extending MosaicClient to handle data fetching and
+// packages/mosaic-tanstack-core/src/DataTable.ts
+// This file defines the generic, framework-agnostic `DataTable` base class.
+// It acts as a bridge, extending MosaicClient to handle data fetching and
 // implementing a subscription model to push state updates to any UI framework.
+// It contains NO UI framework-specific code or types.
 import { MosaicClient, Selection, type FilterExpr } from '@uwdata/mosaic-core';
 import { literal, isIn, and, sql, or, Query, desc, asc, eq, type SQLAst } from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
@@ -9,9 +11,8 @@ import {
     getCoreRowModel, getSortedRowModel, getFilteredRowModel, getPaginationRowModel, getGroupedRowModel,
     type Table, type TableOptions, type ColumnDef, type TableState, type Updater, type Column
 } from '@tanstack/table-core';
-import type { ComponentType } from 'svelte';
 
-// --- MERGED TYPES FROM "tables/types.ts" ---
+// --- GENERIC TYPE DEFINITIONS ---
 
 export interface CustomTableMeta<TData extends object> {
     onRowHover?: (row: TData | null) => void;
@@ -20,7 +21,7 @@ export interface CustomTableMeta<TData extends object> {
 }
 
 export interface CustomColumnMeta<TData extends object, TValue> {
-    Filter?: ComponentType<{ column: Column<TData, TValue> }>;
+    Filter?: any; // Generic placeholder for a filter component
     enableGlobalFilter?: boolean;
 }
 
@@ -37,10 +38,11 @@ export type LogicColumnDef<T extends object> = Omit<MosaicColumnDef<T>, 'header'
     meta?: { enableGlobalFilter?: boolean; }
 };
 
+// This is the generic, framework-agnostic UI config. Adapters will extend this.
 export interface ColumnUIConfig<T extends object> {
-    header?: ColumnDef<T, unknown>['header'] | ComponentType;
-    cell?: ColumnDef<T, unknown>['cell'] | ComponentType;
-    meta?: { Filter?: ComponentType<{ column: any }>; };
+    header?: ColumnDef<T, unknown>['header'] | any;
+    cell?: ColumnDef<T, unknown>['cell'] | any;
+    meta?: { Filter?: any; };
 }
 
 export type DataTableUIConfig<T extends object> = { [columnId in string]?: ColumnUIConfig<T>; };
@@ -86,8 +88,7 @@ interface LogicConfigWithRowSelection<T extends object> extends BaseDataTableLog
 
 export type DataTableLogicConfig<T extends object> = | LogicConfigWithoutRowSelection<T> | LogicConfigWithRowSelection<T>;
 
-// --- END MERGED TYPES ---
-
+// --- END GENERIC TYPES ---
 
 export interface DataTableSnapshot<TData extends object> {
     table: Table<TData>;
@@ -416,23 +417,6 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
   private async _handleInternalFilterChange() {
     if (!this.internalFilterSelection) return;
 
-    /**
-     * --- ADVANCED: HANDLING POST-AGGREGATION FILTERS (HAVING) ---
-     * When a filter is applied to an aggregated column (e.g., searching for "1,234" in a COUNT column),
-     * it cannot be placed in a standard WHERE clause. It must go in a HAVING clause.
-     *
-     * However, the broader Mosaic dashboard needs a single WHERE predicate to function correctly
-     * for cross-filtering. We solve this with a "reverse lookup" pattern:
-     *
-     * 1. Run a fast, preliminary query that applies ONLY the HAVING clause filters to find all the
-     *    primaryKey groups that satisfy the post-aggregation filter.
-     * 2. Construct a large `WHERE primaryKey IN (...)` predicate from the results of that query.
-     * 3. Combine this new predicate with any standard WHERE filters.
-     *
-     * This effectively transforms the post-aggregation filter into a pre-aggregation one that
-     * can be broadcast to the rest of the application. This is a powerful but potentially
-     * performance-intensive operation, hence the `isLookupPending` state.
-     */
     const { where, having } = this._generateFilterPredicates(this._state);
     let finalPredicate: SQLAst | null = null;
     if (having.length > 0) {
