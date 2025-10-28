@@ -47,7 +47,6 @@ const athleteSelections: SelectionConfig[] = [
       include: [
         'athlete_external_filter', // Includes menus and brush
         'athlete_rowSelection',
-        'athlete_internal_filter'
       ] 
     } 
   },
