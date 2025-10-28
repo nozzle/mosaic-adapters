@@ -63,15 +63,15 @@ importers:
       '@mosaic-tanstack/core':
         specifier: workspace:*
         version: link:../../packages/mosaic-tanstack-core
-      '@mosaic-tanstack/react':
+      '@mosaic-tanstack/svelte':
         specifier: workspace:*
-        version: link:../../packages/mosaic-tanstack-react
-      '@tanstack/react-table':
+        version: link:../../packages/mosaic-tanstack-svelte
+      '@tanstack/svelte-table':
         specifier: ^8.17.3
-        version: 8.21.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@tanstack/react-virtual':
+        version: 8.21.3(svelte@4.2.20)
+      '@tanstack/svelte-virtual':
         specifier: ^3.5.0
-        version: 3.13.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 3.13.12(svelte@4.2.20)
       '@uwdata/mosaic-core':
         specifier: ^0.20.1
         version: 0.20.1
@@ -84,12 +84,9 @@ importers:
       d3:
         specifier: ^7.9.0
         version: 7.9.0
-      react:
-        specifier: ^18.2.0
-        version: 18.3.1
-      react-dom:
-        specifier: ^18.2.0
-        version: 18.3.1(react@18.3.1)
+      svelte:
+        specifier: ^4.2.17
+        version: 4.2.20
     devDependencies:
       '@types/d3':
         specifier: ^7.4.3
