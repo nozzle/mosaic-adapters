@@ -32,6 +32,9 @@
         "@mosaic-tanstack/react": "workspace:*",
         "@tanstack/react-table": "^8.17.3",
         "@tanstack/react-virtual": "^3.5.0",
+        "@uwdata/mosaic-core": "^0.20.1",
+        "@uwdata/mosaic-sql": "^0.20.1",
+        "@uwdata/vgplot": "^0.20.1",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
       },
@@ -44,6 +47,9 @@
         "@mosaic-tanstack/svelte": "workspace:*",
         "@tanstack/svelte-table": "^8.17.3",
         "@tanstack/svelte-virtual": "^3.5.0",
+        "@uwdata/mosaic-core": "^0.20.1",
+        "@uwdata/mosaic-sql": "^0.20.1",
+        "@uwdata/vgplot": "^0.20.1",
         "svelte": "^4.2.17",
       },
     },
@@ -52,6 +58,12 @@
       "version": "1.0.0",
       "dependencies": {
         "@tanstack/table-core": "^8.17.3",
+        "@uwdata/mosaic-core": "^0.20.1",
+        "@uwdata/mosaic-sql": "^0.20.1",
+        "@uwdata/vgplot": "^0.20.1",
+      },
+      "devDependencies": {
+        "typescript": "^5.4.5",
       },
     },
     "packages/mosaic-tanstack-react": {
@@ -61,12 +73,15 @@
         "@mosaic-tanstack/core": "workspace:*",
         "@tanstack/react-table": "^8.17.3",
         "@tanstack/react-virtual": "^3.5.0",
-        "react": "^18.2.0",
-        "react-dom": "^18.2.0",
       },
       "devDependencies": {
         "@types/react": "^18.2.0",
         "@types/react-dom": "^18.2.0",
+        "typescript": "^5.4.5",
+      },
+      "peerDependencies": {
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
       },
     },
     "packages/mosaic-tanstack-svelte": {
@@ -76,6 +91,13 @@
         "@mosaic-tanstack/core": "workspace:*",
         "@tanstack/svelte-table": "^8.17.3",
         "@tanstack/svelte-virtual": "^3.5.0",
+      },
+      "devDependencies": {
+        "@tsconfig/svelte": "^5.0.4",
+        "svelte-check": "^3.8.6",
+        "typescript": "^5.4.5",
+      },
+      "peerDependencies": {
         "svelte": "^4.2.17",
       },
     },
