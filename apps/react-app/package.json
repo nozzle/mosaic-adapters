@@ -16,6 +16,10 @@
     "react-dom": "^18.2.0",
     "@uwdata/vgplot": "^0.20.1",
     "@uwdata/mosaic-core": "^0.20.1",
-    "@uwdata/mosaic-sql": "^0.20.1"
+    "@uwdata/mosaic-sql": "^0.20.1",
+    "d3": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.3"
   }
 }
