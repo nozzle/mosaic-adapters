@@ -1,59 +1,23 @@
-// src/lib/tables/types.ts
-// This file defines the formal TypeScript "contract" that separates data/logic
-// configurations from UI/rendering configurations for data tables.
+// packages/mosaic-tanstack-svelte/src/types.ts
+// This file defines the formal TypeScript "contract" for the Svelte adapter.
+// It imports the generic types from the core package and extends them with
+// Svelte-specific types, ensuring strong type safety for Svelte developers
+// using the adapter.
 import type { ComponentType } from 'svelte';
-import type { MosaicColumnDef, DataTableOptions } from '@mosaic-tanstack/core';
-import type { Query } from '@uwdata/mosaic-sql';
-import type { SQLAst } from '@uwdata/mosaic-core';
-import type { Column, ColumnDef, Table } from '@tanstack/table-core';
+import type { ColumnUIConfig as CoreColumnUIConfig, MosaicColumnDef as CoreMosaicColumnDef, DataTableOptions as CoreDataTableOptions, DataTableLogicConfig as CoreDataTableLogicConfig } from '@mosaic-tanstack/core';
+import type { Column, ColumnDef } from '@tanstack/table-core';
 
-export interface CustomTableMeta<TData extends object> {
-    onRowHover?: (row: TData | null) => void;
-    onRowClick?: (row: TData | null) => void;
-    hasGlobalFilter?: boolean;
-}
+// Re-export core types for convenience
+export * from '@mosaic-tanstack/core';
 
-export interface CustomColumnMeta<TData extends object, TValue> {
-    Filter?: ComponentType<{ column: Column<TData, TValue> }>;
-    enableGlobalFilter?: boolean;
-}
-
-declare module '@tanstack/table-core' {
-    interface TableMeta<TData extends object> extends CustomTableMeta<TData> {}
-    interface ColumnMeta<TData extends object, TValue> extends CustomColumnMeta<TData, TValue> {}
-}
-
-export type LogicColumnDef<T extends object> = Omit<MosaicColumnDef<T>, 'header' | 'cell' | 'meta'> & {
-    meta?: { enableGlobalFilter?: boolean; }
-};
-
-export interface ColumnUIConfig<T extends object> {
+// Create a Svelte-specific ColumnUIConfig that enforces Svelte component types.
+export interface ColumnUIConfig<T extends object> extends CoreColumnUIConfig<T> {
     header?: ColumnDef<T, unknown>['header'] | ComponentType;
     cell?: ColumnDef<T, unknown>['cell'] | ComponentType;
     meta?: { Filter?: ComponentType<{ column: any }>; };
 }
 
-export type DataTableUIConfig<T extends object> = { [columnId in string]?: ColumnUIConfig<T>; };
-
-export interface InteractionConfig<T extends object> { createPredicate: (row: T) => SQLAst | null; }
-
-interface BaseDataTableLogicConfig<T extends object> {
-    name: string;
-    columns: LogicColumnDef<T>[];
-    getBaseQuery: (filters: { where?: any; having?: any }) => Query;
-    groupBy?: string[];
-    hoverInteraction?: InteractionConfig<T>;
-    clickInteraction?: InteractionConfig<T>;
-}
-
-interface LogicConfigWithoutRowSelection<T extends object> extends BaseDataTableLogicConfig<T> {
-    primaryKey?: string[];
-    options?: Omit<DataTableOptions<T>, 'meta' | 'enableRowSelection'> & { enableRowSelection?: false; };
-}
-
-interface LogicConfigWithRowSelection<T extends object> extends BaseDataTableLogicConfig<T> {
-    primaryKey: string[];
-    options: Omit<DataTableOptions<T>, 'meta' | 'enableRowSelection'> & { enableRowSelection: true; };
-}
-
-export type DataTableLogicConfig<T extends object> = | LogicConfigWithoutRowSelection<T> | LogicConfigWithRowSelection<T>;
+// The top-level UI config now uses our new, strongly-typed interface.
+export type DataTableUIConfig<T extends object> = {
+    [columnId in string]?: ColumnUIConfig<T>;
+};
