@@ -1,0 +1,25 @@
+{
+	"name": "example-svelte-app",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build"
+	},
+	"dependencies": {
+		"@mosaic-tanstack/core": "workspace:*",
+		"@mosaic-tanstack/svelte": "workspace:*",
+		"@tanstack/svelte-table": "^8.17.3",
+		"@tanstack/svelte-virtual": "^3.5.0",
+		"svelte": "^4.2.17",
+		"@uwdata/vgplot": "^0.20.1",
+		"@uwdata/mosaic-core": "^0.20.1",
+		"@uwdata/mosaic-sql": "^0.20.1",
+		"d3": "^7.9.0"
+	},
+	"devDependencies": {
+		"@types/d3": "^7.4.3",
+		"svelte-preprocess": "^5.1.4"
+	}
+}
