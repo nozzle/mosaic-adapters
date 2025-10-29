@@ -1,7 +1,6 @@
 {
-	"name": "@mosaic-tanstack/core",
-	"version": "1.0.0",
-	"private": true,
+	"name": "@nozzle/mosaic-tanstack-table-core",
+	"version": "0.0.1",
 	"type": "module",
 	"main": "src/index.ts",
 	"dependencies": {

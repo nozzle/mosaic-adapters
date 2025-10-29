@@ -8,8 +8,8 @@
 		"build": "vite build"
 	},
 	"dependencies": {
-		"@mosaic-tanstack/core": "workspace:*",
-		"@mosaic-tanstack/svelte": "workspace:*",
+		"@nozzle/mosaic-tanstack-table-core": "workspace:*",
+		"@nozzle/mosaic-tanstack-svelte-table": "workspace:*",
 		"@tanstack/svelte-table": "^8.17.3",
 		"@tanstack/svelte-virtual": "^3.5.0",
 		"svelte": "^4.2.17",
