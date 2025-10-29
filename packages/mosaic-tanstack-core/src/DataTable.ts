@@ -1,9 +1,12 @@
 // packages/mosaic-tanstack-core/src/DataTable.ts
-// This file defines the generic, framework-agnostic `DataTable` base class.
-// It acts as a bridge, extending MosaicClient to handle data fetching and
-// implementing a subscription model to push state updates to any UI framework.
-// It contains NO UI framework-specific code or types.
-import { MosaicClient, Selection, type FilterExpr } from '@uwdata/mosaic-core';
+/**
+ * @file This file defines the generic, framework-agnostic `DataTable` base class.
+ * It acts as a bridge, extending MosaicClient to handle data fetching and
+ * implementing a subscription model to push state updates to any UI framework.
+ * This version is "Arrow-native," retaining the binary Arrow Table from query
+ * results for high-performance rendering in consuming UI libraries.
+ */
+import { MosaicClient, Selection, type FilterExpr, Param } from '@uwdata/mosaic-core';
 import { literal, isIn, and, sql, or, Query, desc, asc, eq, type SQLAst } from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
 import { 
@@ -11,44 +14,80 @@ import {
     getCoreRowModel, getSortedRowModel, getFilteredRowModel, getPaginationRowModel, getGroupedRowModel,
     type Table, type TableOptions, type ColumnDef, type TableState, type Updater, type Column
 } from '@tanstack/table-core';
+import { Table as ArrowTable } from 'apache-arrow';
 
 // --- GENERIC TYPE DEFINITIONS ---
 
+/**
+ * Extends TanStack Table's `TableMeta` to include custom properties, such as
+ * callbacks for row interactions.
+ */
 export interface CustomTableMeta<TData extends object> {
     onRowHover?: (row: TData | null) => void;
     onRowClick?: (row: TData | null) => void;
     hasGlobalFilter?: boolean;
 }
 
+/**
+ * Extends TanStack Table's `ColumnMeta` to include custom properties, such as
+ * a placeholder for a filter component UI and a flag for global searchability.
+ */
 export interface CustomColumnMeta<TData extends object, TValue> {
-    Filter?: any; // Generic placeholder for a filter component
+    Filter?: any; // Generic placeholder for a filter component, framework-agnostic.
     enableGlobalFilter?: boolean;
 }
 
+/**
+ * Use module augmentation to merge our custom meta types with TanStack's.
+ * This provides type safety and autocompletion for our custom `meta` objects.
+ */
 declare module '@tanstack/table-core' {
     interface TableMeta<TData extends object> extends CustomTableMeta<TData> {}
     interface ColumnMeta<TData extends object, TValue> extends CustomColumnMeta<TData, TValue> {}
 }
 
+/**
+ * Extends TanStack's `ColumnDef` to include an optional `sql` property,
+ * allowing a column to be defined by a raw SQL expression.
+ */
 export interface MosaicColumnDef<TData extends object> extends ColumnDef<TData> {
     sql?: string | SQLAst;
 }
 
+/**
+ * Defines a column's LOGIC properties, explicitly omitting UI renderers (`header`, `cell`)
+ * to maintain a clean separation between data logic and presentation.
+ */
 export type LogicColumnDef<T extends object> = Omit<MosaicColumnDef<T>, 'header' | 'cell' | 'meta'> & {
     meta?: { enableGlobalFilter?: boolean; }
 };
 
-// This is the generic, framework-agnostic UI config. Adapters will extend this.
+/**
+ * Defines the shape of the UI configuration for a single column, including
+ * framework-agnostic placeholders for rendering components.
+ */
 export interface ColumnUIConfig<T extends object> {
     header?: ColumnDef<T, unknown>['header'] | any;
     cell?: ColumnDef<T, unknown>['cell'] | any;
     meta?: { Filter?: any; };
 }
 
+/**
+ * Defines the top-level UI configuration object as a map from a column ID
+ * to its specific UI config.
+ */
 export type DataTableUIConfig<T extends object> = { [columnId in string]?: ColumnUIConfig<T>; };
 
+/**
+ * Defines a contract for generating a SQL predicate from a single data row,
+ * used for point-based interactions like hover and click.
+ */
 export interface InteractionConfig<T extends object> { createPredicate: (row: T) => SQLAst | null; }
 
+/**
+ * The complete set of options for constructing a `DataTable` instance.
+ * It extends TanStack's options and adds Mosaic-specific configurations.
+ */
 export interface DataTableOptions<TData extends object> extends Omit<TableOptions<TData>, 'data' | 'columns' | 'state' | 'onStateChange' | 'renderFallbackValue'> {
   columns: MosaicColumnDef<TData>[];
   data?: TData[];
@@ -64,8 +103,15 @@ export interface DataTableOptions<TData extends object> extends Omit<TableOption
   primaryKey?: string[];
   name?: string;
   sourceTable?: string;
+  pageParam?: Param<number>;
+  pageSizeParam?: Param<number>;
 }
 
+// --- THIS IS THE FIX: The full, correct type definition is now provided. ---
+
+/**
+ * The base configuration for the data logic of a DataTable.
+ */
 interface BaseDataTableLogicConfig<T extends object> {
     name: string;
     sourceTable?: string; 
@@ -76,57 +122,108 @@ interface BaseDataTableLogicConfig<T extends object> {
     clickInteraction?: InteractionConfig<T>;
 }
 
+/**
+ * Logic configuration for a table where row selection is disabled.
+ */
 interface LogicConfigWithoutRowSelection<T extends object> extends BaseDataTableLogicConfig<T> {
     primaryKey?: string[];
     options?: Omit<DataTableOptions<T>, 'meta' | 'enableRowSelection'> & { enableRowSelection?: false; };
 }
 
+/**
+ * Logic configuration for a table where row selection is enabled, requiring a primary key.
+ */
 interface LogicConfigWithRowSelection<T extends object> extends BaseDataTableLogicConfig<T> {
     primaryKey: string[];
     options: Omit<DataTableOptions<T>, 'meta' | 'enableRowSelection'> & { enableRowSelection: true; };
 }
 
+/**
+ * Represents the framework-agnostic "logic" configuration for a `DataTable`.
+ * It is a discriminated union to enforce that a `primaryKey` is provided
+ * when `enableRowSelection` is true.
+ */
 export type DataTableLogicConfig<T extends object> = | LogicConfigWithoutRowSelection<T> | LogicConfigWithRowSelection<T>;
 
-// --- END GENERIC TYPES ---
+// --- END FIX ---
 
+/**
+ * Defines the state snapshot that the `DataTable` provides to its subscribers.
+ * This object contains everything a UI framework needs to render the table.
+ */
 export interface DataTableSnapshot<TData extends object> {
+    /** The fully-configured TanStack Table instance for UI logic and rendering. */
     table: Table<TData>;
+    /** The raw Apache Arrow table from the last successful query for high-performance rendering. */
+    arrowTable: ArrowTable | null;
+    /** True if the table has never received data and a query is in flight. */
     isLoading: boolean;
+    /** True if a query is currently in flight, even if stale data is present. */
     isFetching: boolean;
+    /** True if a secondary lookup query (for filtering on aggregates) is in flight. */
     isLookupPending: boolean;
+    /** An error object if the last query failed. */
     error: Error | null;
 }
 
+/** Represents the possible loading states of the data table. */
 type LoadingState = 'idle' | 'fetching' | 'lookup';
 
+/**
+ * A generic, framework-agnostic class that bridges Mosaic data fetching with
+ * TanStack Table state management. It acts as a headless controller for a data grid.
+ */
 export abstract class DataTable<TData extends object = any> extends MosaicClient {
+  /** The active TanStack Table instance. */
   protected _table: Table<TData>;
+  /** The column definitions for the table. */
   protected _columns: MosaicColumnDef<TData>[];
+  /** The current page of data, converted to a JavaScript array for TanStack compatibility. */
   protected _data: TData[];
+  /** The raw Apache Arrow table from the most recent query result. */
+  protected _arrowData: ArrowTable | null = null;
+  /** The complete state object for the TanStack Table instance (sorting, pagination, etc.). */
   protected _state: TableState;
+  /** The original TanStack Table options, preserved for recreating the table instance. */
   protected _options: Omit<TableOptions<TData>, 'data' | 'columns' | 'state' | 'onStateChange' | 'renderFallbackValue'>;
   
+  // Mosaic selection objects for various interaction types.
   protected internalFilterSelection?: Selection;
   protected rowSelectionSelection?: Selection;
   protected hoverSelection?: Selection;
   protected clickSelection?: Selection;
-  protected sourceName: string;
-  protected sourceTable?: string;
 
+  /** A unique name for this client, used to source selection updates. */
+  protected sourceName: string;
+  /** The primary database table to query for schema metadata if not otherwise discoverable. */
+  protected sourceTable?: string;
+  /** Optional Mosaic Param for two-way binding of the current page index. */
+  protected pageParam?: Param<number>;
+  /** Optional Mosaic Param for two-way binding of the current page size. */
+  protected pageSizeParam?: Param<number>;
+
+  // Interaction handlers for hover and click events.
   protected hoverInteraction?: InteractionConfig<TData>;
   protected clickInteraction?: InteractionConfig<TData>;
 
+  /** An array of column IDs to perform a GROUP BY on. */
   protected groupByKeys: string[];
+  /** An array of column IDs that form the unique primary key for a row. */
   protected primaryKey: string[];
   
+  /** A cache for the table's column schema (names and types). */
   private _schema = new Map<string, any>();
+  /** A cache for SQL predicates generated from selected row IDs. */
   private _rowSelectionPredicates = new Map<string, SQLAst | null>();
   
+  /** The last error that occurred during a query. */
   public error: Error | null = null;
   
+  /** A set of listener callbacks to be invoked on state changes. */
   private _listeners = new Set<() => void>();
+  /** The latest state snapshot to be provided to subscribers. */
   private _snapshot: DataTableSnapshot<TData>;
+  /** The current data-fetching status of the client. */
   private _loadingState: LoadingState = 'idle';
 
   constructor(options: DataTableOptions<TData>) {
@@ -146,12 +243,13 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
         primaryKey = [],
         name,
         sourceTable,
+        pageParam,
+        pageSizeParam,
         ...rest 
     } = options;
     this._options = rest;
     
     this.sourceTable = sourceTable;
-
     this.internalFilterSelection = internalFilter;
     this.rowSelectionSelection = rowSelectionAs;
     this.hoverSelection = hoverAs;
@@ -161,6 +259,8 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     this.sourceName = name || this.constructor.name;
     this.groupByKeys = groupBy;
     this.primaryKey = primaryKey;
+    this.pageParam = pageParam;
+    this.pageSizeParam = pageSizeParam;
 
     if (this._options.enableRowSelection && (!this.primaryKey || this.primaryKey.length === 0)) {
         const tableName = name || this.constructor.name;
@@ -173,13 +273,17 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     }
     
     this._columns = columns;
-
     this._data = data || [];
     
     this._state = {
       columnFilters: [], columnOrder: [], columnPinning: { left: [], right: [] },
       columnSizing: {}, columnVisibility: {}, expanded: {}, globalFilter: undefined,
-      grouping: [], pagination: { pageIndex: 0, pageSize: 10 }, rowSelection: {},
+      grouping: [], 
+      pagination: {
+        pageIndex: this.pageParam?.value ?? initialState?.pagination?.pageIndex ?? 0,
+        pageSize: this.pageSizeParam?.value ?? initialState?.pagination?.pageSize ?? 10,
+      }, 
+      rowSelection: {},
       sorting: [],
       ...initialState,
     };
@@ -205,6 +309,7 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
 
     this._snapshot = {
         table: this._table,
+        arrowTable: this._arrowData,
         isLoading: true,
         isFetching: true,
         isLookupPending: false,
@@ -212,12 +317,33 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     };
   }
 
+  /**
+   * Connects this client to the Mosaic coordinator and sets up subscriptions.
+   * @returns A cleanup function to be called on component unmount.
+   */
   public connect(): () => void {
     vg.coordinator().connect(this);
     this.initializeSelections();
-    return this.destroy.bind(this);
+
+    const pageSub = this.pageParam?.addEventListener('value', (pageIndex) => {
+      this.table.setPageIndex(pageIndex);
+    });
+    const pageSizeSub = this.pageSizeParam?.addEventListener('value', (pageSize) => {
+      this.table.setPageSize(pageSize);
+    });
+
+    const originalDestroy = this.destroy.bind(this);
+
+    return () => {
+      if (pageSub) this.pageParam?.removeEventListener('value', pageSub);
+      if (pageSizeSub) this.pageSizeParam?.removeEventListener('value', pageSizeSub);
+      originalDestroy();
+    };
   }
 
+  /**
+   * Initializes or clears interaction-based selections upon connection.
+   */
   public initializeSelections() {
     if (this.hoverSelection) {
         this.hoverSelection.update({ source: this.sourceName, predicate: literal(false) });
@@ -227,6 +353,9 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     }
   }
 
+  /**
+   * Disconnects from the coordinator and cleans up selections and listeners.
+   */
   public destroy() {
     const source = this.sourceName;
     if (this.internalFilterSelection) this.internalFilterSelection.update({ source, predicate: null });
@@ -241,12 +370,15 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     this._listeners.clear();
   }
   
+  /**
+   * Part of the MosaicClient lifecycle. Generates a query to fetch schema metadata.
+   */
   fields() {
     let fromTable: string | undefined = this.sourceTable;
 
     if (!fromTable) {
         const baseQuery = this.getBaseQuery({});
-        // @ts-ignore - This is our fallback heuristic
+        // @ts-ignore - Fallback heuristic to introspect the base query for its source table.
         const fromClause = baseQuery.clauses.from[0];
         fromTable = fromClause?.from;
     }
@@ -261,6 +393,9 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     return query;
   }
 
+  /**
+   * Part of the MosaicClient lifecycle. Receives schema info and caches it.
+   */
   fieldInfo(info: { column: string, type: any }[]) {
     this._schema.clear();
     for (const { column, type } of info) {
@@ -269,6 +404,9 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     this.requestQuery();
   }
 
+  /**
+   * Handler for row hover events, which updates the `hoverAs` selection.
+   */
   public handleRowHover = (rowObject: TData | null): void => {
     if (this.hoverSelection && this.hoverInteraction) {
       const predicate = rowObject 
@@ -278,6 +416,9 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     }
   }
 
+  /**
+   * Handler for row click events, which updates the `clickAs` selection.
+   */
   public handleRowClick = (rowObject: TData | null): void => {
     if (this.clickSelection && this.clickInteraction) {
       const predicate = rowObject 
@@ -287,10 +428,16 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     }
   }
 
+  /**
+   * A computed property to check if any column is configured for global filtering.
+   */
   private get _hasGlobalFilter(): boolean {
     return this._columns.some(c => c.meta?.enableGlobalFilter);
   }
 
+  /**
+   * Creates a new, fully configured TanStack Table instance based on the current state.
+   */
   private _createTable(): Table<TData> {
     const tableOptions: TableOptions<TData> = {
       ...this._options,
@@ -328,6 +475,10 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     return createTable<TData>(tableOptions);
   }
 
+  /**
+   * The core state update handler. Called by TanStack Table whenever an action occurs.
+   * It determines what changed and triggers the appropriate Mosaic-side effect.
+   */
   private _updateState(updater: Updater<TableState>) {
     const prevState = this._state;
     const newState = typeof updater === 'function' ? updater(prevState) : updater;
@@ -346,6 +497,13 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     this._state = newState;
     this._table = this._createTable();
     this._notifyListeners(); 
+
+    if (this.pageParam && this.pageParam.value !== newState.pagination.pageIndex) {
+        this.pageParam.update(newState.pagination.pageIndex);
+    }
+    if (this.pageSizeParam && this.pageSizeParam.value !== newState.pagination.pageSize) {
+        this.pageSizeParam.update(newState.pagination.pageSize);
+    }
     
     if (filterChanged) {
         this._handleInternalFilterChange();
@@ -359,6 +517,10 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     }
   }
 
+  /**
+   * Translates changes in TanStack's row selection state into an `OR`'d SQL
+   * predicate and updates the `rowSelectionAs` Mosaic Selection.
+   */
   private _handleRowSelectionChange(newState: TableState, prevState: TableState) {
     if (!this.rowSelectionSelection) return;
     const newKeys = new Set(Object.keys(newState.rowSelection));
@@ -379,6 +541,11 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     this.rowSelectionSelection.update({ source: `${this.sourceName}_row_selection`, predicate: finalPredicate });
   }
 
+  /**
+   * Generates SQL predicates from the current TanStack filter state (`columnFilters`
+   * and `globalFilter`), correctly separating them into `WHERE` and `HAVING` clauses
+   * if the query is grouped.
+   */
   private _generateFilterPredicates(state: TableState): { where: SQLAst[], having: SQLAst[] } {
     const createPredicate = (id: string, value: any) => sql`CAST(${id} AS VARCHAR) ILIKE ${literal(`%${value}%`)}`;
     if (this.groupByKeys.length === 0) {
@@ -414,6 +581,10 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     return { where, having };
   }
 
+  /**
+   * Handles changes to the internal filter state, potentially performing a "reverse lookup"
+   * query if filtering is needed on an aggregated column. Updates the `internalFilterAs` selection.
+   */
   private async _handleInternalFilterChange() {
     if (!this.internalFilterSelection) return;
 
@@ -449,6 +620,10 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     this.internalFilterSelection.update({ source: `${this.sourceName}_internal_filters`, predicate: finalPredicate });
   }
   
+  /**
+   * Creates a SQL predicate to uniquely identify a row based on its ID,
+   * which is a JSON string of its primary key values.
+   */
   public createPredicateFromRowId(id: string): SQLAst | null {
     if (this.primaryKey.length === 0) {
       console.warn('Cannot create predicate from row ID: No primaryKey is defined for this table.');
@@ -468,8 +643,15 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     }
   }
 
+  /**
+   * Part of the MosaicClient interface, indicates if filter changes affect the query's grouping.
+   */
   get filterStable(): boolean { return false; }
 
+  /**
+   * Part of the MosaicClient interface. Builds the final SQL query to be executed,
+   * combining the external filter with the internal TanStack state (sorting, pagination).
+   */
   public query(externalFilter?: FilterExpr): Query {
     const internalFilters = this._generateFilterPredicates(this.state);
     const combinedWhere = and(externalFilter, ...internalFilters.where);
@@ -482,6 +664,7 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     const baseQueryAlias = `${this.sourceName}_base`;
     const order = sorting.map(s => (s.desc ? desc(s.id) : asc(s.id)));
 
+    // Wraps the base query to apply sorting, pagination, and a total row count window function.
     const finalQuery = Query.with({ [baseQueryAlias]: baseQuery })
       .from(baseQueryAlias)
       .select('*', { total_rows: vg.count().window() })
@@ -492,20 +675,43 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     return finalQuery;
   }
 
+  /**
+   * An abstract method that must be implemented by a concrete subclass.
+   * It defines the core SELECT and FROM clauses of the table's query.
+   */
   public abstract getBaseQuery(filters: { where?: any, having?: any }): Query;
 
-  queryResult(data: any): this {
+  /**
+   * Part of the MosaicClient lifecycle. Called by the Coordinator with the query result.
+   */
+  queryResult(data: ArrowTable): this {
     this._loadingState = 'idle';
     this.error = null;
-    const rows: TData[] = (data && typeof data.toArray === 'function') ? data.toArray().map((row: object) => ({ ...row })) : [];
+    
+    // Store the raw ArrowTable for high-performance rendering.
+    this._arrowData = data;
+
+    // Convert to a JS array for TanStack Table's internal logic.
+    const rows: TData[] = (data && typeof data.toArray === 'function') 
+        ? data.toArray().map((row: object) => ({ ...row })) 
+        : [];
     this._data = rows;
+
+    // Extract total row count from the special window function column.
     const rowCount = this._data.length > 0 ? (this._data[0] as any).total_rows : 0;
+    
+    // Recreate the TanStack Table instance with the new data and total count.
     this._table = this._createTable();
     this._table.setOptions(prev => ({ ...prev, rowCount }));
+    
+    // Notify all UI subscribers that new data is available.
     this._notifyListeners();
     return this;
   }
 
+  /**
+   * Part of the MosaicClient lifecycle. Called when a query is pending.
+   */
   queryPending(): this {
     this._loadingState = 'fetching';
     this.error = null;
@@ -513,6 +719,9 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     return this;
   }
   
+  /**
+   * Part of the MosaicClient lifecycle. Called when a query fails.
+   */
   queryError(error: Error): this {
     this._loadingState = 'idle';
     this.error = error;
@@ -520,16 +729,27 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     return this;
   }
 
+  /**
+   * Subscribes a listener function to be called on any state change.
+   * @returns An unsubscribe function.
+   */
   public subscribe = (listener: () => void): (() => void) => {
     this._listeners.add(listener);
     return () => { this._listeners.delete(listener); };
   }
 
+  /**
+   * Returns the latest state snapshot. Required for `useSyncExternalStore`.
+   */
   public getSnapshot = (): DataTableSnapshot<TData> => this._snapshot;
 
+  /**
+   * Assembles a new state snapshot and notifies all subscribed listeners.
+   */
   private _notifyListeners = () => {
     this._snapshot = {
         table: this._table,
+        arrowTable: this._arrowData,
         isLoading: this._loadingState !== 'idle' && this._data.length === 0,
         isFetching: this._loadingState === 'fetching',
         isLookupPending: this._loadingState === 'lookup',
@@ -538,6 +758,8 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     this._listeners.forEach(listener => listener());
   }
   
+  /** Public getter for the current TanStack Table instance. */
   public get table(): Table<TData> { return this._table; }
+  /** Public getter for the current TanStack Table state. */
   public get state(): TableState { return this._state; }
 }
