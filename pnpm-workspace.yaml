@@ -1,3 +1,6 @@
 packages:
-  - 'packages/*'
-  - 'apps/*'
+  - "packages/*"
+  - "apps/*"
+
+catalog:
+  vite: "^7.1.12"
