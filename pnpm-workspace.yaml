@@ -3,4 +3,5 @@ packages:
   - "examples/*"
 
 catalog:
+  typescript: "^5.4.5"
   vite: "^7.1.12"
