@@ -4,12 +4,12 @@
 	"type": "module",
 	"main": "src/index.ts",
 	"dependencies": {
-		"@nozzle/mosaic-tanstack-table-core": "workspace:*",
-		"@tanstack/svelte-table": "^8.17.3",
-		"@tanstack/svelte-virtual": "^3.5.0"
+		"@nozzle/mosaic-tanstack-table-core": "workspace:*"
 	},
 	"peerDependencies": {
-		"svelte": "^4.2.17"
+		"@tanstack/svelte-table": ">=8.17.3",
+		"@tanstack/svelte-virtual": ">=3.5.0",
+		"svelte": ">=4.2.17"
 	},
 	"devDependencies": {
 		"@tsconfig/svelte": "^5.0.4",

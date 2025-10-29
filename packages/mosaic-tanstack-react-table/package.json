@@ -4,13 +4,13 @@
 	"type": "module",
 	"main": "src/index.ts",
 	"dependencies": {
-		"@nozzle/mosaic-tanstack-table-core": "workspace:*",
-		"@tanstack/react-table": "^8.17.3",
-		"@tanstack/react-virtual": "^3.5.0"
+		"@nozzle/mosaic-tanstack-table-core": "workspace:*"
 	},
 	"peerDependencies": {
-		"react": "^18.2.0",
-		"react-dom": "^18.2.0"
+		"@tanstack/react-table": ">=8.17.3",
+		"@tanstack/react-virtual": ">=3.5.0",
+		"react": ">=18.2.0",
+		"react-dom": ">=18.2.0"
 	},
 	"devDependencies": {
 		"@types/react": "^18.2.0",
