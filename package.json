@@ -1,14 +1,19 @@
 {
-	"name": "mosaic-tanstack-monorepo",
+	"name": "nozzle-mosaic-adapters-monorepo",
 	"private": true,
-	"workspaces": [
-		"packages/*",
-		"apps/*"
-	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/nozzle/mosaic-adapters.git"
+	},
+	"packageManager": "pnpm@10.19.0",
+	"type": "module",
 	"scripts": {
 		"dev:react": "bun --cwd apps/react-app dev",
 		"dev:svelte": "bun --cwd apps/svelte-app dev",
-		"typecheck": "bun tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"format": "echo 'code formatting is to be implemented'",
+		"lint": "echo 'style linting is to be implemented'",
+		"dev": "echo 'dev is to be implemented'"
 	},
 	"dependencies": {
 		"@uwdata/mosaic-core": "^0.20.1",
