@@ -1,11 +1,10 @@
 {
-	"name": "@mosaic-tanstack/svelte",
-	"version": "1.0.0",
-	"private": true,
+	"name": "@nozzle/mosaic-tanstack-svelte-table",
+	"version": "0.0.1",
 	"type": "module",
 	"main": "src/index.ts",
 	"dependencies": {
-		"@mosaic-tanstack/core": "workspace:*",
+		"@nozzle/mosaic-tanstack-table-core": "workspace:*",
 		"@tanstack/svelte-table": "^8.17.3",
 		"@tanstack/svelte-virtual": "^3.5.0"
 	},

@@ -8,8 +8,8 @@
 		"build": "tsc && vite build"
 	},
 	"dependencies": {
-		"@mosaic-tanstack/core": "workspace:*",
-		"@mosaic-tanstack/react": "workspace:*",
+		"@nozzle/mosaic-tanstack-table-core": "workspace:*",
+		"@nozzle/mosaic-tanstack-react-table": "workspace:*",
 		"@tanstack/react-table": "^8.17.3",
 		"@tanstack/react-virtual": "^3.5.0",
 		"react": "^18.2.0",

@@ -66,12 +66,12 @@ importers:
 
   examples/react-app:
     dependencies:
-      '@mosaic-tanstack/core':
+      '@nozzle/mosaic-tanstack-react-table':
         specifier: workspace:*
-        version: link:../../packages/mosaic-tanstack-core
-      '@mosaic-tanstack/react':
+        version: link:../../packages/mosaic-tanstack-react-table
+      '@nozzle/mosaic-tanstack-table-core':
         specifier: workspace:*
-        version: link:../../packages/mosaic-tanstack-react
+        version: link:../../packages/mosaic-tanstack-table-core
       '@tanstack/react-table':
         specifier: ^8.17.3
         version: 8.21.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -106,12 +106,12 @@ importers:
 
   examples/svelte-app:
     dependencies:
-      '@mosaic-tanstack/core':
+      '@nozzle/mosaic-tanstack-svelte-table':
         specifier: workspace:*
-        version: link:../../packages/mosaic-tanstack-core
-      '@mosaic-tanstack/svelte':
+        version: link:../../packages/mosaic-tanstack-svelte-table
+      '@nozzle/mosaic-tanstack-table-core':
         specifier: workspace:*
-        version: link:../../packages/mosaic-tanstack-svelte
+        version: link:../../packages/mosaic-tanstack-table-core
       '@tanstack/svelte-table':
         specifier: ^8.17.3
         version: 8.21.3(svelte@4.2.20)
@@ -144,30 +144,11 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
-  packages/mosaic-tanstack-core:
+  packages/mosaic-tanstack-react-table:
     dependencies:
-      '@tanstack/table-core':
-        specifier: ^8.17.3
-        version: 8.21.3
-      '@uwdata/mosaic-core':
-        specifier: ^0.20.1
-        version: 0.20.1
-      '@uwdata/mosaic-sql':
-        specifier: ^0.20.1
-        version: 0.20.1
-      '@uwdata/vgplot':
-        specifier: ^0.20.1
-        version: 0.20.1
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-
-  packages/mosaic-tanstack-react:
-    dependencies:
-      '@mosaic-tanstack/core':
+      '@nozzle/mosaic-tanstack-table-core':
         specifier: workspace:*
-        version: link:../mosaic-tanstack-core
+        version: link:../mosaic-tanstack-table-core
       '@tanstack/react-table':
         specifier: ^8.17.3
         version: 8.21.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -191,11 +172,11 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
-  packages/mosaic-tanstack-svelte:
+  packages/mosaic-tanstack-svelte-table:
     dependencies:
-      '@mosaic-tanstack/core':
+      '@nozzle/mosaic-tanstack-table-core':
         specifier: workspace:*
-        version: link:../mosaic-tanstack-core
+        version: link:../mosaic-tanstack-table-core
       '@tanstack/svelte-table':
         specifier: ^8.17.3
         version: 8.21.3(svelte@4.2.20)
@@ -212,6 +193,25 @@ importers:
       svelte-check:
         specifier: ^3.8.6
         version: 3.8.6(@babel/core@7.28.5)(postcss@8.5.6)(svelte@4.2.20)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
+  packages/mosaic-tanstack-table-core:
+    dependencies:
+      '@tanstack/table-core':
+        specifier: ^8.17.3
+        version: 8.21.3
+      '@uwdata/mosaic-core':
+        specifier: ^0.20.1
+        version: 0.20.1
+      '@uwdata/mosaic-sql':
+        specifier: ^0.20.1
+        version: 0.20.1
+      '@uwdata/vgplot':
+        specifier: ^0.20.1
+        version: 0.20.1
+    devDependencies:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
