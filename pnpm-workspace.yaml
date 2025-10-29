@@ -1,6 +1,6 @@
 packages:
   - "packages/*"
-  - "apps/*"
+  - "examples/*"
 
 catalog:
   vite: "^7.1.12"
