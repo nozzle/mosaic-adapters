@@ -16,18 +16,17 @@
 		"dev": "echo 'dev is to be implemented'"
 	},
 	"dependencies": {
-		"@uwdata/mosaic-core": "^0.20.1",
-		"@uwdata/mosaic-sql": "^0.20.1",
-		"@uwdata/vgplot": "^0.20.1",
 		"apache-arrow": "^16.1.0",
 		"d3-scale": "^4.0.2",
 		"d3-shape": "^3.2.0"
 	},
 	"devDependencies": {
 		"@sveltejs/vite-plugin-svelte": "^3.1.0",
+		"@tanstack/config": "^0.22.0",
 		"@tsconfig/svelte": "^5.0.4",
 		"react": "^18.2.0",
 		"react-dom": "^18.2.0",
+		"rimraf": "^6.0.1",
 		"svelte": "^4.2.17",
 		"svelte-check": "^3.8.6",
 		"typescript": "catalog:",
