@@ -3,6 +3,9 @@ packages:
   - "examples/*"
 
 catalog:
+  "@uwdata/mosaic-core": "^0.20.1"
+  "@uwdata/mosaic-sql": "^0.20.1"
+  "@uwdata/vgplot": "^0.20.1"
   "@vitejs/plugin-react": "^5.1.0"
   typescript: "^5.4.5"
   vite: "^7.1.12"

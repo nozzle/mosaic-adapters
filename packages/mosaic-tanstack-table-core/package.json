@@ -2,12 +2,27 @@
 	"name": "@nozzle/mosaic-tanstack-table-core",
 	"version": "0.0.1",
 	"type": "module",
-	"main": "src/index.ts",
+	"main": "dist/esm/index.js",
+	"module": "dist/esm/index.js",
+	"types": "dist/esm/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/esm/index.d.ts",
+				"default": "./dist/esm/index.js"
+			}
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"clean": "rimraf dist",
+		"build": "vite build"
+	},
 	"dependencies": {
 		"@tanstack/table-core": "^8.17.3",
-		"@uwdata/mosaic-core": "^0.20.1",
-		"@uwdata/mosaic-sql": "^0.20.1",
-		"@uwdata/vgplot": "^0.20.1"
+		"@uwdata/mosaic-core": "catalog:",
+		"@uwdata/mosaic-sql": "catalog:",
+		"@uwdata/vgplot": "catalog:"
 	},
 	"devDependencies": {
 		"typescript": "catalog:"
