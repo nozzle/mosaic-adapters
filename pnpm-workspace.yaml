@@ -3,5 +3,6 @@ packages:
   - "examples/*"
 
 catalog:
+  "@vitejs/plugin-react": "^5.1.0"
   typescript: "^5.4.5"
   vite: "^7.1.12"
