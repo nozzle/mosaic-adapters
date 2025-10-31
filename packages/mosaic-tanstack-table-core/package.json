@@ -22,7 +22,8 @@
 		"@tanstack/table-core": "^8.17.3",
 		"@uwdata/mosaic-core": "catalog:",
 		"@uwdata/mosaic-sql": "catalog:",
-		"@uwdata/vgplot": "catalog:"
+		"@uwdata/vgplot": "catalog:",
+		"apache-arrow": "^21.1.0"
 	},
 	"devDependencies": {
 		"typescript": "catalog:"
