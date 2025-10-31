@@ -2,6 +2,7 @@
 	"recommendations": [
 		"esbenp.prettier-vscode",
 		"dbaeumer.vscode-eslint",
-		"yoavbls.pretty-ts-errors"
+		"yoavbls.pretty-ts-errors",
+		"streetsidesoftware.code-spell-checker"
 	]
 }
