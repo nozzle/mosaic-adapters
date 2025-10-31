@@ -11,8 +11,9 @@
 		"dev:react": "bun --cwd apps/react-app dev",
 		"dev:svelte": "bun --cwd apps/svelte-app dev",
 		"typecheck": "tsc --noEmit",
-		"build:libs": "nx affected --target=build --exclude=examples/**",
-		"watch": "pnpm run build:libs && nx watch --all -- pnpm run build:libs",
+		"build": "nx affected --target=build --exclude=examples/**",
+		"build:all": "nx run-many --target=build --exclude=examples/**",
+		"watch": "nx watch --all -- pnpm run build",
 		"format": "echo 'code formatting is to be implemented'",
 		"lint": "echo 'style linting is to be implemented'",
 		"dev": "pnpm run watch"
