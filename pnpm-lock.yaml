@@ -6,9 +6,15 @@ settings:
 
 catalogs:
   default:
+    '@sveltejs/vite-plugin-svelte':
+      specifier: ^3.1.0
+      version: 3.1.2
     '@tanstack/table-core':
       specifier: ^8.17.3
       version: 8.21.3
+    '@tsconfig/svelte':
+      specifier: ^5.0.5
+      version: 5.0.5
     '@uwdata/mosaic-core':
       specifier: ^0.20.1
       version: 0.20.1
@@ -21,6 +27,9 @@ catalogs:
     '@vitejs/plugin-react':
       specifier: ^5.1.0
       version: 5.1.0
+    svelte-check:
+      specifier: ^3.8.6
+      version: 3.8.6
     typescript:
       specifier: ^5.4.5
       version: 5.9.3
@@ -39,15 +48,9 @@ importers:
         specifier: ^3.2.0
         version: 3.2.0
     devDependencies:
-      '@sveltejs/vite-plugin-svelte':
-        specifier: ^3.1.0
-        version: 3.1.2(svelte@4.2.20)(vite@7.1.12(@types/node@24.9.2)(yaml@2.8.1))
       '@tanstack/config':
         specifier: ^0.22.0
         version: 0.22.0(@types/node@24.9.2)(@typescript-eslint/utils@8.46.2(eslint@9.38.0)(typescript@5.9.3))(eslint@9.38.0)(rollup@4.52.5)(typescript@5.9.3)(vite@7.1.12(@types/node@24.9.2)(yaml@2.8.1))
-      '@tsconfig/svelte':
-        specifier: ^5.0.4
-        version: 5.0.5
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -57,12 +60,6 @@ importers:
       rimraf:
         specifier: ^6.0.1
         version: 6.0.1
-      svelte:
-        specifier: ^4.2.17
-        version: 4.2.20
-      svelte-check:
-        specifier: ^3.8.6
-        version: 3.8.6(@babel/core@7.28.5)(postcss@8.5.6)(svelte@4.2.20)
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -207,15 +204,30 @@ importers:
       '@tanstack/svelte-virtual':
         specifier: '>=3.5.0'
         version: 3.13.12(svelte@4.2.20)
+      '@tanstack/table-core':
+        specifier: 'catalog:'
+        version: 8.21.3
+      '@uwdata/mosaic-core':
+        specifier: 'catalog:'
+        version: 0.20.1
+      '@uwdata/mosaic-sql':
+        specifier: 'catalog:'
+        version: 0.20.1
+      '@uwdata/vgplot':
+        specifier: 'catalog:'
+        version: 0.20.1
       svelte:
-        specifier: '>=4.2.17'
+        specifier: ^4.0.0 || ^5.0.0
         version: 4.2.20
     devDependencies:
+      '@sveltejs/vite-plugin-svelte':
+        specifier: 'catalog:'
+        version: 3.1.2(svelte@4.2.20)(vite@7.1.12(@types/node@24.9.2)(yaml@2.8.1))
       '@tsconfig/svelte':
-        specifier: ^5.0.4
+        specifier: 'catalog:'
         version: 5.0.5
       svelte-check:
-        specifier: ^3.8.6
+        specifier: 'catalog:'
         version: 3.8.6(@babel/core@7.28.5)(postcss@8.5.6)(svelte@4.2.20)
       typescript:
         specifier: 'catalog:'
