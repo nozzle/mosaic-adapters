@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@tanstack/table-core':
+      specifier: ^8.17.3
+      version: 8.21.3
     '@uwdata/mosaic-core':
       specifier: ^0.20.1
       version: 0.20.1
@@ -161,6 +164,18 @@ importers:
       '@tanstack/react-virtual':
         specifier: '>=3.5.0'
         version: 3.13.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@tanstack/table-core':
+        specifier: 'catalog:'
+        version: 8.21.3
+      '@uwdata/mosaic-core':
+        specifier: 'catalog:'
+        version: 0.20.1
+      '@uwdata/mosaic-sql':
+        specifier: 'catalog:'
+        version: 0.20.1
+      '@uwdata/vgplot':
+        specifier: 'catalog:'
+        version: 0.20.1
       react:
         specifier: '>=18.2.0'
         version: 18.3.1
@@ -209,7 +224,7 @@ importers:
   packages/mosaic-tanstack-table-core:
     dependencies:
       '@tanstack/table-core':
-        specifier: ^8.17.3
+        specifier: 'catalog:'
         version: 8.21.3
       '@uwdata/mosaic-core':
         specifier: 'catalog:'

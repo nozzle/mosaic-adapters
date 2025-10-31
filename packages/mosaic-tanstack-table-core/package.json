@@ -19,7 +19,7 @@
 		"build": "vite build"
 	},
 	"dependencies": {
-		"@tanstack/table-core": "^8.17.3",
+		"@tanstack/table-core": "catalog:",
 		"@uwdata/mosaic-core": "catalog:",
 		"@uwdata/mosaic-sql": "catalog:",
 		"@uwdata/vgplot": "catalog:",

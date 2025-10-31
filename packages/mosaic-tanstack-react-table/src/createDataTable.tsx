@@ -5,6 +5,7 @@
 import React, { Fragment, useState, useEffect, useRef } from "react";
 import { useSyncExternalStore } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+// @ts-expect-error Module '"@uwdata/mosaic-core"' has no exported member 'Query'.
 import { Selection, Query } from "@uwdata/mosaic-core";
 import {
 	DataTable,
@@ -12,9 +13,9 @@ import {
 	type MosaicColumnDef,
 	type DataTableLogicConfig,
 	type DataTableUIConfig,
-} from "../../mosaic-tanstack-table-core/src";
+} from "@nozzle/mosaic-tanstack-table-core";
 import { flexRender } from "@tanstack/react-table";
-import { Table as TanstackTable, TableState } from "@tanstack/table-core";
+import { Table as TanstackTable } from "@tanstack/table-core";
 
 interface ResizeState {
 	isResizing: boolean;
@@ -304,6 +305,9 @@ function TableUI<TData extends object>({
 					)}
 					{virtualRows.map((virtualRow) => {
 						const row = rows[virtualRow.index];
+
+						if (!row) return null;
+
 						return (
 							<tr
 								key={row.id}
@@ -380,6 +384,7 @@ export function createDataTable<TData extends object>(
 		const [logicController] = useState(() => {
 			const mergedColumns: MosaicColumnDef<TData>[] = logicConfig.columns.map(
 				(logicCol) => {
+					// @ts-expect-error Property 'id' does not exist on type 'LogicColumnDef<TData>'.
 					const uiCol = uiConfig[logicCol.id] || {};
 					return {
 						...logicCol,
@@ -398,6 +403,7 @@ export function createDataTable<TData extends object>(
 				}
 			}
 
+			// @ts-expect-error Type '{ columns: MosaicColumnDef<TData>[]; groupBy: string[] | undefined; primaryKey: string[] | undefined; filterBy: Selection; internalFilter: Selection | undefined; ... 88 more ...; enableRowSelection?: false | undefined; } | { ...; } | { ...; }' is not assignable to type 'DataTableOptions<TData>'
 			const dtOptions: DataTableOptions<TData> = {
 				...(logicConfig.options || {}),
 				columns: mergedColumns,
