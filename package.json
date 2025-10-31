@@ -11,9 +11,11 @@
 		"dev:react": "bun --cwd apps/react-app dev",
 		"dev:svelte": "bun --cwd apps/svelte-app dev",
 		"typecheck": "tsc --noEmit",
+		"build:libs": "nx affected --target=build --exclude=examples/**",
+		"watch": "pnpm run build:libs && nx watch --all -- pnpm run build:libs",
 		"format": "echo 'code formatting is to be implemented'",
 		"lint": "echo 'style linting is to be implemented'",
-		"dev": "echo 'dev is to be implemented'"
+		"dev": "pnpm run watch"
 	},
 	"dependencies": {
 		"d3-scale": "^4.0.2",
@@ -21,6 +23,7 @@
 	},
 	"devDependencies": {
 		"@tanstack/config": "^0.22.0",
+		"nx": "^22.0.2",
 		"react": "^18.2.0",
 		"react-dom": "^18.2.0",
 		"rimraf": "^6.0.1",
