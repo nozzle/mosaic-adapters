@@ -3,6 +3,7 @@ packages:
   - "examples/*"
 
 catalog:
+  "@tanstack/table-core": "^8.17.3"
   "@uwdata/mosaic-core": "^0.20.1"
   "@uwdata/mosaic-sql": "^0.20.1"
   "@uwdata/vgplot": "^0.20.1"
