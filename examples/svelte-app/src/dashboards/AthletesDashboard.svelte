@@ -4,14 +4,17 @@ showing how to integrate vgplot and the custom DataTable component. -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as vg from '@uwdata/vgplot';
-  import { useMosaicSelection, DataTable } from '@nozzle/mosaic-tanstack-svelte-table';
+  import {
+    useMosaicSelection,
+    DataTable,
+  } from '@nozzle/mosaic-tanstack-svelte-table';
   import { vgplot } from '../utils/vgplot';
   import { athletesLogicConfig, athletesUIConfig } from '../tables';
 
   let dashboardElement: HTMLElement | null = null;
   let isReady = false;
   let setupRan = false;
-  
+
   // Retrieve all necessary selections from the global context.
   const categorySel = useMosaicSelection('athlete_category');
   const querySel = useMosaicSelection('athlete_query');
@@ -27,32 +30,69 @@ showing how to integrate vgplot and the custom DataTable component. -->
     // --- FIX: Use a publicly accessible URL for the Parquet file. ---
     // The remote DuckDB server cannot access 'localhost:5173'. This public URL
     // is accessible by the server, just like the data for the other dashboards.
-    const fileURL = 'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
-    await vg.coordinator().exec([
-        `CREATE OR REPLACE TABLE athletes AS SELECT * FROM '${fileURL}'`
-    ]);
+    const fileURL =
+      'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
+    await vg
+      .coordinator()
+      .exec([`CREATE OR REPLACE TABLE athletes AS SELECT * FROM '${fileURL}'`]);
 
     // Programmatically create the vgplot dashboard element.
     // This is the Svelte equivalent of the React component's setup effect.
     dashboardElement = vg.vconcat(
       vg.hconcat(
-        vg.menu({ label: "Sport", as: categorySel, from: "athletes", column: "sport" }),
-        vg.menu({ label: "Sex", as: categorySel, from: "athletes", column: "sex" }),
+        vg.menu({
+          label: 'Sport',
+          as: categorySel,
+          from: 'athletes',
+          column: 'sport',
+        }),
+        vg.menu({
+          label: 'Sex',
+          as: categorySel,
+          from: 'athletes',
+          column: 'sex',
+        }),
         vg.search({
-          label: "Name", filterBy: categorySel, as: querySel, from: "athletes",
-          column: "name", type: "contains"
-        })
+          label: 'Name',
+          filterBy: categorySel,
+          as: querySel,
+          from: 'athletes',
+          column: 'name',
+          type: 'contains',
+        }),
       ),
       vg.vspace(10),
       vg.plot(
-        vg.dot(vg.from("athletes", { filterBy: querySel }), { x: "weight", y: "height", fill: "sex", r: 2, opacity: 0.1 }),
-        vg.regressionY(vg.from("athletes", { filterBy: querySel }), { x: "weight", y: "height", stroke: "sex" }),
-        vg.intervalXY({ as: querySel, brush: { fillOpacity: 0, stroke: "black" } }),
-        vg.dot(vg.from("athletes", { filterBy: hoverSel }), { x: "weight", y: "height", fill: "sex", stroke: "currentColor", strokeWidth: 1.5, r: 4 }),
-        vg.xyDomain(vg.Fixed), vg.colorDomain(vg.Fixed),
+        vg.dot(vg.from('athletes', { filterBy: querySel }), {
+          x: 'weight',
+          y: 'height',
+          fill: 'sex',
+          r: 2,
+          opacity: 0.1,
+        }),
+        vg.regressionY(vg.from('athletes', { filterBy: querySel }), {
+          x: 'weight',
+          y: 'height',
+          stroke: 'sex',
+        }),
+        vg.intervalXY({
+          as: querySel,
+          brush: { fillOpacity: 0, stroke: 'black' },
+        }),
+        vg.dot(vg.from('athletes', { filterBy: hoverSel }), {
+          x: 'weight',
+          y: 'height',
+          fill: 'sex',
+          stroke: 'currentColor',
+          strokeWidth: 1.5,
+          r: 4,
+        }),
+        vg.xyDomain(vg.Fixed),
+        vg.colorDomain(vg.Fixed),
         vg.margins({ left: 35, top: 20, right: 1 }),
-        vg.width(570), vg.height(350)
-      )
+        vg.width(570),
+        vg.height(350),
+      ),
     );
 
     isReady = true;

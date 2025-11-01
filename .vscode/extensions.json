@@ -1,9 +1,9 @@
 {
-	"recommendations": [
-		"svelte.svelte-vscode",
-		"esbenp.prettier-vscode",
-		"dbaeumer.vscode-eslint",
-		"yoavbls.pretty-ts-errors",
-		"streetsidesoftware.code-spell-checker"
-	]
+  "recommendations": [
+    "svelte.svelte-vscode",
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "yoavbls.pretty-ts-errors",
+    "streetsidesoftware.code-spell-checker"
+  ]
 }

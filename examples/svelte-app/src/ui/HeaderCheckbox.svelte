@@ -3,7 +3,7 @@
 It ONLY requires the `table` prop from the Tanstack context. -->
 <script lang="ts">
   import type { Table, Header, Column } from '@tanstack/svelte-table';
-  
+
   export let table: Table<any>;
 
   // --- THE FIX: Silence unused export warnings ---
@@ -13,7 +13,7 @@ It ONLY requires the `table` prop from the Tanstack context. -->
   export let header: Header<any, unknown>;
   // svelte-ignore unused-export-let
   export let column: Column<any, unknown>;
-  
+
   let ref: HTMLInputElement;
 
   // This reactive statement is the core logic for the indeterminate state.
@@ -23,9 +23,9 @@ It ONLY requires the `table` prop from the Tanstack context. -->
 </script>
 
 <input
-    type="checkbox"
-    bind:this={ref}
-    checked={table.getIsAllRowsSelected()}
-    on:change={table.getToggleAllRowsSelectedHandler()}
-    style="width: 20px; height: 20px;"
+  type="checkbox"
+  bind:this={ref}
+  checked={table.getIsAllRowsSelected()}
+  on:change={table.getToggleAllRowsSelectedHandler()}
+  style="width: 20px; height: 20px;"
 />

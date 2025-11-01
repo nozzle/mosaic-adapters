@@ -1,31 +1,31 @@
 {
-	"$schema": "./node_modules/nx/schemas/nx-schema.json",
-	"defaultBase": "main",
-	"useInferencePlugins": false,
-	"parallel": 5,
-	"namedInputs": {
-		"sharedGlobals": [
-			"{workspaceRoot}/.nvmrc",
-			"{workspaceRoot}/package.json",
-			"{workspaceRoot}/tsconfig.json"
-		],
-		"default": [
-			"sharedGlobals",
-			"{projectRoot}/**/*",
-			"!{projectRoot}/**/*.md"
-		],
-		"production": [
-			"default",
-			"!{projectRoot}/tests/**/*",
-			"!{projectRoot}/eslint.config.js"
-		]
-	},
-	"targetDefaults": {
-		"build": {
-			"cache": true,
-			"dependsOn": ["^build"],
-			"inputs": ["production", "^production"],
-			"outputs": ["{projectRoot}/build", "{projectRoot}/dist"]
-		}
-	}
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "useInferencePlugins": false,
+  "parallel": 5,
+  "namedInputs": {
+    "sharedGlobals": [
+      "{workspaceRoot}/.nvmrc",
+      "{workspaceRoot}/package.json",
+      "{workspaceRoot}/tsconfig.json"
+    ],
+    "default": [
+      "sharedGlobals",
+      "{projectRoot}/**/*",
+      "!{projectRoot}/**/*.md"
+    ],
+    "production": [
+      "default",
+      "!{projectRoot}/tests/**/*",
+      "!{projectRoot}/eslint.config.js"
+    ]
+  },
+  "targetDefaults": {
+    "build": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"],
+      "outputs": ["{projectRoot}/build", "{projectRoot}/dist"]
+    }
+  }
 }

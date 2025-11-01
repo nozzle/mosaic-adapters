@@ -1,32 +1,32 @@
 {
-	"name": "example-svelte-app",
-	"private": true,
-	"version": "1.0.0",
-	"type": "module",
-	"scripts": {
-		"clean": "rimraf dist",
-		"dev": "vite",
-		"typecheck": "tsc --noEmit",
-		"build": "pnpm run typecheck && vite build"
-	},
-	"dependencies": {
-		"@nozzle/mosaic-tanstack-svelte-table": "workspace:*",
-		"@nozzle/mosaic-tanstack-table-core": "workspace:*",
-		"@tanstack/svelte-table": "^8.17.3",
-		"@tanstack/svelte-virtual": "^3.5.0",
-		"@uwdata/mosaic-core": "catalog:",
-		"@uwdata/mosaic-sql": "catalog:",
-		"@uwdata/vgplot": "catalog:",
-		"d3": "^7.9.0",
-		"d3-scale": "^4.0.2",
-		"d3-shape": "^3.2.0",
-		"svelte": "^4.2.17"
-	},
-	"devDependencies": {
-		"@sveltejs/vite-plugin-svelte": "catalog:",
-		"@types/d3": "^7.4.3",
-		"rimraf": "catalog:",
-		"svelte-preprocess": "^5.1.4",
-		"typescript": "catalog:"
-	}
+  "name": "example-svelte-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "clean": "rimraf dist",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm run typecheck && vite build"
+  },
+  "dependencies": {
+    "@nozzle/mosaic-tanstack-svelte-table": "workspace:*",
+    "@nozzle/mosaic-tanstack-table-core": "workspace:*",
+    "@tanstack/svelte-table": "^8.17.3",
+    "@tanstack/svelte-virtual": "^3.5.0",
+    "@uwdata/mosaic-core": "catalog:",
+    "@uwdata/mosaic-sql": "catalog:",
+    "@uwdata/vgplot": "catalog:",
+    "d3": "^7.9.0",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0",
+    "svelte": "^4.2.17"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "catalog:",
+    "@types/d3": "^7.4.3",
+    "rimraf": "catalog:",
+    "svelte-preprocess": "^5.1.4",
+    "typescript": "catalog:"
+  }
 }

@@ -1,30 +1,30 @@
 {
-	"name": "nozzle-mosaic-adapters-monorepo",
-	"private": true,
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/nozzle/mosaic-adapters.git"
-	},
-	"packageManager": "pnpm@10.19.0",
-	"type": "module",
-	"scripts": {
-		"preinstall": "node -e \"if(process.env.CI == 'true') {console.info('Skipping preinstall...')} else {process.exit(1)}\" || npx -y only-allow pnpm",
-		"typecheck": "nx affected --target=typecheck --exclude=examples/**",
-		"test:format": "prettier . --check",
-		"build": "nx affected --target=build --exclude=examples/**",
-		"build:all": "nx run-many --target=build --exclude=examples/**",
-		"watch": "nx watch --all -- pnpm run build",
-		"format": "prettier . --write",
-		"lint": "echo 'style linting is to be implemented'",
-		"dev": "pnpm run watch"
-	},
-	"devDependencies": {
-		"@tanstack/config": "^0.22.0",
-		"nx": "^22.0.2",
-		"prettier": "^3.6.2",
-		"prettier-plugin-svelte": "catalog:",
-		"rimraf": "catalog:",
-		"typescript": "catalog:",
-		"vite": "catalog:"
-	}
+  "name": "nozzle-mosaic-adapters-monorepo",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nozzle/mosaic-adapters.git"
+  },
+  "packageManager": "pnpm@10.19.0",
+  "type": "module",
+  "scripts": {
+    "preinstall": "node -e \"if(process.env.CI == 'true') {console.info('Skipping preinstall...')} else {process.exit(1)}\" || npx -y only-allow pnpm",
+    "typecheck": "nx affected --target=typecheck --exclude=examples/**",
+    "test:format": "prettier . --check",
+    "build": "nx affected --target=build --exclude=examples/**",
+    "build:all": "nx run-many --target=build --exclude=examples/**",
+    "watch": "nx watch --all -- pnpm run build",
+    "format": "prettier . --write",
+    "lint": "echo 'style linting is to be implemented'",
+    "dev": "pnpm run watch"
+  },
+  "devDependencies": {
+    "@tanstack/config": "^0.22.0",
+    "nx": "^22.0.2",
+    "prettier": "^3.6.2",
+    "prettier-plugin-svelte": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
 }
