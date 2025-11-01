@@ -1,0 +1,38 @@
+name: pr
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TEST_VAR: FooBar
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Tools
+        uses: tanstack/config/.github/setup@main
+
+      - name: Get base and head commits for `nx affected`
+        uses: nrwl/nx-set-shas@v4.1.2
+        with:
+          main-branch-name: main
+
+      - name: Check formatting
+        run: pnpm run test:format
+
+      - name: Check packages builds
+        run: pnpm run build:all
