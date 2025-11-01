@@ -23,6 +23,6 @@ export function vgplot(node: HTMLElement, plot: HTMLElement | null) {
     destroy() {
       // Clean up the DOM to prevent memory leaks.
       node.innerHTML = '';
-    }
+    },
   };
 }

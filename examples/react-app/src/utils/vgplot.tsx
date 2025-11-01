@@ -3,7 +3,7 @@
 import React, { useRef, useLayoutEffect } from 'react';
 
 interface VgplotProps {
-    plot: HTMLElement | null;
+  plot: HTMLElement | null;
 }
 
 export function Vgplot({ plot }: VgplotProps) {

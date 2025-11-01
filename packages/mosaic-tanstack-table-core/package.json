@@ -1,32 +1,32 @@
 {
-	"name": "@nozzle/mosaic-tanstack-table-core",
-	"version": "0.0.1",
-	"type": "module",
-	"main": "dist/esm/index.js",
-	"module": "dist/esm/index.js",
-	"types": "dist/esm/index.d.ts",
-	"exports": {
-		".": {
-			"import": {
-				"types": "./dist/esm/index.d.ts",
-				"default": "./dist/esm/index.js"
-			}
-		},
-		"./package.json": "./package.json"
-	},
-	"scripts": {
-		"clean": "rimraf dist",
-		"build": "vite build"
-	},
-	"dependencies": {
-		"@tanstack/table-core": "catalog:",
-		"@uwdata/mosaic-core": "catalog:",
-		"@uwdata/mosaic-sql": "catalog:",
-		"@uwdata/vgplot": "catalog:",
-		"apache-arrow": "^21.1.0"
-	},
-	"devDependencies": {
-		"rimraf": "catalog:",
-		"typescript": "catalog:"
-	}
+  "name": "@nozzle/mosaic-tanstack-table-core",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@tanstack/table-core": "catalog:",
+    "@uwdata/mosaic-core": "catalog:",
+    "@uwdata/mosaic-sql": "catalog:",
+    "@uwdata/vgplot": "catalog:",
+    "apache-arrow": "^21.1.0"
+  },
+  "devDependencies": {
+    "rimraf": "catalog:",
+    "typescript": "catalog:"
+  }
 }
