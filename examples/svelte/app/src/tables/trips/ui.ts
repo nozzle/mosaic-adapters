@@ -1,10 +1,10 @@
 // src/lib/tables/trips/ui.ts
 // This file provides the Svelte-specific UI layer configuration for the Trips table.
+import Filter from '../../ui/Filter.svelte';
 import type {
   DataTableUIConfig,
   TripSummary,
 } from '@nozzle/mosaic-tanstack-table-core';
-import Filter from '../../ui/Filter.svelte';
 
 const formatCurrency = new Intl.NumberFormat('en-US', {
   style: 'currency',

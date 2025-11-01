@@ -1,9 +1,9 @@
 // src/lib/mosaic-tanstack-adapter/mosaic-context.ts
 // This file implements the Svelte Context API for Mosaic. It is responsible for
 // instantiating all Mosaic Selections and making them available to child components.
-import { setContext, getContext } from 'svelte';
-import { Selection } from '@uwdata/mosaic-core';
+import { getContext, setContext } from 'svelte';
 import * as vg from '@uwdata/vgplot';
+import type { Selection } from '@uwdata/mosaic-core';
 
 export interface SelectionConfig {
   name: string;
@@ -11,7 +11,7 @@ export interface SelectionConfig {
   options?: {
     empty?: boolean;
     cross?: boolean;
-    include?: string[];
+    include?: Array<string>;
   };
 }
 
@@ -22,7 +22,7 @@ interface MosaicContextType {
 const MOSAIC_CONTEXT_KEY = Symbol('mosaic-context');
 
 function createSelectionRegistry(
-  selectionConfigs: SelectionConfig[],
+  selectionConfigs: Array<SelectionConfig>,
 ): Map<string, Selection> {
   const registry = new Map<string, Selection>();
   let remainingConfigs = [...selectionConfigs];
@@ -30,7 +30,7 @@ function createSelectionRegistry(
 
   do {
     createdInPass = false;
-    const nextRemainingConfigs: SelectionConfig[] = [];
+    const nextRemainingConfigs: Array<SelectionConfig> = [];
 
     for (const config of remainingConfigs) {
       const deps = config.options?.include || [];
@@ -88,7 +88,7 @@ function createSelectionRegistry(
   return registry;
 }
 
-export function setMosaicContext(selectionConfigs: SelectionConfig[]) {
+export function setMosaicContext(selectionConfigs: Array<SelectionConfig>) {
   const registry = createSelectionRegistry(selectionConfigs);
 
   const contextValue = {
@@ -108,6 +108,7 @@ export function setMosaicContext(selectionConfigs: SelectionConfig[]) {
 
 export function useMosaicSelection(name: string): Selection {
   const context = getContext<MosaicContextType>(MOSAIC_CONTEXT_KEY);
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!context) {
     throw new Error(
       'useMosaicSelection must be used within a component where setMosaicContext was called.',

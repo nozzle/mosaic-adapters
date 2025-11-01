@@ -4,7 +4,10 @@
 import React from 'react';
 import { createDataTable } from '@nozzle/mosaic-tanstack-react-table';
 import { athletesLogicConfig } from './logic';
-import { Athlete, DataTableUIConfig } from '@nozzle/mosaic-tanstack-table-core';
+import type {
+  Athlete,
+  DataTableUIConfig,
+} from '@nozzle/mosaic-tanstack-table-core';
 
 const IndeterminateCheckbox = ({ table, ...rest }: { table: any }) => {
   const ref = React.useRef<HTMLInputElement>(null!);

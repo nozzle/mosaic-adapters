@@ -3,12 +3,12 @@
 // It imports the agnostic logic, defines renderers (including the Sparkline), and exports the final component.
 import React from 'react';
 import { createDataTable } from '@nozzle/mosaic-tanstack-react-table';
-import { vendorStatsLogicConfig } from './logic';
-import {
-  VendorSummary,
-  DataTableUIConfig,
-} from '@nozzle/mosaic-tanstack-table-core';
 import { Sparkline } from '../../ui/Sparkline';
+import { vendorStatsLogicConfig } from './logic';
+import type {
+  DataTableUIConfig,
+  VendorSummary,
+} from '@nozzle/mosaic-tanstack-table-core';
 
 const formatCurrency = new Intl.NumberFormat('en-US', {
   style: 'currency',

@@ -1,13 +1,13 @@
 // src/lib/tables/athletes/ui.ts
 // This file provides the Svelte-specific UI layer configuration for the Athletes table.
 // It imports Svelte components and maps them to the table's header and cell renderers.
-import type {
-  DataTableUIConfig,
-  Athlete,
-} from '@nozzle/mosaic-tanstack-table-core';
 import HeaderCheckbox from '../../ui/HeaderCheckbox.svelte';
 import RowCheckbox from '../../ui/RowCheckbox.svelte';
 import Filter from '../../ui/Filter.svelte';
+import type {
+  Athlete,
+  DataTableUIConfig,
+} from '@nozzle/mosaic-tanstack-table-core';
 
 export const athletesUIConfig: DataTableUIConfig<Athlete> = {
   select: {

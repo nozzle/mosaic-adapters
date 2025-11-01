@@ -4,9 +4,9 @@
 import React from 'react';
 import { createDataTable } from '@nozzle/mosaic-tanstack-react-table';
 import { tripsLogicConfig } from './logic';
-import {
-  TripSummary,
+import type {
   DataTableUIConfig,
+  TripSummary,
 } from '@nozzle/mosaic-tanstack-table-core';
 
 const formatCurrency = new Intl.NumberFormat('en-US', {

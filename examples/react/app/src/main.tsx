@@ -2,8 +2,8 @@
 // setup for Mosaic's global coordinator and then bootstraps the root React component (`<App />`).
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
 import * as vg from '@uwdata/vgplot';
+import App from './App';
 import './ui/table-styles.css'; // Import the new stylesheet
 
 // Perform the one-time, global Mosaic setup here.

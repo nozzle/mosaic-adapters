@@ -1,11 +1,11 @@
 // src/lib/tables/vendor/ui.ts
 // This file provides the Svelte-specific UI layer configuration for the Vendor Stats table.
+import Filter from '../../ui/Filter.svelte';
+import Sparkline from '../../ui/Sparkline.svelte';
 import type {
   DataTableUIConfig,
   VendorSummary,
 } from '@nozzle/mosaic-tanstack-table-core';
-import Filter from '../../ui/Filter.svelte';
-import Sparkline from '../../ui/Sparkline.svelte';
 
 const formatCurrency = new Intl.NumberFormat('en-US', {
   style: 'currency',

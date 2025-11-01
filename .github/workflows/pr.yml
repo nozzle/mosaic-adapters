@@ -34,11 +34,5 @@ jobs:
       - name: Check formatting
         run: pnpm run test:format
 
-      # - name: Check typescript types for packages
-      #   run: pnpm run test:types
-
-      # - name: Check build for packages
-      #   run: pnpm run test:build
-
       - name: Run checks for PR
         run: pnpm run test:pr

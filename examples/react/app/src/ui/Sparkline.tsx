@@ -2,9 +2,8 @@
 // This file defines a simple, reusable, and interactive Sparkline chart component.
 // It is designed to take an array of numbers and render a small line chart
 // that reveals individual data points and labels on hover.
-import React from 'react';
-import { useMemo, useState } from 'react';
-import { scaleLinear, line as d3Line, extent } from 'd3';
+import React, { useMemo, useState } from 'react';
+import { line as d3Line, extent, scaleLinear } from 'd3';
 
 interface HoverPoint {
   index: number;
@@ -14,7 +13,7 @@ interface HoverPoint {
 }
 
 interface SparklineProps {
-  data: number[] | Float64Array;
+  data: Array<number> | Float64Array;
   width?: number;
   height?: number;
   color?: string;

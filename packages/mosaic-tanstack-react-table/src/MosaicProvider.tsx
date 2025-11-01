@@ -139,6 +139,10 @@ export function MosaicProvider({
     return sel;
   };
 
+  React.useEffect(() => {
+    console.debug(selectionRegistry);
+  }, []);
+
   return (
     <MosaicContext.Provider value={{ getSelection }}>
       {children}

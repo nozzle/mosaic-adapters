@@ -3,7 +3,10 @@
 import React from 'react';
 import { createDataTable } from '@nozzle/mosaic-tanstack-react-table';
 import { flightsLogicConfig } from './logic';
-import { Flight, DataTableUIConfig } from '@nozzle/mosaic-tanstack-table-core';
+import type {
+  DataTableUIConfig,
+  Flight,
+} from '@nozzle/mosaic-tanstack-table-core';
 
 // Standard checkbox component for row selection, copied from athletes/ui.tsx
 const IndeterminateCheckbox = ({ table, ...rest }: { table: any }) => {
