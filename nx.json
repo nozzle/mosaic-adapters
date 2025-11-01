@@ -21,6 +21,16 @@
     ]
   },
   "targetDefaults": {
+    "test:build": {
+      "cache": true,
+      "dependsOn": ["build"],
+      "inputs": ["production"]
+    },
+    "test:types": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^production"]
+    },
     "build": {
       "cache": true,
       "dependsOn": ["^build"],
