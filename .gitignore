@@ -142,3 +142,6 @@ vite.config.ts.timestamp-*
 .nx/cache
 .nx/workspace-data
 .nx/workspace-cache
+
+# JetBrains IDEs
+.idea/
