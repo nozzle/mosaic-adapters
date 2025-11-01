@@ -8,8 +8,7 @@
 	"packageManager": "pnpm@10.19.0",
 	"type": "module",
 	"scripts": {
-		"dev:react": "bun --cwd apps/react-app dev",
-		"dev:svelte": "bun --cwd apps/svelte-app dev",
+		"preinstall": "node -e \"if(process.env.CI == 'true') {console.info('Skipping preinstall...')} else {process.exit(1)}\" || npx -y only-allow pnpm",
 		"typecheck": "tsc --noEmit",
 		"build": "nx affected --target=build --exclude=examples/**",
 		"build:all": "nx run-many --target=build --exclude=examples/**",
@@ -18,16 +17,10 @@
 		"lint": "echo 'style linting is to be implemented'",
 		"dev": "pnpm run watch"
 	},
-	"dependencies": {
-		"d3-scale": "^4.0.2",
-		"d3-shape": "^3.2.0"
-	},
 	"devDependencies": {
 		"@tanstack/config": "^0.22.0",
 		"nx": "^22.0.2",
-		"react": "^18.2.0",
-		"react-dom": "^18.2.0",
-		"rimraf": "^6.0.1",
+		"rimraf": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:"
 	}
