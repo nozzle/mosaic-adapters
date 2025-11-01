@@ -4,7 +4,7 @@ showing how to integrate vgplot and the custom DataTable component. -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as vg from '@uwdata/vgplot';
-  import { useMosaicSelection, DataTable } from '@mosaic-tanstack/svelte';
+  import { useMosaicSelection, DataTable } from '@nozzle/mosaic-tanstack-svelte-table';
   import { vgplot } from '../utils/vgplot';
   import { athletesLogicConfig, athletesUIConfig } from '../tables';
 

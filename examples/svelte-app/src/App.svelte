@@ -3,7 +3,7 @@
 the global interaction graph (selections) for the entire Svelte application. -->
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { setMosaicContext, type SelectionConfig } from '@mosaic-tanstack/svelte';
+    import { setMosaicContext, type SelectionConfig } from '@nozzle/mosaic-tanstack-svelte-table';
     import AthletesDashboard from './dashboards/AthletesDashboard.svelte';
     import NycTaxiDashboard from './dashboards/NycTaxiDashboard.svelte';
     import FlightsDashboard from './dashboards/FlightsDashboard.svelte';

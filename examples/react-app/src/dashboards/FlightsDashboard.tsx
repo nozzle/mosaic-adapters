@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as vg from "@uwdata/vgplot";
 import { Vgplot } from "../utils/vgplot";
-import { useMosaicSelection } from "../../../../packages/mosaic-tanstack-react-table/src";
+import { useMosaicSelection } from "@nozzle/mosaic-tanstack-react-table";
 import { FlightsTable } from "../tables";
 
 export function FlightsDashboard() {

@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import {
 	MosaicProvider,
 	type SelectionConfig,
-} from "../../../packages/mosaic-tanstack-react-table/src";
+} from "@nozzle/mosaic-tanstack-react-table";
 import { AthletesDashboard } from "./dashboards/AthletesDashboard";
 import { NycTaxiDashboard } from "./dashboards/NycTaxiDashboard";
 import { FlightsDashboard } from "./dashboards/FlightsDashboard";

@@ -1,12 +1,9 @@
 // src/tables/flights/ui.tsx
 // This file provides the React-specific UI layer for the Flights table.
 import React from "react";
-import { createDataTable } from "../../../../../packages/mosaic-tanstack-react-table/src";
+import { createDataTable } from "@nozzle/mosaic-tanstack-react-table";
 import { flightsLogicConfig } from "./logic";
-import {
-	Flight,
-	DataTableUIConfig,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+import { Flight, DataTableUIConfig } from "@nozzle/mosaic-tanstack-table-core";
 
 // Standard checkbox component for row selection, copied from athletes/ui.tsx
 const IndeterminateCheckbox = ({ table, ...rest }: { table: any }) => {

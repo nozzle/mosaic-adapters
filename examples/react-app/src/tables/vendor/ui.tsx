@@ -2,12 +2,12 @@
 // This file provides the React-specific UI layer for the Vendor Stats table.
 // It imports the agnostic logic, defines renderers (including the Sparkline), and exports the final component.
 import React from "react";
-import { createDataTable } from "../../../../../packages/mosaic-tanstack-react-table/src";
+import { createDataTable } from "@nozzle/mosaic-tanstack-react-table";
 import { vendorStatsLogicConfig } from "./logic";
 import {
 	VendorSummary,
 	DataTableUIConfig,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+} from "@nozzle/mosaic-tanstack-table-core";
 import { Sparkline } from "../../ui/Sparkline";
 
 const formatCurrency = new Intl.NumberFormat("en-US", {
