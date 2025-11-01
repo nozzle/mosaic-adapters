@@ -1,6 +1,7 @@
 packages:
   - 'packages/*'
-  - 'examples/*'
+  - 'examples/react/*'
+  - 'examples/svelte/*'
 
 catalog:
   '@sveltejs/vite-plugin-svelte': '^3.1.0'
