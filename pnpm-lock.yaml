@@ -27,6 +27,9 @@ catalogs:
     '@vitejs/plugin-react':
       specifier: ^5.1.0
       version: 5.1.0
+    prettier-plugin-svelte:
+      specifier: ^3.4.0
+      version: 3.4.0
     rimraf:
       specifier: ^6.0.1
       version: 6.0.1
@@ -54,7 +57,7 @@ importers:
         specifier: ^3.6.2
         version: 3.6.2
       prettier-plugin-svelte:
-        specifier: ^3.4.0
+        specifier: 'catalog:'
         version: 3.4.0(prettier@3.6.2)(svelte@4.2.20)
       rimraf:
         specifier: 'catalog:'
@@ -3891,7 +3894,7 @@ snapshots:
 
   '@types/conventional-commits-parser@5.0.2':
     dependencies:
-      '@types/node': 20.19.24
+      '@types/node': 24.9.2
 
   '@types/d3-array@3.2.2': {}
 
