@@ -10,6 +10,7 @@ catalog:
   "@uwdata/mosaic-sql": "^0.20.1"
   "@uwdata/vgplot": "^0.20.1"
   "@vitejs/plugin-react": "^5.1.0"
+  rimraf: "^6.0.1"
   svelte-check: "^3.8.6"
   typescript: "^5.4.5"
   vite: "^7.1.12"
