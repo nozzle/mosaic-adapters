@@ -8,9 +8,12 @@
   "packageManager": "pnpm@10.19.0",
   "type": "module",
   "scripts": {
+    "clean": "nx run-many --target=clean --exclude=examples/**",
     "preinstall": "node -e \"if(process.env.CI == 'true') {console.info('Skipping preinstall...')} else {process.exit(1)}\" || npx -y only-allow pnpm",
-    "typecheck": "nx affected --target=typecheck --exclude=examples/**",
     "test:format": "prettier . --check",
+    "test:types": "nx run-many --target=test:types --exclude=examples/**",
+    "test:build": "pnpm run build:all",
+    "test:pr": "nx affected --targets=test:types,test:build --exclude=examples/**",
     "build": "nx affected --target=build --exclude=examples/**",
     "build:all": "nx run-many --target=build --exclude=examples/**",
     "watch": "nx watch --all -- pnpm run build",

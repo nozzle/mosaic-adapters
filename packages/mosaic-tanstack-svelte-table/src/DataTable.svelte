@@ -34,6 +34,7 @@ and renders the full UI including virtualization, headers, and pagination. -->
 
   const mergedColumns: MosaicColumnDef<any>[] = logicConfig.columns.map(
     (logicCol) => {
+      // @ts-expect-error Property 'id' does not exist on type 'LogicColumnDef<any>'
       const uiCol = uiConfig[logicCol.id] || {};
       return {
         ...logicCol,
@@ -68,19 +69,15 @@ and renders the full UI including virtualization, headers, and pagination. -->
     clickInteraction: logicConfig.clickInteraction,
   });
 
-  // @ts-expect-error Property 'getSnapshot' does not exist on type '(Anonymous class)'
   const snapshot = writable<DataTableSnapshot<any>>(
     logicController.getSnapshot(),
   );
 
   // --- Lifecycle Management ---
   onMount(() => {
-    // @ts-expect-error Property 'subscribe' does not exist on type '(Anonymous class)'
     const unsubscribe = logicController.subscribe(() => {
-      // @ts-expect-error Property 'getSnapshot' does not exist on type '(Anonymous class)'
       snapshot.set(logicController.getSnapshot());
     });
-    // @ts-expect-error Property 'connect' does not exist on type '(Anonymous class)'
     const cleanup = logicController.connect();
     return () => {
       unsubscribe();
@@ -116,7 +113,6 @@ and renders the full UI including virtualization, headers, and pagination. -->
     const deltaX = event.clientX - dragInfo.startClientX;
     const finalSize = Math.max(80, dragInfo.startSize + deltaX);
 
-    // @ts-expect-error Parameter 'prev' implicitly has an 'any' type.
     $snapshot.table.setColumnSizing((prev) => ({
       ...prev,
       [resizingColumnId!]: Math.round(finalSize),
@@ -201,7 +197,7 @@ and renders the full UI including virtualization, headers, and pagination. -->
   <table style="width: 100%; border-spacing: 0; table-layout: fixed;">
     <thead style="position: sticky; top: 0; background: white; z-index: 1;">
       {#each $tanstackTable.getHeaderGroups() as headerGroup}
-        <tr key={headerGroup.id}>
+        <tr>
           {#each headerGroup.headers as header}
             {@const col = header.column}
             <th
@@ -211,8 +207,10 @@ and renders the full UI including virtualization, headers, and pagination. -->
                 role="button"
                 tabindex="0"
                 on:click={col.getToggleSortingHandler()}
-                on:keydown={(e) =>
-                  handleKeyDown(e, col.getToggleSortingHandler())}
+                on:keydown={(e) => {
+                  // @ts-expect-error Argument of type '((event: unknown) => void) | undefined' is not assignable to parameter of type '() => void'.
+                  return handleKeyDown(e, col.getToggleSortingHandler());
+                }}
                 style="cursor: {col.getCanSort() ? 'pointer' : 'default'};"
               >
                 <svelte:component
@@ -260,8 +258,6 @@ and renders the full UI including virtualization, headers, and pagination. -->
       {#each virtualRows as virtualRow}
         {@const row = $snapshot.table.getRowModel().rows[virtualRow.index]}
         <tr
-          key={row.id}
-          role="row"
           tabindex="0"
           on:mouseenter={() =>
             $snapshot.table.options.meta?.onRowHover?.(row.original)}

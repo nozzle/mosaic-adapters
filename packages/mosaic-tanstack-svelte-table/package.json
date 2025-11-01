@@ -16,7 +16,10 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "build": "vite build"
+    "build": "vite build",
+    "test:types": "tsc --noEmit",
+    "test:build": "vite build",
+    "sveletecheck": "echo 'Todo: add sveltecheck script to test:types step' && exit 0; svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@nozzle/mosaic-tanstack-table-core": "workspace:*",

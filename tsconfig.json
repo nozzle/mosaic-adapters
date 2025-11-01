@@ -10,14 +10,17 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
-    "lib": ["DOM", "DOM.Iterable", "ESNext"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
     "noUncheckedIndexedAccess": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
+    "stripInternal": true,
     "strict": true,
-    "target": "ESNext",
-    "useDefineForClassFields": true
-  }
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "noEmit": true
+  },
+  "exclude": ["node_modules/", "**/dist/", "**/node_modules/"]
 }

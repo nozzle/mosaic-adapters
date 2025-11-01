@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { tanstackViteConfig } from '@tanstack/config/vite';
 
 const packageConfig = defineConfig({
-  plugins: [react() as any],
+  plugins: [react()],
 });
 
 export default mergeConfig(
