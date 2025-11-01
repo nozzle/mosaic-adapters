@@ -6,42 +6,38 @@
  * This version is "Arrow-native," retaining the binary Arrow Table from query
  * results for high-performance rendering in consuming UI libraries.
  */
+import { MosaicClient } from '@uwdata/mosaic-core';
 import {
-  MosaicClient,
-  Selection,
-  // @ts-expect-error Module '"@uwdata/mosaic-core"' has no exported member 'FilterExpr'
-  type FilterExpr,
-  Param,
-} from '@uwdata/mosaic-core';
-import {
-  literal,
-  isIn,
-  and,
-  sql,
-  or,
   Query,
-  desc,
+  and,
   asc,
+  desc,
   eq,
-  // @ts-expect-error Module '"@uwdata/mosaic-sql"' has no exported member 'SQLAst'
-  type SQLAst,
+  literal,
+  or,
+  sql,
 } from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
 import {
   createTable,
   getCoreRowModel,
-  getSortedRowModel,
   getFilteredRowModel,
-  getPaginationRowModel,
   getGroupedRowModel,
-  type Table,
-  type TableOptions,
-  type ColumnDef,
-  type TableState,
-  type Updater,
-  type Column,
+  getPaginationRowModel,
+  getSortedRowModel,
 } from '@tanstack/table-core';
-import { Table as ArrowTable } from 'apache-arrow';
+import type {
+  ColumnDef,
+  Table,
+  TableOptions,
+  TableState,
+  Updater,
+} from '@tanstack/table-core';
+// @ts-expect-error Module has no exported member FilterExpr .
+import type { FilterExpr, Param, Selection } from '@uwdata/mosaic-core';
+// @ts-expect-error '"@uwdata/mosaic-sql"' has no exported member named 'SQLAst'. Did you mean 'last'?
+import type { SQLAst } from '@uwdata/mosaic-sql';
+import type { Table as ArrowTable } from 'apache-arrow';
 
 // --- GENERIC TYPE DEFINITIONS ---
 
@@ -133,8 +129,8 @@ export interface DataTableOptions<TData extends object>
     TableOptions<TData>,
     'data' | 'columns' | 'state' | 'onStateChange' | 'renderFallbackValue'
   > {
-  columns: MosaicColumnDef<TData>[];
-  data?: TData[];
+  columns: Array<MosaicColumnDef<TData>>;
+  data?: Array<TData>;
   initialState?: Partial<TableState>;
   filterBy?: Selection;
   internalFilter?: Selection;
@@ -143,8 +139,8 @@ export interface DataTableOptions<TData extends object>
   clickAs?: Selection;
   hoverInteraction?: InteractionConfig<TData>;
   clickInteraction?: InteractionConfig<TData>;
-  groupBy?: string[];
-  primaryKey?: string[];
+  groupBy?: Array<string>;
+  primaryKey?: Array<string>;
   name?: string;
   sourceTable?: string;
   pageParam?: Param<number>;
@@ -159,9 +155,9 @@ export interface DataTableOptions<TData extends object>
 interface BaseDataTableLogicConfig<T extends object> {
   name: string;
   sourceTable?: string;
-  columns: LogicColumnDef<T>[];
+  columns: Array<LogicColumnDef<T>>;
   getBaseQuery: (filters: { where?: any; having?: any }) => Query;
-  groupBy?: string[];
+  groupBy?: Array<string>;
   hoverInteraction?: InteractionConfig<T>;
   clickInteraction?: InteractionConfig<T>;
 }
@@ -171,7 +167,7 @@ interface BaseDataTableLogicConfig<T extends object> {
  */
 interface LogicConfigWithoutRowSelection<T extends object>
   extends BaseDataTableLogicConfig<T> {
-  primaryKey?: string[];
+  primaryKey?: Array<string>;
   options?: Omit<DataTableOptions<T>, 'meta' | 'enableRowSelection'> & {
     enableRowSelection?: false;
   };
@@ -182,7 +178,7 @@ interface LogicConfigWithoutRowSelection<T extends object>
  */
 interface LogicConfigWithRowSelection<T extends object>
   extends BaseDataTableLogicConfig<T> {
-  primaryKey: string[];
+  primaryKey: Array<string>;
   options: Omit<DataTableOptions<T>, 'meta' | 'enableRowSelection'> & {
     enableRowSelection: true;
   };
@@ -231,9 +227,9 @@ export abstract class DataTable<
   /** The active TanStack Table instance. */
   protected _table: Table<TData>;
   /** The column definitions for the table. */
-  protected _columns: MosaicColumnDef<TData>[];
+  protected _columns: Array<MosaicColumnDef<TData>>;
   /** The current page of data, converted to a JavaScript array for TanStack compatibility. */
-  protected _data: TData[];
+  protected _data: Array<TData>;
   /** The raw Apache Arrow table from the most recent query result. */
   protected _arrowData: ArrowTable | null = null;
   /** The complete state object for the TanStack Table instance (sorting, pagination, etc.). */
@@ -264,9 +260,9 @@ export abstract class DataTable<
   protected clickInteraction?: InteractionConfig<TData>;
 
   /** An array of column IDs to perform a GROUP BY on. */
-  protected groupByKeys: string[];
+  protected groupByKeys: Array<string>;
   /** An array of column IDs that form the unique primary key for a row. */
-  protected primaryKey: string[];
+  protected primaryKey: Array<string>;
 
   /** A cache for the table's column schema (names and types). */
   private _schema = new Map<string, any>();
@@ -321,6 +317,7 @@ export abstract class DataTable<
 
     if (
       this._options.enableRowSelection &&
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       (!this.primaryKey || this.primaryKey.length === 0)
     ) {
       const tableName = name || this.constructor.name;
@@ -410,7 +407,9 @@ export abstract class DataTable<
     const originalDestroy = this.destroy.bind(this);
 
     return () => {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (pageSub) this.pageParam?.removeEventListener('value', pageSub);
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (pageSizeSub)
         this.pageSizeParam?.removeEventListener('value', pageSizeSub);
       originalDestroy();
@@ -504,7 +503,7 @@ export abstract class DataTable<
   /**
    * Part of the MosaicClient lifecycle. Receives schema info and caches it.
    */
-  fieldInfo(info: { column: string; type: any }[]) {
+  fieldInfo(info: Array<{ column: string; type: any }>) {
     this._schema.clear();
     for (const { column, type } of info) {
       this._schema.set(column, type);
@@ -695,13 +694,13 @@ export abstract class DataTable<
    * if the query is grouped.
    */
   private _generateFilterPredicates(state: TableState): {
-    where: SQLAst[];
-    having: SQLAst[];
+    where: Array<SQLAst>;
+    having: Array<SQLAst>;
   } {
     const createPredicate = (id: string, value: any) =>
       sql`CAST(${id} AS VARCHAR) ILIKE ${literal(`%${value}%`)}`;
     if (this.groupByKeys.length === 0) {
-      const where: SQLAst[] = [];
+      const where: Array<SQLAst> = [];
       for (const f of state.columnFilters)
         if (f.value != null && f.value !== '')
           where.push(createPredicate(f.id, f.value));
@@ -712,14 +711,14 @@ export abstract class DataTable<
         );
         const globalPredicates = searchableColumns.map((c) =>
           // @ts-expect-error Property 'id' does not exist on type 'MosaicColumnDef<TData>'
-          createPredicate(c.id!, state.globalFilter),
+          createPredicate(c.id, state.globalFilter),
         );
         if (globalPredicates.length > 0) where.push(or(...globalPredicates));
       }
       return { where, having: [] };
     }
-    const where: SQLAst[] = [];
-    const having: SQLAst[] = [];
+    const where: Array<SQLAst> = [];
+    const having: Array<SQLAst> = [];
     for (const f of state.columnFilters) {
       if (f.value != null && f.value !== '') {
         const predicate = createPredicate(f.id, f.value);
@@ -732,13 +731,13 @@ export abstract class DataTable<
         // @ts-expect-error Property 'meta' does not exist on type 'MosaicColumnDef<TData>'
         (c) => c.meta?.enableGlobalFilter,
       );
-      const globalWherePredicates: SQLAst[] = [],
-        globalHavingPredicates: SQLAst[] = [];
+      const globalWherePredicates: Array<SQLAst> = [],
+        globalHavingPredicates: Array<SQLAst> = [];
       searchableColumns.forEach((c) => {
         // @ts-expect-error Property 'id' does not exist on type 'MosaicColumnDef<TData>'
-        const predicate = createPredicate(c.id!, state.globalFilter);
+        const predicate = createPredicate(c.id, state.globalFilter);
         // @ts-expect-error Property 'id' does not exist on type 'MosaicColumnDef<TData>'
-        if (this.groupByKeys.includes(c.id!))
+        if (this.groupByKeys.includes(c.id))
           globalWherePredicates.push(predicate);
         else globalHavingPredicates.push(predicate);
       });
@@ -787,6 +786,7 @@ export abstract class DataTable<
         this.queryError(err as Error);
         return;
       } finally {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (this._loadingState === 'lookup') this._loadingState = 'idle';
       }
     } else {
@@ -884,7 +884,8 @@ export abstract class DataTable<
 
     // Convert to a JS array for TanStack Table's internal logic.
     // @ts-expect-error Type '{}[]' is not assignable to type 'TData[]'
-    const rows: TData[] =
+    const rows: Array<TData> =
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       data && typeof data.toArray === 'function'
         ? data.toArray().map((row: object) => ({ ...row }))
         : [];

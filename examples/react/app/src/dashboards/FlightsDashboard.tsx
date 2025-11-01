@@ -1,10 +1,10 @@
 // src/FlightsDashboard.tsx
 // UI component for the Flights dashboard, handling one-time data load
 // and rendering vgplot visuals alongside the React data table.
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
-import { Vgplot } from '../utils/vgplot';
 import { useMosaicSelection } from '@nozzle/mosaic-tanstack-react-table';
+import { Vgplot } from '../utils/vgplot';
 import { FlightsTable } from '../tables';
 
 export function FlightsDashboard() {

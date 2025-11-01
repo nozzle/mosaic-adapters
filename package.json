@@ -13,21 +13,25 @@
     "test:format": "prettier . --check",
     "test:types": "nx run-many --target=test:types --exclude=examples/**",
     "test:build": "pnpm run build:all",
-    "test:pr": "nx affected --targets=test:types,test:build --exclude=examples/**",
+    "test:lint": "nx affected --target=test:lint --exclude=examples/**",
+    "test:pr": "nx affected --targets=test:lint,test:types,test:build --exclude=examples/**",
     "build": "nx affected --target=build --exclude=examples/**",
     "build:all": "nx run-many --target=build --exclude=examples/**",
     "watch": "nx watch --all -- pnpm run build",
     "format": "prettier . --write",
-    "lint": "echo 'style linting is to be implemented'",
     "dev": "pnpm run watch"
   },
   "devDependencies": {
     "@tanstack/config": "^0.22.0",
+    "eslint": "catalog:",
+    "eslint-plugin-unused-imports": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
     "nx": "^22.0.2",
     "prettier": "^3.6.2",
     "prettier-plugin-svelte": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
     "vite": "catalog:"
   }
 }

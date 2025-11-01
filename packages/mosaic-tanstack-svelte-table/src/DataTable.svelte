@@ -1,15 +1,10 @@
-<!-- src/lib/mosaic-tanstack-adapter/DataTable.svelte -->
 <!-- This is the primary Svelte component that wraps the DataTable logic controller.
 It subscribes to the controller's state, creates a reactive Tanstack Table instance,
 and renders the full UI including virtualization, headers, and pagination. -->
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import { writable } from 'svelte/store';
-  import {
-    createSvelteTable,
-    flexRender,
-    type Table as TanstackSvelteTable,
-  } from '@tanstack/svelte-table';
+  import { createSvelteTable, flexRender } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
 
   import {
@@ -301,13 +296,13 @@ and renders the full UI including virtualization, headers, and pagination. -->
     on:click={() => $tanstackTable.setPageIndex(0)}
     disabled={!$tanstackTable.getCanPreviousPage()}
   >
-    {'<<'}
+    &lt;&lt;
   </button>
   <button
     on:click={() => $tanstackTable.previousPage()}
     disabled={!$tanstackTable.getCanPreviousPage()}
   >
-    {'<'}
+    &lt;
   </button>
   <span>
     Page
@@ -319,14 +314,14 @@ and renders the full UI including virtualization, headers, and pagination. -->
     on:click={() => $tanstackTable.nextPage()}
     disabled={!$tanstackTable.getCanNextPage()}
   >
-    {'>'}
+    &gt;
   </button>
   <button
     on:click={() =>
       $tanstackTable.setPageIndex($tanstackTable.getPageCount() - 1)}
     disabled={!$tanstackTable.getCanNextPage()}
   >
-    {'>>'}
+    &gt;&gt;
   </button>
   <select
     value={$tanstackTable.getState().pagination.pageSize}

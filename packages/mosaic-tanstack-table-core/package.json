@@ -18,7 +18,8 @@
     "clean": "rimraf dist",
     "build": "vite build",
     "test:types": "tsc --noEmit",
-    "test:build": "vite build"
+    "test:build": "vite build",
+    "test:lint": "eslint ./src"
   },
   "dependencies": {
     "@tanstack/table-core": "catalog:",

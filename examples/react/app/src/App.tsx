@@ -1,18 +1,16 @@
 // apps/react-app/src/App.tsx
 
 import React, { useState } from 'react';
-import {
-  MosaicProvider,
-  type SelectionConfig,
-} from '@nozzle/mosaic-tanstack-react-table';
+import { MosaicProvider } from '@nozzle/mosaic-tanstack-react-table';
 import { AthletesDashboard } from './dashboards/AthletesDashboard';
 import { NycTaxiDashboard } from './dashboards/NycTaxiDashboard';
 import { FlightsDashboard } from './dashboards/FlightsDashboard';
+import type { SelectionConfig } from '@nozzle/mosaic-tanstack-react-table';
 
 // --- ATHLETES DASHBOARD INTERACTION GRAPH ---
 // Defines the complete set of reactive variables (Selections) for this dashboard.
 // This graph makes the flow of interactions explicit and manageable.
-const athleteSelections: SelectionConfig[] = [
+const athleteSelections: Array<SelectionConfig> = [
   // --- ATOMIC SELECTIONS: Direct sources of user interaction ---
   // 1. From dropdown menus for Sport and Sex, and the Name search box.
   { name: 'athlete_category', type: 'intersect' },
@@ -68,7 +66,7 @@ const athleteSelections: SelectionConfig[] = [
 ];
 
 // --- NYC TAXI DASHBOARD INTERACTION GRAPH ---
-const taxiSelections: SelectionConfig[] = [
+const taxiSelections: Array<SelectionConfig> = [
   // Atomic selections from user interactions
   { name: 'taxi_rowSelection', type: 'union', options: { empty: true } },
   { name: 'taxi_trips_internal_filter', type: 'intersect' },
@@ -110,7 +108,7 @@ const taxiSelections: SelectionConfig[] = [
 ];
 
 // --- FLIGHTS DASHBOARD INTERACTION GRAPH ---
-const flightsSelections: SelectionConfig[] = [
+const flightsSelections: Array<SelectionConfig> = [
   // Atomic selections from user interactions
   { name: 'flights_brush', type: 'intersect', options: { cross: true } },
   { name: 'flights_internal_filter', type: 'intersect' },

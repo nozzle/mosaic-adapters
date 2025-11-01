@@ -1,10 +1,10 @@
 // apps/react-app/src/dashboards/NycTaxiDashboard.tsx
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
+import { useMosaicSelection } from '@nozzle/mosaic-tanstack-react-table';
 import { Vgplot } from '../utils/vgplot';
 import { TripsTable, VendorStatsTable } from '../tables';
-import { useMosaicSelection } from '@nozzle/mosaic-tanstack-react-table';
 
 export function NycTaxiDashboard() {
   const [dashboard, setDashboard] = useState<HTMLElement | null>(null);

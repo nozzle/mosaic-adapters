@@ -19,6 +19,7 @@
     "build": "vite build",
     "test:types": "tsc --noEmit",
     "test:build": "vite build",
+    "test:lint": "eslint ./src",
     "sveletecheck": "echo 'Todo: add sveltecheck script to test:types step' && exit 0; svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
@@ -36,8 +37,10 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "catalog:",
     "@tsconfig/svelte": "catalog:",
+    "eslint-plugin-svelte": "catalog:",
     "rimraf": "catalog:",
     "svelte-check": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
   }
 }

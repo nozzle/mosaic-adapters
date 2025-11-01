@@ -1,11 +1,11 @@
 // src/lib/tables/trips/logic.ts
 // This file contains the framework-agnostic data and logic configuration for the Trips table.
+import * as vg from '@uwdata/vgplot';
+import { Query, and, eq, literal, sql } from '@uwdata/mosaic-sql';
 import type {
   DataTableLogicConfig,
   TripSummary,
 } from '@nozzle/mosaic-tanstack-table-core';
-import * as vg from '@uwdata/vgplot';
-import { Query, sql, and, eq, literal } from '@uwdata/mosaic-sql';
 
 export const tripsLogicConfig: DataTableLogicConfig<TripSummary> = {
   name: 'TripsSummaryTable',

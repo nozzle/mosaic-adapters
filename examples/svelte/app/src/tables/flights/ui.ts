@@ -1,12 +1,12 @@
 // src/lib/tables/flights/ui.ts
 // This file provides the Svelte-specific UI layer configuration for the Flights table.
-import type {
-  DataTableUIConfig,
-  Flight,
-} from '../../../../../packages/mosaic-tanstack-table-core/src';
 import HeaderCheckbox from '../../ui/HeaderCheckbox.svelte';
 import RowCheckbox from '../../ui/RowCheckbox.svelte';
 import Filter from '../../ui/Filter.svelte';
+import type {
+  DataTableUIConfig,
+  Flight,
+} from '@nozzle/mosaic-tanstack-table-core';
 
 export const flightsUIConfig: DataTableUIConfig<Flight> = {
   select: {

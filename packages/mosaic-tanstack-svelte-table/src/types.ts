@@ -4,13 +4,8 @@
 // Svelte-specific types, ensuring strong type safety for Svelte developers
 // using the adapter.
 import type { ComponentType } from 'svelte';
-import type {
-  ColumnUIConfig as CoreColumnUIConfig,
-  MosaicColumnDef as CoreMosaicColumnDef,
-  DataTableOptions as CoreDataTableOptions,
-  DataTableLogicConfig as CoreDataTableLogicConfig,
-} from '../../mosaic-tanstack-table-core/src';
-import type { Column, ColumnDef } from '@tanstack/table-core';
+import type { ColumnUIConfig as CoreColumnUIConfig } from '../../mosaic-tanstack-table-core/src';
+import type { ColumnDef } from '@tanstack/table-core';
 
 // Re-export core types for convenience
 export * from '../../mosaic-tanstack-table-core/src';

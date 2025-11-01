@@ -21,6 +21,16 @@
     ]
   },
   "targetDefaults": {
+    "test:lint": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/eslint.config.js",
+        "{projectRoot}/eslint.config.js"
+      ]
+    },
     "test:build": {
       "cache": true,
       "dependsOn": ["build"],

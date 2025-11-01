@@ -1,10 +1,10 @@
 // apps/react-app/src/dashboards/AthletesDashboard.tsx
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
+import { useMosaicSelection } from '@nozzle/mosaic-tanstack-react-table';
 import { Vgplot } from '../utils/vgplot';
 import { AthletesTable } from '../tables';
-import { useMosaicSelection } from '@nozzle/mosaic-tanstack-react-table';
 
 export function AthletesDashboard() {
   const [dashboard, setDashboard] = useState<HTMLElement | null>(null);

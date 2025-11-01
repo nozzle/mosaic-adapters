@@ -1,13 +1,12 @@
 // src/tables/athletes/logic.ts
 // This file contains the framework-agnostic data and logic configuration for the Athletes table.
 // It has no dependencies on React or any UI library.
-import {
-  DataTableLogicConfig,
-  Athlete,
-} from '@nozzle/mosaic-tanstack-table-core';
 import * as vg from '@uwdata/vgplot';
-import { desc, Query, isIn, literal, eq } from '@uwdata/mosaic-sql';
-import { SQLAst } from '@uwdata/mosaic-core';
+import { Query, desc, eq, literal } from '@uwdata/mosaic-sql';
+import type {
+  Athlete,
+  DataTableLogicConfig,
+} from '@nozzle/mosaic-tanstack-table-core';
 
 export const athletesLogicConfig: DataTableLogicConfig<Athlete> = {
   name: 'AthletesTable',

@@ -1,10 +1,10 @@
 // src/lib/tables/flights/logic.ts
 // This file contains the framework-agnostic data and logic configuration for the Flights table.
+import { Query } from '@uwdata/mosaic-sql';
 import type {
   DataTableLogicConfig,
   Flight,
 } from '@nozzle/mosaic-tanstack-table-core';
-import { Query } from '@uwdata/mosaic-sql';
 
 export const flightsLogicConfig: DataTableLogicConfig<Flight> = {
   name: 'FlightsTable',

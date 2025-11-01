@@ -1,11 +1,11 @@
 // src/lib/tables/vendor/logic.ts
 // This file contains the framework-agnostic data and logic configuration for the Vendor Stats table.
+import * as vg from '@uwdata/vgplot';
+import { Query } from '@uwdata/mosaic-sql';
 import type {
   DataTableLogicConfig,
   VendorSummary,
 } from '@nozzle/mosaic-tanstack-table-core';
-import * as vg from '@uwdata/vgplot';
-import { Query } from '@uwdata/mosaic-sql';
 
 export const vendorStatsLogicConfig: DataTableLogicConfig<VendorSummary> = {
   name: 'VendorStatsTable',
