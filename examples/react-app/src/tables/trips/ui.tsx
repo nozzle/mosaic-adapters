@@ -2,12 +2,12 @@
 // This file provides the React-specific UI layer for the Trips table.
 // It imports the agnostic logic, defines renderers, and exports the final component.
 import React from "react";
-import { createDataTable } from "../../../../../packages/mosaic-tanstack-react-table/src";
+import { createDataTable } from "@nozzle/mosaic-tanstack-react-table";
 import { tripsLogicConfig } from "./logic";
 import {
 	TripSummary,
 	DataTableUIConfig,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+} from "@nozzle/mosaic-tanstack-table-core";
 
 const formatCurrency = new Intl.NumberFormat("en-US", {
 	style: "currency",

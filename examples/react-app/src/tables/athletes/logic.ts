@@ -4,7 +4,7 @@
 import {
 	DataTableLogicConfig,
 	Athlete,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+} from "@nozzle/mosaic-tanstack-table-core";
 import * as vg from "@uwdata/vgplot";
 import { desc, Query, isIn, literal, eq } from "@uwdata/mosaic-sql";
 import { SQLAst } from "@uwdata/mosaic-core";

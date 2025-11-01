@@ -3,7 +3,7 @@
 import type {
 	DataTableUIConfig,
 	TripSummary,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+} from "@nozzle/mosaic-tanstack-table-core";
 import Filter from "../../ui/Filter.svelte";
 
 const formatCurrency = new Intl.NumberFormat("en-US", {

@@ -3,7 +3,7 @@
 import type {
 	DataTableLogicConfig,
 	Flight,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+} from "@nozzle/mosaic-tanstack-table-core";
 import { Query } from "@uwdata/mosaic-sql";
 
 export const flightsLogicConfig: DataTableLogicConfig<Flight> = {

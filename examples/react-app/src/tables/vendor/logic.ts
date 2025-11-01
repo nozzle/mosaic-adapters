@@ -4,7 +4,7 @@
 import {
 	DataTableLogicConfig,
 	VendorSummary,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+} from "@nozzle/mosaic-tanstack-table-core";
 import * as vg from "@uwdata/vgplot";
 import { Query } from "@uwdata/mosaic-sql";
 

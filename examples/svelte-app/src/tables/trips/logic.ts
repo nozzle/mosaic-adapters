@@ -3,7 +3,7 @@
 import type {
 	DataTableLogicConfig,
 	TripSummary,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+} from "@nozzle/mosaic-tanstack-table-core";
 import * as vg from "@uwdata/vgplot";
 import { Query, sql, and, eq, literal } from "@uwdata/mosaic-sql";
 

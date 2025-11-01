@@ -4,7 +4,7 @@
 import type {
 	DataTableUIConfig,
 	Athlete,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+} from "@nozzle/mosaic-tanstack-table-core";
 import HeaderCheckbox from "../../ui/HeaderCheckbox.svelte";
 import RowCheckbox from "../../ui/RowCheckbox.svelte";
 import Filter from "../../ui/Filter.svelte";

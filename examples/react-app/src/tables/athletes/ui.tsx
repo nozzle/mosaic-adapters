@@ -2,12 +2,9 @@
 // This file provides the React-specific UI layer for the Athletes table.
 // It imports the agnostic logic, defines renderers, and exports the final component.
 import React from "react";
-import { createDataTable } from "../../../../../packages/mosaic-tanstack-react-table/src";
+import { createDataTable } from "@nozzle/mosaic-tanstack-react-table";
 import { athletesLogicConfig } from "./logic";
-import {
-	Athlete,
-	DataTableUIConfig,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+import { Athlete, DataTableUIConfig } from "@nozzle/mosaic-tanstack-table-core";
 
 const IndeterminateCheckbox = ({ table, ...rest }: { table: any }) => {
 	const ref = React.useRef<HTMLInputElement>(null!);

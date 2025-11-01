@@ -3,7 +3,7 @@
 import type {
 	DataTableUIConfig,
 	VendorSummary,
-} from "../../../../../packages/mosaic-tanstack-table-core/src";
+} from "@nozzle/mosaic-tanstack-table-core";
 import Filter from "../../ui/Filter.svelte";
 import Sparkline from "../../ui/Sparkline.svelte";
 

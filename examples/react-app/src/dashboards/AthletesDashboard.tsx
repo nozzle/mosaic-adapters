@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import * as vg from "@uwdata/vgplot";
 import { Vgplot } from "../utils/vgplot";
 import { AthletesTable } from "../tables";
-import { useMosaicSelection } from "../../../../packages/mosaic-tanstack-react-table/src";
+import { useMosaicSelection } from "@nozzle/mosaic-tanstack-react-table";
 
 export function AthletesDashboard() {
 	const [dashboard, setDashboard] = useState<HTMLElement | null>(null);
