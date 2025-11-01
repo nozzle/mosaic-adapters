@@ -1,11 +1,10 @@
-import sveltePlugin from 'prettier-plugin-svelte';
+import type { Config } from 'prettier';
 
-/** @type {import('prettier').Config} */
-const config = {
+const config: Config = {
   semi: true,
   singleQuote: true,
   trailingComma: 'all',
-  plugins: [sveltePlugin],
+  plugins: ['prettier-plugin-svelte'],
   overrides: [
     {
       files: '*.svelte',
