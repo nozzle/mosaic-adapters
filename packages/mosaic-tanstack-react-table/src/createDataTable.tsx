@@ -2,20 +2,25 @@
 // layer that wraps the UI-agnostic DataTable class. It is responsible for rendering the UI,
 // managing UI-specific side effects (like column resizing), and wiring the DataTable's
 // callbacks to the Mosaic Provider's selections.
-import React, { Fragment, useState, useEffect, useRef } from 'react';
-import { useSyncExternalStore } from 'react';
+import React, {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-// @ts-expect-error Module '"@uwdata/mosaic-core"' has no exported member 'Query'.
-import { Selection, Query } from '@uwdata/mosaic-core';
-import {
-  DataTable,
-  type DataTableOptions,
-  type MosaicColumnDef,
-  type DataTableLogicConfig,
-  type DataTableUIConfig,
-} from '@nozzle/mosaic-tanstack-table-core';
+import { DataTable } from '@nozzle/mosaic-tanstack-table-core';
 import { flexRender } from '@tanstack/react-table';
-import { Table as TanstackTable } from '@tanstack/table-core';
+import type {
+  DataTableLogicConfig,
+  DataTableOptions,
+  DataTableUIConfig,
+  MosaicColumnDef,
+} from '@nozzle/mosaic-tanstack-table-core';
+// @ts-expect-error Module '"@uwdata/mosaic-core"' has no exported member 'Query'.
+import type { Query, Selection } from '@uwdata/mosaic-core';
+import type { Table as TanstackTable } from '@tanstack/table-core';
 
 interface ResizeState {
   isResizing: boolean;
@@ -382,8 +387,8 @@ export function createDataTable<TData extends object>(
       props;
 
     const [logicController] = useState(() => {
-      const mergedColumns: MosaicColumnDef<TData>[] = logicConfig.columns.map(
-        (logicCol) => {
+      const mergedColumns: Array<MosaicColumnDef<TData>> =
+        logicConfig.columns.map((logicCol) => {
           // @ts-expect-error Property 'id' does not exist on type 'LogicColumnDef<TData>'.
           const uiCol = uiConfig[logicCol.id] || {};
           return {
@@ -394,8 +399,7 @@ export function createDataTable<TData extends object>(
               ...(uiCol.meta || {}),
             },
           };
-        },
-      );
+        });
 
       class SpecificDataTable extends DataTable<TData> {
         getBaseQuery(filters: { where?: any; having?: any }): Query {
