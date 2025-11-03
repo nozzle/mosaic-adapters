@@ -20,7 +20,8 @@
     "strict": true,
     "target": "ES2020",
     "useDefineForClassFields": true,
-    "noEmit": true
+    "noEmit": true,
+    "verbatimModuleSyntax": true
   },
   "exclude": ["node_modules/", "**/dist/", "**/node_modules/"]
 }
