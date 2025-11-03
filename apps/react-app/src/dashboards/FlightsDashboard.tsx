@@ -1,4 +1,4 @@
-// src/FlightsDashboard.tsx
+// apps/react-app/src/dashboards/FlightsDashboard.tsx
 // UI component for the Flights dashboard, handling one-time data load
 // and rendering vgplot visuals alongside the React data table.
 import React, { useState, useEffect, useRef } from 'react';
@@ -12,9 +12,9 @@ export function FlightsDashboard() {
   const [isReady, setIsReady] = useState(false);
   const setupRan = useRef(false);
   
-  // The query selection no longer includes the internal table filter.
   const querySel = useMosaicSelection('flights_query');
   const brushSel = useMosaicSelection('flights_brush');
+  const externalFilterSel = useMosaicSelection('flights_external_filter');
   const rowSelectionSel = useMosaicSelection('flights_rowSelection');
   const internalFilterSel = useMosaicSelection('flights_internal_filter');
 
@@ -23,7 +23,6 @@ export function FlightsDashboard() {
     setupRan.current = true;
 
     async function setupDashboard() {
-      // UPDATED: Use the exact same URL and query as the Svelte version.
       const fileURL = 'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/flights-10m.parquet';
       const dataSetupQuery = `
         CREATE OR REPLACE TABLE flights_10m AS 
@@ -78,9 +77,8 @@ export function FlightsDashboard() {
         <>
           <Vgplot plot={dashboard} />
           <div style={{ marginTop: '1rem' }}>
-            {/* The table's filterBy prop correctly receives the external filters */}
             <FlightsTable
-              filterBy={querySel}
+              filterBy={externalFilterSel}
               rowSelectionAs={rowSelectionSel}
               internalFilterAs={internalFilterSel}
             />

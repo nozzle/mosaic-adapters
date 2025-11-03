@@ -1,4 +1,4 @@
-// src/tables/athletes/ui.tsx
+// apps/react-app/src/tables/athletes/ui.tsx
 // This file provides the React-specific UI layer for the Athletes table.
 // It imports the agnostic logic, defines renderers, and exports the final component.
 import React from 'react';
@@ -6,14 +6,22 @@ import { createDataTable } from '@mosaic-tanstack/react';
 import { athletesLogicConfig } from './logic';
 import { Athlete, DataTableUIConfig } from '@mosaic-tanstack/core';
 
-const IndeterminateCheckbox = ({ table, ...rest }: { table: any }) => {
+const IndeterminateCheckbox = ({ table }: { table: any }) => {
+    const isSelectAll = table.getState().isSelectAll;
+    const isSomeRowsSelected = table.getIsSomeRowsSelected();
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        table.options.meta?.toggleSelectAll?.(e.target.checked);
+    };
+
     const ref = React.useRef<HTMLInputElement>(null!);
     React.useEffect(() => {
         if (typeof ref.current.indeterminate === 'boolean') {
-            ref.current.indeterminate = table.getIsSomeRowsSelected();
+            ref.current.indeterminate = isSomeRowsSelected && !isSelectAll;
         }
-    }, [ref, table.getIsSomeRowsSelected()]);
-    return <input type="checkbox" ref={ref} checked={table.getIsAllRowsSelected()} onChange={table.getToggleAllRowsSelectedHandler()} style={{ width: '20px', height: '20px' }} {...rest} />;
+    }, [ref, isSomeRowsSelected, isSelectAll]);
+
+    return <input type="checkbox" ref={ref} checked={isSelectAll} onChange={handleChange} style={{ width: '20px', height: '20px' }} />;
 };
 
 const Filter = ({ column }: { column: any }) => {

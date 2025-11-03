@@ -1,19 +1,27 @@
-// src/tables/flights/ui.tsx
+// apps/react-app/src/tables/flights/ui.tsx
 // This file provides the React-specific UI layer for the Flights table.
 import React from 'react';
 import { createDataTable } from '@mosaic-tanstack/react';
 import { flightsLogicConfig } from './logic';
 import { Flight, DataTableUIConfig } from '@mosaic-tanstack/core';
 
-// Standard checkbox component for row selection, copied from athletes/ui.tsx
-const IndeterminateCheckbox = ({ table, ...rest }: { table: any }) => {
+// Standard checkbox component for row selection, now with custom Select All logic
+const IndeterminateCheckbox = ({ table }: { table: any }) => {
+    const isSelectAll = table.getState().isSelectAll;
+    const isSomeRowsSelected = table.getIsSomeRowsSelected();
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        table.options.meta?.toggleSelectAll?.(e.target.checked);
+    };
+
     const ref = React.useRef<HTMLInputElement>(null!);
     React.useEffect(() => {
         if (typeof ref.current.indeterminate === 'boolean') {
-            ref.current.indeterminate = table.getIsSomeRowsSelected();
+            ref.current.indeterminate = isSomeRowsSelected && !isSelectAll;
         }
-    }, [ref, table.getIsSomeRowsSelected()]);
-    return <input type="checkbox" ref={ref} checked={table.getIsAllRowsSelected()} onChange={table.getToggleAllRowsSelectedHandler()} style={{ width: '20px', height: '20px' }} {...rest} />;
+    }, [ref, isSomeRowsSelected, isSelectAll]);
+
+    return <input type="checkbox" ref={ref} checked={isSelectAll} onChange={handleChange} style={{ width: '20px', height: '20px' }} />;
 };
 
 // Standard filter component for columns, copied from athletes/ui.tsx

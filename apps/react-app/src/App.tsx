@@ -1,5 +1,7 @@
 // apps/react-app/src/App.tsx
-
+// This file defines the root component of the React application. It sets up the
+// global Mosaic context with a declarative "interaction graph" for each dashboard
+// and manages the top-level tabbed navigation between them.
 import React, { useState } from 'react';
 import { MosaicProvider, type SelectionConfig } from '@mosaic-tanstack/react';
 import { AthletesDashboard } from './dashboards/AthletesDashboard';
@@ -111,12 +113,12 @@ const flightsSelections: SelectionConfig[] = [
   { name: 'flights_rowSelection', type: 'union', options: { empty: true } },
 
   // Composite Selections for UI Filtering
-  // External filters that the table will be filtered by
+  // External filters that the table will be filtered by.
   {
     name: 'flights_external_filter',
     type: 'intersect',
     options: {
-      include: ['flights_brush', 'flights_rowSelection']
+      include: ['flights_brush']
     }
   },
   // The master filter for vgplot visuals, combining external and internal table filters.
@@ -124,7 +126,7 @@ const flightsSelections: SelectionConfig[] = [
     name: 'flights_query',
     type: 'intersect',
     options: {
-      include: ['flights_external_filter', 'flights_internal_filter']
+      include: ['flights_external_filter', 'flights_internal_filter', 'flights_rowSelection']
     }
   }
 ];

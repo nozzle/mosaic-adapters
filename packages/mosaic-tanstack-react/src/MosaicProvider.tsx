@@ -1,4 +1,4 @@
-// src/mosaic-tanstack-adapter/MosaicProvider.tsx
+// packages/mosaic-tanstack-react/src/MosaicProvider.tsx
 // This file introduces a React Context Provider for Mosaic. It is the core of the
 // new architecture, responsible for instantiating and managing all Mosaic Selections
 // based on a declarative configuration. It exposes a `useMosaicSelection` hook that
@@ -97,7 +97,6 @@ export function MosaicProvider({ selections: selectionConfigs, children }: Mosai
       }
     } while (remainingConfigs.length > 0 && createdInPass);
     
-    // --- START: IMPLEMENTED CHANGE ---
     // This initialization sweep synchronously updates any selection intended to be "empty"
     // by default. This sends an initial `predicate: null` update to the coordinator,
     // which resolves to `WHERE FALSE`, preventing an initial unfiltered query.
@@ -110,7 +109,6 @@ export function MosaicProvider({ selections: selectionConfigs, children }: Mosai
             }
         }
     }
-    // --- END: IMPLEMENTED CHANGE ---
 
     return registry;
   });

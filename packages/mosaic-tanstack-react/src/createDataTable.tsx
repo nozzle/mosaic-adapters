@@ -1,3 +1,4 @@
+// packages/mosaic-tanstack-react/src/createDataTable.tsx
 // This file contains the factory function `createDataTable`. It is a React-specific
 // layer that wraps the UI-agnostic DataTable class. It is responsible for rendering the UI,
 // managing UI-specific side effects (like column resizing), and wiring the DataTable's
@@ -113,58 +114,84 @@ const ColumnVisibilityToggle = ({ table }: { table: TanstackTable<any> }) => (
     </div>
 );
 
-const PaginationControls = ({ table }: { table: TanstackTable<any> }) => (
+const TablePagination = ({ table }: { table: TanstackTable<any> }) => {
+    const pageCount = table.getPageCount();
+    const pageIndex = table.getState().pagination.pageIndex;
+
+    const [inputValue, setInputValue] = useState(pageIndex + 1);
+
+    useEffect(() => {
+        setInputValue(pageIndex + 1);
+    }, [pageIndex]);
+
+    const handleGoToPage = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const page = e.target.value ? Number(e.target.value) - 1 : 0;
+        table.setPageIndex(page);
+    };
+
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
+            <button onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()}>« First</button>
+            <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>‹ Prev</button>
+            <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next ›</button>
+            <button onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()}>Last »</button>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div>Page</div>
+                <strong>{pageIndex + 1} of {pageCount === -1 ? '...' : pageCount}</strong>
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                | Go to page:
+                <input
+                    type="number"
+                    value={inputValue}
+                    onChange={e => setInputValue(e.target.value)}
+                    onBlur={handleGoToPage}
+                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    style={{ width: '60px' }}
+                />
+            </span>
+        </div>
+    )
+};
+
+
+const TableControls = ({ isFetching, data, totalRows }: { isFetching: boolean, data: any[], totalRows: number }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
-        {table.options.meta?.hasGlobalFilter && <GlobalFilter table={table} />}
-        <button onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()}>
-            {'<<'}
-        </button>
-        <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-            {'<'}
-        </button>
         <span>
-            Page{' '}
-            <strong>
-                {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
-            </strong>
+            Showing <strong>{data.length.toLocaleString()}</strong> of <strong>{totalRows > -1 ? totalRows.toLocaleString() : '...'}</strong> rows {isFetching && ' (loading...)'}
         </span>
-        <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-            {'>'}
-        </button>
-        <button onClick={() => table.setPageIndex(table.getPageCount() - 1)} disabled={!table.getCanNextPage()}>
-            {'>>'}
-        </button>
-        <select
-            value={table.getState().pagination.pageSize}
-            onChange={e => table.setPageSize(Number(e.target.value))}
-        >
-            {[10, 100, 1000, 1000000].map(pageSize => (
-                <option key={pageSize} value={pageSize}>
-                    Show {pageSize}
-                </option>
-            ))}
-        </select>
     </div>
 );
 
 interface TableUIProps<TData extends object> {
     table: TanstackTable<TData>;
+    data: TData[];
+    isDataLoaded: boolean;
     containerRef: React.RefObject<HTMLDivElement>;
     getResizeHandler: (columnId: string, size: number) => (event: React.PointerEvent) => void;
     resizeState: ResizeState;
+    logicController: DataTable<TData>;
 }
 
-function TableUI<TData extends object>({ table, containerRef, getResizeHandler, resizeState }: TableUIProps<TData>) {
-    const { rows } = table.getRowModel();
-
+function TableUI<TData extends object>({ table, data, isDataLoaded, containerRef, getResizeHandler, resizeState, logicController }: TableUIProps<TData>) {
     const rowVirtualizer = useVirtualizer({
-        count: table.getRowModel().rows.length,
+        count: isDataLoaded ? data.length : data.length + 1,
         getScrollElement: () => containerRef.current,
         estimateSize: () => 35,
         overscan: 10,
     });
     
     const virtualRows = rowVirtualizer.getVirtualItems();
+
+    useEffect(() => {
+        const lastItem = virtualRows[virtualRows.length - 1];
+        if (!lastItem) return;
+
+        if (lastItem.index >= data.length - 1 && !isDataLoaded) {
+            logicController.fetchNextChunk();
+        }
+    }, [virtualRows, data.length, isDataLoaded, logicController]);
+
     const paddingTop = virtualRows.length > 0 ? virtualRows[0]?.start || 0 : 0;
     const paddingBottom = virtualRows.length > 0 ? rowVirtualizer.getTotalSize() - (virtualRows[virtualRows.length - 1]?.end || 0) : 0;
 
@@ -212,7 +239,23 @@ function TableUI<TData extends object>({ table, containerRef, getResizeHandler, 
                 <tbody>
                     {paddingTop > 0 && <tr><td style={{ height: `${paddingTop}px` }} /></tr>}
                     {virtualRows.map(virtualRow => {
-                        const row = rows[virtualRow.index];
+                        const isLoaderRow = virtualRow.index >= data.length;
+                        const row = table.getRowModel().rows[virtualRow.index];
+                        
+                        if (isLoaderRow) {
+                            return (
+                                <tr key="loader" style={{ height: '35px' }}>
+                                    <td colSpan={table.getAllLeafColumns().length} style={{ textAlign: 'center' }}>
+                                        Loading more...
+                                    </td>
+                                </tr>
+                            )
+                        }
+
+                        if (!row) {
+                            return null;
+                        }
+
                         return (
                             <tr
                                 key={row.id} 
@@ -313,7 +356,7 @@ export function createDataTable<TData extends object>(
       return controller;
     });
     
-    const { table, isLoading, error, isLookupPending } = useSyncExternalStore(
+    const { table, data, totalRows, isDataLoaded, isFetching, error, isLookupPending } = useSyncExternalStore(
       logicController.subscribe,
       logicController.getSnapshot
     );
@@ -330,16 +373,23 @@ export function createDataTable<TData extends object>(
   
     return (
       <Fragment>
-          {isLoading && <div>Loading...</div>}
+          {data.length === 0 && isFetching && <div>Loading...</div>}
           {isLookupPending && <div style={{ color: 'blue' }}>Applying advanced filter...</div>}
-          <ColumnVisibilityToggle table={table} />
+          <div style={{display: 'flex', justifyContent: 'space-between'}}>
+            <GlobalFilter table={table} />
+            <ColumnVisibilityToggle table={table} />
+          </div>
           <TableUI 
             table={table} 
+            data={data}
+            isDataLoaded={isDataLoaded}
             containerRef={tableContainerRef}
             getResizeHandler={getResizeHandler}
             resizeState={resizeState}
+            logicController={logicController}
           />
-          <PaginationControls table={table} />
+          <TablePagination table={table} />
+          <TableControls isFetching={isFetching} data={data} totalRows={totalRows} />
       </Fragment>
     );
   };
