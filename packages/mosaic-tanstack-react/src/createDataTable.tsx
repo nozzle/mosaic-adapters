@@ -1,8 +1,8 @@
 // packages/mosaic-tanstack-react/src/createDataTable.tsx
-// This file contains the factory function `createDataTable`. It is a React-specific
-// layer that wraps the UI-agnostic DataTable class. It is responsible for rendering the UI,
-// managing UI-specific side effects (like column resizing), and wiring the DataTable's
-// callbacks to the Mosaic Provider's selections.
+// This file contains the React-specific factory function `createDataTable`.
+// It has been updated to wire the "Last" button in the pagination controls to the
+// new `goToLastPage` method on the logic controller. The button's disabled
+// logic has also been updated to be smarter about the "unknown total" state.
 import React, { Fragment, useState, useEffect, useRef } from 'react';
 import { useSyncExternalStore } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -10,7 +10,6 @@ import { Selection, Query } from '@uwdata/mosaic-core';
 import {
     DataTable,
     type DataTableOptions,
-    type MosaicColumnDef,
     type DataTableLogicConfig,
     type DataTableUIConfig
 } from '@mosaic-tanstack/core';
@@ -114,9 +113,11 @@ const ColumnVisibilityToggle = ({ table }: { table: TanstackTable<any> }) => (
     </div>
 );
 
-const TablePagination = ({ table }: { table: TanstackTable<any> }) => {
+const TablePagination = ({ table, logicController }: { table: TanstackTable<any>, logicController: DataTable<any> }) => {
     const pageCount = table.getPageCount();
-    const pageIndex = table.getState().pagination.pageIndex;
+    const { pageIndex, pageSize } = table.getState().pagination;
+
+    const offset = pageIndex * pageSize;
 
     const [inputValue, setInputValue] = useState(pageIndex + 1);
 
@@ -134,10 +135,16 @@ const TablePagination = ({ table }: { table: TanstackTable<any> }) => {
             <button onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()}>« First</button>
             <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>‹ Prev</button>
             <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next ›</button>
-            <button onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()}>Last »</button>
+            <button 
+                onClick={() => logicController.goToLastPage()} 
+                disabled={pageCount !== -1 && !table.getCanNextPage()}
+            >
+                Last »
+            </button>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <div>Page</div>
-                <strong>{pageIndex + 1} of {pageCount === -1 ? '...' : pageCount}</strong>
+                <strong>
+                    Page {pageIndex + 1} (Offset: {offset.toLocaleString()})
+                </strong>
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 | Go to page:
@@ -153,15 +160,6 @@ const TablePagination = ({ table }: { table: TanstackTable<any> }) => {
         </div>
     )
 };
-
-
-const TableControls = ({ isFetching, data, totalRows }: { isFetching: boolean, data: any[], totalRows: number }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
-        <span>
-            Showing <strong>{data.length.toLocaleString()}</strong> of <strong>{totalRows > -1 ? totalRows.toLocaleString() : '...'}</strong> rows {isFetching && ' (loading...)'}
-        </span>
-    </div>
-);
 
 interface TableUIProps<TData extends object> {
     table: TanstackTable<TData>;
@@ -317,18 +315,6 @@ export function createDataTable<TData extends object>(
     const { filterBy, internalFilterAs, rowSelectionAs, hoverAs, clickAs } = props;
 
     const [logicController] = useState(() => {
-        const mergedColumns: MosaicColumnDef<TData>[] = logicConfig.columns.map(logicCol => {
-            const uiCol = uiConfig[logicCol.id] || {};
-            return {
-              ...logicCol,
-              ...uiCol,
-              meta: {
-                ...(logicCol.meta || {}),
-                ...(uiCol.meta || {}),
-              }
-            };
-          });
-
       class SpecificDataTable extends DataTable<TData> {
         getBaseQuery(filters: { where?: any, having?: any }): Query {
           return logicConfig.getBaseQuery(filters);
@@ -336,27 +322,20 @@ export function createDataTable<TData extends object>(
       }
 
       const dtOptions: DataTableOptions<TData> = {
-        ...(logicConfig.options || {}),
-        columns: mergedColumns,
-        groupBy: logicConfig.groupBy,
-        primaryKey: logicConfig.primaryKey,
+        logic: logicConfig,
+        ui: uiConfig,
         filterBy: filterBy,
         internalFilter: internalFilterAs,
         rowSelectionAs: rowSelectionAs,
         hoverAs: hoverAs,
         clickAs: clickAs,
-        name: logicConfig.name,
-        hoverInteraction: logicConfig.hoverInteraction,
-        clickInteraction: logicConfig.clickInteraction,
-        meta: {
-          }
       };
       
       const controller = new SpecificDataTable(dtOptions);
       return controller;
     });
     
-    const { table, data, totalRows, isDataLoaded, isFetching, error, isLookupPending } = useSyncExternalStore(
+    const { table, data, isDataLoaded, isFetching, error, isLookupPending } = useSyncExternalStore(
       logicController.subscribe,
       logicController.getSnapshot
     );
@@ -388,8 +367,7 @@ export function createDataTable<TData extends object>(
             resizeState={resizeState}
             logicController={logicController}
           />
-          <TablePagination table={table} />
-          <TableControls isFetching={isFetching} data={data} totalRows={totalRows} />
+          <TablePagination table={table} logicController={logicController} />
       </Fragment>
     );
   };
