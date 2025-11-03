@@ -4,9 +4,10 @@
 // based on a declarative configuration. It exposes a `useMosaicSelection` hook that
 // allows any child component to access a selection by its string name, completely
 // abstracting away the underlying Mosaic objects from the rest of the React application.
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { Selection } from '@uwdata/mosaic-core';
+import React, { createContext, useContext, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
+import type { Selection } from '@uwdata/mosaic-core';
+import type { ReactNode } from 'react';
 
 // Define the shape of the context's value
 interface MosaicContextType {
@@ -21,13 +22,13 @@ export interface SelectionConfig {
   type: 'intersect' | 'union' | 'single';
   options?: {
     empty?: boolean;
-    include?: string[]; // Use names for dependencies
+    include?: Array<string>; // Use names for dependencies
     cross?: boolean;
   };
 }
 
 interface MosaicProviderProps {
-  selections: SelectionConfig[];
+  selections: Array<SelectionConfig>;
   children: ReactNode;
 }
 
@@ -63,7 +64,7 @@ export function MosaicProvider({
     // This loop continues as long as we are successfully creating selections.
     do {
       createdInPass = false;
-      const nextRemainingConfigs: SelectionConfig[] = [];
+      const nextRemainingConfigs: Array<SelectionConfig> = [];
 
       for (const config of remainingConfigs) {
         const deps = config.options?.include || [];
