@@ -6,6 +6,12 @@
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
   "exports": {
+    "./trimmed": {
+      "import": {
+        "types": "./dist/esm/trimmed/index.d.ts",
+        "default": "./dist/esm/trimmed/index.js"
+      }
+    },
     ".": {
       "import": {
         "types": "./dist/esm/index.d.ts",
