@@ -1,7 +1,7 @@
 // packages/mosaic-tanstack-core/src/state.ts
-// This file encapsulates all the logic for managing and responding to state
-// changes from the TanStack Table instance. It acts as the bridge between
-// UI-driven state and the actions (queries, selections) of the DataTable.
+// This file encapsulates all logic for managing and responding to state changes.
+// It has been updated to reset the new `isPrefetching` flag whenever a major
+// state change occurs (sort, filter, page change) that invalidates cached data.
 import { type Updater, type TableState } from '@tanstack/table-core';
 import { literal, and, sql, or, not, eq, type SQLAst } from '@uwdata/mosaic-sql';
 import { createPredicateFromRowId } from './util';
@@ -176,6 +176,7 @@ export function handleStateUpdate<T extends object>(instance: DataTable<T>, upda
         instance.data = [];
         instance.offset = newState.pagination.pageIndex * newState.pagination.pageSize;
         instance.isDataLoaded = false;
+        instance.isPrefetching = false;
         
         if (!instance.initialFetchDispatched || filterChanged || sortChanged || pageChanged) {
           instance.initialFetchDispatched = true;

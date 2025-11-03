@@ -1,8 +1,7 @@
 // packages/mosaic-tanstack-core/src/DataTable.ts
-// This file defines the core DataTable class. It has been updated with a new public
-// `goToLastPage` method and a private `_fetchTotalRows` helper. This encapsulates
-// the complex asynchronous logic required to navigate to the last page, including
-// on-demand fetching and caching of the total row count.
+// This file defines the core, framework-agnostic DataTable class.
+// It has been updated to include a new `isPrefetching` state property, which is
+// essential for managing the new proactive prefetching logic to prevent redundant requests.
 import { MosaicClient, Selection } from '@uwdata/mosaic-core';
 import { Query, literal } from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
@@ -46,6 +45,7 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
   public isInitialized = false;
   public initialFetchDispatched = false;
   public pendingQueryOffset: number | null = null;
+  public isPrefetching = false;
 
   private _options: Omit<any, 'data' | 'columns' | 'state' | 'onStateChange' | 'renderFallbackValue'>;
   private _listeners = new Set<() => void>();
@@ -103,6 +103,7 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
       rowSelection: {}, sorting: [], isSelectAll: false, ...initialState,
     };
     this.chunkSize = this.state.pagination.pageSize;
+    this.isPrefetching = false;
 
     if (!this.hoverInteraction && this.primaryKey.length > 0) {
         this.hoverInteraction = { createPredicate: (row) => createPredicateFromRowId(JSON.stringify(this.primaryKey.map(k => (row as any)[k])), this.primaryKey, this.logger) };

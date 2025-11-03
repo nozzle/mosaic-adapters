@@ -1,8 +1,8 @@
 // packages/mosaic-tanstack-core/src/mosaic.ts
-// This file has been updated to fix a critical bug in the COUNT query generation.
-// The logic now robustly wraps the base query as a subquery to get the total row count,
-// ensuring it works correctly with complex queries involving window functions, aggregations,
-// or subqueries, thus fixing the "Last Page" button functionality.
+// This file contains the core data lifecycle logic for the Mosaic client.
+// It has been significantly updated to include proactive prefetching. After a
+// data chunk is successfully loaded, it now automatically triggers a low-priority
+// `prefetch` for the next chunk, making the infinite scroll experience much smoother.
 import { type FilterExpr } from '@uwdata/mosaic-core';
 import { Query, and, desc, asc } from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
@@ -124,6 +124,25 @@ export function queryResult<T extends object>(instance: DataTable<T>, data: Arro
     if (newRows.length < instance.chunkSize) {
         instance.logger.log('MOSAIC: End of data detected for current view.');
         instance.isDataLoaded = true;
+        instance.isPrefetching = false; // Ensure we stop prefetching at the end
+    } else {
+        // Proactive Prefetching Logic
+        if (!instance.isDataLoaded && !instance.isPrefetching) {
+            instance.logger.log(`PROACTIVE: Triggering prefetch for next chunk at offset ${instance.offset}`);
+            const prefetchQuery = instance.query(instance.filterBy?.predicate(instance), { type: QueryType.DATA });
+            if (prefetchQuery) {
+                instance.isPrefetching = true;
+                instance.coordinator.prefetch(prefetchQuery)
+                    .then(() => {
+                        instance.logger.log(`PROACTIVE: Prefetch completed and is now cached.`);
+                        instance.isPrefetching = false;
+                    })
+                    .catch(err => {
+                        instance.logger.warn(`PROACTIVE: Prefetch failed.`, err);
+                        instance.isPrefetching = false;
+                    });
+            }
+        }
     }
     
     instance.table.setOptions(prev => ({ ...prev, data: instance.data }));
