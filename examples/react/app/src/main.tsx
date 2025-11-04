@@ -8,8 +8,8 @@ import './ui/table-styles.css'; // Import the new stylesheet
 
 // --- Switchable Mosaic Backend Configuration ---
 
-// Read the environment variable. Default to 'server' if not set.
-const backend = import.meta.env.VITE_MOSAIC_BACKEND || 'server';
+// Read the environment variable. Default to 'wasm' if not set.
+const backend = import.meta.env.VITE_MOSAIC_BACKEND || 'wasm';
 
 if (backend === 'wasm') {
   console.log('🚀 Initializing Mosaic with DuckDB-WASM backend...');

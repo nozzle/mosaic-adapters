@@ -10,26 +10,37 @@ showing how to integrate vgplot and the custom DataTable component. -->
   } from '@nozzle/mosaic-tanstack-svelte-table';
   import { vgplot } from '../utils/vgplot';
   import { athletesLogicConfig, athletesUIConfig } from '../tables';
+  import type { Selection } from '@uwdata/mosaic-core';
 
   let dashboardElement: HTMLElement | null = null;
   let isReady = false;
   let setupRan = false;
 
-  // Retrieve all necessary selections from the global context.
-  const categorySel = useMosaicSelection('athlete_category');
-  const querySel = useMosaicSelection('athlete_query');
-  const hoverSel = useMosaicSelection('athlete_hover');
-  const hoverRawSel = useMosaicSelection('athlete_hover_raw');
-  const rowSelectionSel = useMosaicSelection('athlete_rowSelection');
-  const internalFilterSel = useMosaicSelection('athlete_internal_filter');
+  // Declare selection variables, but do not initialize them here.
+  let categorySel: Selection;
+  let brushSel: Selection;
+  let externalFilterSel: Selection;
+  let querySel: Selection;
+  let hoverSel: Selection;
+  let hoverRawSel: Selection;
+  let rowSelectionSel: Selection;
+  let internalFilterSel: Selection;
 
   onMount(async () => {
     if (setupRan) return;
     setupRan = true;
 
-    // --- FIX: Use a publicly accessible URL for the Parquet file. ---
-    // The remote DuckDB server cannot access 'localhost:5173'. This public URL
-    // is accessible by the server, just like the data for the other dashboards.
+    // --- DEFERRED INITIALIZATION ---
+    // Initialize selections inside onMount, guaranteeing the context is available.
+    categorySel = useMosaicSelection('athlete_category');
+    brushSel = useMosaicSelection('athlete_brush');
+    externalFilterSel = useMosaicSelection('athlete_external_filter');
+    querySel = useMosaicSelection('athlete_query');
+    hoverSel = useMosaicSelection('athlete_hover');
+    hoverRawSel = useMosaicSelection('athlete_hover_raw');
+    rowSelectionSel = useMosaicSelection('athlete_rowSelection');
+    internalFilterSel = useMosaicSelection('athlete_internal_filter');
+
     const fileURL =
       'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
     await vg
@@ -37,7 +48,6 @@ showing how to integrate vgplot and the custom DataTable component. -->
       .exec([`CREATE OR REPLACE TABLE athletes AS SELECT * FROM '${fileURL}'`]);
 
     // Programmatically create the vgplot dashboard element.
-    // This is the Svelte equivalent of the React component's setup effect.
     dashboardElement = vg.vconcat(
       vg.hconcat(
         vg.menu({
@@ -55,7 +65,7 @@ showing how to integrate vgplot and the custom DataTable component. -->
         vg.search({
           label: 'Name',
           filterBy: categorySel,
-          as: querySel,
+          as: categorySel,
           from: 'athletes',
           column: 'name',
           type: 'contains',
@@ -76,7 +86,7 @@ showing how to integrate vgplot and the custom DataTable component. -->
           stroke: 'sex',
         }),
         vg.intervalXY({
-          as: querySel,
+          as: brushSel,
           brush: { fillOpacity: 0, stroke: 'black' },
         }),
         vg.dot(vg.from('athletes', { filterBy: hoverSel }), {
@@ -100,17 +110,13 @@ showing how to integrate vgplot and the custom DataTable component. -->
 </script>
 
 <div>
-  <!-- Only render once the dashboard element is created -->
   {#if isReady}
-    <!-- Use the vgplot Svelte action to mount the dashboard -->
     <div use:vgplot={dashboardElement} />
-
     <div style="margin-top: 5px;">
-      <!-- Instantiate the generic DataTable component with specific configs and selections -->
       <DataTable
         logicConfig={athletesLogicConfig}
         uiConfig={athletesUIConfig}
-        filterBy={querySel}
+        filterBy={externalFilterSel}
         internalFilterAs={internalFilterSel}
         rowSelectionAs={rowSelectionSel}
         hoverAs={hoverRawSel}

@@ -14,27 +14,38 @@
     vendorStatsLogicConfig,
     vendorStatsUIConfig,
   } from '../tables';
+  import type { Selection } from '@uwdata/mosaic-core';
 
   let dashboardElement: HTMLElement | null = null;
   let isDataReady = false;
   let setupRan = false;
 
-  const filterSel = useMosaicSelection('taxi_filter');
-  const hoverSel = useMosaicSelection('taxi_hover');
-  const hoverRawSel = useMosaicSelection('taxi_hover_raw');
-  const rowSelectionSel = useMosaicSelection('taxi_rowSelection');
-  const tripsInternalFilterSel = useMosaicSelection(
-    'taxi_trips_internal_filter',
-  );
-  const vendorInternalFilterSel = useMosaicSelection(
-    'taxi_vendor_internal_filter',
-  );
+  // Declare selection variables, but do not initialize them here.
+  let brushSel: Selection;
+  let externalFilterSel: Selection;
+  let querySel: Selection;
+  let hoverSel: Selection;
+  let hoverRawSel: Selection;
+  let rowSelectionSel: Selection;
+  let tripsInternalFilterSel: Selection;
+  let vendorInternalFilterSel: Selection;
 
   onMount(async () => {
     if (setupRan) return;
     setupRan = true;
 
-    // --- FIX: Use a reliable public URL for the large binary file ---
+    // Initialize selections inside onMount.
+    brushSel = useMosaicSelection('taxi_brush');
+    externalFilterSel = useMosaicSelection('taxi_external_filter');
+    querySel = useMosaicSelection('taxi_query');
+    hoverSel = useMosaicSelection('taxi_hover');
+    hoverRawSel = useMosaicSelection('taxi_hover_raw');
+    rowSelectionSel = useMosaicSelection('taxi_rowSelection');
+    tripsInternalFilterSel = useMosaicSelection('taxi_trips_internal_filter');
+    vendorInternalFilterSel = useMosaicSelection(
+      'taxi_vendor_internal_filter',
+    );
+
     const fileURL =
       'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet';
 
@@ -63,7 +74,7 @@
     dashboardElement = vg.vconcat(
       vg.hconcat(
         vg.plot(
-          vg.raster(vg.from('trips', { filterBy: filterSel }), {
+          vg.raster(vg.from('trips', { filterBy: querySel }), {
             x: 'px',
             y: 'py',
             bandwidth: 0,
@@ -76,7 +87,7 @@
             stroke: 'white',
             strokeWidth: 1,
           }),
-          vg.intervalXY({ as: filterSel }),
+          vg.intervalXY({ as: brushSel }),
           vg.text([{ label: 'Taxi Pickups' }], {
             dx: 10,
             dy: 10,
@@ -97,7 +108,7 @@
         ),
         vg.hspace(10),
         vg.plot(
-          vg.raster(vg.from('trips', { filterBy: filterSel }), {
+          vg.raster(vg.from('trips', { filterBy: querySel }), {
             x: 'dx',
             y: 'dy',
             bandwidth: 0,
@@ -110,7 +121,7 @@
             stroke: 'black',
             strokeWidth: 1,
           }),
-          vg.intervalXY({ as: filterSel }),
+          vg.intervalXY({ as: brushSel }),
           vg.text([{ label: 'Taxi Dropoffs' }], {
             dx: 10,
             dy: 10,
@@ -132,13 +143,13 @@
       ),
       vg.vspace(10),
       vg.plot(
-        vg.rectY(vg.from('trips', { filterBy: filterSel }), {
+        vg.rectY(vg.from('trips', { filterBy: querySel }), {
           x: vg.bin('time'),
           y: vg.count(),
           fill: 'steelblue',
           inset: 0.5,
         }),
-        vg.intervalX({ as: filterSel }),
+        vg.intervalX({ as: brushSel }),
         vg.xDomain(vg.Fixed),
         vg.yTickFormat('s'),
         vg.xLabel('Pickup Hour →'),
@@ -158,7 +169,7 @@
         <DataTable
           logicConfig={tripsLogicConfig}
           uiConfig={tripsUIConfig}
-          filterBy={filterSel}
+          filterBy={externalFilterSel}
           internalFilterAs={tripsInternalFilterSel}
           rowSelectionAs={rowSelectionSel}
           hoverAs={hoverRawSel}
@@ -169,7 +180,7 @@
         <DataTable
           logicConfig={vendorStatsLogicConfig}
           uiConfig={vendorStatsUIConfig}
-          filterBy={filterSel}
+          filterBy={externalFilterSel}
           internalFilterAs={vendorInternalFilterSel}
           rowSelectionAs={rowSelectionSel}
         />

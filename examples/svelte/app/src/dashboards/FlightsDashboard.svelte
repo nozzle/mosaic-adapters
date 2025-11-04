@@ -9,30 +9,40 @@
   } from '@nozzle/mosaic-tanstack-svelte-table';
   import { vgplot } from '../utils/vgplot';
   import { flightsLogicConfig, flightsUIConfig } from '../tables';
+  import type { Selection } from '@uwdata/mosaic-core';
+
   let dashboardElement: HTMLElement | null = null;
   let isReady = false;
   let setupRan = false;
 
-  const querySel = useMosaicSelection('flights_query');
-  const brushSel = useMosaicSelection('flights_brush');
-  const rowSelectionSel = useMosaicSelection('flights_rowSelection');
-  const internalFilterSel = useMosaicSelection('flights_internal_filter');
+  // Declare selection variables, but do not initialize them here.
+  let querySel: Selection;
+  let brushSel: Selection;
+  let rowSelectionSel: Selection;
+  let internalFilterSel: Selection;
+  let externalFilterSel: Selection;
 
   onMount(async () => {
     if (setupRan) return;
     setupRan = true;
 
+    // Initialize selections inside onMount.
+    querySel = useMosaicSelection('flights_query');
+    brushSel = useMosaicSelection('flights_brush');
+    rowSelectionSel = useMosaicSelection('flights_rowSelection');
+    internalFilterSel = useMosaicSelection('flights_internal_filter');
+    externalFilterSel = useMosaicSelection('flights_external_filter');
+
     const fileURL =
       'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/flights-10m.parquet';
     const dataSetupQuery = `
-      CREATE OR REPLACE TABLE flights_10m AS 
+      CREATE OR REPLACE TABLE flights_10m AS
       SELECT ROW_NUMBER() OVER () AS id,
-        GREATEST(-60, LEAST(ARR_DELAY, 180))::DOUBLE AS delay, 
-        DISTANCE AS distance, DEP_TIME AS time 
+        GREATEST(-60, LEAST(ARR_DELAY, 180))::DOUBLE AS delay,
+        DISTANCE AS distance, DEP_TIME AS time
       FROM '${fileURL}'`;
     await vg.coordinator().exec(dataSetupQuery);
 
-    // --- FIX: Build the plot programmatically, removing the spec parser dependency ---
     dashboardElement = vg.vconcat(
       vg.plot(
         vg.rectY(vg.from('flights_10m', { filterBy: querySel }), {
@@ -98,7 +108,7 @@
       <DataTable
         logicConfig={flightsLogicConfig}
         uiConfig={flightsUIConfig}
-        filterBy={querySel}
+        filterBy={externalFilterSel}
         rowSelectionAs={rowSelectionSel}
         internalFilterAs={internalFilterSel}
       />

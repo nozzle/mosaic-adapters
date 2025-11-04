@@ -4,7 +4,7 @@ and renders the full UI including virtualization, headers, and pagination. -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { writable } from 'svelte/store';
-  import { createSvelteTable, flexRender } from '@tanstack/svelte-table';
+  import { flexRender } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
 
   import {
@@ -15,6 +15,7 @@ and renders the full UI including virtualization, headers, and pagination. -->
     type DataTableUIConfig,
   } from '@nozzle/mosaic-tanstack-table-core';
   import type { Selection } from '@uwdata/mosaic-core';
+  import type { Table as TanstackTable } from '@tanstack/table-core';
 
   // Component Props
   export let logicConfig: DataTableLogicConfig<any>;
@@ -26,6 +27,10 @@ and renders the full UI including virtualization, headers, and pagination. -->
   export let clickAs: Selection | undefined = undefined;
 
   let containerEl: HTMLDivElement;
+
+  console.log(
+    `[Svelte Adapter - ${logicConfig.name}] Component script executing (initialization)`,
+  );
 
   const mergedColumns: MosaicColumnDef<any>[] = logicConfig.columns.map(
     (logicCol) => {
@@ -68,13 +73,32 @@ and renders the full UI including virtualization, headers, and pagination. -->
     logicController.getSnapshot(),
   );
 
+  snapshot.subscribe((newSnapshot) => {
+    console.log(
+      `[Svelte Adapter - ${logicConfig.name}] Snapshot store updated!`,
+      newSnapshot,
+    );
+  });
+
   // --- Lifecycle Management ---
   onMount(() => {
+    console.log(`[Svelte Adapter - ${logicConfig.name}] onMount CALLED`);
     const unsubscribe = logicController.subscribe(() => {
+      console.log(
+        `[Svelte Adapter - ${logicConfig.name}] Received notification from controller. Updating store.`,
+      );
       snapshot.set(logicController.getSnapshot());
     });
+
+    console.log(
+      `[Svelte Adapter - ${logicConfig.name}] Calling logicController.connect()`,
+    );
     const cleanup = logicController.connect();
+
     return () => {
+      console.log(
+        `[Svelte Adapter - ${logicConfig.name}] onMount cleanup CALLED`,
+      );
       unsubscribe();
       cleanup();
     };
@@ -108,7 +132,7 @@ and renders the full UI including virtualization, headers, and pagination. -->
     const deltaX = event.clientX - dragInfo.startClientX;
     const finalSize = Math.max(80, dragInfo.startSize + deltaX);
 
-    $snapshot.table.setColumnSizing((prev) => ({
+    tanstackTable.setColumnSizing((prev) => ({
       ...prev,
       [resizingColumnId!]: Math.round(finalSize),
     }));
@@ -117,7 +141,6 @@ and renders the full UI including virtualization, headers, and pagination. -->
     resizingColumnId = null;
   }
 
-  // --- ACCESSIBILITY FIX: Keyboard handler for interactive elements ---
   function handleKeyDown(event: KeyboardEvent, action: () => void) {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -126,13 +149,17 @@ and renders the full UI including virtualization, headers, and pagination. -->
   }
 
   // --- Reactive Declarations ---
-  $: tanstackTable = createSvelteTable({
-    ...$snapshot.table.options,
-    state: $snapshot.table.getState(),
-  });
+  $: {
+    if ($snapshot) {
+      console.log(
+        `[Svelte Adapter - ${logicConfig.name}] Reactive block triggered by snapshot change.`,
+      );
+    }
+  }
+  $: tanstackTable = $snapshot.table as TanstackTable<any>;
 
   $: rowVirtualizer = createVirtualizer({
-    count: $snapshot.table.getRowModel().rows.length,
+    count: tanstackTable.getRowModel().rows.length,
     getScrollElement: () => containerEl,
     estimateSize: () => 35,
     overscan: 10,
@@ -152,7 +179,7 @@ and renders the full UI including virtualization, headers, and pagination. -->
   on:pointermove={handlePointerMove}
   on:pointerup={handlePointerUp}
 />
-<svelte:body class:isResizing />
+<svelte:body class:is-resizing={isResizing} />
 
 {#if $snapshot.error}
   <div style="color: red;">Error: {$snapshot.error.message}</div>
@@ -166,7 +193,7 @@ and renders the full UI including virtualization, headers, and pagination. -->
 <!-- Column Visibility Toggle -->
 <div style="border: 1px solid #ccc; padding: 0.5rem; margin-bottom: 0.5rem;">
   <strong>Toggle Columns:</strong>
-  {#each $tanstackTable.getAllLeafColumns() as column}
+  {#each tanstackTable.getAllLeafColumns() as column}
     <label style="margin-right: 1rem; margin-left: 0.5rem;">
       <input
         type="checkbox"
@@ -184,14 +211,14 @@ and renders the full UI including virtualization, headers, and pagination. -->
 <!-- Main Table UI -->
 <div
   bind:this={containerEl}
-  on:mouseleave={() => $snapshot.table.options.meta?.onRowHover?.(null)}
+  on:mouseleave={() => tanstackTable.options.meta?.onRowHover?.(null)}
   role="region"
   aria-label="Data Table"
   style="height: 250px; overflow: auto; border: 1px solid #ccc;"
 >
   <table style="width: 100%; border-spacing: 0; table-layout: fixed;">
     <thead style="position: sticky; top: 0; background: white; z-index: 1;">
-      {#each $tanstackTable.getHeaderGroups() as headerGroup}
+      {#each tanstackTable.getHeaderGroups() as headerGroup}
         <tr>
           {#each headerGroup.headers as header}
             {@const col = header.column}
@@ -251,27 +278,32 @@ and renders the full UI including virtualization, headers, and pagination. -->
         <tr><td style="height: {paddingTop}px" /></tr>
       {/if}
       {#each virtualRows as virtualRow}
-        {@const row = $snapshot.table.getRowModel().rows[virtualRow.index]}
-        <tr
-          tabindex="0"
-          on:mouseenter={() =>
-            $snapshot.table.options.meta?.onRowHover?.(row.original)}
-          on:click={() =>
-            $snapshot.table.options.meta?.onRowClick?.(row.original)}
-          on:keydown={(e) =>
-            handleKeyDown(e, () =>
-              $snapshot.table.options.meta?.onRowClick?.(row.original),
-            )}
-          style="height: {virtualRow.size}px; cursor: pointer;"
-        >
-          {#each row.getVisibleCells() as cell}
-            <td style="padding: 4px; border-top: 1px solid #eee;">
-              <svelte:component
-                this={flexRender(cell.column.columnDef.cell, cell.getContext())}
-              />
-            </td>
-          {/each}
-        </tr>
+        {@const row = tanstackTable.getRowModel().rows[virtualRow.index]}
+        {#if row}
+          <tr
+            tabindex="0"
+            on:mouseenter={() =>
+              tanstackTable.options.meta?.onRowHover?.(row.original)}
+            on:click={() =>
+              tanstackTable.options.meta?.onRowClick?.(row.original)}
+            on:keydown={(e) =>
+              handleKeyDown(e, () =>
+                tanstackTable.options.meta?.onRowClick?.(row.original),
+              )}
+            style="height: {virtualRow.size}px; cursor: pointer;"
+          >
+            {#each row.getVisibleCells() as cell}
+              <td style="padding: 4px; border-top: 1px solid #eee;">
+                <svelte:component
+                  this={flexRender(
+                    cell.column.columnDef.cell,
+                    cell.getContext(),
+                  )}
+                />
+              </td>
+            {/each}
+          </tr>
+        {/if}
       {/each}
       {#if paddingBottom > 0}
         <tr><td style="height: {paddingBottom}px" /></tr>
@@ -283,49 +315,49 @@ and renders the full UI including virtualization, headers, and pagination. -->
 <!-- Pagination Controls -->
 <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0;">
   <!-- Global Filter -->
-  {#if $tanstackTable.options.meta?.hasGlobalFilter}
+  {#if tanstackTable.options.meta?.hasGlobalFilter}
     <input
-      value={$tanstackTable.getState().globalFilter ?? ''}
-      on:input={(e) => $tanstackTable.setGlobalFilter(e.currentTarget.value)}
+      value={tanstackTable.getState().globalFilter ?? ''}
+      on:input={(e) => tanstackTable.setGlobalFilter(e.currentTarget.value)}
       placeholder="Search all columns..."
       style="margin-right: 1rem;"
     />
   {/if}
 
   <button
-    on:click={() => $tanstackTable.setPageIndex(0)}
-    disabled={!$tanstackTable.getCanPreviousPage()}
+    on:click={() => tanstackTable.setPageIndex(0)}
+    disabled={!tanstackTable.getCanPreviousPage()}
   >
     &lt;&lt;
   </button>
   <button
-    on:click={() => $tanstackTable.previousPage()}
-    disabled={!$tanstackTable.getCanPreviousPage()}
+    on:click={() => tanstackTable.previousPage()}
+    disabled={!tanstackTable.getCanPreviousPage()}
   >
     &lt;
   </button>
   <span>
     Page
     <strong>
-      {$tanstackTable.getState().pagination.pageIndex + 1} of {$tanstackTable.getPageCount()}
+      {tanstackTable.getState().pagination.pageIndex + 1} of {tanstackTable.getPageCount()}
     </strong>
   </span>
   <button
-    on:click={() => $tanstackTable.nextPage()}
-    disabled={!$tanstackTable.getCanNextPage()}
+    on:click={() => tanstackTable.nextPage()}
+    disabled={!tanstackTable.getCanNextPage()}
   >
     &gt;
   </button>
   <button
     on:click={() =>
-      $tanstackTable.setPageIndex($tanstackTable.getPageCount() - 1)}
-    disabled={!$tanstackTable.getCanNextPage()}
+      tanstackTable.setPageIndex(tanstackTable.getPageCount() - 1)}
+    disabled={!tanstackTable.getCanNextPage()}
   >
     &gt;&gt;
   </button>
   <select
-    value={$tanstackTable.getState().pagination.pageSize}
-    on:change={(e) => $tanstackTable.setPageSize(Number(e.currentTarget.value))}
+    value={tanstackTable.getState().pagination.pageSize}
+    on:change={(e) => tanstackTable.setPageSize(Number(e.currentTarget.value))}
   >
     {#each [10, 100, 1000, 1000000] as pageSize}
       <option value={pageSize}>Show {pageSize}</option>

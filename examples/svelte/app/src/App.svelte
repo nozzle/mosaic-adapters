@@ -1,82 +1,49 @@
 <!-- src/App.svelte -->
-<!-- This file orchestrates the main application layout, tabs, and initializes
-the global interaction graph (selections) for the entire Svelte application. -->
+<!-- This file orchestrates the main application layout and correctly initializes
+the global Mosaic state (coordinator and selections) for the entire Svelte application,
+respecting Svelte's component lifecycle and Mosaic's internal dependencies. -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import {
-    setMosaicContext,
-    type SelectionConfig,
-  } from '@nozzle/mosaic-tanstack-svelte-table';
+  import * as vg from '@uwdata/vgplot';
+  import { setMosaicContext } from '@nozzle/mosaic-tanstack-svelte-table';
+  import { allDashboardSelections } from './selections';
   import AthletesDashboard from './dashboards/AthletesDashboard.svelte';
   import NycTaxiDashboard from './dashboards/NycTaxiDashboard.svelte';
   import FlightsDashboard from './dashboards/FlightsDashboard.svelte';
 
-  // --- INTERACTION GRAPH DEFINITION (Copied from original App.tsx) ---
-  const athleteSelections: SelectionConfig[] = [
-    { name: 'athlete_category', type: 'intersect' },
-    { name: 'athlete_internal_filter', type: 'intersect' },
-    { name: 'athlete_rowSelection', type: 'union', options: { empty: true } },
-    { name: 'athlete_hover_raw', type: 'intersect', options: { empty: true } },
-    {
-      name: 'athlete_query',
-      type: 'intersect',
-      options: {
-        include: [
-          'athlete_category',
-          'athlete_rowSelection',
-          'athlete_internal_filter',
-        ],
-      },
-    },
-    {
-      name: 'athlete_hover',
-      type: 'intersect',
-      options: { empty: true, include: ['athlete_query', 'athlete_hover_raw'] },
-    },
-  ];
-  const taxiSelections: SelectionConfig[] = [
-    { name: 'taxi_rowSelection', type: 'union', options: { empty: true } },
-    { name: 'taxi_trips_internal_filter', type: 'intersect' },
-    { name: 'taxi_vendor_internal_filter', type: 'intersect' },
-    { name: 'taxi_hover_raw', type: 'intersect', options: { empty: true } },
-    {
-      name: 'taxi_filter',
-      type: 'intersect',
-      options: {
-        include: ['taxi_trips_internal_filter', 'taxi_vendor_internal_filter'],
-      },
-    },
-    {
-      name: 'taxi_hover',
-      type: 'intersect',
-      options: { empty: true, include: ['taxi_filter', 'taxi_hover_raw'] },
-    },
-  ];
-  const flightsSelections: SelectionConfig[] = [
-    { name: 'flights_brush', type: 'intersect', options: { cross: true } },
-    { name: 'flights_internal_filter', type: 'intersect' },
-    { name: 'flights_rowSelection', type: 'union', options: { empty: true } },
-    {
-      name: 'flights_query',
-      type: 'intersect',
-      options: {
-        include: [
-          'flights_brush',
-          'flights_rowSelection',
-          'flights_internal_filter',
-        ],
-      },
-    },
-  ];
-  const allDashboardSelections = [
-    ...athleteSelections,
-    ...taxiSelections,
-    ...flightsSelections,
-  ];
+  // A single state flag to manage the visibility of child components.
+  // This is the key to preventing children from initializing too early.
+  let isMosaicReady = false;
 
-  // Initialize the Mosaic context once for the entire application.
-  setMosaicContext(allDashboardSelections);
+  // onMount ensures this code runs only in the browser, after the component
+  // has been added to the DOM. This is the correct place for all side-effects.
+  onMount(() => {
+    // --- CORRECT SEQUENTIAL INITIALIZATION ---
 
+    // STEP 1: Configure the global coordinator first. This is a critical dependency
+    // for creating selections.
+    console.log('[App.svelte] onMount: Configuring global coordinator...');
+    const backend = import.meta.env.VITE_MOSAIC_BACKEND || 'wasm';
+    if (backend === 'wasm') {
+      vg.coordinator().databaseConnector(vg.wasmConnector());
+    } else {
+      const serverUri =
+        import.meta.env.VITE_MOSAIC_SERVER_URI || 'ws://localhost:3000';
+      vg.coordinator().databaseConnector(vg.socketConnector(serverUri));
+    }
+    console.log('[App.svelte] onMount: Coordinator is ready.');
+
+    // STEP 2: Now that the coordinator is ready, create and set the Svelte context.
+    // This function call is safe inside onMount.
+    setMosaicContext(allDashboardSelections);
+    console.log('[App.svelte] onMount: Mosaic Context has been set.');
+
+    // STEP 3: With both coordinator and context ready, signal to the template
+    // that it is now safe to render the child dashboards.
+    isMosaicReady = true;
+  });
+
+  // UI state for managing tabs
   let activeTab: 'athletes' | 'taxis' | 'flights' = 'athletes';
 </script>
 
@@ -103,14 +70,20 @@ the global interaction graph (selections) for the entire Svelte application. -->
   </nav>
   <hr />
 
-  <!-- Conditional rendering based on the active tab -->
-  <div style:display={activeTab === 'athletes' ? 'block' : 'none'}>
-    <AthletesDashboard />
-  </div>
-  <div style:display={activeTab === 'taxis' ? 'block' : 'none'}>
-    <NycTaxiDashboard />
-  </div>
-  <div style:display={activeTab === 'flights' ? 'block' : 'none'}>
-    <FlightsDashboard />
-  </div>
+  <!--
+    The #if block is critical. It ensures that Svelte does not even attempt to
+    initialize the child dashboard components until `isMosaicReady` becomes true,
+    preventing any premature calls to `useMosaicSelection`.
+  -->
+  {#if isMosaicReady}
+    {#if activeTab === 'athletes'}
+      <AthletesDashboard />
+    {:else if activeTab === 'taxis'}
+      <NycTaxiDashboard />
+    {:else if activeTab === 'flights'}
+      <FlightsDashboard />
+    {/if}
+  {:else}
+    <div>Initializing Mosaic...</div>
+  {/if}
 </main>

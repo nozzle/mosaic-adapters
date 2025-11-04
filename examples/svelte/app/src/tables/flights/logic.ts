@@ -39,6 +39,7 @@ export const flightsLogicConfig: DataTableLogicConfig<Flight> = {
   ],
   getBaseQuery: (filters) => {
     const { where = [] } = filters;
+    // CORRECTED: Explicitly select columns to ensure 'id' is always present for keys.
     return Query.from('flights_10m')
       .where(where)
       .select('id', 'delay', 'distance', 'time');
