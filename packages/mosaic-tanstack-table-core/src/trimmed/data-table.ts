@@ -47,12 +47,7 @@ export class MosaicDataTable extends MosaicClient {
     this.#store = new Store(
       {
         demoState: { foo: 'bar' },
-        tableState: {
-          pagination: {
-            pageIndex: 0,
-            pageSize: 10,
-          },
-        } as any,
+        tableState: getInitialTableState(),
         rows: [
           {
             id: '1',
@@ -109,17 +104,14 @@ export class MosaicDataTable extends MosaicClient {
       getCoreRowModel: getCoreRowModel(),
       state: state.tableState,
       onStateChange: (updater) => {
-        const newState =
-          typeof updater === 'function'
-            ? updater(this.#store.state.tableState)
-            : updater;
+        const tableState = functionalUpdate(
+          updater,
+          this.#store.state.tableState,
+        );
 
         this.#store.setState((prev) => ({
           ...prev,
-          tableState: {
-            ...prev.tableState,
-            ...newState,
-          },
+          tableState,
         }));
       },
       manualPagination: true,
@@ -149,4 +141,38 @@ export class MosaicDataTable extends MosaicClient {
   get store(): Store<MosaicDataTableStore> {
     return this.#store;
   }
+}
+
+function functionalUpdate<T>(updater: T | ((old: T) => T), old: T): T {
+  return typeof updater === 'function'
+    ? (updater as (old: T) => T)(old)
+    : updater;
+}
+
+function getInitialTableState(): TableState {
+  return {
+    pagination: {
+      pageIndex: 0,
+      pageSize: 10,
+    },
+    columnFilters: [],
+    columnVisibility: {},
+    columnOrder: [] satisfies Array<string>,
+    columnPinning: {},
+    rowPinning: {},
+    globalFilter: '',
+    sorting: [],
+    expanded: {},
+    grouping: [],
+    columnSizing: {},
+    columnSizingInfo: {
+      columnSizingStart: [],
+      deltaOffset: null,
+      deltaPercentage: null,
+      isResizingColumn: false,
+      startOffset: null,
+      startSize: null,
+    },
+    rowSelection: {},
+  };
 }
