@@ -1,6 +1,6 @@
 import { MosaicClient } from '@uwdata/mosaic-core';
 import { getCoreRowModel } from '@tanstack/table-core';
-import { Store } from '@tanstack/store';
+import { Store, batch } from '@tanstack/store';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { TableOptions } from '@tanstack/table-core';
 
@@ -21,10 +21,13 @@ export interface DataTableOptions {
 export type MosaicQueryMethodArg = Parameters<MosaicClient['query']>[0];
 export type MosaicQueryMethodReturn = ReturnType<MosaicClient['query']>;
 
+export type MosaicDataTableStore = {
+  foo: string;
+};
+
 export class MosaicDataTable extends MosaicClient {
   dataTableName = '';
-  // eslint-disable-next-line no-unused-private-class-members
-  #store: Store<{}>;
+  #store: Store<MosaicDataTableStore>;
 
   constructor(tableName: string, options: DataTableOptions) {
     super(options.filterBy); // pass appropriate filterSelection if needed
@@ -33,7 +36,13 @@ export class MosaicDataTable extends MosaicClient {
     }
 
     this.dataTableName = tableName;
-    this.#store = new Store({});
+
+    this.#store = new Store(
+      { foo: 'bar' },
+      {
+        onUpdate: () => {},
+      },
+    );
   }
 
   override query(filter?: MosaicQueryMethodArg): MosaicQueryMethodReturn {
@@ -49,6 +58,18 @@ export class MosaicDataTable extends MosaicClient {
   getTableState() {
     // Placeholder for creating necessary TableState in framework-land
     return undefined;
+  }
+
+  mutateStateTo(value: string): void {
+    batch(() => {
+      this.#store.setState((prev) => {
+        return { ...prev, foo: value };
+      });
+    });
+  }
+
+  get store(): Store<MosaicDataTableStore> {
+    return this.#store;
   }
 
   /**
