@@ -1,5 +1,4 @@
 import { MosaicClient } from '@uwdata/mosaic-core';
-import { Query } from '@uwdata/mosaic-sql';
 import { getCoreRowModel } from '@tanstack/table-core';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type { TableOptions } from '@tanstack/table-core';
