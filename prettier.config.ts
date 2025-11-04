@@ -1,8 +1,6 @@
-// prettier.config.js
-// This file provides the configuration for Prettier, the code formatter.
-// It is written in plain JavaScript for maximum compatibility with all environments.
+import type { Config } from 'prettier';
 
-const config = {
+const config: Config = {
   semi: true,
   singleQuote: true,
   trailingComma: 'all',
