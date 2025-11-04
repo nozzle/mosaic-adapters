@@ -28,6 +28,7 @@
     "test:lint": "eslint ./src"
   },
   "dependencies": {
+    "@tanstack/store": "^0.8.0",
     "@tanstack/table-core": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",

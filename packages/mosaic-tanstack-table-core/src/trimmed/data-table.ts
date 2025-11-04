@@ -1,5 +1,6 @@
 import { MosaicClient } from '@uwdata/mosaic-core';
 import { getCoreRowModel } from '@tanstack/table-core';
+import { Store } from '@tanstack/store';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { TableOptions } from '@tanstack/table-core';
 
@@ -22,6 +23,8 @@ export type MosaicQueryMethodReturn = ReturnType<MosaicClient['query']>;
 
 export class MosaicDataTable extends MosaicClient {
   dataTableName = '';
+  // eslint-disable-next-line no-unused-private-class-members
+  #store: Store<{}>;
 
   constructor(tableName: string, options: DataTableOptions) {
     super(options.filterBy); // pass appropriate filterSelection if needed
@@ -30,6 +33,7 @@ export class MosaicDataTable extends MosaicClient {
     }
 
     this.dataTableName = tableName;
+    this.#store = new Store({});
   }
 
   override query(filter?: MosaicQueryMethodArg): MosaicQueryMethodReturn {
