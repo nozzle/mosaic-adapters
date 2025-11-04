@@ -1,6 +1,6 @@
 import { MosaicClient } from '@uwdata/mosaic-core';
 import { getCoreRowModel } from '@tanstack/table-core';
-import type { Coordinator } from '@uwdata/mosaic-core';
+import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { TableOptions } from '@tanstack/table-core';
 
 /**
@@ -14,6 +14,7 @@ import type { TableOptions } from '@tanstack/table-core';
 
 export interface DataTableOptions {
   coordinator: Coordinator;
+  filterBy?: Selection | undefined;
 }
 
 export type MosaicQueryMethodArg = Parameters<MosaicClient['query']>[0];
@@ -23,7 +24,11 @@ export class MosaicDataTable extends MosaicClient {
   dataTableName = '';
 
   constructor(tableName: string, options: DataTableOptions) {
-    super(); // pass appropriate filterSelection if needed
+    super(options.filterBy); // pass appropriate filterSelection if needed
+    if (!tableName) {
+      throw new Error('[MosaicDataTable] A table name must be provided.');
+    }
+
     this.dataTableName = tableName;
   }
 
