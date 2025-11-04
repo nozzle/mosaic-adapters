@@ -2,6 +2,7 @@ import * as React from 'react';
 import { createTable } from '@tanstack/table-core';
 import type {
   RowData,
+  Table,
   TableOptions,
   TableOptionsResolved,
 } from '@tanstack/table-core';
@@ -89,6 +90,15 @@ export function useReactTable<TData extends RowData>(
       options.onStateChange?.(updater);
     },
   }));
+
+  // eslint-disable-next-line react-hooks/refs
+  return tableRef.current;
+}
+
+export function useReactTableInstance<TData extends RowData>(
+  tableInstance: Table<TData>,
+) {
+  const tableRef = React.useRef(tableInstance);
 
   // eslint-disable-next-line react-hooks/refs
   return tableRef.current;
