@@ -2,7 +2,7 @@ import { MosaicClient } from '@uwdata/mosaic-core';
 import { getCoreRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
-import type { TableOptions } from '@tanstack/table-core';
+import type { ColumnDef, TableOptions, TableState } from '@tanstack/table-core';
 
 /**
  * let client = new DataTable({
@@ -21,8 +21,15 @@ export interface DataTableOptions {
 export type MosaicQueryMethodArg = Parameters<MosaicClient['query']>[0];
 export type MosaicQueryMethodReturn = ReturnType<MosaicClient['query']>;
 
+export type MosaicDataTableRow = {
+  id: string;
+  name: string;
+};
+
 export type MosaicDataTableStore = {
-  foo: string;
+  demoState: { foo: string };
+  tableState: TableState;
+  rows: Array<MosaicDataTableRow>;
 };
 
 export class MosaicDataTable extends MosaicClient {
@@ -38,7 +45,21 @@ export class MosaicDataTable extends MosaicClient {
     this.dataTableName = tableName;
 
     this.#store = new Store(
-      { foo: 'bar' },
+      {
+        demoState: { foo: 'bar' },
+        tableState: {
+          pagination: {
+            pageIndex: 0,
+            pageSize: 10,
+          },
+        } as any,
+        rows: [
+          {
+            id: '1',
+            name: 'Alice',
+          },
+        ] satisfies MosaicDataTableStore['rows'],
+      },
       {
         onUpdate: () => {},
       },
@@ -60,18 +81,6 @@ export class MosaicDataTable extends MosaicClient {
     return undefined;
   }
 
-  mutateStateTo(value: string): void {
-    batch(() => {
-      this.#store.setState((prev) => {
-        return { ...prev, foo: value };
-      });
-    });
-  }
-
-  get store(): Store<MosaicDataTableStore> {
-    return this.#store;
-  }
-
   /**
    * const table = useReactTable(clientInstance.getTableStateInit()) ???
    * -- Render markup using TanStack Table Instance
@@ -82,13 +91,62 @@ export class MosaicDataTable extends MosaicClient {
    * const table = useReactTable(tableOptions);
    * -- Render markup using TanStack Table Instance
    */
-  getTableStateInit(): TableOptions<unknown> {
-    // Seeds the table state with initial values, plus any necessary methods
-    // callbacks to update the state in framework-land
+  getTableOptions(
+    state: Store<MosaicDataTableStore>['state'],
+  ): TableOptions<unknown> {
+    const columns = [
+      {
+        accessorKey: 'id',
+      },
+      {
+        accessorKey: 'name',
+      },
+    ] satisfies Array<ColumnDef<MosaicDataTableRow>>;
+
     return {
-      columns: [],
-      data: [],
+      data: state.rows,
+      columns,
       getCoreRowModel: getCoreRowModel(),
+      state: state.tableState,
+      onStateChange: (updater) => {
+        const newState =
+          typeof updater === 'function'
+            ? updater(this.#store.state.tableState)
+            : updater;
+
+        this.#store.setState((prev) => ({
+          ...prev,
+          tableState: {
+            ...prev.tableState,
+            ...newState,
+          },
+        }));
+      },
+      manualPagination: true,
     };
+  }
+
+  addRow(name: string): void {
+    const newId = (this.#store.state.rows.length + 1).toString();
+    const newRow = { id: newId, name };
+
+    batch(() => {
+      this.#store.setState((prev) => ({
+        ...prev,
+        rows: [...prev.rows, newRow],
+      }));
+    });
+  }
+
+  mutateStateTo(value: string): void {
+    batch(() => {
+      this.#store.setState((prev) => {
+        return { ...prev, demoState: { foo: value } };
+      });
+    });
+  }
+
+  get store(): Store<MosaicDataTableStore> {
+    return this.#store;
   }
 }
