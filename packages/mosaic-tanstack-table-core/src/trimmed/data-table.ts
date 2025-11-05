@@ -16,11 +16,6 @@ export interface MosaicDataTableOptions {
   filterBy?: Selection | undefined;
 }
 
-export type MosaicDataTableRow = {
-  id: string;
-  name: string;
-};
-
 export type MosaicDataTableStore = {
   tableState: TableState;
   arrowColumnSchema: Array<FieldInfo>;
@@ -91,17 +86,46 @@ export class MosaicDataTable extends MosaicClient {
   }
 
   override queryResult(data: unknown): this {
+    let rows: Array<Record<string, unknown>> | undefined = undefined;
+
     if (data) {
       const dataColumns = toDataColumns(data);
-      console.debug(
-        '[MosaicDataTable] queryResult() Converted data columns:',
-        dataColumns,
-      );
+
+      if ('columns' in dataColumns) {
+        const record = dataColumns.columns;
+        const columns = Object.entries(record).reduce(
+          (acc, [key, value]) => {
+            // @ts-expect-error
+            acc[key] = value;
+            return acc;
+          },
+          {} as Record<string, Array<unknown>>,
+        );
+
+        const numRows = dataColumns.numRows;
+        const processRows: Array<Record<string, unknown>> = [];
+        for (let i = 0; i < numRows; i++) {
+          const row: Record<string, unknown> = {};
+          for (const key in columns) {
+            row[key] = columns[key]?.[i];
+          }
+          processRows.push(row);
+        }
+        rows = processRows;
+      }
+      if ('values' in dataColumns) {
+        const values = dataColumns.values;
+        throw new Error('Data with unnamed values array is not supported yet.');
+      }
     }
 
     batch(() => {
       this.#store.setState((prev) => {
-        return { ...prev, arrowColumnSchema: this.schema };
+        return {
+          ...prev,
+          arrowColumnSchema: this.schema,
+          rows: rows ?? prev.rows,
+        };
       });
     });
 
@@ -127,7 +151,7 @@ export class MosaicDataTable extends MosaicClient {
       return {
         accessorKey: field.column,
         header: field.column,
-      } satisfies ColumnDef<MosaicDataTableRow>;
+      } satisfies ColumnDef<Record<string, any>>;
     });
 
     return {
