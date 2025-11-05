@@ -202,6 +202,7 @@ export class MosaicDataTable extends MosaicClient {
       getCoreRowModel: getCoreRowModel(),
       state: state.tableState,
       onStateChange: (updater) => {
+        // Stored the old hashed table state to compare after update
         const hashedOldTableState = JSON.stringify(
           this.#store.state.tableState,
         );
@@ -211,13 +212,13 @@ export class MosaicDataTable extends MosaicClient {
           this.#store.state.tableState,
         );
 
-        const hashedNewTableState = JSON.stringify(tableState);
-
         this.#store.setState((prev) => ({
           ...prev,
           tableState,
         }));
 
+        // Compare the new hashed table state to the old one to determine if we need to request a new query
+        const hashedNewTableState = JSON.stringify(tableState);
         if (hashedOldTableState !== hashedNewTableState) {
           this.requestQuery();
         }
