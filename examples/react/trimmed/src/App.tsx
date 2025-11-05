@@ -1,16 +1,10 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useStore } from '@tanstack/react-store';
 import { flexRender, useReactTable } from '@tanstack/react-table';
-import { MosaicDataTable } from '@nozzle/mosaic-tanstack-table-core/trimmed';
+import { createMosaicDataTableClient } from '@nozzle/mosaic-tanstack-table-core/trimmed';
+import * as vg from '@uwdata/vgplot';
 
 function App() {
-  const dataTable = useRef(
-    new MosaicDataTable('my_table', { coordinator: undefined as any }),
-  );
-
-  const store = useStore(dataTable.current.store);
-  const table = useReactTable(dataTable.current.getTableOptions(store));
-
   return (
     <>
       <h1>Trimmed example</h1>
@@ -20,21 +14,78 @@ function App() {
           padding: '1rem',
         }}
       >
-        <em>Rendering data table</em>
-        <div>
-          <h3>Add row</h3>
-          {['sean', 'derek', 'boyd'].map((name, index) => (
-            <button
-              key={name + index}
-              onClick={() => {
-                dataTable.current.addRow(name);
-              }}
-            >
-              {name}
-            </button>
-          ))}
-        </div>
-        <h3>Data table</h3>
+        <AthletesMosaic />
+      </div>
+    </>
+  );
+}
+
+export default App;
+
+const fileURL =
+  'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
+
+const wasmConnector = vg.wasmConnector({ log: false });
+vg.coordinator().databaseConnector(wasmConnector);
+
+const $query = vg.Selection.intersect();
+
+function AthletesMosaic() {
+  const dataTable = useRef(
+    createMosaicDataTableClient('athletes', vg.coordinator()),
+  );
+  const store = useStore(dataTable.current.store);
+  const table = useReactTable(dataTable.current.getTableOptions(store));
+
+  const chartDivRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!chartDivRef.current) return;
+
+    async function setup() {
+      // Setup the Athletes Linear Regression Plot from https://idl.uw.edu/mosaic/examples/linear-regression.html
+      await vg
+        .coordinator()
+        .exec([
+          `CREATE OR REPLACE TABLE athletes AS SELECT * FROM '${fileURL}'`,
+        ]);
+
+      const plot = vg.plot(
+        vg.dot(vg.from('athletes'), {
+          x: 'weight',
+          y: 'height',
+          fill: 'sex',
+          r: 2,
+          opacity: 0.05,
+        }),
+        vg.regressionY(vg.from('athletes', { filterBy: $query }), {
+          x: 'weight',
+          y: 'height',
+          stroke: 'sex',
+        }),
+        vg.intervalXY({
+          as: $query,
+          brush: { fillOpacity: 0, stroke: 'currentColor' },
+        }),
+        vg.xyDomain(vg.Fixed),
+        vg.colorDomain(vg.Fixed),
+      );
+
+      chartDivRef.current?.replaceChildren(plot);
+    }
+
+    setup();
+  }, []);
+
+  return (
+    <div>
+      <h2>Athletes Dashboard Placeholder</h2>
+      <div>
+        <h4>Chart area</h4>
+        <div ref={chartDivRef} />
+      </div>
+      <div>
+        <h4>Table area</h4>
         <table>
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -81,8 +132,6 @@ function App() {
           </tfoot>
         </table>
       </div>
-    </>
+    </div>
   );
 }
-
-export default App;
