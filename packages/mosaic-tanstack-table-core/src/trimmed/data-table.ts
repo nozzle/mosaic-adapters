@@ -6,20 +6,27 @@ import {
 import { Query } from '@uwdata/mosaic-sql';
 import { getCoreRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
+import * as vg from '@uwdata/vgplot';
 
 import type { Coordinator, FieldInfo, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ColumnDef, TableOptions, TableState } from '@tanstack/table-core';
 
+type DebugTableOptions =
+  | boolean
+  | Array<'cells' | 'columns' | 'headers' | 'rows' | 'table'>;
+
 export interface MosaicDataTableOptions {
   coordinator: Coordinator;
   filterBy?: Selection | undefined;
+  debugTable?: DebugTableOptions;
 }
 
 export type MosaicDataTableStore = {
   tableState: TableState;
   arrowColumnSchema: Array<FieldInfo>;
   rows: Array<Record<string, any>>;
+  totalRows: number | undefined;
 };
 
 export function createMosaicDataTableClient(
@@ -40,6 +47,7 @@ export class MosaicDataTable extends MosaicClient {
   schema: Array<FieldInfo> = [];
 
   #store: Store<MosaicDataTableStore>;
+  #debugTable: DebugTableOptions = false;
 
   constructor(tableName: string, options: MosaicDataTableOptions) {
     super(options.filterBy); // pass appropriate filterSelection if needed
@@ -49,12 +57,14 @@ export class MosaicDataTable extends MosaicClient {
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
 
+    this.#debugTable = options.debugTable ?? false;
     this.from = tableName;
     this.#store = new Store(
       {
         tableState: seedInitialTableState(),
         rows: [] as MosaicDataTableStore['rows'],
         arrowColumnSchema: [] as MosaicDataTableStore['arrowColumnSchema'],
+        totalRows: undefined as MosaicDataTableStore['totalRows'],
       },
       {
         onUpdate: () => {},
@@ -63,16 +73,16 @@ export class MosaicDataTable extends MosaicClient {
   }
 
   override query(filter?: FilterExpr | null | undefined): SelectQuery {
-    // console.debug('[MosaicDataTable] query() Executing query with filter:', filter);
     const pagination = this.#store.state.tableState.pagination;
     const offset = pagination.pageIndex * pagination.pageSize;
 
     const result = Query.from(this.from)
-      .select(['*'])
+      .select(['*'], {
+        total_rows: vg.count().window(),
+      })
       .limit(pagination.pageSize)
       .offset(offset);
 
-    console.debug('[MosaicDataTable] query() Generated query:', result);
     return result;
   }
 
@@ -87,14 +97,24 @@ export class MosaicDataTable extends MosaicClient {
 
   override queryResult(data: unknown): this {
     let rows: Array<Record<string, unknown>> | undefined = undefined;
-
+    let totalRows: number | undefined = undefined;
+    console.group();
+    console.debug('[MosaicDataTable] queryResult() Received data:', data);
     if (data) {
       const dataColumns = toDataColumns(data);
 
       if ('columns' in dataColumns) {
         const record = dataColumns.columns;
+
         const columns = Object.entries(record).reduce(
           (acc, [key, value]) => {
+            if (key === 'total_rows') {
+              if (Array.isArray(value) && value.length > 0) {
+                totalRows = Number(value[0]);
+              }
+              return acc;
+            }
+
             // @ts-expect-error
             acc[key] = value;
             return acc;
@@ -125,16 +145,21 @@ export class MosaicDataTable extends MosaicClient {
           ...prev,
           arrowColumnSchema: this.schema,
           rows: rows ?? prev.rows,
+          totalRows,
         };
       });
     });
+    console.groupEnd();
 
     return this;
   }
 
   override async prepare(): Promise<void> {
     const table = this.from;
-    const fields = this.columns.map((column) => ({ column, table }));
+    const fields = this.columns.map((column) => ({
+      column,
+      table,
+    }));
     const schema = await queryFieldInfo(this.coordinator!, fields);
     this.schema = schema;
 
@@ -171,6 +196,31 @@ export class MosaicDataTable extends MosaicClient {
         }));
       },
       manualPagination: true,
+      rowCount: state.totalRows,
+      debugAll:
+        typeof this.#debugTable === 'boolean' && this.#debugTable
+          ? true
+          : undefined,
+      debugCells:
+        Array.isArray(this.#debugTable) && this.#debugTable.includes('cells')
+          ? true
+          : undefined,
+      debugHeaders:
+        Array.isArray(this.#debugTable) && this.#debugTable.includes('headers')
+          ? true
+          : undefined,
+      debugColumns:
+        Array.isArray(this.#debugTable) && this.#debugTable.includes('columns')
+          ? true
+          : undefined,
+      debugRows:
+        Array.isArray(this.#debugTable) && this.#debugTable.includes('rows')
+          ? true
+          : undefined,
+      debugTable:
+        Array.isArray(this.#debugTable) && this.#debugTable.includes('table')
+          ? true
+          : undefined,
     };
   }
 
