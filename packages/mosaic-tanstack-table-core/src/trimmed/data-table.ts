@@ -3,10 +3,10 @@ import {
   queryFieldInfo,
   toDataColumns,
 } from '@uwdata/mosaic-core';
-import { Query } from '@uwdata/mosaic-sql';
+import * as mSql from '@uwdata/mosaic-sql';
 import { getCoreRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
-import * as vg from '@uwdata/vgplot';
+import { functionalUpdate } from './utils';
 
 import type { Coordinator, FieldInfo, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
@@ -72,13 +72,13 @@ export class MosaicDataTable extends MosaicClient {
     );
   }
 
-  override query(filter?: FilterExpr | null | undefined): SelectQuery {
+  override query(_filter?: FilterExpr | null | undefined): SelectQuery {
     const pagination = this.#store.state.tableState.pagination;
     const offset = pagination.pageIndex * pagination.pageSize;
 
-    const result = Query.from(this.from)
+    const result = mSql.Query.from(this.from)
       .select(['*'], {
-        total_rows: vg.count().window(),
+        total_rows: mSql.count().window(),
       })
       .limit(pagination.pageSize)
       .offset(offset);
@@ -98,8 +98,7 @@ export class MosaicDataTable extends MosaicClient {
   override queryResult(data: unknown): this {
     let rows: Array<Record<string, unknown>> | undefined = undefined;
     let totalRows: number | undefined = undefined;
-    console.group();
-    console.debug('[MosaicDataTable] queryResult() Received data:', data);
+
     if (data) {
       const dataColumns = toDataColumns(data);
 
@@ -109,9 +108,28 @@ export class MosaicDataTable extends MosaicClient {
         const columns = Object.entries(record).reduce(
           (acc, [key, value]) => {
             if (key === 'total_rows') {
-              if (Array.isArray(value) && value.length > 0) {
-                totalRows = Number(value[0]);
+              // List may be a typed array, so we should handle the conversion
+              let list = value;
+
+              // Convert typed arrays to regular arrays for easier handling
+              if (
+                list instanceof Float16Array ||
+                list instanceof Float32Array ||
+                list instanceof Float64Array
+              ) {
+                list = Array.from(list);
               }
+
+              // Pull out the total rows value
+              if (
+                Array.isArray(list) &&
+                list.length > 0 &&
+                typeof list[0] === 'number'
+              ) {
+                totalRows = list[0];
+              }
+
+              // Skip adding this to the row data
               return acc;
             }
 
@@ -149,7 +167,6 @@ export class MosaicDataTable extends MosaicClient {
         };
       });
     });
-    console.groupEnd();
 
     return this;
   }
@@ -185,15 +202,25 @@ export class MosaicDataTable extends MosaicClient {
       getCoreRowModel: getCoreRowModel(),
       state: state.tableState,
       onStateChange: (updater) => {
+        const hashedOldTableState = JSON.stringify(
+          this.#store.state.tableState,
+        );
+
         const tableState = functionalUpdate(
           updater,
           this.#store.state.tableState,
         );
 
+        const hashedNewTableState = JSON.stringify(tableState);
+
         this.#store.setState((prev) => ({
           ...prev,
           tableState,
         }));
+
+        if (hashedOldTableState !== hashedNewTableState) {
+          this.requestQuery();
+        }
       },
       manualPagination: true,
       rowCount: state.totalRows,
@@ -227,12 +254,6 @@ export class MosaicDataTable extends MosaicClient {
   get store(): Store<MosaicDataTableStore> {
     return this.#store;
   }
-}
-
-function functionalUpdate<T>(updater: T | ((old: T) => T), old: T): T {
-  return typeof updater === 'function'
-    ? (updater as (old: T) => T)(old)
-    : updater;
 }
 
 function seedInitialTableState(): TableState {
