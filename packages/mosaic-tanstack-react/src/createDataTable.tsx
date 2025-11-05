@@ -1,8 +1,10 @@
 // packages/mosaic-tanstack-react/src/createDataTable.tsx
 // This file contains the React-specific factory function `createDataTable`.
-// It has been updated to wire the "Last" button in the pagination controls to the
-// new `goToLastPage` method on the logic controller. The button's disabled
-// logic has also been updated to be smarter about the "unknown total" state.
+// It is responsible for creating a complete, stateful, and interactive table
+// component by combining a framework-agnostic logic configuration with a
+// React-specific UI configuration. It handles the component's lifecycle,
+// state synchronization, virtualization for infinite scrolling, and wires up
+// UI interactions like column resizing.
 import React, { Fragment, useState, useEffect, useRef } from 'react';
 import { useSyncExternalStore } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -322,6 +324,7 @@ export function createDataTable<TData extends object>(
       }
 
       const dtOptions: DataTableOptions<TData> = {
+        initialState: logicConfig.options?.initialState,
         logic: logicConfig,
         ui: uiConfig,
         filterBy: filterBy,
