@@ -13,8 +13,7 @@ import type { ColumnDef, TableOptions, TableState } from '@tanstack/table-core';
 	options.coordinator.connect(client);
  */
 
-export interface DataTableOptions {
-  coordinator: Coordinator;
+export interface MosaicDataTableOptions {
   filterBy?: Selection | undefined;
 }
 
@@ -32,12 +31,24 @@ export type MosaicDataTableStore = {
   rows: Array<MosaicDataTableRow>;
 };
 
+export function createMosaicDataTableClient(
+  tableName: string,
+  coordinator: Coordinator,
+  options?: MosaicDataTableOptions,
+) {
+  const client = new MosaicDataTable(tableName, options);
+
+  coordinator.connect(client);
+
+  return client;
+}
+
 export class MosaicDataTable extends MosaicClient {
   dataTableName = '';
   #store: Store<MosaicDataTableStore>;
 
-  constructor(tableName: string, options: DataTableOptions) {
-    super(options.filterBy); // pass appropriate filterSelection if needed
+  constructor(tableName: string, options?: MosaicDataTableOptions) {
+    super(options?.filterBy); // pass appropriate filterSelection if needed
     if (!tableName) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
@@ -47,7 +58,7 @@ export class MosaicDataTable extends MosaicClient {
     this.#store = new Store(
       {
         demoState: { foo: 'bar' },
-        tableState: getInitialTableState(),
+        tableState: seedInitialTableState(),
         rows: [
           {
             id: '1',
@@ -61,30 +72,13 @@ export class MosaicDataTable extends MosaicClient {
     );
   }
 
-  override query(filter?: MosaicQueryMethodArg): MosaicQueryMethodReturn {
-    // Implement query logic specific to the data table
-    return undefined as any;
-  }
-
-  getTableInstance(tableState: unknown) {
-    // Placeholder for returning the table instance
-    return undefined;
-  }
-
-  getTableState() {
-    // Placeholder for creating necessary TableState in framework-land
-    return undefined;
-  }
+  // override query(filter?: MosaicQueryMethodArg): MosaicQueryMethodReturn {
+  //   // Implement query logic specific to the data table
+  //   return undefined as any;
+  // }
 
   /**
-   * const table = useReactTable(clientInstance.getTableStateInit()) ???
-   * -- Render markup using TanStack Table Instance
-   *
-   * - or perhaps
-   *
-   * const tableOptions = useMosaicDataTableClient(clientInstance);
-   * const table = useReactTable(tableOptions);
-   * -- Render markup using TanStack Table Instance
+   * Get the TanStack Table options to be used with the framework adapters.
    */
   getTableOptions(
     state: Store<MosaicDataTableStore>['state'],
@@ -149,7 +143,7 @@ function functionalUpdate<T>(updater: T | ((old: T) => T), old: T): T {
     : updater;
 }
 
-function getInitialTableState(): TableState {
+function seedInitialTableState(): TableState {
   return {
     pagination: {
       pageIndex: 0,
