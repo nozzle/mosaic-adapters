@@ -225,35 +225,30 @@ export class MosaicDataTable extends MosaicClient {
       },
       manualPagination: true,
       rowCount: state.totalRows,
-      debugAll:
-        typeof this.#debugTable === 'boolean' && this.#debugTable
-          ? true
-          : undefined,
-      debugCells:
-        Array.isArray(this.#debugTable) && this.#debugTable.includes('cells')
-          ? true
-          : undefined,
-      debugHeaders:
-        Array.isArray(this.#debugTable) && this.#debugTable.includes('headers')
-          ? true
-          : undefined,
-      debugColumns:
-        Array.isArray(this.#debugTable) && this.#debugTable.includes('columns')
-          ? true
-          : undefined,
-      debugRows:
-        Array.isArray(this.#debugTable) && this.#debugTable.includes('rows')
-          ? true
-          : undefined,
-      debugTable:
-        Array.isArray(this.#debugTable) && this.#debugTable.includes('table')
-          ? true
-          : undefined,
+      debugAll: this._getDebugTableState('all'),
+      debugCells: this._getDebugTableState('cells'),
+      debugHeaders: this._getDebugTableState('headers'),
+      debugColumns: this._getDebugTableState('columns'),
+      debugRows: this._getDebugTableState('rows'),
+      debugTable: this._getDebugTableState('table'),
     };
   }
 
   get store(): Store<MosaicDataTableStore> {
     return this.#store;
+  }
+
+  private _getDebugTableState(
+    key: 'all' | 'cells' | 'headers' | 'columns' | 'rows' | 'table',
+  ): true | undefined {
+    if (key === 'all') {
+      return typeof this.#debugTable === 'boolean' && this.#debugTable
+        ? true
+        : undefined;
+    }
+    return Array.isArray(this.#debugTable) && this.#debugTable.includes(key)
+      ? true
+      : undefined;
   }
 }
 
