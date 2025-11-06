@@ -10,14 +10,14 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { DataTable } from '@nozzle/mosaic-tanstack-table-core';
+import { DataTable } from '@nozzleio/mosaic-tanstack-table-core';
 import { flexRender } from '@tanstack/react-table';
 import type {
   DataTableLogicConfig,
   DataTableOptions,
   DataTableUIConfig,
   MosaicColumnDef,
-} from '@nozzle/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core';
 // @ts-expect-error Module '"@uwdata/mosaic-core"' has no exported member 'Query'.
 import type { Query, Selection } from '@uwdata/mosaic-core';
 import type { Table as TanstackTable } from '@tanstack/table-core';

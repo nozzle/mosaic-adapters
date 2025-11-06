@@ -10,7 +10,7 @@
     "build": "pnpm run typecheck && vite build"
   },
   "dependencies": {
-    "@nozzle/mosaic-tanstack-table-core": "workspace:*",
+    "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@tanstack/react-store": "^0.8.0",
     "@tanstack/react-table": "^8.17.3",
     "@tanstack/react-virtual": "^3.5.0",

@@ -7,7 +7,7 @@ import Filter from '../../ui/Filter.svelte';
 import type {
   Athlete,
   DataTableUIConfig,
-} from '@nozzle/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core';
 
 export const athletesUIConfig: DataTableUIConfig<Athlete> = {
   select: {

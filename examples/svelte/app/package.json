@@ -10,8 +10,8 @@
     "build": "pnpm run typecheck && vite build"
   },
   "dependencies": {
-    "@nozzle/mosaic-tanstack-svelte-table": "workspace:*",
-    "@nozzle/mosaic-tanstack-table-core": "workspace:*",
+    "@nozzleio/mosaic-tanstack-svelte-table": "workspace:*",
+    "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@tanstack/svelte-table": "^8.17.3",
     "@tanstack/svelte-virtual": "^3.5.0",
     "@uwdata/mosaic-core": "catalog:",

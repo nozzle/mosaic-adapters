@@ -4,7 +4,7 @@ import { Query } from '@uwdata/mosaic-sql';
 import type {
   DataTableLogicConfig,
   Flight,
-} from '@nozzle/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core';
 
 export const flightsLogicConfig: DataTableLogicConfig<Flight> = {
   name: 'FlightsTable',

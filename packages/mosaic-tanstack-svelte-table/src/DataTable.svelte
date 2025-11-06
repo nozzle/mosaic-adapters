@@ -13,7 +13,7 @@ and renders the full UI including virtualization, headers, and pagination. -->
     type MosaicColumnDef,
     type DataTableLogicConfig,
     type DataTableUIConfig,
-  } from '@nozzle/mosaic-tanstack-table-core';
+  } from '@nozzleio/mosaic-tanstack-table-core';
   import type { Selection } from '@uwdata/mosaic-core';
 
   // Component Props

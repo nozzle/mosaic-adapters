@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
-import { useMosaicSelection } from '@nozzle/mosaic-tanstack-react-table';
+import { useMosaicSelection } from '@nozzleio/mosaic-tanstack-react-table';
 import { Vgplot } from '../utils/vgplot';
 import { AthletesTable } from '../tables';
 

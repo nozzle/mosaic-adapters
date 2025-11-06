@@ -6,7 +6,7 @@ import Filter from '../../ui/Filter.svelte';
 import type {
   DataTableUIConfig,
   Flight,
-} from '@nozzle/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core';
 
 export const flightsUIConfig: DataTableUIConfig<Flight> = {
   select: {
