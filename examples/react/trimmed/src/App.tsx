@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore } from '@tanstack/react-store';
 import { flexRender, useReactTable } from '@tanstack/react-table';
-import { createMosaicDataTableClient } from '@nozzle/mosaic-tanstack-table-core/trimmed';
 import * as vg from '@uwdata/vgplot';
+import { useMosaicReactTable } from './useMosiacReactTable';
 
 function App() {
   return (
@@ -91,44 +90,35 @@ function AthletesMosaic() {
 }
 
 function AthletesTable() {
-  const dataTable = useRef(
-    createMosaicDataTableClient(tableName, {
-      coordinator: vg.coordinator(),
-      debugTable: false,
-      // TODO: Start getting the ColumnDefs<unknown> working...
-      // columns: [
-      //   {
-      //     accessorKey: 'name',
-      //     header: 'Name',
-      //     render({ headerName }) {
+  // columns: [
+  //   {
+  //     accessorKey: 'name',
+  //     header: 'Name',
+  //     render({ headerName }) {
 
-      //     return (<div>
-      //       <div>{headerName}</div>
-      //       <YourCustomFilter />
-      //       </div>
-      //       )
-      //     },
-      //     renderFilter() {},
-      //     cell(props) {
-      //       const value = props.getValue();
-      //       return <>...</>
-      //     }
-      //   },
-      // ],
-      // selections: {
-      //   $query: vg.Selection.intersect(),
-      // },
-    }),
-  );
-  const store = useStore(dataTable.current.store);
-  const table = useReactTable(dataTable.current.getTableOptions(store));
-
-  // TODO: framework packages that abstract away the stabilization logic. ie. useRef() -> dataTable.current.getTableOptions(store)
-  // const { tableOptions } = useMosaicReactTable({
-  //   table: 'foo-bar',
-  //   //  ...
-  // });
-  // const tableApi = useReactTable(tableOptions);
+  //     return (<div>
+  //       <div>{headerName}</div>
+  //       <YourCustomFilter />
+  //       </div>
+  //       )
+  //     },
+  //     renderFilter() {},
+  //     cell(props) {
+  //       const value = props.getValue();
+  //       return <>...</>
+  //     }
+  //   },
+  // ],
+  // selections: {
+  //   $query: vg.Selection.intersect(),
+  // },
+  // TODO: Start getting the ColumnDefs<unknown> working...
+  const { tableOptions } = useMosaicReactTable({
+    table: tableName,
+    coordinator: vg.coordinator(),
+    debugTable: false,
+  });
+  const table = useReactTable(tableOptions);
 
   return (
     <>

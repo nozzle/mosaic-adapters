@@ -17,6 +17,7 @@ type DebugTableOptions =
   | Array<'cells' | 'columns' | 'headers' | 'rows' | 'table'>;
 
 export interface MosaicDataTableOptions {
+  table: string;
   coordinator: Coordinator;
   filterBy?: Selection | undefined;
   debugTable?: DebugTableOptions;
@@ -29,12 +30,12 @@ export type MosaicDataTableStore = {
   totalRows: number | undefined;
 };
 
-export function createMosaicDataTableClient(
-  tableName: string,
-  options: MosaicDataTableOptions,
-) {
-  const client = new MosaicDataTable(tableName, options);
+export function createMosaicDataTableClient(options: MosaicDataTableOptions) {
+  // Initialize the table client
+  const client = new MosaicDataTable(options);
 
+  // Connect to the coordinator
+  // So that it can also start piping data from Mosaic to the table
   options.coordinator.connect(client);
 
   return client;
@@ -49,16 +50,16 @@ export class MosaicDataTable extends MosaicClient {
   #store: Store<MosaicDataTableStore>;
   #debugTable: DebugTableOptions = false;
 
-  constructor(tableName: string, options: MosaicDataTableOptions) {
+  constructor(options: MosaicDataTableOptions) {
     super(options.filterBy); // pass appropriate filterSelection if needed
     this.coordinator = options.coordinator;
 
-    if (!tableName) {
+    if (!options.table) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
 
     this.#debugTable = options.debugTable ?? false;
-    this.from = tableName;
+    this.from = options.table;
     this.#store = new Store({
       tableState: seedInitialTableState(),
       rows: [] as MosaicDataTableStore['rows'],
