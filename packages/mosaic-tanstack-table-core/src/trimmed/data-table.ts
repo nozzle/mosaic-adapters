@@ -59,20 +59,15 @@ export class MosaicDataTable extends MosaicClient {
 
     this.#debugTable = options.debugTable ?? false;
     this.from = tableName;
-    this.#store = new Store(
-      {
-        tableState: seedInitialTableState(),
-        rows: [] as MosaicDataTableStore['rows'],
-        arrowColumnSchema: [] as MosaicDataTableStore['arrowColumnSchema'],
-        totalRows: undefined as MosaicDataTableStore['totalRows'],
-      },
-      {
-        onUpdate: () => {},
-      },
-    );
+    this.#store = new Store({
+      tableState: seedInitialTableState(),
+      rows: [] as MosaicDataTableStore['rows'],
+      arrowColumnSchema: [] as MosaicDataTableStore['arrowColumnSchema'],
+      totalRows: undefined as MosaicDataTableStore['totalRows'],
+    });
   }
 
-  override query(_filter?: FilterExpr | null | undefined): SelectQuery {
+  override query(filter?: FilterExpr | null | undefined): SelectQuery {
     const pagination = this.#store.state.tableState.pagination;
     const offset = pagination.pageIndex * pagination.pageSize;
 
@@ -203,9 +198,7 @@ export class MosaicDataTable extends MosaicClient {
       state: state.tableState,
       onStateChange: (updater) => {
         // Stored the old hashed table state to compare after update
-        const hashedOldTableState = JSON.stringify(
-          this.#store.state.tableState,
-        );
+        const hashedOldState = JSON.stringify(this.#store.state.tableState);
 
         const tableState = functionalUpdate(
           updater,
@@ -218,8 +211,8 @@ export class MosaicDataTable extends MosaicClient {
         }));
 
         // Compare the new hashed table state to the old one to determine if we need to request a new query
-        const hashedNewTableState = JSON.stringify(tableState);
-        if (hashedOldTableState !== hashedNewTableState) {
+        const hashedNewState = JSON.stringify(tableState);
+        if (hashedOldState !== hashedNewState) {
           this.requestQuery();
         }
       },
