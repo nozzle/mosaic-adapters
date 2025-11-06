@@ -9,11 +9,11 @@ import type {
   DataTableLogicConfig as CoreDataTableLogicConfig,
   DataTableOptions as CoreDataTableOptions,
   MosaicColumnDef as CoreMosaicColumnDef,
-} from '@nozzle/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core';
 import type { Column, ColumnDef } from '@tanstack/table-core';
 
 // Re-export core types for convenience
-export * from '@nozzle/mosaic-tanstack-table-core';
+export * from '@nozzleio/mosaic-tanstack-table-core';
 
 // Create a React-specific ColumnUIConfig that enforces React component types.
 export interface ColumnUIConfig<T extends object>
