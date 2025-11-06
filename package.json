@@ -17,7 +17,7 @@
     "test:pr": "nx affected --targets=test:lint,test:types,test:build --exclude=examples/**",
     "build": "nx affected --target=build --exclude=examples/**",
     "build:all": "nx run-many --target=build --exclude=examples/**",
-    "watch": "nx watch --all -- pnpm run build",
+    "watch": "pnpm run build && nx watch --all -- pnpm run build",
     "format": "prettier . --write",
     "dev": "pnpm run watch"
   },
