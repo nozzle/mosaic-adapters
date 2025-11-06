@@ -117,6 +117,11 @@ function AthletesTable() {
     table: tableName,
     coordinator: vg.coordinator(),
     debugTable: false,
+    onTableStateChange: 'requestUpdate',
+    filterBy: $query,
+    // selections: {
+    //   $query,
+    // },
   });
   const table = useReactTable(tableOptions);
 
