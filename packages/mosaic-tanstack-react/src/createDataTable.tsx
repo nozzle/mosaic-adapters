@@ -282,29 +282,10 @@ function TableUI<TData extends object>({ table, data, isDataLoaded, containerRef
 }
 
 export interface CreatedTableProps {
-    /** The primary Mosaic Selection used to filter the data displayed in this table. */
     filterBy: Selection;
-    /** 
-     * An output selection that is updated with a predicate representing this
-     * table's own internal filters (column search, global search). This allows
-     * the table's internal state to participate in the global Mosaic filter graph.
-     */
     internalFilterAs?: Selection;
-    /** 
-     * An output selection that is updated with a predicate representing the
-     * set of currently selected rows (via checkboxes).
-     */
     rowSelectionAs?: Selection;
-    /**
-     * An output selection updated with the "raw" predicate of the hovered row.
-     * See the design pattern documentation in `DataTableOptions` for detailed
-     * guidance on using this in combination with a composite selection for highlighting.
-     */
     hoverAs?: Selection;
-    /**
-     * An output selection updated with the "raw" predicate of the clicked row.
-     * Follows the same design pattern as `hoverAs`.
-     */
     clickAs?: Selection;
 }
 
@@ -316,27 +297,29 @@ export function createDataTable<TData extends object>(
   return function CreatedTableComponent(props: CreatedTableProps) {
     const { filterBy, internalFilterAs, rowSelectionAs, hoverAs, clickAs } = props;
 
-    const [logicController] = useState(() => {
-      class SpecificDataTable extends DataTable<TData> {
-        getBaseQuery(filters: { where?: any, having?: any }): Query {
-          return logicConfig.getBaseQuery(filters);
-        }
-      }
+    const logicControllerRef = useRef<DataTable<TData> | null>(null);
 
-      const dtOptions: DataTableOptions<TData> = {
-        initialState: logicConfig.options?.initialState,
-        logic: logicConfig,
-        ui: uiConfig,
-        filterBy: filterBy,
-        internalFilter: internalFilterAs,
-        rowSelectionAs: rowSelectionAs,
-        hoverAs: hoverAs,
-        clickAs: clickAs,
-      };
-      
-      const controller = new SpecificDataTable(dtOptions);
-      return controller;
-    });
+    if (logicControllerRef.current === null) {
+        class SpecificDataTable extends DataTable<TData> {
+            getBaseQuery(filters: { where?: any, having?: any }): Query {
+                return logicConfig.getBaseQuery(filters);
+            }
+        }
+
+        const dtOptions: DataTableOptions<TData> = {
+            initialState: logicConfig.options?.initialState,
+            logic: logicConfig,
+            ui: uiConfig,
+            filterBy: filterBy,
+            internalFilter: internalFilterAs,
+            rowSelectionAs: rowSelectionAs,
+            hoverAs: hoverAs,
+            clickAs: clickAs,
+        };
+        
+        logicControllerRef.current = new SpecificDataTable(dtOptions);
+    }
+    const logicController = logicControllerRef.current;
     
     const { table, data, isDataLoaded, isFetching, error, isLookupPending } = useSyncExternalStore(
       logicController.subscribe,

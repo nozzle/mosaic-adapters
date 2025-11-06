@@ -9,8 +9,13 @@ import { eq, literal, and, type SQLAst } from '@uwdata/mosaic-sql';
  */
 export class Logger {
     constructor(private prefix: string) {}
+
+    private enabled = true;
+
     log(...args: any[]) {
-        console.log(`[${this.prefix} - ${new Date().toLocaleTimeString()}]`, ...args);
+        if (this.enabled) {
+            console.log(`[${this.prefix} - ${new Date().toLocaleTimeString()}]`, ...args);
+        }
     }
     warn(...args: any[]) {
         console.warn(`[${this.prefix} - ${new Date().toLocaleTimeString()}]`, ...args);

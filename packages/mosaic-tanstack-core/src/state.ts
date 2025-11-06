@@ -1,7 +1,7 @@
 // packages/mosaic-tanstack-core/src/state.ts
-// This file encapsulates all logic for managing and responding to state changes.
-// It has been updated to reset the new `isPrefetching` flag whenever a major
-// state change occurs (sort, filter, page change) that invalidates cached data.
+// This file encapsulates all logic for managing and responding to state changes
+// from the Tanstack Table instance. It translates UI state into Mosaic
+// selections and triggers data refreshes.
 import { type Updater, type TableState } from '@tanstack/table-core';
 import { literal, and, sql, or, not, eq, type SQLAst } from '@uwdata/mosaic-sql';
 import { createPredicateFromRowId } from './util';
@@ -168,34 +168,29 @@ export function handleStateUpdate<T extends object>(instance: DataTable<T>, upda
     }
 
     instance.state = newState;
-    instance.table.setOptions(prev => ({ ...prev, state: instance.state, data: instance.data }));
-    instance.notifyListeners(); 
 
     if (filterChanged || sortChanged || pageChanged) {
-        instance.logger.log('STATE: Resetting data due to filter, sort, or page change.');
+        instance.logger.log('STATE: Resetting data due to internal filter, sort, or page change.');
+        
         instance.data = [];
         instance.offset = newState.pagination.pageIndex * newState.pagination.pageSize;
         instance.isDataLoaded = false;
         instance.isPrefetching = false;
-        
-        if (!instance.initialFetchDispatched || filterChanged || sortChanged || pageChanged) {
-          instance.initialFetchDispatched = true;
-          const externalFilter = instance.filterBy?.predicate(instance);
+        instance.initialFetchDispatched = true;
 
-          const dataQuery = instance.query(externalFilter, { type: QueryType.DATA });
-          if (dataQuery) {
+        instance.table.setOptions(prev => ({ ...prev, data: [], state: instance.state }));
+        instance.notifyListeners();
+
+        const dataQuery = instance.query(instance.filterBy?.predicate(instance), { type: QueryType.DATA });
+        if (dataQuery) {
             instance.pendingQueryOffset = instance.offset;
             instance.requestQuery(dataQuery);
-          }
-
-          if (filterChanged || sortChanged) {
-              instance.totalRows = -1;
-              const countQuery = instance.query(externalFilter, { type: QueryType.TOTAL_COUNT });
-              if (countQuery) instance.requestQuery(countQuery);
-          }
         }
     }
     
+    instance.table.setOptions(prev => ({ ...prev, state: instance.state }));
+    instance.notifyListeners(); 
+
     if (filterChanged) {
         handleInternalFilterChange(instance);
     }

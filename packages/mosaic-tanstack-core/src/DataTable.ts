@@ -1,14 +1,15 @@
 // packages/mosaic-tanstack-core/src/DataTable.ts
-// This file defines the core, framework-agnostic DataTable class.
-// It has been updated to include a new `isPrefetching` state property, which is
-// essential for managing the new proactive prefetching logic to prevent redundant requests.
-import { MosaicClient, Selection } from '@uwdata/mosaic-core';
+// This file defines the core, framework-agnostic DataTable class, which serves
+// as the bridge between the Mosaic data client architecture and the Tanstack Table
+// UI state management engine. It extends MosaicClient and manages the lifecycle,
+// state synchronization, and data fetching logic.
+import { MosaicClient, Selection, type FilterExpr } from '@uwdata/mosaic-core';
 import { Query, literal } from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
 import { createTable, getCoreRowModel, getSortedRowModel, getFilteredRowModel, getPaginationRowModel, getGroupedRowModel, type Table } from '@tanstack/table-core';
 import { Logger, createPredicateFromRowId } from './util';
 import { handleStateUpdate, generateFilterPredicates } from './state';
-import { fields, fieldInfo, query, queryResult } from './mosaic';
+import { query, queryResult } from './mosaic';
 import {
     type DataTableOptions, type MosaicColumnDef, type TableState, type InteractionConfig,
     type DataTableSnapshot, type LoadingState, QueryType
@@ -46,6 +47,7 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
   public initialFetchDispatched = false;
   public pendingQueryOffset: number | null = null;
   public isPrefetching = false;
+  public _lastExternalFilter?: string;
 
   private _options: Omit<any, 'data' | 'columns' | 'state' | 'onStateChange' | 'renderFallbackValue'>;
   private _listeners = new Set<() => void>();
@@ -61,7 +63,6 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     this._options = logic.options || {};
     this.sourceName = logic.name || this.constructor.name;
     this.logger = new Logger(this.sourceName);
-    this.logger.log('CONSTRUCTOR: Initializing with options:', options);
 
     this.sourceTable = logic.sourceTable;
     this.filterBy = filterBy;
@@ -118,7 +119,6 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
         table: this.table, data: this.data, totalRows: 0,
         isDataLoaded: this.isDataLoaded, isFetching: true, isLookupPending: false, error: this.error,
     };
-    this.logger.log('CONSTRUCTOR: Initialization complete.');
   }
 
   private _createTable(): Table<TData> {
@@ -290,10 +290,41 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
 
   public abstract getBaseQuery(filters: { where?: any, having?: any }): Query;
   
-  public fields = () => fields(this);
-  public fieldInfo = (info: any) => fieldInfo(this, info);
-  public query = (filter?: any, options?: any) => query(this, filter, options);
-  public queryResult = (data: any, query?: any) => queryResult(this, data, query);
+  fields() { return null; }
+  fieldInfo() {}
+
+  filter(filter: FilterExpr): void {
+    const currentFilterString = filter ? String(filter) : '[]';
+    const lastFilterString = this._lastExternalFilter ?? '[]';
+
+    if (currentFilterString !== lastFilterString) {
+        this.logger.log(`MOSAIC EVENT: External filter changed. Requesting throttled update.`);
+        this._lastExternalFilter = currentFilterString;
+
+        this.data = [];
+        this.offset = 0;
+        this.isDataLoaded = false;
+        this.isPrefetching = false;
+        this.initialFetchDispatched = true;
+
+        if (this.state.pagination.pageIndex !== 0) {
+            const newState = {
+                ...this.state,
+                pagination: { ...this.state.pagination, pageIndex: 0 },
+            };
+            this.state = newState;
+            this.table.setOptions(prev => ({ ...prev, state: this.state }));
+        }
+        
+        this.requestUpdate();
+    }
+  }
+
+  query(filter?: FilterExpr, options?: any): Query | null {
+    return query(this, filter, options);
+  }
+
+  queryResult = (data: any, query?: any) => queryResult(this, data, query);
   
   public queryPending = () => {
     this.logger.log('MOSAIC: `queryPending()` called. Setting state to fetching.');
@@ -311,7 +342,6 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     return this;
   }
   
-  // Method needed by mosaic module, but not part of public API
   public _generateFilterPredicates = (state: TableState) => generateFilterPredicates(this);
 
   get filterStable(): boolean { return false; }
