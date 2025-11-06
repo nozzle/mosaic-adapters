@@ -35,8 +35,8 @@
   },
   "devDependencies": {
     "@eslint-react/eslint-plugin": "catalog:",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
     "rimraf": "catalog:",

@@ -21,16 +21,16 @@
     "d3": "^7.9.0",
     "d3-scale": "^4.0.2",
     "d3-shape": "^3.2.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",
-    "@types/react": "^18.3.26",
-    "@types/react-dom": "^18.3.7",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:",
-    "vite": "^7.1.12"
+    "vite": "^7.2.0"
   }
 }
