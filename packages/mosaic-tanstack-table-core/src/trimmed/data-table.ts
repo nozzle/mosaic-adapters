@@ -8,7 +8,12 @@ import { getCoreRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import { functionalUpdate } from './utils';
 
-import type { Coordinator, FieldInfo, Selection } from '@uwdata/mosaic-core';
+import type {
+  Coordinator,
+  FieldInfo,
+  Param,
+  Selection,
+} from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ColumnDef, TableOptions, TableState } from '@tanstack/table-core';
 
@@ -21,6 +26,9 @@ export interface MosaicDataTableOptions {
   coordinator: Coordinator;
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
   filterBy?: Selection | undefined;
+  selections?: Record<string, Selection>;
+  params?: Record<string, Param<unknown>>;
+  //
   debugTable?: DebugTableOptions;
 }
 
@@ -48,6 +56,8 @@ export class MosaicDataTable extends MosaicClient {
 
   schema: Array<FieldInfo> = [];
 
+  #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
+
   #store: Store<MosaicDataTableStore>;
   #debugTable: DebugTableOptions = false;
 
@@ -63,7 +73,6 @@ export class MosaicDataTable extends MosaicClient {
     this.#onTableStateChange = options.onTableStateChange ?? 'requestUpdate';
 
     this.from = options.table;
-    this.requestType = options.requestType ?? 'requestUpdate';
 
     this.#store = new Store({
       tableState: seedInitialTableState(),
@@ -77,14 +86,22 @@ export class MosaicDataTable extends MosaicClient {
     const pagination = this.#store.state.tableState.pagination;
     const offset = pagination.pageIndex * pagination.pageSize;
 
-    const result = mSql.Query.from(this.from)
-      .select(['*'], {
-        total_rows: mSql.count().window(),
-      })
-      .limit(pagination.pageSize)
-      .offset(offset);
+    // Initialize the base query
+    // TODO: Figure out why selecting total_rows with window() causes issues here
+    const statement = mSql.Query.from(this.from).select(['*']);
+    // const statement = mSql.Query.from(this.from).select(['*'], {
+    //   total_rows: mSql.count().window(),
+    // });
 
-    return result;
+    // Conditionally add filter
+    if (filter) {
+      statement.where(filter);
+    }
+
+    // Add pagination at the end
+    statement.limit(pagination.pageSize).offset(offset);
+
+    return statement;
   }
 
   override queryPending(): this {
