@@ -6,7 +6,7 @@ import { Query, and, eq, literal, sql } from '@uwdata/mosaic-sql';
 import type {
   DataTableLogicConfig,
   TripSummary,
-} from '@nozzle/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core';
 
 export const tripsLogicConfig: DataTableLogicConfig<TripSummary> = {
   name: 'TripsSummaryTable',

@@ -5,7 +5,7 @@ import { Query } from '@uwdata/mosaic-sql';
 import type {
   DataTableLogicConfig,
   VendorSummary,
-} from '@nozzle/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core';
 
 export const vendorStatsLogicConfig: DataTableLogicConfig<VendorSummary> = {
   name: 'VendorStatsTable',

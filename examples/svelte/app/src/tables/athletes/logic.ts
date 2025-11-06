@@ -5,7 +5,7 @@ import { Query, desc, eq, literal } from '@uwdata/mosaic-sql';
 import type {
   Athlete,
   DataTableLogicConfig,
-} from '@nozzle/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core';
 
 export const athletesLogicConfig: DataTableLogicConfig<Athlete> = {
   name: 'AthletesTable',

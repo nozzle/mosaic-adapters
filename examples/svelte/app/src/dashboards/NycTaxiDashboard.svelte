@@ -6,7 +6,7 @@
   import {
     useMosaicSelection,
     DataTable,
-  } from '@nozzle/mosaic-tanstack-svelte-table';
+  } from '@nozzleio/mosaic-tanstack-svelte-table';
   import { vgplot } from '../utils/vgplot';
   import {
     tripsLogicConfig,

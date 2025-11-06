@@ -1,11 +1,11 @@
 // apps/react-app/src/App.tsx
 
 import React, { useState } from 'react';
-import { MosaicProvider } from '@nozzle/mosaic-tanstack-react-table';
+import { MosaicProvider } from '@nozzleio/mosaic-tanstack-react-table';
 import { AthletesDashboard } from './dashboards/AthletesDashboard';
 import { NycTaxiDashboard } from './dashboards/NycTaxiDashboard';
 import { FlightsDashboard } from './dashboards/FlightsDashboard';
-import type { SelectionConfig } from '@nozzle/mosaic-tanstack-react-table';
+import type { SelectionConfig } from '@nozzleio/mosaic-tanstack-react-table';
 
 // --- ATHLETES DASHBOARD INTERACTION GRAPH ---
 // Defines the complete set of reactive variables (Selections) for this dashboard.

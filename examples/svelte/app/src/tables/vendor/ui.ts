@@ -5,7 +5,7 @@ import Sparkline from '../../ui/Sparkline.svelte';
 import type {
   DataTableUIConfig,
   VendorSummary,
-} from '@nozzle/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core';
 
 const formatCurrency = new Intl.NumberFormat('en-US', {
   style: 'currency',

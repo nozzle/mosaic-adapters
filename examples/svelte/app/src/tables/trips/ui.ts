@@ -4,7 +4,7 @@ import Filter from '../../ui/Filter.svelte';
 import type {
   DataTableUIConfig,
   TripSummary,
-} from '@nozzle/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core';
 
 const formatCurrency = new Intl.NumberFormat('en-US', {
   style: 'currency',
