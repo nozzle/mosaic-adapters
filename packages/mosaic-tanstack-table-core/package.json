@@ -1,5 +1,5 @@
 {
-  "name": "@nozzle/mosaic-tanstack-table-core",
+  "name": "@nozzleio/mosaic-tanstack-table-core",
   "version": "0.0.1",
   "type": "module",
   "main": "dist/esm/index.js",

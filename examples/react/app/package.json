@@ -10,8 +10,8 @@
     "build": "pnpm run typecheck && vite build"
   },
   "dependencies": {
-    "@nozzle/mosaic-tanstack-react-table": "workspace:*",
-    "@nozzle/mosaic-tanstack-table-core": "workspace:*",
+    "@nozzleio/mosaic-tanstack-react-table": "workspace:*",
+    "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@tanstack/react-table": "^8.17.3",
     "@tanstack/react-virtual": "^3.5.0",
     "@uwdata/mosaic-core": "catalog:",

@@ -47,7 +47,7 @@ catalogs:
       version: 3.4.0
     rimraf:
       specifier: ^6.1.0
-      version: 6.0.1
+      version: 6.1.0
     svelte-check:
       specifier: ^3.8.6
       version: 3.8.6
@@ -88,7 +88,7 @@ importers:
         version: 3.4.0(prettier@3.6.2)(svelte@4.2.20)
       rimraf:
         specifier: 'catalog:'
-        version: 6.0.1
+        version: 6.1.0
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -101,10 +101,10 @@ importers:
 
   examples/react/app:
     dependencies:
-      '@nozzle/mosaic-tanstack-react-table':
+      '@nozzleio/mosaic-tanstack-react-table':
         specifier: workspace:*
         version: link:../../../packages/mosaic-tanstack-react-table
-      '@nozzle/mosaic-tanstack-table-core':
+      '@nozzleio/mosaic-tanstack-table-core':
         specifier: workspace:*
         version: link:../../../packages/mosaic-tanstack-table-core
       '@tanstack/react-table':
@@ -152,14 +152,14 @@ importers:
         version: 5.1.0(vite@7.1.12(@types/node@24.9.2)(yaml@2.8.1))
       rimraf:
         specifier: 'catalog:'
-        version: 6.0.1
+        version: 6.1.0
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
 
   examples/react/trimmed:
     dependencies:
-      '@nozzle/mosaic-tanstack-table-core':
+      '@nozzleio/mosaic-tanstack-table-core':
         specifier: workspace:*
         version: link:../../../packages/mosaic-tanstack-table-core
       '@tanstack/react-store':
@@ -213,7 +213,7 @@ importers:
         version: 5.1.0(vite@7.1.12(@types/node@24.9.2)(yaml@2.8.1))
       rimraf:
         specifier: 'catalog:'
-        version: 6.0.1
+        version: 6.1.0
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -223,10 +223,10 @@ importers:
 
   examples/svelte/app:
     dependencies:
-      '@nozzle/mosaic-tanstack-svelte-table':
+      '@nozzleio/mosaic-tanstack-svelte-table':
         specifier: workspace:*
         version: link:../../../packages/mosaic-tanstack-svelte-table
-      '@nozzle/mosaic-tanstack-table-core':
+      '@nozzleio/mosaic-tanstack-table-core':
         specifier: workspace:*
         version: link:../../../packages/mosaic-tanstack-table-core
       '@tanstack/svelte-table':
@@ -265,7 +265,7 @@ importers:
         version: 7.4.3
       rimraf:
         specifier: 'catalog:'
-        version: 6.0.1
+        version: 6.1.0
       svelte-preprocess:
         specifier: ^6.0.3
         version: 6.0.3(@babel/core@7.28.5)(postcss-load-config@3.1.4(postcss@8.5.6))(postcss@8.5.6)(svelte@4.2.20)(typescript@5.9.3)
@@ -275,7 +275,7 @@ importers:
 
   packages/mosaic-tanstack-react-table:
     dependencies:
-      '@nozzle/mosaic-tanstack-table-core':
+      '@nozzleio/mosaic-tanstack-table-core':
         specifier: workspace:*
         version: link:../mosaic-tanstack-table-core
       '@tanstack/react-table':
@@ -320,14 +320,14 @@ importers:
         version: 7.0.1(eslint@9.39.0)
       rimraf:
         specifier: 'catalog:'
-        version: 6.0.1
+        version: 6.1.0
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
 
   packages/mosaic-tanstack-svelte-table:
     dependencies:
-      '@nozzle/mosaic-tanstack-table-core':
+      '@nozzleio/mosaic-tanstack-table-core':
         specifier: workspace:*
         version: link:../mosaic-tanstack-table-core
       '@tanstack/svelte-table':
@@ -363,7 +363,7 @@ importers:
         version: 3.13.0(eslint@9.39.0)(svelte@4.2.20)
       rimraf:
         specifier: 'catalog:'
-        version: 6.0.1
+        version: 6.1.0
       svelte-check:
         specifier: 'catalog:'
         version: 3.8.6(@babel/core@7.28.5)(postcss-load-config@3.1.4(postcss@8.5.6))(postcss@8.5.6)(svelte@4.2.20)
@@ -397,7 +397,7 @@ importers:
     devDependencies:
       rimraf:
         specifier: 'catalog:'
-        version: 6.0.1
+        version: 6.1.0
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -2939,8 +2939,8 @@ packages:
     deprecated: Rimraf versions prior to v4 are no longer supported
     hasBin: true
 
-  rimraf@6.0.1:
-    resolution: {integrity: sha512-9dkvaxAsk/xNXSJzMgFqqMCuFgt2+KsOFek3TMLfo8NCPfWpBmqwyNn5Y+NX56QUYfCtsyhF3ayiboEoUmJk/A==}
+  rimraf@6.1.0:
+    resolution: {integrity: sha512-DxdlA1bdNzkZK7JiNWH+BAx1x4tEJWoTofIopFo6qWUU94jYrFZ0ubY05TqH3nWPJ1nKa1JWVFDINZ3fnrle/A==}
     engines: {node: 20 || >=22}
     hasBin: true
 
@@ -6209,7 +6209,7 @@ snapshots:
     dependencies:
       glob: 7.2.3
 
-  rimraf@6.0.1:
+  rimraf@6.1.0:
     dependencies:
       glob: 11.0.3
       package-json-from-dist: 1.0.1
