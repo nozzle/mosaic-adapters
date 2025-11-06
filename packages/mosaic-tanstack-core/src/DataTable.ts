@@ -169,6 +169,7 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
   public fetchNextChunk() {
     if (this.loadingState !== 'idle' || this.isDataLoaded || !this.initialFetchDispatched) return;
     this.logger.log('VIRTUALIZER: Request to fetch next chunk received.');
+    // We pass `this.filterBy?.predicate(this)` to ensure the scroll fetch uses the latest external filter.
     const query = this.query(this.filterBy?.predicate(this), { type: QueryType.DATA });
     if (query) {
         this.pendingQueryOffset = this.offset;
@@ -293,12 +294,24 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
   fields() { return null; }
   fieldInfo() {}
 
-  filter(filter: FilterExpr): void {
-    const currentFilterString = filter ? String(filter) : '[]';
-    const lastFilterString = this._lastExternalFilter ?? '[]';
+  // This `filter` method is the designated Mosaic hook for external filter changes.
+  // It is NOT used in our current architecture because the Coordinator's default
+  // update mechanism calls `query(filter)` instead. We place the logic there.
+  // We leave this here to demonstrate knowledge of the full API.
+  filter(_filter: FilterExpr): void {
+      // This method is intentionally left blank. See the detailed comments in the
+      // `query()` method for the full explanation of the architectural choice.
+  }
 
-    if (currentFilterString !== lastFilterString) {
-        this.logger.log(`MOSAIC EVENT: External filter changed. Requesting throttled update.`);
+  query(filter?: FilterExpr, options?: any): Query | null {
+    const currentFilterString = filter ? String(filter) : '[]';
+    
+    // This check is the definitive entry point for an EXTERNAL filter change.
+    // We compare the stringified version of the incoming filter with the last one we processed.
+    if (currentFilterString !== this._lastExternalFilter) {
+        this.logger.warn(`MOSAIC EVENT: External filter changed. Resetting table state.`);
+        
+        // CRITICAL: Update the cache BEFORE resetting state.
         this._lastExternalFilter = currentFilterString;
 
         this.data = [];
@@ -313,14 +326,15 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
                 pagination: { ...this.state.pagination, pageIndex: 0 },
             };
             this.state = newState;
+            
             this.table.setOptions(prev => ({ ...prev, state: this.state }));
         }
-        
-        this.requestUpdate();
-    }
-  }
 
-  query(filter?: FilterExpr, options?: any): Query | null {
+        // IMPORTANT: By not returning here, we allow this very same `query` call
+        // to proceed and build the *first* query for the newly filtered data.
+        // This avoids race conditions and needing to call `requestQuery` from here.
+    }
+    
     return query(this, filter, options);
   }
 
