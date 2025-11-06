@@ -101,6 +101,7 @@ export class MosaicDataTable extends MosaicClient {
       if ('columns' in dataColumns) {
         const record = dataColumns.columns;
 
+        // TODO: Make this better/simpler. Consider using https://github.com/uwdata/flechette
         const columns = Object.entries(record).reduce(
           (acc, [key, value]) => {
             if (key === 'total_rows') {
