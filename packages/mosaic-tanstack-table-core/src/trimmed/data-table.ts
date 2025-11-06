@@ -19,6 +19,7 @@ type DebugTableOptions =
 export interface MosaicDataTableOptions {
   table: string;
   coordinator: Coordinator;
+  requestType?: 'requestQuery' | 'requestUpdate';
   filterBy?: Selection | undefined;
   debugTable?: DebugTableOptions;
 }
@@ -60,6 +61,8 @@ export class MosaicDataTable extends MosaicClient {
 
     this.#debugTable = options.debugTable ?? false;
     this.from = options.table;
+    this.requestType = options.requestType ?? 'requestUpdate';
+
     this.#store = new Store({
       tableState: seedInitialTableState(),
       rows: [] as MosaicDataTableStore['rows'],
@@ -215,7 +218,7 @@ export class MosaicDataTable extends MosaicClient {
         // Compare the new hashed table state to the old one to determine if we need to request a new query
         const hashedNewState = JSON.stringify(tableState);
         if (hashedOldState !== hashedNewState) {
-          this.requestQuery();
+          this[this.requestType]();
         }
       },
       manualPagination: true,
