@@ -65,6 +65,8 @@ export class MosaicDataTable extends MosaicClient {
     super(options.filterBy); // pass appropriate filterSelection if needed
     this.coordinator = options.coordinator;
 
+    // TODO: Reset pagination on Selection change
+
     if (!options.table) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
