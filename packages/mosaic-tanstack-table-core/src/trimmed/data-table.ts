@@ -15,7 +15,6 @@ import type {
   FieldInfoRequest,
   Param,
   Selection,
-  SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
@@ -46,6 +45,7 @@ export interface MosaicDataTableOptions {
 }
 
 export type MosaicDataTableStore = {
+  columns: Array<MosaicDataTableColumnDef>;
   tableState: TableState;
   arrowColumnSchema: Array<FieldInfo>;
   rows: Array<Record<string, any>>;
@@ -65,7 +65,6 @@ export function createMosaicDataTableClient(options: MosaicDataTableOptions) {
 
 export class MosaicDataTable extends MosaicClient {
   from: Param<string> | string;
-  columns: Array<MosaicDataTableColumnDef> = [];
 
   schema: Array<FieldInfo> = [];
 
@@ -80,36 +79,34 @@ export class MosaicDataTable extends MosaicClient {
 
     this.from = options.table;
 
+    // TODO: Figure out the pagination reset when Selection changes.
+
     if (!this.sourceTable()) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
 
-    this.#debugTable = options.debugTable ?? false;
-    this.#onTableStateChange = options.onTableStateChange ?? 'requestUpdate';
-    this.columns = options.columns ?? [];
     this.#store = new Store({
       tableState: seedInitialTableState(),
       rows: [] as MosaicDataTableStore['rows'],
       arrowColumnSchema: [] as MosaicDataTableStore['arrowColumnSchema'],
       totalRows: undefined as MosaicDataTableStore['totalRows'],
+      columns: options.columns ?? ([] as MosaicDataTableStore['columns']),
     });
 
-    const callback = (_value: Array<SelectionClause>) => {
-      // Reset page index on filter change
-      const tableState = this.#store.state.tableState;
-      this.#store.setState((prev) => ({
-        ...prev,
-        tableState: {
-          ...tableState,
-          pagination: {
-            ...tableState.pagination,
-            pageIndex: 0,
-          },
-        },
-      }));
-    };
+    this.updateOptions(options);
+  }
 
-    options.filterBy?.addEventListener('value', callback);
+  updateOptions(options: MosaicDataTableOptions): void {
+    this.#store.setState((prev) => ({
+      ...prev,
+      columns: options.columns ?? prev.columns,
+    }));
+
+    if (options.onTableStateChange) {
+      this.#onTableStateChange = options.onTableStateChange;
+    }
+
+    this.#debugTable = options.debugTable ?? this.#debugTable;
   }
 
   override query(filter?: FilterExpr | null | undefined): SelectQuery {
@@ -246,8 +243,9 @@ export class MosaicDataTable extends MosaicClient {
    */
   fields(): Array<FieldInfoRequest> {
     const table = this.sourceTable();
+    const columns = this.#store.state.columns;
 
-    if (this.columns.length === 0) {
+    if (columns.length === 0) {
       return [
         {
           table,
@@ -256,7 +254,7 @@ export class MosaicDataTable extends MosaicClient {
       ];
     }
 
-    return this.columns.map((column) => {
+    return columns.map((column) => {
       return {
         table,
         column: column.accessorKey,
@@ -271,7 +269,7 @@ export class MosaicDataTable extends MosaicClient {
     state: Store<MosaicDataTableStore>['state'],
   ): TableOptions<unknown> {
     const columns =
-      this.columns.length === 0
+      state.columns.length === 0
         ? // No ColDefs were provided, so we default to all columns
           state.arrowColumnSchema.map((field) => {
             return {
@@ -279,7 +277,7 @@ export class MosaicDataTable extends MosaicClient {
               header: field.column,
             } satisfies ColumnDef<unknown, unknown>;
           })
-        : this.columns.map(({ foo: _foo, ...column }) => {
+        : state.columns.map(({ foo: _foo, ...column }) => {
             return column satisfies ColumnDef<unknown, unknown>;
           });
 
