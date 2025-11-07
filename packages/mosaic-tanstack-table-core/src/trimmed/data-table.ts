@@ -12,23 +12,34 @@ import { functionalUpdate } from './utils';
 import type {
   Coordinator,
   FieldInfo,
+  FieldInfoRequest,
   Param,
   Selection,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
-import type { ColumnDef, TableOptions, TableState } from '@tanstack/table-core';
+import type {
+  AccessorKeyColumnDef,
+  ColumnDef,
+  RowData,
+  TableOptions,
+  TableState,
+} from '@tanstack/table-core';
 
-type DebugTableOptions =
+export type DebugTableOptions =
   | boolean
   | Array<'cells' | 'columns' | 'headers' | 'rows' | 'table'>;
+
+export type MosaicDataTableColumnDef<
+  TData = RowData,
+  TValue = any,
+> = AccessorKeyColumnDef<TData, TValue> & { foo?: string };
 
 export interface MosaicDataTableOptions {
   table: Param<string> | string;
   coordinator: Coordinator;
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
   filterBy?: Selection | undefined;
-  selections?: Record<string, Selection>;
-  params?: Record<string, Param<unknown>>;
+  columns?: Array<MosaicDataTableColumnDef>;
   //
   debugTable?: DebugTableOptions;
 }
@@ -53,7 +64,7 @@ export function createMosaicDataTableClient(options: MosaicDataTableOptions) {
 
 export class MosaicDataTable extends MosaicClient {
   from: Param<string> | string;
-  columns = ['*'];
+  columns: Array<MosaicDataTableColumnDef> = [];
 
   schema: Array<FieldInfo> = [];
 
@@ -66,17 +77,17 @@ export class MosaicDataTable extends MosaicClient {
     super(options.filterBy); // pass appropriate filterSelection if needed
     this.coordinator = options.coordinator;
 
+    this.from = options.table;
+
     // TODO: Reset pagination on Selection change
 
-    if (!options.table) {
+    if (!this.sourceTable()) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
 
     this.#debugTable = options.debugTable ?? false;
     this.#onTableStateChange = options.onTableStateChange ?? 'requestUpdate';
-
-    this.from = options.table;
-
+    this.columns = options.columns ?? [];
     this.#store = new Store({
       tableState: seedInitialTableState(),
       rows: [] as MosaicDataTableStore['rows'],
@@ -90,7 +101,9 @@ export class MosaicDataTable extends MosaicClient {
     const pagination = this.#store.state.tableState.pagination;
 
     // Get the columns to select in SQL-land
-    const selectColumns = ['*'];
+    const selectColumns = this.fields().map((d) =>
+      typeof d.column !== 'string' ? d.column.toString() : d.column,
+    );
 
     // Initialize the main query statement
     // This is where the actual main Columns with Pagination will be applied
@@ -199,12 +212,7 @@ export class MosaicDataTable extends MosaicClient {
   }
 
   override async prepare(): Promise<void> {
-    const table = this.sourceTable();
-    const fields = this.columns.map((column) => ({
-      column,
-      table,
-    }));
-    const schema = await queryFieldInfo(this.coordinator!, fields);
+    const schema = await queryFieldInfo(this.coordinator!, this.fields());
     this.schema = schema;
 
     return Promise.resolve();
@@ -218,17 +226,46 @@ export class MosaicDataTable extends MosaicClient {
   }
 
   /**
+   * Map the React Table columns to the `FieldInfoRequest` format
+   */
+  fields(): Array<FieldInfoRequest> {
+    const table = this.sourceTable();
+
+    if (this.columns.length === 0) {
+      return [
+        {
+          table,
+          column: '*',
+        },
+      ];
+    }
+
+    return this.columns.map((column) => {
+      return {
+        table,
+        column: column.accessorKey,
+      };
+    });
+  }
+
+  /**
    * Get the TanStack Table options to be used with the framework adapters.
    */
   getTableOptions(
     state: Store<MosaicDataTableStore>['state'],
   ): TableOptions<unknown> {
-    const columns = state.arrowColumnSchema.map((field) => {
-      return {
-        accessorKey: field.column,
-        header: field.column,
-      } satisfies ColumnDef<Record<string, any>>;
-    });
+    const columns =
+      this.columns.length === 0
+        ? // No ColDefs were provided, so we default to all columns
+          state.arrowColumnSchema.map((field) => {
+            return {
+              accessorKey: field.column,
+              header: field.column,
+            } satisfies ColumnDef<unknown, unknown>;
+          })
+        : this.columns.map(({ foo: _foo, ...column }) => {
+            return column satisfies ColumnDef<unknown, unknown>;
+          });
 
     return {
       data: state.rows,

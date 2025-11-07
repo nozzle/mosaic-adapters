@@ -115,18 +115,55 @@ function AthletesTable() {
   // selections: {
   //   $query: vg.Selection.intersect(),
   // },
-  // TODO: Start getting the ColumnDefs<unknown> working...
   const { tableOptions } = useMosaicReactTable({
     table: tableName,
     coordinator: vg.coordinator(),
     debugTable: false,
     onTableStateChange: 'requestUpdate',
     filterBy: $query,
-    // selections: {
-    //   $query,
-    // },
+    columns: [
+      { accessorKey: 'id', header: 'ID' },
+      { accessorKey: 'name', header: 'Name' },
+      { accessorKey: 'nationality', header: 'Nationality' },
+      { accessorKey: 'sex', header: 'Gender' },
+      {
+        accessorKey: 'date_of_birth',
+        header: 'DOB',
+        cell: (props) => {
+          const value = props.getValue();
+          if (value instanceof Date) {
+            return dateFormatter.format(value);
+          }
+          return value;
+        },
+      },
+      {
+        accessorKey: 'height',
+        header: 'Height',
+        cell: (props) => {
+          const value = props.getValue();
+          if (value) {
+            return `${value}m`;
+          }
+          return value;
+        },
+      },
+      { accessorKey: 'weight', header: 'Weight' },
+      { accessorKey: 'sport', header: 'Sport' },
+      { accessorKey: 'gold', header: 'Gold(s)' },
+      { accessorKey: 'silver', header: 'Silver(s)' },
+      { accessorKey: 'bronze', header: 'Bronze(s)' },
+      { accessorKey: 'info', header: 'Info' },
+    ],
   });
+
   const table = useReactTable(tableOptions);
 
   return <RenderTable table={table} />;
 }
+
+const dateFormatter = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: '2-digit',
+});
