@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
-
 import { useMosaicReactTable } from './useMosiacReactTable';
-
 import { RenderTable } from './components/render-table';
+import type { ColumnDef } from '@tanstack/react-table';
 
 function App() {
   return (
@@ -115,46 +114,51 @@ function AthletesTable() {
   // selections: {
   //   $query: vg.Selection.intersect(),
   // },
+  const columns = useMemo(
+    () =>
+      [
+        { accessorKey: 'id', header: 'ID' },
+        { accessorKey: 'name', header: 'Name' },
+        { accessorKey: 'nationality', header: 'Nationality' },
+        { accessorKey: 'sex', header: 'Gender' },
+        {
+          accessorKey: 'date_of_birth',
+          header: 'DOB',
+          cell: (props) => {
+            const value = props.getValue();
+            if (value instanceof Date) {
+              return dateFormatter.format(value);
+            }
+            return value;
+          },
+        },
+        {
+          accessorKey: 'height',
+          header: 'Height',
+          cell: (props) => {
+            const value = props.getValue();
+            if (value) {
+              return `${value}m`;
+            }
+            return value;
+          },
+        },
+        { accessorKey: 'weight', header: 'Weight' },
+        { accessorKey: 'sport', header: 'Sport' },
+        { accessorKey: 'gold', header: 'Gold(s)' },
+        { accessorKey: 'silver', header: 'Silver(s)' },
+        { accessorKey: 'bronze', header: 'Bronze(s)' },
+        { accessorKey: 'info', header: 'Info' },
+      ] satisfies Array<ColumnDef<any, any>>,
+    [],
+  );
   const { tableOptions } = useMosaicReactTable({
     table: tableName,
     coordinator: vg.coordinator(),
     debugTable: false,
     onTableStateChange: 'requestUpdate',
     filterBy: $query,
-    columns: [
-      { accessorKey: 'id', header: 'ID' },
-      { accessorKey: 'name', header: 'Name' },
-      { accessorKey: 'nationality', header: 'Nationality' },
-      { accessorKey: 'sex', header: 'Gender' },
-      {
-        accessorKey: 'date_of_birth',
-        header: 'DOB',
-        cell: (props) => {
-          const value = props.getValue();
-          if (value instanceof Date) {
-            return dateFormatter.format(value);
-          }
-          return value;
-        },
-      },
-      {
-        accessorKey: 'height',
-        header: 'Height',
-        cell: (props) => {
-          const value = props.getValue();
-          if (value) {
-            return `${value}m`;
-          }
-          return value;
-        },
-      },
-      { accessorKey: 'weight', header: 'Weight' },
-      { accessorKey: 'sport', header: 'Sport' },
-      { accessorKey: 'gold', header: 'Gold(s)' },
-      { accessorKey: 'silver', header: 'Silver(s)' },
-      { accessorKey: 'bronze', header: 'Bronze(s)' },
-      { accessorKey: 'info', header: 'Info' },
-    ],
+    columns,
   });
 
   const table = useReactTable(tableOptions);

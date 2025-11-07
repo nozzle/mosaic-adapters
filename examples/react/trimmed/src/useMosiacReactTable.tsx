@@ -16,5 +16,12 @@ export function useMosaicReactTable<TData = unknown>(
     [store],
   );
 
+  React.useEffect(() => {
+    client.current.updateOptions(options);
+    return () => {
+      //
+    };
+  }, [options]);
+
   return { tableOptions } as const;
 }
