@@ -15,6 +15,7 @@ import type {
   FieldInfoRequest,
   Param,
   Selection,
+  SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
@@ -79,8 +80,6 @@ export class MosaicDataTable extends MosaicClient {
 
     this.from = options.table;
 
-    // TODO: Reset pagination on Selection change
-
     if (!this.sourceTable()) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
@@ -94,6 +93,23 @@ export class MosaicDataTable extends MosaicClient {
       arrowColumnSchema: [] as MosaicDataTableStore['arrowColumnSchema'],
       totalRows: undefined as MosaicDataTableStore['totalRows'],
     });
+
+    const callback = (_value: Array<SelectionClause>) => {
+      // Reset page index on filter change
+      const tableState = this.#store.state.tableState;
+      this.#store.setState((prev) => ({
+        ...prev,
+        tableState: {
+          ...tableState,
+          pagination: {
+            ...tableState.pagination,
+            pageIndex: 0,
+          },
+        },
+      }));
+    };
+
+    options.filterBy?.addEventListener('value', callback);
   }
 
   override query(filter?: FilterExpr | null | undefined): SelectQuery {
