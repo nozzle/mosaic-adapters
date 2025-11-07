@@ -1,5 +1,6 @@
 import {
   MosaicClient,
+  isParam,
   queryFieldInfo,
   toDataColumns,
 } from '@uwdata/mosaic-core';
@@ -22,7 +23,7 @@ type DebugTableOptions =
   | Array<'cells' | 'columns' | 'headers' | 'rows' | 'table'>;
 
 export interface MosaicDataTableOptions {
-  table: string;
+  table: Param<string> | string;
   coordinator: Coordinator;
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
   filterBy?: Selection | undefined;
@@ -51,7 +52,7 @@ export function createMosaicDataTableClient(options: MosaicDataTableOptions) {
 }
 
 export class MosaicDataTable extends MosaicClient {
-  from = '';
+  from: Param<string> | string;
   columns = ['*'];
 
   schema: Array<FieldInfo> = [];
@@ -94,16 +95,19 @@ export class MosaicDataTable extends MosaicClient {
     // Create a separate count statement to get the total rows
     // without pagination applied
     // We'll be calling this as a CTE and referencing it in the main query below named "total_count_table"
-    const countStatement = mSql.Query.from(this.from).select({
+    const countStatement = mSql.Query.from(this.sourceTable()).select({
       total: mSql.count(),
     });
 
     // Initialize the main query statement
     // This is where the actual main Columns with Pagination will be applied
-    const statement = mSql.Query.from(this.from).select(selectColumns, {
-      // Select the column total from the CTE named total_count_table and alias it as total_rows
-      total_rows: mSql.sql`(SELECT total FROM total_count_table)`,
-    });
+    const statement = mSql.Query.from(this.sourceTable()).select(
+      selectColumns,
+      {
+        // Select the column total from the CTE named total_count_table and alias it as total_rows
+        total_rows: mSql.sql`(SELECT total FROM total_count_table)`,
+      },
+    );
 
     // Conditionally add filter
     if (filter) {
@@ -213,7 +217,7 @@ export class MosaicDataTable extends MosaicClient {
   }
 
   override async prepare(): Promise<void> {
-    const table = this.from;
+    const table = this.sourceTable();
     const fields = this.columns.map((column) => ({
       column,
       table,
@@ -222,6 +226,13 @@ export class MosaicDataTable extends MosaicClient {
     this.schema = schema;
 
     return Promise.resolve();
+  }
+
+  /**
+   * Get the source table name.
+   */
+  sourceTable(): string {
+    return (isParam(this.from) ? this.from.value : this.from) as string;
   }
 
   /**
