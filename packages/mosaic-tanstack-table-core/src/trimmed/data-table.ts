@@ -86,46 +86,28 @@ export class MosaicDataTable extends MosaicClient {
   }
 
   override query(filter?: FilterExpr | null | undefined): SelectQuery {
+    const table = this.sourceTable();
     const pagination = this.#store.state.tableState.pagination;
-    const offset = pagination.pageIndex * pagination.pageSize;
 
     // Get the columns to select in SQL-land
     const selectColumns = ['*'];
 
-    // Create a separate count statement to get the total rows
-    // without pagination applied
-    // We'll be calling this as a CTE and referencing it in the main query below named "total_count_table"
-    const countStatement = mSql.Query.from(this.sourceTable()).select({
-      total: mSql.count(),
-    });
-
     // Initialize the main query statement
     // This is where the actual main Columns with Pagination will be applied
-    const statement = mSql.Query.from(this.sourceTable()).select(
-      selectColumns,
-      {
-        // Select the column total from the CTE named total_count_table and alias it as total_rows
-        total_rows: mSql.sql`(SELECT total FROM total_count_table)`,
-      },
-    );
+    const statement = mSql.Query.from(table).select(selectColumns, {
+      total_rows: mSql.sql`COUNT(*) OVER()`,
+    });
 
     // Conditionally add filter
     if (filter) {
+      // TODO: Column filters would be merged here as well
       statement.where(filter);
-      countStatement.where(filter);
     }
 
-    // Attach the total count statement, the output would look something like this:
-    //
-    // WITH "total_count_table" AS (SELECT count(*) AS "total" FROM "athletes")
-    // SELECT *, (SELECT total FROM total_count_table) AS "total_rows"
-    // FROM "athletes"
-    // LIMIT 10
-    // OFFSET 0
-    statement.with({ total_count_table: countStatement });
-
     // Add pagination at the end
-    statement.limit(pagination.pageSize).offset(offset);
+    statement
+      .limit(pagination.pageSize)
+      .offset(pagination.pageIndex * pagination.pageSize);
 
     return statement;
   }
