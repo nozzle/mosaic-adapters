@@ -1,14 +1,15 @@
 import { flexRender } from '@tanstack/react-table';
-import type { RowData, Table } from '@tanstack/react-table';
+import type { ColumnDef, RowData, Table } from '@tanstack/react-table';
 
-export function BareTable<TData extends RowData>(props: {
+export function BareTable<TData extends RowData, TValue>(props: {
   table: Table<TData>;
+  columns: Array<ColumnDef<TData, TValue>>;
 }) {
   const { table } = props;
 
   return (
     <>
-      <table>
+      <table className="table-auto w-full">
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
@@ -150,7 +151,7 @@ export function BareTable<TData extends RowData>(props: {
             padding: '0.25rem',
           }}
         >
-          {[5, 10, 20, 30, 40, 50].map((pageSize) => (
+          {[5, 10, 20, 50, 100].map((pageSize) => (
             <option key={pageSize} value={pageSize}>
               Show {pageSize}
             </option>

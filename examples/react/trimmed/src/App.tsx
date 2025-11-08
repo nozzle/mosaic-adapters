@@ -6,17 +6,12 @@ import { RenderTable } from './components/render-table';
 
 function App() {
   return (
-    <>
-      <h1>Trimmed example</h1>
-      <div
-        style={{
-          border: '1px dotted grey',
-          padding: '1rem',
-        }}
-      >
+    <main className="p-4">
+      <h1 className="text-2xl mb-2 font-medium">Trimmed example</h1>
+      <div className="border border-slate-500 border-dashed p-4">
         <AthletesMosaic />
       </div>
-    </>
+    </main>
   );
 }
 
@@ -76,21 +71,26 @@ function AthletesMosaic() {
   }, []);
 
   return (
-    <div>
-      <h2>Athletes Dashboard Placeholder</h2>
-      <div>
-        <h4>Chart area</h4>
-        <div ref={chartDivRef} />
-      </div>
-      <div>
-        <h4>Table area</h4>
-        {isPending ? <div>Loading data...</div> : <AthletesTable />}
-      </div>
-    </div>
+    <>
+      <h2 className="text-xl mb-4 font-medium">
+        Athletes Dashboard Placeholder
+      </h2>
+      <hr className="my-4" />
+      <h4 className="text-lg mb-2 font-medium">Chart area</h4>
+      {isPending && <div className="italic">Loading data...</div>}
+      <div ref={chartDivRef} />
+      <hr className="my-4" />
+      <h4 className="text-lg mb-2 font-medium">Table area</h4>
+      {isPending ? (
+        <div className="italic">Loading data...</div>
+      ) : (
+        <AthletesTable />
+      )}
+    </>
   );
 }
 
-type RowData = {
+type AthleteRowData = {
   id: number;
   name: string;
   nationality: string;
@@ -105,7 +105,7 @@ type RowData = {
   info: string | null;
 };
 
-const columnHelper = createColumnHelper<RowData>();
+const columnHelper = createColumnHelper<AthleteRowData>();
 
 function AthletesTable() {
   const columns = useMemo(
@@ -134,7 +134,16 @@ function AthletesTable() {
           return value;
         },
       }),
-      columnHelper.accessor('weight', { header: 'Weight' }),
+      columnHelper.accessor('weight', {
+        header: 'Weight',
+        cell: (props) => {
+          const value = props.getValue();
+          if (typeof value === 'number') {
+            return `${value}kg`;
+          }
+          return value;
+        },
+      }),
       columnHelper.accessor('sport', { header: 'Sport' }),
       columnHelper.accessor('gold', { header: 'Gold(s)' }),
       columnHelper.accessor('silver', { header: 'Silver(s)' }),
@@ -144,7 +153,7 @@ function AthletesTable() {
     [],
   );
 
-  const { tableOptions } = useMosaicReactTable<RowData>({
+  const { tableOptions } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
     coordinator: vg.coordinator(),
     debugTable: false,
@@ -155,7 +164,7 @@ function AthletesTable() {
 
   const table = useReactTable(tableOptions);
 
-  return <RenderTable table={table} />;
+  return <RenderTable table={table} columns={columns} />;
 }
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
