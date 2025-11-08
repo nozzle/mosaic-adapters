@@ -55,6 +55,14 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   totalRows: number | undefined;
 };
 
+/**
+ * This function creates and initializes a MosaicDataTable client.
+ *
+ * @typeParam `TData` The row data type used in TanStack Table
+ * @typeParam `TValue` The cell value type used in TanStack Table
+ * @param options Options to initialize the MosaicDataTable client
+ * @returns A initialized MosaicDataTable client
+ */
 export function createMosaicDataTableClient<
   TData extends RowData,
   TValue = unknown,
@@ -69,6 +77,10 @@ export function createMosaicDataTableClient<
   return client;
 }
 
+/**
+ * A Mosaic Client that does the glue work to drive TanStack Table, using it's
+ * TableOptions for configuration.
+ */
 export class MosaicDataTable<
   TData extends RowData,
   TValue = unknown,
@@ -83,7 +95,7 @@ export class MosaicDataTable<
   #debugTable: DebugTableOptions = false;
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
-    super(options.filterBy); // pass appropriate filterSelection if needed
+    super(options.filterBy); // pass the appropriate Filter Selection
     this.coordinator = options.coordinator;
 
     this.from = options.table;
@@ -107,6 +119,11 @@ export class MosaicDataTable<
     this.updateOptions(options);
   }
 
+  /**
+   * When options are updated from framework-land, we need to update
+   * the internal store and state accordingly.
+   * @param options The updated options from framework-land.
+   */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
     this.#store.setState((prev) => ({
       ...prev,
@@ -117,7 +134,9 @@ export class MosaicDataTable<
       this.#onTableStateChange = options.onTableStateChange;
     }
 
-    this.#debugTable = options.debugTable ?? this.#debugTable;
+    if ('debugTable' in options) {
+      this.#debugTable = options.debugTable!;
+    }
   }
 
   override query(filter?: FilterExpr | null | undefined): SelectQuery {
@@ -244,24 +263,28 @@ export class MosaicDataTable<
   }
 
   /**
-   * Get the source table name.
+   * Resolve the table name based on the constructor options.
+   * This is mostly useful if the table name is a Mosaic Param,
+   * then it will return the resolved value.
    */
   sourceTable(): string {
     return (isParam(this.from) ? this.from.value : this.from) as string;
   }
 
   /**
-   * Map the React Table columns to the `FieldInfoRequest` format
+   * Map TanStack Table's ColumnDefs to Mosaic FieldInfoRequests
+   * to be used in queries.
    */
   fields(): Array<FieldInfoRequest> {
     const table = this.sourceTable();
     const columns = this.#store.state.columns;
 
+    // If no columns were provided, we default to all columns
     if (columns.length === 0) {
       return [
         {
           table,
-          column: '*',
+          column: '*', // This means all columns in Mosaic SQL
         },
       ];
     }
@@ -285,7 +308,12 @@ export class MosaicDataTable<
   }
 
   /**
-   * Get the TanStack Table options to be used with the framework adapters.
+   * Map the MosaicDataTableStore state to TanStack TableOptions,
+   * with the necessary callbacks to handle state changes and re-querying
+   * from Mosaic.
+   *
+   * @param state The MosaicDataTableStore state from framework-land.
+   * @returns Valid TanStack TableOptions for driving a TanStack Table instance in framework-land.
    */
   getTableOptions(
     state: Store<MosaicDataTableStore<TData, TValue>>['state'],
