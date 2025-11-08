@@ -1,7 +1,9 @@
 import { flexRender } from '@tanstack/react-table';
-import type { Table } from '@tanstack/react-table';
+import type { RowData, Table } from '@tanstack/react-table';
 
-export function BareTable(props: { table: Table<unknown> }) {
+export function BareTable<TData extends RowData>(props: {
+  table: Table<TData>;
+}) {
   const { table } = props;
 
   return (

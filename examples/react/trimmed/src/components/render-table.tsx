@@ -1,10 +1,12 @@
 import { useURLSearchParam } from '../hooks/useURLSearchParam';
 import { BareTable } from './bare-table';
-import type { Table } from '@tanstack/react-table';
+import type { RowData, Table } from '@tanstack/react-table';
 
 const items = [{ id: 'bare', name: 'Bare table', Component: BareTable }];
 
-export function RenderTable(props: { table: Table<unknown> }) {
+export function RenderTable<TData extends RowData>(props: {
+  table: Table<TData>;
+}) {
   const [view, setView] = useURLSearchParam('table-view', 'bare');
 
   return (
