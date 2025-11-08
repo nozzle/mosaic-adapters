@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useReactTable } from '@tanstack/react-table';
+import { createColumnHelper, useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import { useMosaicReactTable } from './useMosiacReactTable';
 import { RenderTable } from './components/render-table';
-import type { ColumnDef } from '@tanstack/react-table';
 
 function App() {
   return (
@@ -91,68 +90,61 @@ function AthletesMosaic() {
   );
 }
 
-function AthletesTable() {
-  // columns: [
-  //   {
-  //     accessorKey: 'name',
-  //     header: 'Name',
-  //     render({ headerName }) {
+type RowData = {
+  id: number;
+  name: string;
+  nationality: string;
+  sex: string;
+  date_of_birth: Date | null;
+  height: number | null;
+  weight: number | null;
+  sport: string | null;
+  gold: number | null;
+  silver: number | null;
+  bronze: number | null;
+  info: string | null;
+};
 
-  //     return (<div>
-  //       <div>{headerName}</div>
-  //       <YourCustomFilter />
-  //       </div>
-  //       )
-  //     },
-  //     renderFilter() {},
-  //     cell(props) {
-  //       const value = props.getValue();
-  //       return <>...</>
-  //     }
-  //   },
-  // ],
-  // selections: {
-  //   $query: vg.Selection.intersect(),
-  // },
+const columnHelper = createColumnHelper<RowData>();
+
+function AthletesTable() {
   const columns = useMemo(
-    () =>
-      [
-        { accessorKey: 'id', header: 'ID' },
-        { accessorKey: 'name', header: 'Name' },
-        { accessorKey: 'nationality', header: 'Nationality' },
-        { accessorKey: 'sex', header: 'Gender' },
-        {
-          accessorKey: 'date_of_birth',
-          header: 'DOB',
-          cell: (props) => {
-            const value = props.getValue();
-            if (value instanceof Date) {
-              return dateFormatter.format(value);
-            }
-            return value;
-          },
+    () => [
+      columnHelper.accessor('id', { header: 'ID' }),
+      columnHelper.accessor('name', { header: 'Name' }),
+      columnHelper.accessor('nationality', { header: 'Nationality' }),
+      columnHelper.accessor('sex', { header: 'Gender' }),
+      columnHelper.accessor('date_of_birth', {
+        header: 'DOB',
+        cell: (props) => {
+          const value = props.getValue();
+          if (value instanceof Date) {
+            return dateFormatter.format(value);
+          }
+          return value;
         },
-        {
-          accessorKey: 'height',
-          header: 'Height',
-          cell: (props) => {
-            const value = props.getValue();
-            if (value) {
-              return `${value}m`;
-            }
-            return value;
-          },
+      }),
+      columnHelper.accessor('height', {
+        header: 'Height',
+        cell: (props) => {
+          const value = props.getValue();
+          if (typeof value === 'number') {
+            return `${value}m`;
+          }
+          return value;
         },
-        { accessorKey: 'weight', header: 'Weight' },
-        { accessorKey: 'sport', header: 'Sport' },
-        { accessorKey: 'gold', header: 'Gold(s)' },
-        { accessorKey: 'silver', header: 'Silver(s)' },
-        { accessorKey: 'bronze', header: 'Bronze(s)' },
-        { accessorKey: 'info', header: 'Info' },
-      ] satisfies Array<ColumnDef<any, any>>,
+      }),
+      columnHelper.accessor('weight', { header: 'Weight' }),
+      columnHelper.accessor('sport', { header: 'Sport' }),
+      columnHelper.accessor('gold', { header: 'Gold(s)' }),
+      columnHelper.accessor('silver', { header: 'Silver(s)' }),
+      columnHelper.accessor('bronze', { header: 'Bronze(s)' }),
+      columnHelper.accessor('info', { header: 'Info' }),
+    ],
     [],
   );
-  const { tableOptions } = useMosaicReactTable({
+
+  const { tableOptions } = useMosaicReactTable<RowData>({
     table: tableName,
     coordinator: vg.coordinator(),
     debugTable: false,

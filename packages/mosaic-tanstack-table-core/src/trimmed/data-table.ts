@@ -30,31 +30,37 @@ export type DebugTableOptions =
   | Array<'cells' | 'columns' | 'headers' | 'rows' | 'table'>;
 
 export type MosaicDataTableColumnDef<
-  TData = RowData,
-  TValue = any,
+  TData extends RowData,
+  TValue = unknown,
 > = AccessorKeyColumnDef<TData, TValue> & { foo?: string };
 
-export interface MosaicDataTableOptions {
+export interface MosaicDataTableOptions<
+  TData extends RowData,
+  TValue = unknown,
+> {
   table: Param<string> | string;
   coordinator: Coordinator;
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
   filterBy?: Selection | undefined;
-  columns?: Array<MosaicDataTableColumnDef>;
+  columns?: Array<MosaicDataTableColumnDef<TData, TValue>>;
   //
   debugTable?: DebugTableOptions;
 }
 
-export type MosaicDataTableStore = {
-  columns: Array<MosaicDataTableColumnDef>;
+export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
+  columns: Array<MosaicDataTableColumnDef<TData, TValue>>;
   tableState: TableState;
   arrowColumnSchema: Array<FieldInfo>;
-  rows: Array<Record<string, any>>;
+  rows: Array<TData>;
   totalRows: number | undefined;
 };
 
-export function createMosaicDataTableClient(options: MosaicDataTableOptions) {
+export function createMosaicDataTableClient<
+  TData extends RowData,
+  TValue = unknown,
+>(options: MosaicDataTableOptions<TData, TValue>) {
   // Initialize the table client
-  const client = new MosaicDataTable(options);
+  const client = new MosaicDataTable<TData, TValue>(options);
 
   // Connect to the coordinator
   // So that it can also start piping data from Mosaic to the table
@@ -63,17 +69,20 @@ export function createMosaicDataTableClient(options: MosaicDataTableOptions) {
   return client;
 }
 
-export class MosaicDataTable extends MosaicClient {
+export class MosaicDataTable<
+  TData extends RowData,
+  TValue = unknown,
+> extends MosaicClient {
   from: Param<string> | string;
 
   schema: Array<FieldInfo> = [];
 
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
 
-  #store: Store<MosaicDataTableStore>;
+  #store: Store<MosaicDataTableStore<TData, TValue>>;
   #debugTable: DebugTableOptions = false;
 
-  constructor(options: MosaicDataTableOptions) {
+  constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass appropriate filterSelection if needed
     this.coordinator = options.coordinator;
 
@@ -85,18 +94,20 @@ export class MosaicDataTable extends MosaicClient {
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
 
+    type ResolvedStore = MosaicDataTableStore<TData, TValue>;
+
     this.#store = new Store({
       tableState: seedInitialTableState(),
-      rows: [] as MosaicDataTableStore['rows'],
-      arrowColumnSchema: [] as MosaicDataTableStore['arrowColumnSchema'],
-      totalRows: undefined as MosaicDataTableStore['totalRows'],
-      columns: options.columns ?? ([] as MosaicDataTableStore['columns']),
+      rows: [] as ResolvedStore['rows'],
+      arrowColumnSchema: [] as ResolvedStore['arrowColumnSchema'],
+      totalRows: undefined as ResolvedStore['totalRows'],
+      columns: options.columns ?? ([] as ResolvedStore['columns']),
     });
 
     this.updateOptions(options);
   }
 
-  updateOptions(options: MosaicDataTableOptions): void {
+  updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
     this.#store.setState((prev) => ({
       ...prev,
       columns: options.columns ?? prev.columns,
@@ -148,7 +159,7 @@ export class MosaicDataTable extends MosaicClient {
   }
 
   override queryResult(data: unknown): this {
-    let rows: Array<Record<string, unknown>> | undefined = undefined;
+    let rows: Array<TData> | undefined = undefined;
     let totalRows: number | undefined = undefined;
 
     if (data) {
@@ -190,16 +201,17 @@ export class MosaicDataTable extends MosaicClient {
             acc[key] = value;
             return acc;
           },
-          {} as Record<string, Array<unknown>>,
+          {} as Record<string, Array<any>>,
         );
 
         const numRows = dataColumns.numRows;
-        const processRows: Array<Record<string, unknown>> = [];
+        const processRows: Array<TData> = [];
         for (let i = 0; i < numRows; i++) {
-          const row: Record<string, unknown> = {};
+          const row: Record<string, any> = {};
           for (const key in columns) {
             row[key] = columns[key]?.[i];
           }
+          // @ts-expect-error
           processRows.push(row);
         }
         rows = processRows;
@@ -255,9 +267,19 @@ export class MosaicDataTable extends MosaicClient {
     }
 
     return columns.map((column) => {
+      let value: string;
+
+      // This is mostly happening to satisfy TypeScript
+      if (typeof column.accessorKey === 'string') {
+        value = column.accessorKey;
+      } else {
+        // Fallback to string conversion of accessorKey
+        value = column.accessorKey.toString();
+      }
+
       return {
         table,
-        column: column.accessorKey,
+        column: value,
       };
     });
   }
@@ -266,8 +288,8 @@ export class MosaicDataTable extends MosaicClient {
    * Get the TanStack Table options to be used with the framework adapters.
    */
   getTableOptions(
-    state: Store<MosaicDataTableStore>['state'],
-  ): TableOptions<unknown> {
+    state: Store<MosaicDataTableStore<TData, TValue>>['state'],
+  ): TableOptions<TData> {
     const columns =
       state.columns.length === 0
         ? // No ColDefs were provided, so we default to all columns
@@ -275,10 +297,10 @@ export class MosaicDataTable extends MosaicClient {
             return {
               accessorKey: field.column,
               header: field.column,
-            } satisfies ColumnDef<unknown, unknown>;
+            } satisfies ColumnDef<TData, TValue>;
           })
         : state.columns.map(({ foo: _foo, ...column }) => {
-            return column satisfies ColumnDef<unknown, unknown>;
+            return column satisfies ColumnDef<TData, TValue>;
           });
 
     return {
@@ -317,7 +339,7 @@ export class MosaicDataTable extends MosaicClient {
     };
   }
 
-  get store(): Store<MosaicDataTableStore> {
+  get store(): Store<MosaicDataTableStore<TData, TValue>> {
     return this.#store;
   }
 

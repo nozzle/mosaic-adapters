@@ -4,11 +4,14 @@ import * as React from 'react';
 import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-core/trimmed';
 import { useStore } from '@tanstack/react-store';
 import type { MosaicDataTableOptions } from '@nozzleio/mosaic-tanstack-table-core/trimmed';
+import type { RowData } from '@tanstack/react-table';
 
-export function useMosaicReactTable<TData = unknown>(
-  options: MosaicDataTableOptions,
+export function useMosaicReactTable<TData extends RowData, TValue = any>(
+  options: MosaicDataTableOptions<TData, TValue>,
 ) {
-  const client = React.useRef(createMosaicDataTableClient(options));
+  const client = React.useRef(
+    createMosaicDataTableClient<TData, TValue>(options),
+  );
   const store = useStore(client.current.store);
 
   const tableOptions = React.useMemo(
