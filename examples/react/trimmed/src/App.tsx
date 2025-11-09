@@ -114,22 +114,28 @@ function AthletesTable() {
           header: 'ID',
           accessorFn: (row) => row.id,
           mosaicColumn: 'id',
+          enableHiding: false,
         },
         {
           header: 'Name',
           accessorFn: (row) => row.name,
           mosaicColumn: 'name',
+          enableHiding: true,
         },
         {
           header: 'Nationality',
           accessorFn: (row) => row.nationality,
           mosaicColumn: 'nationality',
+          enableHiding: true,
         },
         {
+          id: 'Gender',
           header: 'Gender',
           accessorKey: 'sex',
+          enableHiding: true,
         },
         {
+          id: 'DOB',
           header: 'DOB',
           cell: (props) => {
             const value = props.getValue();
@@ -141,8 +147,10 @@ function AthletesTable() {
           // This is an example of a remapped column, where the DB field of "date_of_birth" is mapped to "person_dob"
           accessorKey: 'person_dob',
           mosaicColumn: 'date_of_birth',
+          enableHiding: true,
         },
         {
+          id: 'Height',
           header: 'Height',
           cell: (props) => {
             const value = props.getValue();
@@ -153,8 +161,10 @@ function AthletesTable() {
           },
           accessorKey: 'height',
           mosaicColumn: 'height',
+          enableHiding: true,
         },
         {
+          id: 'Weight',
           header: 'Weight',
           cell: (props) => {
             const value = props.getValue();
@@ -165,26 +175,37 @@ function AthletesTable() {
           },
           accessorKey: 'weight',
           mosaicColumn: 'weight',
+          enableHiding: true,
         },
         {
+          id: 'Sport',
           header: 'Sport',
           accessorKey: 'sport',
+          enableHiding: true,
         },
         {
+          id: 'Gold(s)',
           header: 'Gold(s)',
           accessorKey: 'gold',
+          enableHiding: true,
         },
         {
+          id: 'Silver(s)',
           header: 'Silver(s)',
           accessorKey: 'silver',
+          enableHiding: true,
         },
         {
+          id: 'Bronze(s)',
           header: 'Bronze(s)',
           accessorKey: 'bronze',
+          enableHiding: true,
         },
         {
+          id: 'Info',
           header: 'Info',
           accessorKey: 'info',
+          enableHiding: true,
         },
       ] satisfies Array<MosaicDataTableColumnDef<AthleteRowData, any>>,
     [],

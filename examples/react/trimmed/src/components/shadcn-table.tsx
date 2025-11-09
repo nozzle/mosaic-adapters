@@ -1,9 +1,11 @@
 import { flexRender } from '@tanstack/react-table';
+import { DropdownMenuTrigger } from '@radix-ui/react-dropdown-menu';
 import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronsLeftIcon,
+  ChevronsRightIcon,
+  Settings2Icon,
 } from 'lucide-react';
 import type {
   ColumnDef,
@@ -27,6 +29,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
 export function ShadcnTable<TData extends RowData, TValue>(props: {
   table: TanStackTable<TData>;
@@ -36,6 +45,14 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
 
   return (
     <div className="grid gap-2">
+      <div>
+        <div className="flex items-center justify-between">
+          <div className="flex flex-1 items-center gap-2" />
+          <div className="flex items-center gap-2">
+            <DataTableViewOptions table={table} />
+          </div>
+        </div>
+      </div>
       <div className="overflow-hidden rounded-md border">
         <Table>
           <TableHeader>
@@ -91,7 +108,7 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
   );
 }
 
-export function DataTablePagination<TData>({
+function DataTablePagination<TData>({
   table,
 }: {
   table: TanStackTable<TData>;
@@ -160,7 +177,7 @@ export function DataTablePagination<TData>({
             disabled={!table.getCanPreviousPage()}
           >
             <span className="sr-only">Go to first page</span>
-            <ChevronsLeft />
+            <ChevronsLeftIcon />
           </Button>
           <Button
             variant="outline"
@@ -170,7 +187,7 @@ export function DataTablePagination<TData>({
             disabled={!table.getCanPreviousPage()}
           >
             <span className="sr-only">Go to previous page</span>
-            <ChevronLeft />
+            <ChevronLeftIcon />
           </Button>
           <Button
             variant="outline"
@@ -180,7 +197,7 @@ export function DataTablePagination<TData>({
             disabled={!table.getCanNextPage()}
           >
             <span className="sr-only">Go to next page</span>
-            <ChevronRight />
+            <ChevronRightIcon />
           </Button>
           <Button
             variant="outline"
@@ -190,10 +207,51 @@ export function DataTablePagination<TData>({
             disabled={!table.getCanNextPage()}
           >
             <span className="sr-only">Go to last page</span>
-            <ChevronsRight />
+            <ChevronsRightIcon />
           </Button>
         </div>
       </div>
     </div>
+  );
+}
+
+function DataTableViewOptions<TData>({
+  table,
+}: {
+  table: TanStackTable<TData>;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="ml-auto hidden h-8 lg:flex"
+        >
+          <Settings2Icon />
+          View
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-[150px]">
+        <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {table
+          .getAllColumns()
+          .filter((column) => column.getCanHide())
+          .map((column) => {
+            return (
+              <DropdownMenuCheckboxItem
+                key={column.id}
+                className="capitalize"
+                checked={column.getIsVisible()}
+                onCheckedChange={(value) => column.toggleVisibility(!!value)}
+              >
+                {column.id}
+              </DropdownMenuCheckboxItem>
+            );
+          })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -19,9 +19,11 @@ import type {
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
+  PaginationState,
   RowData,
   TableOptions,
   TableState,
+  VisibilityState,
 } from '@tanstack/table-core';
 
 export type DebugTableOptions =
@@ -37,6 +39,11 @@ export type MosaicDataTableColumnDef<
   TValue = unknown,
 > = ColumnDef<TData, TValue> & MosaicDataTableColumnDefOptions;
 
+export type MosaicTanStackTableInitialState = {
+  columnVisibility?: VisibilityState;
+  pagination?: PaginationState;
+};
+
 export interface MosaicDataTableOptions<
   TData extends RowData,
   TValue = unknown,
@@ -46,6 +53,7 @@ export interface MosaicDataTableOptions<
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
   filterBy?: Selection | undefined;
   columns?: Array<MosaicDataTableColumnDef<TData, TValue>>;
+  initialState?: MosaicTanStackTableInitialState;
   //
   debugTable?: DebugTableOptions;
 }
@@ -113,7 +121,7 @@ export class MosaicDataTable<
     type ResolvedStore = MosaicDataTableStore<TData, TValue>;
 
     this.#store = new Store({
-      tableState: seedInitialTableState(),
+      tableState: seedInitialTableState(options.initialState),
       rows: [] as ResolvedStore['rows'],
       arrowColumnSchema: [] as ResolvedStore['arrowColumnSchema'],
       totalRows: undefined as ResolvedStore['totalRows'],
@@ -147,38 +155,14 @@ export class MosaicDataTable<
     const table = this.sourceTable();
     const pagination = this.#store.state.tableState.pagination;
 
-    // Get the columns to select in SQL-land
-    const selectColumns = this.fields()
-      .filter((d) => {
-        // Exclude any columns that have remaps defined
-        if (typeof d.column === 'string' && this.#columnRemaps.has(d.column)) {
-          return false;
-        }
-        return true;
-      })
-      .map((d) =>
-        typeof d.column !== 'string' ? d.column.toString() : d.column,
-      );
-
-    // Build remapped columns object for the select statement
-    const remappedColumns = Array.from(this.#columnRemaps.entries()).reduce(
-      (acc, curr) => {
-        const [accessorKey, mosaicColumn] = curr;
-        acc[accessorKey] = mosaicColumn;
-        return acc;
-      },
-      {} as Record<string, string>,
-    );
+    // Get the Table SQL columns to select
+    const tableColumns = this.sqlColumns();
 
     // Initialize the main query statement
     // This is where the actual main Columns with Pagination will be applied
-    const statement = mSql.Query.from(table).select(
-      selectColumns,
-      remappedColumns,
-      {
-        total_rows: mSql.sql`COUNT(*) OVER()`,
-      },
-    );
+    const statement = mSql.Query.from(table).select(...tableColumns, {
+      total_rows: mSql.sql`COUNT(*) OVER()`,
+    });
 
     // Conditionally add filter
     if (filter) {
@@ -286,6 +270,38 @@ export class MosaicDataTable<
     this.schema = schema;
 
     return Promise.resolve();
+  }
+
+  /**
+   * Helper utility to build the SQL select columns,
+   * taking into account any column remaps defined
+   * and other TanStack Table ColumnDef options.
+   */
+  sqlColumns(): Array<mSql.SelectExpr> {
+    // Get the columns to select in SQL-land
+    const selectColumns = this.fields()
+      .filter((d) => {
+        // Exclude any columns that have remaps defined
+        if (typeof d.column === 'string' && this.#columnRemaps.has(d.column)) {
+          return false;
+        }
+        return true;
+      })
+      .map((d) =>
+        typeof d.column !== 'string' ? d.column.toString() : d.column,
+      );
+
+    // Build remapped columns object for the select statement
+    const remappedColumns = Array.from(this.#columnRemaps.entries()).reduce(
+      (acc, curr) => {
+        const [accessorKey, mosaicColumn] = curr;
+        acc[accessorKey] = mosaicColumn;
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
+
+    return [selectColumns, remappedColumns];
   }
 
   /**
@@ -450,14 +466,16 @@ export class MosaicDataTable<
   }
 }
 
-function seedInitialTableState(): TableState {
+function seedInitialTableState(
+  initial?: MosaicTanStackTableInitialState,
+): TableState {
   return {
-    pagination: {
+    pagination: initial?.pagination || {
       pageIndex: 0,
       pageSize: 10,
     },
     columnFilters: [],
-    columnVisibility: {},
+    columnVisibility: initial?.columnVisibility || {},
     columnOrder: [] satisfies Array<string>,
     columnPinning: {},
     rowPinning: {},
