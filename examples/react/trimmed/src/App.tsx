@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createColumnHelper, useReactTable } from '@tanstack/react-table';
+import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import { useMosaicReactTable } from './useMosiacReactTable';
 import { RenderTable } from './components/render-table';
+import type { MosaicDataTableColumnDef } from './useMosiacReactTable';
 
 function App() {
   return (
@@ -105,51 +106,87 @@ type AthleteRowData = {
   info: string | null;
 };
 
-const columnHelper = createColumnHelper<AthleteRowData>();
-
 function AthletesTable() {
   const columns = useMemo(
-    () => [
-      columnHelper.accessor('id', { header: 'ID' }),
-      columnHelper.accessor('name', { header: 'Name' }),
-      columnHelper.accessor('nationality', { header: 'Nationality' }),
-      columnHelper.accessor('sex', { header: 'Gender' }),
-      columnHelper.accessor('date_of_birth', {
-        header: 'DOB',
-        cell: (props) => {
-          const value = props.getValue();
-          if (value instanceof Date) {
-            return dateFormatter.format(value);
-          }
-          return value;
+    () =>
+      [
+        {
+          header: 'ID',
+          accessorFn: (row) => row.id,
+          mosaicColumn: 'id',
         },
-      }),
-      columnHelper.accessor('height', {
-        header: 'Height',
-        cell: (props) => {
-          const value = props.getValue();
-          if (typeof value === 'number') {
-            return `${value}m`;
-          }
-          return value;
+        {
+          header: 'Name',
+          accessorFn: (row) => row.name,
+          mosaicColumn: 'name',
         },
-      }),
-      columnHelper.accessor('weight', {
-        header: 'Weight',
-        cell: (props) => {
-          const value = props.getValue();
-          if (typeof value === 'number') {
-            return `${value}kg`;
-          }
-          return value;
+        {
+          header: 'Nationality',
+          accessorFn: (row) => row.nationality,
+          mosaicColumn: 'nationality',
         },
-      }),
-      columnHelper.accessor('sport', { header: 'Sport' }),
-      columnHelper.accessor('gold', { header: 'Gold(s)' }),
-      columnHelper.accessor('silver', { header: 'Silver(s)' }),
-      columnHelper.accessor('bronze', { header: 'Bronze(s)' }),
-      columnHelper.accessor('info', { header: 'Info' }),
-    ],
+        {
+          header: 'Gender',
+          accessorKey: 'sex',
+        },
+        {
+          header: 'DOB',
+          cell: (props) => {
+            const value = props.getValue();
+            if (value instanceof Date) {
+              return dateFormatter.format(value);
+            }
+            return value;
+          },
+          // This is an example of a remapped column, where the DB field of "date_of_birth" is mapped to "person_dob"
+          accessorKey: 'person_dob',
+          mosaicColumn: 'date_of_birth',
+        },
+        {
+          header: 'Height',
+          cell: (props) => {
+            const value = props.getValue();
+            if (typeof value === 'number') {
+              return `${value}m`;
+            }
+            return value;
+          },
+          accessorKey: 'height',
+          mosaicColumn: 'height',
+        },
+        {
+          header: 'Weight',
+          cell: (props) => {
+            const value = props.getValue();
+            if (typeof value === 'number') {
+              return `${value}kg`;
+            }
+            return value;
+          },
+          accessorKey: 'weight',
+          mosaicColumn: 'weight',
+        },
+        {
+          header: 'Sport',
+          accessorKey: 'sport',
+        },
+        {
+          header: 'Gold(s)',
+          accessorKey: 'gold',
+        },
+        {
+          header: 'Silver(s)',
+          accessorKey: 'silver',
+        },
+        {
+          header: 'Bronze(s)',
+          accessorKey: 'bronze',
+        },
+        {
+          header: 'Info',
+          accessorKey: 'info',
+        },
+      ] satisfies Array<MosaicDataTableColumnDef<AthleteRowData, any>>,
     [],
   );
 
@@ -164,7 +201,7 @@ function AthletesTable() {
 
   const table = useReactTable(tableOptions);
 
-  return <RenderTable table={table} columns={columns} />;
+  return <RenderTable table={table} columns={table.options.columns} />;
 }
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
