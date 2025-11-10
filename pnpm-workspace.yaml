@@ -4,24 +4,24 @@ packages:
   - examples/svelte/*
 
 catalog:
-  '@eslint-react/eslint-plugin': ^2.2.4
-  '@sveltejs/vite-plugin-svelte': ^3.1.0
+  '@eslint-react/eslint-plugin': ^2.3.4
+  '@sveltejs/vite-plugin-svelte': ^6.2.1
   '@tanstack/table-core': ^8.17.3
   '@tsconfig/svelte': ^5.0.5
   '@uwdata/mosaic-core': ^0.21.1
   '@uwdata/mosaic-sql': ^0.21.1
   '@uwdata/vgplot': ^0.21.1
   '@vitejs/plugin-react': ^5.1.0
-  eslint: ^9.39.0
+  eslint: ^9.39.1
   eslint-plugin-react-hooks: ^7.0.1
   eslint-plugin-svelte: ^3.13.0
   eslint-plugin-unused-imports: ^4.3.0
   prettier-plugin-svelte: ^3.4.0
   rimraf: ^6.1.0
-  svelte-check: ^3.8.6
+  svelte-check: ^4.3.3
   typescript: ^5.9.3
-  typescript-eslint: ^8.46.2
-  vite: ^7.1.12
+  typescript-eslint: ^8.46.4
+  vite: ^7.2.2
 
 onlyBuiltDependencies:
   - esbuild
