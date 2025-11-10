@@ -378,7 +378,10 @@ export class MosaicDataTable<
       let accessor = column.mosaicColumn;
 
       if (!accessor && 'accessorKey' in column) {
-        accessor = column.accessorKey as string;
+        accessor =
+          typeof column.accessorKey === 'string'
+            ? column.accessorKey
+            : column.accessorKey.toString();
       }
 
       return {
