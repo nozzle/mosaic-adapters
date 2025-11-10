@@ -7,7 +7,7 @@ import {
 import * as mSql from '@uwdata/mosaic-sql';
 import { getCoreRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
-import { functionalUpdate } from './utils';
+import { functionalUpdate, toSafeSqlColumnName } from './utils';
 
 import type {
   Coordinator,
@@ -54,6 +54,13 @@ export interface MosaicDataTableOptions<
   filterBy?: Selection | undefined;
   columns?: Array<MosaicDataTableColumnDef<TData, TValue>>;
   initialState?: MosaicTanStackTableInitialState;
+  /**
+   * The column name to use for the total rows count returned from the query.
+   * This values will be sanitised to be SQL-safe, so the string provided here
+   * may be exactly what is used in the query and result set.
+   * @default '__total_rows'
+   */
+  totalRowsColumnName?: string;
   //
   debugTable?: DebugTableOptions;
 }
@@ -97,16 +104,13 @@ export class MosaicDataTable<
   TValue = unknown,
 > extends MosaicClient {
   from: Param<string> | string;
-
   schema: Array<FieldInfo> = [];
 
-  // TODO: Make this configurable via options, but account for safe SQL identifiers.
-  #sql_total_rows = '__total_rows';
-
-  #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
   #columnRemaps: Map<string, string> = new Map();
 
   #store: Store<MosaicDataTableStore<TData, TValue>>;
+  #sql_total_rows = toSafeSqlColumnName('__total_rows');
+  #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
   #debugTable: DebugTableOptions = false;
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
