@@ -1,8 +1,8 @@
 import {
   MosaicClient,
+  isArrowTable,
   isParam,
   queryFieldInfo,
-  toDataColumns,
 } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import { getCoreRowModel } from '@tanstack/table-core';
@@ -100,6 +100,9 @@ export class MosaicDataTable<
 
   schema: Array<FieldInfo> = [];
 
+  // TODO: Make this configurable via options, but account for safe SQL identifiers.
+  #sql_total_rows = '__total_rows';
+
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
   #columnRemaps: Map<string, string> = new Map();
 
@@ -161,7 +164,7 @@ export class MosaicDataTable<
     // Initialize the main query statement
     // This is where the actual main Columns with Pagination will be applied
     const statement = mSql.Query.from(table).select(...tableColumns, {
-      total_rows: mSql.sql`COUNT(*) OVER()`,
+      [this.#sql_total_rows]: mSql.sql`COUNT(*) OVER()`,
     });
 
     // Conditionally add filter
@@ -187,80 +190,36 @@ export class MosaicDataTable<
     return this;
   }
 
-  override queryResult(data: unknown): this {
-    let rows: Array<TData> | undefined = undefined;
-    let totalRows: number | undefined = undefined;
+  override queryResult(table: unknown): this {
+    if (isArrowTable(table)) {
+      let totalRows: number | undefined = undefined;
 
-    if (data) {
-      const dataColumns = toDataColumns(data);
+      // Convert Arrow Table to rows array for TanStack Table
+      const rows = table.toArray() as Array<TData>;
 
-      if ('columns' in dataColumns) {
-        const record = dataColumns.columns;
-
-        // TODO: Make this better/simpler. Consider using https://github.com/uwdata/flechette
-        const columns = Object.entries(record).reduce(
-          (acc, [key, value]) => {
-            if (key === 'total_rows') {
-              // List may be a typed array, so we should handle the conversion
-              let list = value;
-
-              // Convert typed arrays to regular arrays for easier handling
-              if (
-                list instanceof Float16Array ||
-                list instanceof Float32Array ||
-                list instanceof Float64Array
-              ) {
-                list = Array.from(list);
-              }
-
-              // Pull out the total rows value
-              if (
-                Array.isArray(list) &&
-                list.length > 0 &&
-                typeof list[0] === 'number'
-              ) {
-                totalRows = list[0];
-              }
-
-              // Skip adding this to the row data
-              return acc;
-            }
-
-            // @ts-expect-error
-            acc[key] = value;
-            return acc;
-          },
-          {} as Record<string, Array<any>>,
-        );
-
-        const numRows = dataColumns.numRows;
-        const processRows: Array<TData> = [];
-        for (let i = 0; i < numRows; i++) {
-          const row: Record<string, any> = {};
-          for (const key in columns) {
-            row[key] = columns[key]?.[i];
-          }
-          // @ts-expect-error
-          processRows.push(row);
-        }
-        rows = processRows;
+      // Check for the total rows column identifier, and pull out the value if present
+      // We only need to check the first row since it's the same value for all rows
+      if (
+        rows.length > 0 &&
+        rows[0] &&
+        typeof rows[0] === 'object' &&
+        this.#sql_total_rows in rows[0]
+      ) {
+        const firstRow = rows[0] as Record<string, any>;
+        totalRows = firstRow[this.#sql_total_rows];
       }
-      if ('values' in dataColumns) {
-        const _values = dataColumns.values;
-        throw new Error('Data with unnamed values array is not supported yet.');
-      }
-    }
 
-    batch(() => {
-      this.#store.setState((prev) => {
-        return {
-          ...prev,
-          arrowColumnSchema: this.schema,
-          rows: rows ?? prev.rows,
-          totalRows,
-        };
+      batch(() => {
+        this.#store.setState((prev) => {
+          return {
+            ...prev,
+            arrowColumnSchema: this.schema,
+            rows,
+            totalRows,
+          };
+        });
       });
-    });
+    }
 
     return this;
   }
