@@ -6,9 +6,23 @@ import * as vg from '@uwdata/vgplot';
 import App from './App';
 import './ui/table-styles.css'; // Import the new stylesheet
 
-// Perform the one-time, global Mosaic setup here.
-// This configures the coordinator that our React app will later consume.
-vg.coordinator().databaseConnector(vg.socketConnector('ws://localhost:3000'));
+// --- Switchable Mosaic Backend Configuration ---
+
+// Read the environment variable. Default to 'wasm' if not set.
+const backend = import.meta.env.VITE_MOSAIC_BACKEND || 'wasm';
+
+if (backend === 'wasm') {
+  console.log('🚀 Initializing Mosaic with DuckDB-WASM backend...');
+  vg.coordinator().databaseConnector(vg.wasmConnector());
+} else {
+  console.log('🚀 Initializing Mosaic with WebSocket server backend...');
+  // Read the server URI from env, with a fallback for convenience.
+  const serverUri =
+    import.meta.env.VITE_MOSAIC_SERVER_URI || 'ws://localhost:3000';
+  vg.coordinator().databaseConnector(vg.socketConnector(serverUri));
+}
+
+// --- End Configuration ---
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement,
