@@ -16,6 +16,7 @@ import type {
   FieldInfoRequest,
   Param,
   Selection,
+  SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
@@ -113,8 +114,6 @@ export class MosaicDataTable<
     super(options.filterBy); // pass the appropriate Filter Selection
 
     this.from = options.table;
-
-    // TODO: Figure out the pagination reset when Selection changes.
 
     if (!this.sourceTable()) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
@@ -250,7 +249,28 @@ export class MosaicDataTable<
     // so that Mosaic do its cleanup properly
     const destroy = this.destroy.bind(this);
 
+    // Setup the primary selection change listener to reset pagination
+    const selectionCb = (_: Array<SelectionClause> | undefined) => {
+      batch(() => {
+        // When the selection changes, we reset pagination to the first page
+        this.#store.setState((prev) => ({
+          ...prev,
+          tableState: {
+            ...prev.tableState,
+            pagination: {
+              ...prev.tableState.pagination,
+              pageIndex: 0,
+            },
+          },
+        }));
+      });
+    };
+    this.filterBy?.addEventListener('value', selectionCb);
+
     return () => {
+      // Remove the primary selection change listener
+      this.filterBy?.removeEventListener('value', selectionCb);
+
       // Cleanup and perform destroy operations
       destroy();
     };
