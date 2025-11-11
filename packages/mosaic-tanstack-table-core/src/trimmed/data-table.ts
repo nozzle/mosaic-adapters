@@ -241,9 +241,10 @@ export class MosaicDataTable<
     // so that it can also start piping data from Mosaic to the table
     this.coordinator?.connect(this);
 
-    // Mark the client as enabled and initialize
+    // Mark the client as enabled, so that it can start requesting queries
+    // and processing results. This process happens internally in MosaicClient,
+    // when the `enabled` setter is called.
     this.enabled = true;
-    this.initialize();
 
     // Bind and return the destroy function
     // so that Mosaic do its cleanup properly
