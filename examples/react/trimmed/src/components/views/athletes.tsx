@@ -195,9 +195,6 @@ function AthletesTable() {
 
   const { tableOptions } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
-    coordinator: vg.coordinator(),
-    debugTable: false,
-    onTableStateChange: 'requestUpdate',
     filterBy: $query,
     columns,
   });
