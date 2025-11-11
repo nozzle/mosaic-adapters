@@ -1,5 +1,6 @@
 import {
   MosaicClient,
+  coordinator as defaultCoordinator,
   isArrowTable,
   isParam,
   queryFieldInfo,
@@ -49,7 +50,7 @@ export interface MosaicDataTableOptions<
   TValue = unknown,
 > {
   table: Param<string> | string;
-  coordinator: Coordinator;
+  coordinator?: Coordinator;
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
   filterBy?: Selection | undefined;
   columns?: Array<MosaicDataTableColumnDef<TData, TValue>>;
@@ -74,12 +75,12 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
 };
 
 /**
- * This function creates and initializes a MosaicDataTable client.
+ * This is a factory function to create a MosaicDataTable client.
  *
- * @typeParam `TData` The row data type used in TanStack Table
- * @typeParam `TValue` The cell value type used in TanStack Table
- * @param options Options to initialize the MosaicDataTable client
- * @returns A initialized MosaicDataTable client
+ * @typeParam `TData` The row data type used in TanStack Table.
+ * @typeParam `TValue` The cell value type used in TanStack Table.
+ * @param options Options to be passed into the constructor of the MosaicDataTable.
+ * @returns A new instance of the MosaicDataTable client.
  */
 export function createMosaicDataTableClient<
   TData extends RowData,
@@ -87,11 +88,6 @@ export function createMosaicDataTableClient<
 >(options: MosaicDataTableOptions<TData, TValue>) {
   // Initialize the table client
   const client = new MosaicDataTable<TData, TValue>(options);
-
-  // Connect to the coordinator
-  // So that it can also start piping data from Mosaic to the table
-  options.coordinator.connect(client);
-
   return client;
 }
 
@@ -115,7 +111,6 @@ export class MosaicDataTable<
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
-    this.coordinator = options.coordinator;
 
     this.from = options.table;
 
@@ -155,6 +150,12 @@ export class MosaicDataTable<
 
     if ('debugTable' in options) {
       this.#debugTable = options.debugTable!;
+    }
+
+    // Ensure we have a coordinator assigned
+    if (!this.coordinator) {
+      const coordinatorInstance = options.coordinator ?? defaultCoordinator();
+      this.coordinator = coordinatorInstance;
     }
   }
 
@@ -234,6 +235,29 @@ export class MosaicDataTable<
     this.schema = schema;
 
     return Promise.resolve();
+  }
+
+  connect(): () => void {
+    // Connect to the coordinator
+    // so that it can also start piping data from Mosaic to the table
+    this.coordinator?.connect(this);
+
+    // Mark the client as enabled and initialize
+    this.enabled = true;
+    this.initialize();
+
+    // Bind and return the destroy function
+    // so that Mosaic do its cleanup properly
+    const destroy = this.destroy.bind(this);
+
+    return () => {
+      // Cleanup and perform destroy operations
+      destroy();
+    };
+  }
+
+  destroy(): void {
+    super.destroy();
   }
 
   /**
