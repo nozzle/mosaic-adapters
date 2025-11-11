@@ -174,6 +174,7 @@ export class MosaicDataTable<
     // Conditionally add filter
     if (filter) {
       // TODO: Column filters would be merged here as well
+      // TODO: https://tanstack.com/table/latest/docs/guide/column-filtering#manual-server-side-filtering
       statement.where(filter);
     }
 
