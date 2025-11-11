@@ -19,17 +19,19 @@ export function useMosaicReactTable<TData extends RowData, TValue = any>(
   );
   const store = useStore(client.current.store);
 
+  React.useEffect(() => {
+    client.current.updateOptions(options);
+  }, [options]);
+
+  React.useEffect(() => {
+    const unsub = client.current.connect();
+    return unsub;
+  }, []);
+
   const tableOptions = React.useMemo(
     () => client.current.getTableOptions(store),
     [store],
   );
-
-  React.useEffect(() => {
-    client.current.updateOptions(options);
-    return () => {
-      //
-    };
-  }, [options]);
 
   return { tableOptions } as const;
 }
