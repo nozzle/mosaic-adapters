@@ -1,25 +1,28 @@
 import { useEffect, useState } from 'react';
 
+type URLSearchParamOptions = {
+  reloadOnChange?: boolean;
+};
+
 export function useURLSearchParam(
   key: string,
   defaultValue: string | null = null,
+  { reloadOnChange }: URLSearchParamOptions = { reloadOnChange: false },
 ) {
-  // Initialize state from current URL (SSR-safe) or fallback to defaultValue
+  // Initialise from URL or default
   const [paramValue, setParamValue] = useState<string | null>(() => {
-    const params =
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search)
-        : new URLSearchParams();
+    if (typeof window === 'undefined') return defaultValue;
+    const params = new URLSearchParams(window.location.search);
     return params.get(key) ?? defaultValue;
   });
 
+  // Keep state in sync with browser navigation (back/forward)
   useEffect(() => {
     function updateParam() {
       const params = new URLSearchParams(window.location.search);
       setParamValue(params.get(key) ?? defaultValue);
     }
 
-    updateParam();
     window.addEventListener('popstate', updateParam);
     return () => {
       window.removeEventListener('popstate', updateParam);
@@ -33,11 +36,19 @@ export function useURLSearchParam(
     } else {
       params.set(key, value);
     }
+
     const newUrl =
       window.location.pathname +
       (params.toString() ? `?${params.toString()}` : '');
-    window.history.pushState({}, '', newUrl);
-    setParamValue(value ?? defaultValue);
+
+    if (reloadOnChange) {
+      // Full reload to apply new query parameters
+      window.location.href = newUrl;
+    } else {
+      // Just update URL and React state
+      window.history.pushState({}, '', newUrl);
+      setParamValue(value ?? defaultValue);
+    }
   };
 
   return [paramValue, setURLParam] as const;

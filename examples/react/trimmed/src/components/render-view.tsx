@@ -21,7 +21,9 @@ const views = [
 ];
 
 export function RenderView() {
-  const [view, setView] = useURLSearchParam('dashboard', 'athletes');
+  const [view, setView] = useURLSearchParam('dashboard', 'athletes', {
+    reloadOnChange: true,
+  });
 
   return (
     <>
