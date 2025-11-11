@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
-import type { MosaicDataTableColumnDef } from '@/useMosiacReactTable';
+import type { MosaicDataTableColumnDef } from '@/useMosaicReactTable';
 import { RenderTable } from '@/components/render-table';
-import { useMosaicReactTable } from '@/useMosiacReactTable';
+import { useMosaicReactTable } from '@/useMosaicReactTable';
 import { simpleDateFormatter } from '@/lib/utils';
 
 const fileURL =
