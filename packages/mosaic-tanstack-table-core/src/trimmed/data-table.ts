@@ -157,15 +157,19 @@ export class MosaicDataTable<
   }
 
   override query(filter?: FilterExpr | null | undefined): SelectQuery {
-    const table = this.sourceTable();
-    const pagination = this.#store.state.tableState.pagination;
+    const tableName = this.sourceTable();
+
+    const tableState = this.#store.state.tableState;
+
+    const pagination = tableState.pagination;
+    const sorting = tableState.sorting;
 
     // Get the Table SQL columns to select
     const tableColumns = this.sqlColumns();
 
     // Initialize the main query statement
     // This is where the actual main Columns with Pagination will be applied
-    const statement = mSql.Query.from(table).select(...tableColumns, {
+    const statement = mSql.Query.from(tableName).select(...tableColumns, {
       [this.#sql_total_rows]: mSql.sql`COUNT(*) OVER()`,
     });
 
@@ -175,6 +179,33 @@ export class MosaicDataTable<
       // TODO: https://tanstack.com/table/latest/docs/guide/column-filtering#manual-server-side-filtering
       statement.where(filter);
     }
+
+    // Conditionally add sorting
+    const sortingCommands: Array<mSql.OrderByNode> = [];
+    sorting.forEach((sort) => {
+      const columnDef = this.#store.state.columns.find((d) => d.id === sort.id);
+
+      if (!columnDef) {
+        throw new Error(
+          `[MosaicDataTable.query] Unable to find column definition for sorting column ID: ${sort.id}`,
+        );
+      }
+      if (!('accessorKey' in columnDef)) {
+        throw new Error(
+          `[MosaicDataTable.query] Column definition for sorting column ID: ${sort.id} is missing an \`accessorKey\` property.`,
+        );
+      }
+
+      const accessor =
+        typeof columnDef.accessorKey === 'string'
+          ? columnDef.accessorKey
+          : columnDef.accessorKey.toString();
+
+      sortingCommands.push(
+        sort.desc ? mSql.desc(accessor) : mSql.asc(accessor),
+      );
+    });
+    statement.orderby(...sortingCommands);
 
     // Add pagination at the end
     statement
