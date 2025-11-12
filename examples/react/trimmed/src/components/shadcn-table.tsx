@@ -1,13 +1,18 @@
 import { flexRender } from '@tanstack/react-table';
 import { DropdownMenuTrigger } from '@radix-ui/react-dropdown-menu';
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
+  ChevronsUpDown,
+  EyeOff,
   Settings2Icon,
 } from 'lucide-react';
 import type {
+  Column,
   ColumnDef,
   RowData,
   Table as TanStackTable,
@@ -33,9 +38,11 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 
 export function ShadcnTable<TData extends RowData, TValue>(props: {
   table: TanStackTable<TData>;
@@ -253,5 +260,79 @@ function DataTableViewOptions<TData>({
           })}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+interface DataTableColumnHeaderProps<TData, TValue>
+  extends React.HTMLAttributes<HTMLDivElement> {
+  column: Column<TData, TValue>;
+  title: string;
+}
+
+export function DataTableColumnHeader<TData, TValue>({
+  column,
+  title,
+  className,
+}: DataTableColumnHeaderProps<TData, TValue>) {
+  if (!column.getCanSort()) {
+    return <div className={cn(className)}>{title}</div>;
+  }
+
+  const sorting = column.getIsSorted();
+
+  return (
+    <div className={cn('flex items-center gap-2', className)}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="data-[state=open]:bg-accent -ml-3 h-8"
+          >
+            <span>{title}</span>
+            {column.getIsSorted() === 'desc' ? (
+              <ArrowDown />
+            ) : column.getIsSorted() === 'asc' ? (
+              <ArrowUp />
+            ) : (
+              <ChevronsUpDown />
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem
+            onClick={() => {
+              sorting === 'asc'
+                ? column.clearSorting()
+                : column.toggleSorting(false);
+            }}
+            className={cn(sorting === 'asc' ? 'text-foreground' : '')}
+          >
+            <ArrowUp
+              className={cn(sorting === 'asc' ? 'text-foreground' : '')}
+            />
+            Asc
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              sorting === 'desc'
+                ? column.clearSorting()
+                : column.toggleSorting(true);
+            }}
+            className={cn(sorting === 'desc' ? 'text-foreground' : '')}
+          >
+            <ArrowDown
+              className={cn(sorting === 'desc' ? 'text-foreground' : '')}
+            />
+            Desc
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => column.toggleVisibility(false)}>
+            <EyeOff />
+            Hide
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }

@@ -8,7 +8,7 @@ export function BareTable<TData extends RowData, TValue>(props: {
   const { table } = props;
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4 overflow-scroll">
       <div>
         <ColumnVisibilityControls table={table} />
       </div>
