@@ -27,42 +27,47 @@ function BareDataTableColumnHeader<TData extends RowData, TValue>({
   column: Column<TData, TValue>;
   title: string;
 }) {
-  console.debug(
-    'Rendering BareDataTableColumnHeader',
-    { title },
-    column.getIsSorted(),
-  );
   return (
-    <div>
+    <div className="flex flex-col items-start">
       <p>{title}</p>
-      {column.getCanSort() ? (
-        <div className="flex gap-2 p-1">
-          <button
-            type="button"
-            onClick={() => column.toggleSorting(false)}
-            disabled={column.getIsSorted() === 'asc'}
-            className="text-xs border rounded p-1 disabled:opacity-50"
-          >
-            ASC
-          </button>
-          <button
-            type="button"
-            onClick={() => column.toggleSorting(true)}
-            disabled={column.getIsSorted() === 'desc'}
-            className="text-xs border rounded p-1 disabled:opacity-50"
-          >
-            DESC
-          </button>
-          <button
-            type="button"
-            onClick={() => column.clearSorting()}
-            disabled={!column.getIsSorted()}
-            className="text-xs border rounded p-1 disabled:opacity-50"
-          >
-            NONE
-          </button>
-        </div>
-      ) : null}
+
+      {/* Sorting UI */}
+      <div className="flex gap-2 p-1">
+        <button
+          type="button"
+          onClick={() => column.toggleSorting(false)}
+          disabled={
+            column.getCanSort() === false
+              ? true
+              : column.getIsSorted() === 'asc'
+          }
+          className="text-xs border rounded p-1 disabled:opacity-50"
+        >
+          ASC
+        </button>
+        <button
+          type="button"
+          onClick={() => column.toggleSorting(true)}
+          disabled={
+            column.getCanSort() === false
+              ? true
+              : column.getIsSorted() === 'desc'
+          }
+          className="text-xs border rounded p-1 disabled:opacity-50"
+        >
+          DESC
+        </button>
+        <button
+          type="button"
+          onClick={() => column.clearSorting()}
+          disabled={
+            column.getCanSort() === false ? true : !column.getIsSorted()
+          }
+          className="text-xs border rounded p-1 disabled:opacity-50"
+        >
+          NONE
+        </button>
+      </div>
     </div>
   );
 }
