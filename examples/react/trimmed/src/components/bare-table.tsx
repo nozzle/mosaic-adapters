@@ -17,7 +17,7 @@ export function BareTable<TData extends RowData, TValue>(props: {
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <th key={header.id} className="text-left">
+                <th key={header.id}>
                   {header.isPlaceholder
                     ? null
                     : flexRender(
