@@ -28,10 +28,6 @@ import type {
   VisibilityState,
 } from '@tanstack/table-core';
 
-export type DebugTableOptions =
-  | boolean
-  | Array<'cells' | 'columns' | 'headers' | 'rows' | 'table'>;
-
 export type MosaicDataTableColumnDefOptions = {
   //
 };
@@ -46,6 +42,18 @@ export type MosaicTanStackTableInitialState = {
   pagination?: PaginationState;
 };
 
+export type SubsetTableOptions<TData extends RowData> = Omit<
+  TableOptions<TData>,
+  | 'data'
+  | 'columns'
+  | 'state'
+  | 'onStateChange'
+  | 'manualPagination'
+  | 'manualSorting'
+  | 'rowCount'
+  | 'getCoreRowModel'
+>;
+
 export interface MosaicDataTableOptions<
   TData extends RowData,
   TValue = unknown,
@@ -55,7 +63,7 @@ export interface MosaicDataTableOptions<
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
   filterBy?: Selection | undefined;
   columns?: Array<MosaicDataTableColumnDef<TData, TValue>>;
-  initialState?: MosaicTanStackTableInitialState;
+  tableOptions?: Partial<SubsetTableOptions<TData>>;
   /**
    * The column name to use for the total rows count returned from the query.
    * This values will be sanitised to be SQL-safe, so the string provided here
@@ -63,8 +71,6 @@ export interface MosaicDataTableOptions<
    * @default '__total_rows'
    */
   totalRowsColumnName?: string;
-  //
-  debugTable?: DebugTableOptions;
 }
 
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
@@ -73,6 +79,7 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   arrowColumnSchema: Array<FieldInfo>;
   rows: Array<TData>;
   totalRows: number | undefined;
+  tableOptions: SubsetTableOptions<TData>;
 };
 
 /**
@@ -103,10 +110,9 @@ export class MosaicDataTable<
   from: Param<string> | string;
   schema: Array<FieldInfo> = [];
 
-  #store: Store<MosaicDataTableStore<TData, TValue>>;
+  #store!: Store<MosaicDataTableStore<TData, TValue>>;
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
-  #debugTable: DebugTableOptions = false;
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
@@ -117,16 +123,6 @@ export class MosaicDataTable<
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
 
-    type ResolvedStore = MosaicDataTableStore<TData, TValue>;
-
-    this.#store = new Store({
-      tableState: seedInitialTableState(options.initialState),
-      rows: [] as ResolvedStore['rows'],
-      arrowColumnSchema: [] as ResolvedStore['arrowColumnSchema'],
-      totalRows: undefined as ResolvedStore['totalRows'],
-      columns: options.columns ?? ([] as ResolvedStore['columns']),
-    });
-
     this.updateOptions(options);
   }
 
@@ -136,23 +132,35 @@ export class MosaicDataTable<
    * @param options The updated options from framework-land.
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    this.#store.setState((prev) => ({
-      ...prev,
-      columns: options.columns ?? prev.columns,
-    }));
-
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
-    }
-
-    if ('debugTable' in options) {
-      this.#debugTable = options.debugTable!;
     }
 
     // Ensure we have a coordinator assigned
     if (!this.coordinator) {
       const coordinatorInstance = options.coordinator ?? defaultCoordinator();
       this.coordinator = coordinatorInstance;
+    }
+
+    type ResolvedStore = MosaicDataTableStore<TData, TValue>;
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (!this.#store) {
+      this.#store = new Store({
+        tableState: seedInitialTableState(options.tableOptions?.initialState),
+        tableOptions: {
+          ...(options.tableOptions ?? {}),
+        } as ResolvedStore['tableOptions'],
+        rows: [] as ResolvedStore['rows'],
+        arrowColumnSchema: [] as ResolvedStore['arrowColumnSchema'],
+        totalRows: undefined as ResolvedStore['totalRows'],
+        columns: options.columns ?? ([] as ResolvedStore['columns']),
+      });
+    } else {
+      this.#store.setState((prev) => ({
+        ...prev,
+        columns: options.columns !== undefined ? options.columns : prev.columns,
+      }));
     }
   }
 
@@ -443,41 +451,24 @@ export class MosaicDataTable<
         }
       },
       manualPagination: true,
+      manualSorting: true,
       rowCount: state.totalRows,
-      debugAll: this._getDebugTableState('all'),
-      debugCells: this._getDebugTableState('cells'),
-      debugHeaders: this._getDebugTableState('headers'),
-      debugColumns: this._getDebugTableState('columns'),
-      debugRows: this._getDebugTableState('rows'),
-      debugTable: this._getDebugTableState('table'),
+      ...state.tableOptions,
     };
   }
 
   get store(): Store<MosaicDataTableStore<TData, TValue>> {
     return this.#store;
   }
-
-  private _getDebugTableState(
-    key: 'all' | 'cells' | 'headers' | 'columns' | 'rows' | 'table',
-  ): true | undefined {
-    if (key === 'all') {
-      return typeof this.#debugTable === 'boolean' && this.#debugTable
-        ? true
-        : undefined;
-    }
-    return Array.isArray(this.#debugTable) && this.#debugTable.includes(key)
-      ? true
-      : undefined;
-  }
 }
 
 function seedInitialTableState(
-  initial?: MosaicTanStackTableInitialState,
+  initial?: TableOptions<any>['initialState'],
 ): TableState {
   return {
-    pagination: initial?.pagination || {
-      pageIndex: 0,
-      pageSize: 10,
+    pagination: {
+      pageIndex: initial?.pagination?.pageIndex || 0,
+      pageSize: initial?.pagination?.pageSize || 10,
     },
     columnFilters: [],
     columnVisibility: initial?.columnVisibility || {},
