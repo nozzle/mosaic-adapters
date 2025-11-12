@@ -3,8 +3,10 @@ import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import type { MosaicDataTableColumnDef } from '@/useMosaicReactTable';
 import { RenderTable } from '@/components/render-table';
+import { RenderTableHeader } from '@/components/render-table-header';
 import { useMosaicReactTable } from '@/useMosaicReactTable';
 import { simpleDateFormatter } from '@/lib/utils';
+import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
@@ -89,36 +91,59 @@ export function AthletesView() {
 }
 
 function AthletesTable() {
+  const [view] = useURLSearchParam('table-view', 'shadcn-1');
+
   const columns = useMemo(
     () =>
       [
         {
-          header: 'ID',
+          id: 'id',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="ID" view={view} />
+          ),
           accessorFn: (row) => row.id,
           mosaicColumn: 'id',
           enableHiding: false,
+          enableSorting: false,
         },
         {
-          header: 'Name',
+          id: 'name',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Name" view={view} />
+          ),
           accessorFn: (row) => row.name,
           mosaicColumn: 'name',
           enableHiding: true,
+          enableSorting: true,
         },
         {
-          header: 'Nationality',
+          id: 'nationality',
+          header: ({ column }) => (
+            <RenderTableHeader
+              column={column}
+              title="Nationality"
+              view={view}
+            />
+          ),
           accessorFn: (row) => row.nationality,
           mosaicColumn: 'nationality',
           enableHiding: true,
+          enableSorting: true,
         },
         {
           id: 'Gender',
-          header: 'Gender',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Gender" view={view} />
+          ),
           accessorKey: 'sex',
           enableHiding: true,
+          enableSorting: true,
         },
         {
-          id: 'DOB',
-          header: 'DOB',
+          id: 'dob',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="DOB" view={view} />
+          ),
           cell: (props) => {
             const value = props.getValue();
             if (value instanceof Date) {
@@ -130,10 +155,13 @@ function AthletesTable() {
           accessorKey: 'person_dob',
           mosaicColumn: 'date_of_birth',
           enableHiding: true,
+          enableSorting: true,
         },
         {
           id: 'Height',
-          header: 'Height',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Height" view={view} />
+          ),
           cell: (props) => {
             const value = props.getValue();
             if (typeof value === 'number') {
@@ -144,10 +172,13 @@ function AthletesTable() {
           accessorKey: 'height',
           mosaicColumn: 'height',
           enableHiding: true,
+          enableSorting: true,
         },
         {
           id: 'Weight',
-          header: 'Weight',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Weight" view={view} />
+          ),
           cell: (props) => {
             const value = props.getValue();
             if (typeof value === 'number') {
@@ -158,39 +189,54 @@ function AthletesTable() {
           accessorKey: 'weight',
           mosaicColumn: 'weight',
           enableHiding: true,
+          enableSorting: true,
         },
         {
           id: 'Sport',
-          header: 'Sport',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Sport" view={view} />
+          ),
           accessorKey: 'sport',
           enableHiding: true,
+          enableSorting: true,
         },
         {
           id: 'Gold(s)',
-          header: 'Gold(s)',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Gold(s)" view={view} />
+          ),
           accessorKey: 'gold',
           enableHiding: true,
+          enableSorting: true,
         },
         {
           id: 'Silver(s)',
-          header: 'Silver(s)',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Silver(s)" view={view} />
+          ),
           accessorKey: 'silver',
           enableHiding: true,
+          enableSorting: true,
         },
         {
           id: 'Bronze(s)',
-          header: 'Bronze(s)',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Bronze(s)" view={view} />
+          ),
           accessorKey: 'bronze',
           enableHiding: true,
+          enableSorting: true,
         },
         {
           id: 'Info',
-          header: 'Info',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Info" view={view} />
+          ),
           accessorKey: 'info',
           enableHiding: true,
         },
       ] satisfies Array<MosaicDataTableColumnDef<AthleteRowData, any>>,
-    [],
+    [view],
   );
 
   const { tableOptions } = useMosaicReactTable<AthleteRowData>({

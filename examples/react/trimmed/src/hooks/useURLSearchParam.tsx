@@ -16,18 +16,31 @@ export function useURLSearchParam(
     return params.get(key) ?? defaultValue;
   });
 
-  // Keep state in sync with browser navigation (back/forward)
+  // Keep state in sync with browser navigation (back/forward) AND direct URL changes
   useEffect(() => {
     function updateParam() {
       const params = new URLSearchParams(window.location.search);
-      setParamValue(params.get(key) ?? defaultValue);
+      const newValue = params.get(key) ?? defaultValue;
+      setParamValue(newValue);
     }
 
+    // Listen for popstate (back/forward navigation)
     window.addEventListener('popstate', updateParam);
+
+    // Poll for URL changes (catches manual URL edits, external updates, etc.)
+    const intervalId = setInterval(() => {
+      const params = new URLSearchParams(window.location.search);
+      const currentValue = params.get(key) ?? defaultValue;
+      if (currentValue !== paramValue) {
+        setParamValue(currentValue);
+      }
+    }, 100);
+
     return () => {
       window.removeEventListener('popstate', updateParam);
+      clearInterval(intervalId);
     };
-  }, [key, defaultValue]);
+  }, [key, defaultValue, paramValue]);
 
   const setURLParam = (value: string | null) => {
     const params = new URLSearchParams(window.location.search);
