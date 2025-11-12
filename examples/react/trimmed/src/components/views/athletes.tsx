@@ -236,6 +236,9 @@ function AthletesTable() {
     table: tableName,
     filterBy: $query,
     columns,
+    tableOptions: {
+      enableMultiSort: true,
+    },
   });
 
   const table = useReactTable(tableOptions);
