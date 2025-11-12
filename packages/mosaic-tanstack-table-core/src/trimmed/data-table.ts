@@ -33,7 +33,7 @@ export type DebugTableOptions =
   | Array<'cells' | 'columns' | 'headers' | 'rows' | 'table'>;
 
 export type MosaicDataTableColumnDefOptions = {
-  mosaicColumn?: string;
+  //
 };
 
 export type MosaicDataTableColumnDef<
@@ -102,8 +102,6 @@ export class MosaicDataTable<
 > extends MosaicClient {
   from: Param<string> | string;
   schema: Array<FieldInfo> = [];
-
-  #columnRemaps: Map<string, string> = new Map();
 
   #store: Store<MosaicDataTableStore<TData, TValue>>;
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
@@ -288,29 +286,11 @@ export class MosaicDataTable<
    */
   sqlColumns(): Array<mSql.SelectExpr> {
     // Get the columns to select in SQL-land
-    const selectColumns = this.fields()
-      .filter((d) => {
-        // Exclude any columns that have remaps defined
-        if (typeof d.column === 'string' && this.#columnRemaps.has(d.column)) {
-          return false;
-        }
-        return true;
-      })
-      .map((d) =>
-        typeof d.column !== 'string' ? d.column.toString() : d.column,
-      );
-
-    // Build remapped columns object for the select statement
-    const remappedColumns = Array.from(this.#columnRemaps.entries()).reduce(
-      (acc, curr) => {
-        const [accessorKey, mosaicColumn] = curr;
-        acc[accessorKey] = mosaicColumn;
-        return acc;
-      },
-      {} as Record<string, string>,
+    const selectColumns = this.fields().map((d) =>
+      typeof d.column !== 'string' ? d.column.toString() : d.column,
     );
 
-    return [selectColumns, remappedColumns];
+    return [selectColumns];
   }
 
   /**
@@ -331,40 +311,22 @@ export class MosaicDataTable<
 
     // Filter down the configured TanStack Table ColumnDefs, to just those
     // that can be mapped to Mosaic columns for the query.
-    const columns = this.#store.state.columns.filter((d) => {
-      // Housekeeping to track the column remaps, when both accessorKey and
-      // mosaicColumn are defined but different.
+    const columns = this.#store.state.columns.filter((def) => {
+      // If the column has an accessorKey, we can use that
       if (
-        'accessorKey' in d &&
-        typeof d.accessorKey === 'string' &&
-        d.accessorKey.length > 0 &&
-        typeof d.mosaicColumn === 'string' &&
-        d.mosaicColumn.length > 0 &&
-        d.mosaicColumn !== d.accessorKey
-      ) {
-        this.#columnRemaps.set(d.accessorKey, d.mosaicColumn);
-      }
-
-      // If the user has defined a mosaicColumn, we prefer that
-      if (typeof d.mosaicColumn === 'string' && d.mosaicColumn.length > 0) {
-        return true;
-      }
-
-      // If not, but they have defined an accessorKey, we can use that
-      if (
-        'accessorKey' in d &&
-        typeof d.accessorKey === 'string' &&
-        d.accessorKey.length > 0
+        'accessorKey' in def &&
+        typeof def.accessorKey === 'string' &&
+        def.accessorKey.length > 0
       ) {
         return true;
       }
 
       // If they have defined an accessorFn, we cannot map that to a Mosaic column
       // so we warn the user that they need to define `mosaicColumn` explicitly
-      if ('accessorFn' in d && typeof d.accessorFn === 'function') {
+      if ('accessorFn' in def && typeof def.accessorFn === 'function') {
         console.warn(
-          `[MosaicDataTable] Column with only \`accessorFn\` cannot be mapped to a Mosaic column without a \`mosaicColumn\` query column identifier. Please define \`mosaicColumn\` on the ColumnDef to map it correctly.\n`,
-          d,
+          `[MosaicDataTable] Column using \`accessorFn\` cannot be mapped to a Mosaic Query column. Please use an \`accessorKey\` instead.`,
+          def,
         );
         return false;
       }
@@ -384,18 +346,18 @@ export class MosaicDataTable<
     }
 
     return columns.map((column) => {
-      let accessor = column.mosaicColumn;
-
-      if (!accessor && 'accessorKey' in column) {
-        accessor =
-          typeof column.accessorKey === 'string'
-            ? column.accessorKey
-            : column.accessorKey.toString();
+      if (!('accessorKey' in column)) {
+        throw new Error('[MosaicDataTable] Column is missing `accessorKey`:');
       }
+
+      const accessor =
+        typeof column.accessorKey === 'string'
+          ? column.accessorKey
+          : column.accessorKey.toString();
 
       return {
         table,
-        column: accessor!,
+        column: accessor,
       };
     });
   }
@@ -420,7 +382,7 @@ export class MosaicDataTable<
               header: field.column,
             } satisfies ColumnDef<TData, TValue>;
           })
-        : state.columns.map(({ mosaicColumn: _mosaicColumn, ...column }) => {
+        : state.columns.map((column) => {
             return column satisfies ColumnDef<TData, TValue>;
           });
 

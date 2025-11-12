@@ -101,8 +101,7 @@ function AthletesTable() {
           header: ({ column }) => (
             <RenderTableHeader column={column} title="ID" view={view} />
           ),
-          accessorFn: (row) => row.id,
-          mosaicColumn: 'id',
+          accessorKey: 'id',
           enableHiding: false,
           enableSorting: false,
         },
@@ -111,8 +110,7 @@ function AthletesTable() {
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Name" view={view} />
           ),
-          accessorFn: (row) => row.name,
-          mosaicColumn: 'name',
+          accessorKey: 'name',
           enableHiding: true,
           enableSorting: true,
         },
@@ -125,8 +123,7 @@ function AthletesTable() {
               view={view}
             />
           ),
-          accessorFn: (row) => row.nationality,
-          mosaicColumn: 'nationality',
+          accessorKey: 'nationality',
           enableHiding: true,
           enableSorting: true,
         },
@@ -151,9 +148,7 @@ function AthletesTable() {
             }
             return value;
           },
-          // This is an example of a remapped column, where the DB field of "date_of_birth" is mapped to "person_dob"
-          accessorKey: 'person_dob',
-          mosaicColumn: 'date_of_birth',
+          accessorKey: 'date_of_birth',
           enableHiding: true,
           enableSorting: true,
         },
@@ -170,7 +165,6 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'height',
-          mosaicColumn: 'height',
           enableHiding: true,
           enableSorting: true,
         },
@@ -187,7 +181,6 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'weight',
-          mosaicColumn: 'weight',
           enableHiding: true,
           enableSorting: true,
         },
