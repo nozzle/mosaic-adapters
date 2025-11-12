@@ -279,6 +279,7 @@ export function DataTableColumnHeader<TData, TValue>({
   }
 
   const sorting = column.getIsSorted();
+  const multiSort = column.getCanMultiSort();
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
@@ -304,7 +305,7 @@ export function DataTableColumnHeader<TData, TValue>({
             onClick={() => {
               sorting === 'asc'
                 ? column.clearSorting()
-                : column.toggleSorting(false);
+                : column.toggleSorting(false, multiSort);
             }}
             className={cn(sorting === 'asc' ? 'text-foreground' : '')}
           >
@@ -317,7 +318,7 @@ export function DataTableColumnHeader<TData, TValue>({
             onClick={() => {
               sorting === 'desc'
                 ? column.clearSorting()
-                : column.toggleSorting(true);
+                : column.toggleSorting(true, multiSort);
             }}
             className={cn(sorting === 'desc' ? 'text-foreground' : '')}
           >

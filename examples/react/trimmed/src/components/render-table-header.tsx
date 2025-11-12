@@ -27,6 +27,8 @@ function BareDataTableColumnHeader<TData extends RowData, TValue>({
   column: Column<TData, TValue>;
   title: string;
 }) {
+  const multiSort = column.getCanMultiSort();
+
   return (
     <div className="flex flex-col items-start">
       <p>{title}</p>
@@ -35,7 +37,7 @@ function BareDataTableColumnHeader<TData extends RowData, TValue>({
       <div className="flex gap-2 p-1">
         <button
           type="button"
-          onClick={() => column.toggleSorting(false)}
+          onClick={() => column.toggleSorting(false, multiSort)}
           disabled={
             column.getCanSort() === false
               ? true
@@ -47,7 +49,7 @@ function BareDataTableColumnHeader<TData extends RowData, TValue>({
         </button>
         <button
           type="button"
-          onClick={() => column.toggleSorting(true)}
+          onClick={() => column.toggleSorting(true, multiSort)}
           disabled={
             column.getCanSort() === false
               ? true
