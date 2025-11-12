@@ -228,6 +228,28 @@ function AthletesTable() {
           accessorKey: 'info',
           enableHiding: true,
         },
+        {
+          id: 'actions',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Actions" view={view} />
+          ),
+          cell: ({ row }) => {
+            return (
+              <div>
+                <button
+                  className="px-1 py-0.5 border rounded text-sm opacity-80 hover:opacity-100"
+                  onClick={() => {
+                    console.info('Row:', row.id, row.original);
+                  }}
+                >
+                  console.info(row)
+                </button>
+              </div>
+            );
+          },
+          enableHiding: false,
+          enableSorting: false,
+        },
       ] satisfies Array<MosaicDataTableColumnDef<AthleteRowData, any>>,
     [view],
   );
