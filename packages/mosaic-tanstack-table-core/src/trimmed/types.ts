@@ -55,19 +55,47 @@ export interface MosaicDataTableOptions<
   TData extends RowData,
   TValue = unknown,
 > {
+  /**
+   * The Mosaic Data Table to use as the data source for the table instance.
+   */
   table: Param<string> | string;
+  /**
+   * Mosaic Coordinator instance to connect to for querying data.
+   */
   coordinator?: Coordinator;
-  onTableStateChange?: 'requestQuery' | 'requestUpdate';
+  /**
+   * Parent selection to apply to the Mosaic query for filtering rows.
+   * @default undefined
+   */
   filterBy?: Selection | undefined;
+  /**
+   * Column Definitions to use for the table instance.
+   *
+   * When not provided, the column definitions will be inferred
+   * from the data source schema.
+   * @default undefined
+   */
   columns?: Array<ColumnDef<TData, TValue>>;
+  /**
+   * Additional TanStack Table options to apply to the table instance.
+   *
+   * @default {}
+   */
   tableOptions?: Partial<SubsetTableOptions<TData>>;
   /**
    * The column name to use for the total rows count returned from the query.
    * This values will be sanitised to be SQL-safe, so the string provided here
    * may be exactly what is used in the query and result set.
+   *
    * @default '__total_rows'
    */
   totalRowsColumnName?: string;
+  /**
+   * TODO: Add description
+   *
+   * @default 'requestUpdate'
+   */
+  onTableStateChange?: 'requestQuery' | 'requestUpdate';
 }
 
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
