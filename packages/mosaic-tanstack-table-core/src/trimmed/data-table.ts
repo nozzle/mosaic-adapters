@@ -225,7 +225,6 @@ export class MosaicDataTable<
         this.#store.setState((prev) => {
           return {
             ...prev,
-            arrowColumnSchema: this.schema,
             rows,
             totalRows,
           };
