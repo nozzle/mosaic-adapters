@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
-import type { MosaicDataTableColumnDef } from '@/useMosaicReactTable';
+import type { ColumnDef } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { useMosaicReactTable } from '@/useMosaicReactTable';
@@ -106,13 +106,18 @@ function AthletesTable() {
           enableSorting: false,
         },
         {
-          id: 'name',
+          id: 'Name',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Name" view={view} />
           ),
-          accessorKey: 'name',
+          accessorFn: (row) => row.name,
           enableHiding: true,
           enableSorting: true,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'name',
+            },
+          },
         },
         {
           id: 'nationality',
@@ -250,7 +255,7 @@ function AthletesTable() {
           enableHiding: false,
           enableSorting: false,
         },
-      ] satisfies Array<MosaicDataTableColumnDef<AthleteRowData, any>>,
+      ] satisfies Array<ColumnDef<AthleteRowData, any>>,
     [view],
   );
 

@@ -6,10 +6,7 @@ import { useStore } from '@tanstack/react-store';
 import type { MosaicDataTableOptions } from '@nozzleio/mosaic-tanstack-table-core/trimmed';
 import type { RowData, TableOptions } from '@tanstack/react-table';
 
-export type {
-  MosaicDataTableColumnDef,
-  MosaicDataTableColumnDefOptions,
-} from '@nozzleio/mosaic-tanstack-table-core/trimmed';
+export type * from '@nozzleio/mosaic-tanstack-table-core/trimmed';
 
 export function useMosaicReactTable<TData extends RowData, TValue = any>(
   options: MosaicDataTableOptions<TData, TValue>,
