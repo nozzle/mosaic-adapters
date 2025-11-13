@@ -34,7 +34,7 @@ function BareDataTableColumnHeader<TData extends RowData, TValue>({
       <p>{title}</p>
 
       {/* Sorting UI */}
-      <div className="flex gap-2 p-1">
+      <div className="flex gap-2">
         <button
           type="button"
           onClick={() => column.toggleSorting(false, multiSort)}

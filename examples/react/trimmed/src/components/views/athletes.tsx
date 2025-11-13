@@ -104,6 +104,8 @@ function AthletesTable() {
           accessorKey: 'id',
           enableHiding: false,
           enableSorting: false,
+          enableMultiSort: false,
+          enableColumnFilter: false,
         },
         {
           id: 'Name',
@@ -111,8 +113,6 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Name" view={view} />
           ),
           accessorFn: (row) => row.name,
-          enableHiding: true,
-          enableSorting: true,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'name',
@@ -129,8 +129,6 @@ function AthletesTable() {
             />
           ),
           accessorKey: 'nationality',
-          enableHiding: true,
-          enableSorting: true,
         },
         {
           id: 'Gender',
@@ -138,8 +136,6 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Gender" view={view} />
           ),
           accessorKey: 'sex',
-          enableHiding: true,
-          enableSorting: true,
         },
         {
           id: 'dob',
@@ -154,8 +150,6 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'date_of_birth',
-          enableHiding: true,
-          enableSorting: true,
         },
         {
           id: 'Height',
@@ -170,8 +164,6 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'height',
-          enableHiding: true,
-          enableSorting: true,
         },
         {
           id: 'Weight',
@@ -186,8 +178,6 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'weight',
-          enableHiding: true,
-          enableSorting: true,
         },
         {
           id: 'Sport',
@@ -195,8 +185,6 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Sport" view={view} />
           ),
           accessorKey: 'sport',
-          enableHiding: true,
-          enableSorting: true,
         },
         {
           id: 'Gold(s)',
@@ -204,8 +192,6 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Gold(s)" view={view} />
           ),
           accessorKey: 'gold',
-          enableHiding: true,
-          enableSorting: true,
         },
         {
           id: 'Silver(s)',
@@ -213,8 +199,6 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Silver(s)" view={view} />
           ),
           accessorKey: 'silver',
-          enableHiding: true,
-          enableSorting: true,
         },
         {
           id: 'Bronze(s)',
@@ -222,8 +206,6 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Bronze(s)" view={view} />
           ),
           accessorKey: 'bronze',
-          enableHiding: true,
-          enableSorting: true,
         },
         {
           id: 'Info',
@@ -231,7 +213,8 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Info" view={view} />
           ),
           accessorKey: 'info',
-          enableHiding: true,
+          enableSorting: false,
+          enableColumnFilter: false,
         },
         {
           id: 'actions',
@@ -254,6 +237,7 @@ function AthletesTable() {
           },
           enableHiding: false,
           enableSorting: false,
+          enableColumnFilter: false,
         },
       ] satisfies Array<ColumnDef<AthleteRowData, any>>,
     [view],
@@ -264,7 +248,10 @@ function AthletesTable() {
     filterBy: $query,
     columns,
     tableOptions: {
+      enableHiding: true,
       enableMultiSort: true,
+      enableSorting: true,
+      enableColumnFilters: true,
     },
   });
 

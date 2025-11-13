@@ -15,9 +15,9 @@ export function BareTable<TData extends RowData, TValue>(props: {
       <table className="table-auto w-full">
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
+            <tr key={headerGroup.id} className="py-1">
               {headerGroup.headers.map((header) => (
-                <th key={header.id}>
+                <th key={header.id} className="px-2">
                   {header.isPlaceholder
                     ? null
                     : flexRender(
@@ -31,9 +31,9 @@ export function BareTable<TData extends RowData, TValue>(props: {
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => (
-            <tr key={row.id}>
+            <tr key={row.id} className="py-1">
               {row.getVisibleCells().map((cell) => (
-                <td key={cell.id}>
+                <td key={cell.id} className="text-nowrap px-2">
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
               ))}
@@ -42,7 +42,7 @@ export function BareTable<TData extends RowData, TValue>(props: {
         </tbody>
         <tfoot>
           {table.getFooterGroups().map((footerGroup) => (
-            <tr key={footerGroup.id}>
+            <tr key={footerGroup.id} className="py-1">
               {footerGroup.headers.map((header) => (
                 <th key={header.id}>
                   {header.isPlaceholder
