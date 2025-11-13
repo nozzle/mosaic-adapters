@@ -62,6 +62,8 @@ export class MosaicDataTable<
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
 
   #columnDefIdToSqlColumnAccessor: Map<string, string> = new Map();
+  #columnDefIdToFieldInfo: Map<string, FieldInfo> = new Map();
+  #sqlColumnAccessorToFieldInfo: Map<string, FieldInfo> = new Map();
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
@@ -163,7 +165,7 @@ export class MosaicDataTable<
       if (columnFilter.value && typeof columnFilter.value === 'string') {
         // Simple equals filter for now
         whereClauses.push(
-          mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value)}`,
+          mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value.trim())}`,
         );
       }
     });
@@ -245,6 +247,32 @@ export class MosaicDataTable<
     const schema = await queryFieldInfo(this.coordinator!, this.fields());
     this.schema = schema;
 
+    // Clear previous mappings
+    this.#columnDefIdToFieldInfo.clear();
+    this.#sqlColumnAccessorToFieldInfo.clear();
+
+    // Build a map of SQL Column name to FieldInfo for performant lookup
+    const map = new Map<string, FieldInfo>();
+    schema.forEach((field) => {
+      map.set(field.column, field);
+    });
+
+    this.#sqlColumnAccessorToFieldInfo = map;
+
+    // Map ColumnDef IDs to FieldInfo
+    Array.from(this.#columnDefIdToSqlColumnAccessor.entries()).forEach(
+      ([id, value]) => {
+        const matchedField = map.get(value);
+        if (!matchedField) {
+          console.warn(
+            `[MosaicDataTable] Column definition with id "${id}" has an accessorKey or mosaicDataTable.sqlColumn "${value}" that does not exist in the table schema.`,
+          );
+        } else {
+          this.#columnDefIdToFieldInfo.set(id, matchedField);
+        }
+      },
+    );
+
     return Promise.resolve();
   }
 
@@ -325,6 +353,9 @@ export class MosaicDataTable<
    */
   private getColumnsDefs() {
     const columnDefs = this.#store.state.columnDefs;
+
+    // Clear previous mappings
+    this.#columnDefIdToSqlColumnAccessor.clear();
 
     // We should only consider columns that can be mapped to Mosaic columns
     const queryableColumns = columnDefs.filter((def) => {
