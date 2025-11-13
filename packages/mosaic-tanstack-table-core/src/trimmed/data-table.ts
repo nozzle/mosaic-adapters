@@ -445,6 +445,7 @@ export class MosaicDataTable<
       getCoreRowModel: getCoreRowModel(),
       state: state.tableState,
       onStateChange: (updater) => {
+        // TODO: Add something like `ohash` for stable object hashing
         // Stored the old hashed table state to compare after update
         const hashedOldState = JSON.stringify(this.#store.state.tableState);
 
