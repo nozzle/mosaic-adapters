@@ -6,9 +6,18 @@ import {
   queryFieldInfo,
 } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
-import { getCoreRowModel } from '@tanstack/table-core';
+import {
+  getCoreRowModel,
+  getFacetedMinMaxValues,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
+} from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
-import { functionalUpdate, toSafeSqlColumnName } from './utils';
+import {
+  functionalUpdate,
+  seedInitialTableState,
+  toSafeSqlColumnName,
+} from './utils';
 
 import type {
   FieldInfo,
@@ -17,12 +26,7 @@ import type {
   SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
-import type {
-  ColumnDef,
-  RowData,
-  TableOptions,
-  TableState,
-} from '@tanstack/table-core';
+import type { ColumnDef, RowData, TableOptions } from '@tanstack/table-core';
 import type { MosaicDataTableOptions, MosaicDataTableStore } from './types';
 
 /**
@@ -57,7 +61,7 @@ export class MosaicDataTable<
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
 
-  #columnDefIdToAccessorMap: Map<string, string> = new Map();
+  #columnDefIdToSqlColumnAccessor: Map<string, string> = new Map();
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
@@ -92,7 +96,9 @@ export class MosaicDataTable<
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (!this.#store) {
       this.#store = new Store({
-        tableState: seedInitialTableState(options.tableOptions?.initialState),
+        tableState: seedInitialTableState<TData>(
+          options.tableOptions?.initialState,
+        ),
         tableOptions: {
           ...(options.tableOptions ?? {}),
         } as ResolvedStore['tableOptions'],
@@ -109,7 +115,7 @@ export class MosaicDataTable<
     }
   }
 
-  override query(filter?: FilterExpr | null | undefined): SelectQuery {
+  override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
     const tableName = this.sourceTable();
 
     const tableState = this.#store.state.tableState;
@@ -118,7 +124,12 @@ export class MosaicDataTable<
 
     // Only consider sorting for columns that can be mapped to Mosaic columns
     const sorting = tableState.sorting.filter((sort) =>
-      this.#columnDefIdToAccessorMap.has(sort.id),
+      this.#columnDefIdToSqlColumnAccessor.has(sort.id),
+    );
+
+    // Only consider column filters for columns that can be mapped to Mosaic columns
+    const columnFilters = tableState.columnFilters.filter((filter) =>
+      this.#columnDefIdToSqlColumnAccessor.has(filter.id),
     );
 
     // Get the Table SQL columns to select
@@ -127,27 +138,52 @@ export class MosaicDataTable<
     // Initialize the main query statement
     // This is where the actual main Columns with Pagination will be applied
     const statement = mSql.Query.from(tableName).select(...tableColumns, {
-      [this.#sql_total_rows]: mSql.sql`COUNT(*) OVER()`,
+      [this.#sql_total_rows]: mSql.sql`COUNT(*) OVER()`, // Window function to get total rows
     });
 
-    // Conditionally add filter
-    if (filter) {
-      // TODO: Column filters would be merged here as well
-      // TODO: https://tanstack.com/table/latest/docs/guide/column-filtering#manual-server-side-filtering
-      statement.where(filter);
+    const whereClauses: Array<mSql.FilterExpr> = [];
+
+    // Conditionally add the primary filter
+    if (primaryFilter) {
+      whereClauses.push(primaryFilter);
     }
 
+    // Add column filters
+    columnFilters.forEach((columnFilter) => {
+      const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(
+        columnFilter.id,
+      )!; // Assertion is safe due to filtering above
+      // Build the filter expression based on the filter value
+
+      // TODO: Support different filter types based on ColumnDef meta.
+      // TODO: Move this building logic into its own utility function/method.
+      // TODO: Figure out the best usage for AND and OR combinations.
+
+      // POC of what this could look like
+      if (columnFilter.value && typeof columnFilter.value === 'string') {
+        // Simple equals filter for now
+        whereClauses.push(
+          mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value)}`,
+        );
+      }
+    });
+
+    // Apply all where clauses
+    statement.where(...whereClauses);
+
     // Add sorting
-    const sortingCommands: Array<mSql.OrderByNode> = [];
+    const orderingCriteria: Array<mSql.OrderByNode> = [];
     sorting.forEach((sort) => {
-      const accessor = this.#columnDefIdToAccessorMap.get(sort.id)!; // Assertion is safe due to filtering above
+      const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(sort.id)!; // Assertion is safe due to filtering above
 
       // Build the sorting command based on direction
-      sortingCommands.push(
-        sort.desc ? mSql.desc(accessor) : mSql.asc(accessor),
+      orderingCriteria.push(
+        sort.desc ? mSql.desc(columnAccessor) : mSql.asc(columnAccessor),
       );
     });
-    statement.orderby(...sortingCommands);
+
+    // Apply ordering criteria
+    statement.orderby(...orderingCriteria);
 
     // Add offset and limit based pagination
     statement
@@ -195,6 +231,12 @@ export class MosaicDataTable<
           };
         });
       });
+    } else {
+      console.error(
+        '[MosaicDataTable] queryResult() Received non-Arrow Table result:',
+        table,
+      );
+      console.error('Please report this issue to the developers.');
     }
 
     return this;
@@ -375,10 +417,9 @@ export class MosaicDataTable<
       }
 
       // Store the mapping of ColumnDef ID to Mosaic column accessor
-      this.#columnDefIdToAccessorMap.set(def.id, columnAccessor);
+      this.#columnDefIdToSqlColumnAccessor.set(def.id, columnAccessor);
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (shouldSearchAllColumns) {
       columnAccessorKeys = [];
     }
@@ -443,6 +484,9 @@ export class MosaicDataTable<
       data: state.rows,
       columns,
       getCoreRowModel: getCoreRowModel(),
+      getFacetedRowModel: getFacetedRowModel(),
+      getFacetedUniqueValues: getFacetedUniqueValues(), // TODO: Remove this for actual server-side faceting.
+      getFacetedMinMaxValues: getFacetedMinMaxValues(), // TODO: Remove this for actual server-side faceting.
       state: state.tableState,
       onStateChange: (updater) => {
         // TODO: Add something like `ohash` for stable object hashing
@@ -467,6 +511,7 @@ export class MosaicDataTable<
       },
       manualPagination: true,
       manualSorting: true,
+      manualFiltering: true,
       rowCount: state.totalRows,
       ...state.tableOptions,
     };
@@ -475,40 +520,4 @@ export class MosaicDataTable<
   get store(): Store<MosaicDataTableStore<TData, TValue>> {
     return this.#store;
   }
-}
-
-function seedInitialTableState(
-  initial?: TableOptions<any>['initialState'],
-): TableState {
-  return {
-    pagination: {
-      pageIndex: initial?.pagination?.pageIndex || 0,
-      pageSize: initial?.pagination?.pageSize || 10,
-    },
-    columnFilters: initial?.columnFilters || [],
-    columnVisibility: initial?.columnVisibility || {},
-    columnOrder: initial?.columnOrder || [],
-    columnPinning: {
-      left: initial?.columnPinning?.left || [],
-      right: initial?.columnPinning?.right || [],
-    },
-    rowPinning: {
-      top: initial?.rowPinning?.top || [],
-      bottom: initial?.rowPinning?.bottom || [],
-    },
-    globalFilter: initial?.globalFilter || undefined,
-    sorting: initial?.sorting || [],
-    expanded: initial?.expanded || {},
-    grouping: initial?.grouping || [],
-    columnSizing: initial?.columnSizing || {},
-    columnSizingInfo: {
-      columnSizingStart: initial?.columnSizingInfo?.columnSizingStart || [],
-      deltaOffset: initial?.columnSizingInfo?.deltaOffset || null,
-      deltaPercentage: initial?.columnSizingInfo?.deltaPercentage || null,
-      isResizingColumn: initial?.columnSizingInfo?.isResizingColumn || false,
-      startOffset: initial?.columnSizingInfo?.startOffset || null,
-      startSize: initial?.columnSizingInfo?.startSize || null,
-    },
-    rowSelection: initial?.rowSelection || {},
-  };
 }
