@@ -11,76 +11,19 @@ import { Store, batch } from '@tanstack/store';
 import { functionalUpdate, toSafeSqlColumnName } from './utils';
 
 import type {
-  Coordinator,
   FieldInfo,
   FieldInfoRequest,
   Param,
-  Selection,
   SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
-  PaginationState,
   RowData,
   TableOptions,
   TableState,
-  VisibilityState,
 } from '@tanstack/table-core';
-
-export type MosaicDataTableColumnDefOptions = {
-  //
-};
-
-export type MosaicDataTableColumnDef<
-  TData extends RowData,
-  TValue = unknown,
-> = ColumnDef<TData, TValue> & MosaicDataTableColumnDefOptions;
-
-export type MosaicTanStackTableInitialState = {
-  columnVisibility?: VisibilityState;
-  pagination?: PaginationState;
-};
-
-export type SubsetTableOptions<TData extends RowData> = Omit<
-  TableOptions<TData>,
-  | 'data'
-  | 'columns'
-  | 'state'
-  | 'onStateChange'
-  | 'manualPagination'
-  | 'manualSorting'
-  | 'rowCount'
-  | 'getCoreRowModel'
->;
-
-export interface MosaicDataTableOptions<
-  TData extends RowData,
-  TValue = unknown,
-> {
-  table: Param<string> | string;
-  coordinator?: Coordinator;
-  onTableStateChange?: 'requestQuery' | 'requestUpdate';
-  filterBy?: Selection | undefined;
-  columns?: Array<MosaicDataTableColumnDef<TData, TValue>>;
-  tableOptions?: Partial<SubsetTableOptions<TData>>;
-  /**
-   * The column name to use for the total rows count returned from the query.
-   * This values will be sanitised to be SQL-safe, so the string provided here
-   * may be exactly what is used in the query and result set.
-   * @default '__total_rows'
-   */
-  totalRowsColumnName?: string;
-}
-
-export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
-  columns: Array<MosaicDataTableColumnDef<TData, TValue>>;
-  tableState: TableState;
-  arrowColumnSchema: Array<FieldInfo>;
-  rows: Array<TData>;
-  totalRows: number | undefined;
-  tableOptions: SubsetTableOptions<TData>;
-};
+import type { MosaicDataTableOptions, MosaicDataTableStore } from './types';
 
 /**
  * This is a factory function to create a MosaicDataTable client.
@@ -113,6 +56,8 @@ export class MosaicDataTable<
   #store!: Store<MosaicDataTableStore<TData, TValue>>;
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
+
+  #columnDefIdToAccessorMap: Map<string, string> = new Map();
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
@@ -154,12 +99,13 @@ export class MosaicDataTable<
         rows: [] as ResolvedStore['rows'],
         arrowColumnSchema: [] as ResolvedStore['arrowColumnSchema'],
         totalRows: undefined as ResolvedStore['totalRows'],
-        columns: options.columns ?? ([] as ResolvedStore['columns']),
+        columnDefs: options.columns ?? ([] as ResolvedStore['columnDefs']),
       });
     } else {
       this.#store.setState((prev) => ({
         ...prev,
-        columns: options.columns !== undefined ? options.columns : prev.columns,
+        columnDefs:
+          options.columns !== undefined ? options.columns : prev.columnDefs,
       }));
     }
   }
@@ -188,34 +134,22 @@ export class MosaicDataTable<
       statement.where(filter);
     }
 
-    // Conditionally add sorting
+    // Add sorting
     const sortingCommands: Array<mSql.OrderByNode> = [];
-    sorting.forEach((sort) => {
-      const columnDef = this.#store.state.columns.find((d) => d.id === sort.id);
+    sorting
+      // Only consider sorting for columns that can be mapped to Mosaic columns
+      .filter((sort) => this.#columnDefIdToAccessorMap.has(sort.id))
+      .forEach((sort) => {
+        const accessor = this.#columnDefIdToAccessorMap.get(sort.id)!;
 
-      if (!columnDef) {
-        throw new Error(
-          `[MosaicDataTable.query] Unable to find column definition for sorting column ID: ${sort.id}`,
+        // Build the sorting command based on direction
+        sortingCommands.push(
+          sort.desc ? mSql.desc(accessor) : mSql.asc(accessor),
         );
-      }
-      if (!('accessorKey' in columnDef)) {
-        throw new Error(
-          `[MosaicDataTable.query] Column definition for sorting column ID: ${sort.id} is missing an \`accessorKey\` property.`,
-        );
-      }
-
-      const accessor =
-        typeof columnDef.accessorKey === 'string'
-          ? columnDef.accessorKey
-          : columnDef.accessorKey.toString();
-
-      sortingCommands.push(
-        sort.desc ? mSql.desc(accessor) : mSql.asc(accessor),
-      );
-    });
+      });
     statement.orderby(...sortingCommands);
 
-    // Add pagination at the end
+    // Add offset and limit based pagination
     statement
       .limit(pagination.pageSize)
       .offset(pagination.pageIndex * pagination.pageSize);
@@ -323,7 +257,7 @@ export class MosaicDataTable<
    * taking into account any column remaps defined
    * and other TanStack Table ColumnDef options.
    */
-  sqlColumns(): Array<mSql.SelectExpr> {
+  private sqlColumns(): Array<mSql.SelectExpr> {
     // Get the columns to select in SQL-land
     const selectColumns = this.fields().map((d) =>
       typeof d.column !== 'string' ? d.column.toString() : d.column,
@@ -342,15 +276,17 @@ export class MosaicDataTable<
   }
 
   /**
-   * Map TanStack Table's ColumnDefs to Mosaic FieldInfoRequests
-   * to be used in queries.
+   * This function validates the ColumnDefs provided to the MosaicDataTable,
+   * ensuring that they can be mapped to Mosaic columns for querying.
+   *
+   * Additionally, this functions builds up any necessary internal metadata
+   * needed to drive the query generation and resolution.
    */
-  fields(): Array<FieldInfoRequest> {
-    const table = this.sourceTable();
+  private getColumnsDefs() {
+    const columnDefs = this.#store.state.columnDefs;
 
-    // Filter down the configured TanStack Table ColumnDefs, to just those
-    // that can be mapped to Mosaic columns for the query.
-    const columns = this.#store.state.columns.filter((def) => {
+    // We should only consider columns that can be mapped to Mosaic columns
+    const queryableColumns = columnDefs.filter((def) => {
       // If the column has an accessorKey, we can use that
       if (
         'accessorKey' in def &&
@@ -360,45 +296,123 @@ export class MosaicDataTable<
         return true;
       }
 
-      // If they have defined an accessorFn, we cannot map that to a Mosaic column
-      // so we warn the user that they need to define `mosaicColumn` explicitly
+      // If the column has an accessorFn, we can use that
       if ('accessorFn' in def && typeof def.accessorFn === 'function') {
-        console.warn(
-          `[MosaicDataTable] Column using \`accessorFn\` cannot be mapped to a Mosaic Query column. Please use an \`accessorKey\` instead.`,
-          def,
-        );
-        return false;
+        return true;
       }
 
       // Otherwise, we cannot map this column to a Mosaic column
       return false;
     });
 
-    // If no columns were provided, we default to all columns
-    if (columns.length === 0) {
-      return [
-        {
-          table,
-          column: '*', // This means "all columns" in Mosaic SQL
-        },
-      ];
-    }
+    let shouldSearchAllColumns = false;
 
-    return columns.map((column) => {
-      if (!('accessorKey' in column)) {
-        throw new Error('[MosaicDataTable] Column is missing `accessorKey`:');
+    let columnAccessorKeys: Array<string> = [];
+
+    // Validate each ColumnDef, by running through them and checking
+    // These are considered to be MosaicColumns, so this validation pass is required.
+    queryableColumns.forEach((def) => {
+      let columnAccessor: string | undefined = undefined;
+      // When using an accessorKey, we can directly map that to a Mosaic column.
+      if ('accessorKey' in def && def.accessorKey) {
+        const accessor =
+          typeof def.accessorKey === 'string'
+            ? def.accessorKey
+            : def.accessorKey.toString();
+
+        // If the user has provided `mosaicColumn` metadata, we need to ensure
+        // that it matches the accessorKey, otherwise we warn them that accessorKey
+        // will be used instead.
+        if (
+          def.meta !== undefined &&
+          def.meta.mosaicDataTable !== undefined &&
+          def.meta.mosaicDataTable.sqlColumn !== undefined &&
+          def.meta.mosaicDataTable.sqlColumn !== accessor
+        ) {
+          console.warn(
+            `[MosaicDataTable] Column definition accessorKey "${accessor}" does not match the provided mosaicDataTable.sqlColumn "${def.meta.mosaicDataTable.sqlColumn}". The accessorKey will be used for querying in SQL-land.`,
+            def,
+          );
+        }
+        def.meta;
+
+        columnAccessorKeys.push(accessor);
+        columnAccessor = accessor;
+      } else if ('accessorFn' in def && typeof def.accessorFn === 'function') {
+        // When using an accessorFn, things change a bit since we don't know the resulting column
+        // unless the user has provided the `mosaicColumn` metadata.
+        if (
+          def.meta !== undefined &&
+          def.meta.mosaicDataTable !== undefined &&
+          def.meta.mosaicDataTable.sqlColumn !== undefined
+        ) {
+          const mosaicColumn = def.meta.mosaicDataTable.sqlColumn;
+
+          columnAccessorKeys.push(mosaicColumn);
+          columnAccessor = mosaicColumn;
+        } else {
+          shouldSearchAllColumns = true;
+          console.warn(
+            `[MosaicDataTable] Column definition using \`accessorFn\` is missing required \`mosaicDataTable.sqlColumn\` metadata to map to a Mosaic Query column. Please provide this property to improve query performance.`,
+            def,
+            `Without this, the resulting query will need to return all columns to try and satisfy the accessor function.`,
+          );
+          return;
+        }
       }
 
-      const accessor =
-        typeof column.accessorKey === 'string'
-          ? column.accessorKey
-          : column.accessorKey.toString();
+      if (!columnAccessor) {
+        const message = `[MosaicDataTable] Column definition is missing an \`accessorKey\` or valid \`mosaicDataTable.sqlColumn\` metadata to map to a Mosaic Query column. Please provide one of these properties.`;
+        console.error(message, def);
+        throw new Error(message);
+      }
 
-      return {
-        table,
-        column: accessor,
-      };
+      // Make sure we have a valid ID for the column
+      if (!def.id) {
+        const message = `[MosaicDataTable] Column definition is missing an \`id\` property and could not be inferred. Please provide an explicit \`id\` or use \`accessorKey\`.`;
+        console.error(message, def);
+        throw new Error(message);
+      }
+
+      // Store the mapping of ColumnDef ID to Mosaic column accessor
+      this.#columnDefIdToAccessorMap.set(def.id, columnAccessor);
     });
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (shouldSearchAllColumns) {
+      columnAccessorKeys = [];
+    }
+
+    return {
+      columnDefs: queryableColumns,
+      columnAccessorKeys,
+      shouldSearchAllColumns,
+    };
+  }
+
+  /**
+   * Map TanStack Table's ColumnDefs to Mosaic FieldInfoRequests
+   * to be used in queries.
+   */
+  fields(): Array<FieldInfoRequest> {
+    const table = this.sourceTable();
+
+    const result = this.getColumnsDefs();
+    const { shouldSearchAllColumns, columnAccessorKeys } = result;
+
+    return shouldSearchAllColumns
+      ? [
+          {
+            table,
+            column: '*', // This means "all columns" in Mosaic SQL
+          },
+        ]
+      : columnAccessorKeys.map((accessor) => {
+          return {
+            table,
+            column: accessor,
+          };
+        });
   }
 
   /**
@@ -413,7 +427,7 @@ export class MosaicDataTable<
     state: Store<MosaicDataTableStore<TData, TValue>>['state'],
   ): TableOptions<TData> {
     const columns =
-      state.columns.length === 0
+      state.columnDefs.length === 0
         ? // No ColDefs were provided, so we default to all columns
           state.arrowColumnSchema.map((field) => {
             return {
@@ -421,7 +435,7 @@ export class MosaicDataTable<
               header: field.column,
             } satisfies ColumnDef<TData, TValue>;
           })
-        : state.columns.map((column) => {
+        : state.columnDefs.map((column) => {
             return column satisfies ColumnDef<TData, TValue>;
           });
 
