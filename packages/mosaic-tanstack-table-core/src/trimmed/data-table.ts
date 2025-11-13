@@ -304,7 +304,7 @@ export class MosaicDataTable<
       return false;
     });
 
-    let shouldSearchAllColumns = false;
+    let shouldSearchAllColumns = queryableColumns.length === 0;
 
     let columnAccessorKeys: Array<string> = [];
 
