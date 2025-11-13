@@ -6,6 +6,8 @@ import type {
   TableState,
 } from '@tanstack/table-core';
 
+export type MosaicDataTableSqlFilterType = 'equals' | 'in' | 'like' | 'range';
+
 /**
  * This will be merged into the TanStack Table ColumnDef type
  * to provide Mosaic-specific metadata options.
@@ -36,6 +38,11 @@ export type MosaicDataTableColumnDefMetaOptions = {
      * in Mosaic queries.
      */
     sqlColumn?: string;
+    /**
+     * The SQL filter type to use for this column when
+     * generating Mosaic queries.
+     */
+    sqlFilterType?: MosaicDataTableSqlFilterType;
   };
 };
 
