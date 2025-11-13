@@ -115,7 +115,11 @@ export class MosaicDataTable<
     const tableState = this.#store.state.tableState;
 
     const pagination = tableState.pagination;
-    const sorting = tableState.sorting;
+
+    // Only consider sorting for columns that can be mapped to Mosaic columns
+    const sorting = tableState.sorting.filter((sort) =>
+      this.#columnDefIdToAccessorMap.has(sort.id),
+    );
 
     // Get the Table SQL columns to select
     const tableColumns = this.sqlColumns();
@@ -135,17 +139,14 @@ export class MosaicDataTable<
 
     // Add sorting
     const sortingCommands: Array<mSql.OrderByNode> = [];
-    sorting
-      // Only consider sorting for columns that can be mapped to Mosaic columns
-      .filter((sort) => this.#columnDefIdToAccessorMap.has(sort.id))
-      .forEach((sort) => {
-        const accessor = this.#columnDefIdToAccessorMap.get(sort.id)!;
+    sorting.forEach((sort) => {
+      const accessor = this.#columnDefIdToAccessorMap.get(sort.id)!; // Assertion is safe due to filtering above
 
-        // Build the sorting command based on direction
-        sortingCommands.push(
-          sort.desc ? mSql.desc(accessor) : mSql.asc(accessor),
-        );
-      });
+      // Build the sorting command based on direction
+      sortingCommands.push(
+        sort.desc ? mSql.desc(accessor) : mSql.asc(accessor),
+      );
+    });
     statement.orderby(...sortingCommands);
 
     // Add offset and limit based pagination
