@@ -1,9 +1,4 @@
-import type {
-  Coordinator,
-  FieldInfo,
-  Param,
-  Selection,
-} from '@uwdata/mosaic-core';
+import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
 import type {
   ColumnDef,
   RowData,
@@ -78,7 +73,6 @@ export interface MosaicDataTableOptions<
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   columnDefs: Array<ColumnDef<TData, TValue>>;
   tableState: TableState;
-  arrowColumnSchema: Array<FieldInfo>;
   rows: Array<TData>;
   totalRows: number | undefined;
   tableOptions: SubsetTableOptions<TData>;
