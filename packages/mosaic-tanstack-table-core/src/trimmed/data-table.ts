@@ -97,7 +97,6 @@ export class MosaicDataTable<
           ...(options.tableOptions ?? {}),
         } as ResolvedStore['tableOptions'],
         rows: [] as ResolvedStore['rows'],
-        arrowColumnSchema: [] as ResolvedStore['arrowColumnSchema'],
         totalRows: undefined as ResolvedStore['totalRows'],
         columnDefs: options.columns ?? ([] as ResolvedStore['columnDefs']),
       });
@@ -429,7 +428,7 @@ export class MosaicDataTable<
     const columns =
       state.columnDefs.length === 0
         ? // No ColDefs were provided, so we default to all columns
-          state.arrowColumnSchema.map((field) => {
+          this.schema.map((field) => {
             return {
               accessorKey: field.column,
               header: field.column,
