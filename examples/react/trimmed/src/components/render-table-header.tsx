@@ -30,8 +30,8 @@ function BareDataTableColumnHeader<TData extends RowData, TValue>({
   const multiSort = column.getCanMultiSort();
 
   return (
-    <div className="flex flex-col items-start">
-      <p>{title}</p>
+    <>
+      <p className="w-min">{title}</p>
 
       {/* Sorting UI */}
       <div className="flex gap-2">
@@ -70,6 +70,6 @@ function BareDataTableColumnHeader<TData extends RowData, TValue>({
           NONE
         </button>
       </div>
-    </div>
+    </>
   );
 }
