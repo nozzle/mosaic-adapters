@@ -136,6 +136,9 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Gender" view={view} />
           ),
           accessorKey: 'sex',
+          meta: {
+            filterVariant: 'select',
+          },
         },
         {
           id: 'dob',
@@ -164,6 +167,10 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'height',
+          meta: {
+            filterVariant: 'range',
+          },
+          enableColumnFilter: false,
         },
         {
           id: 'Weight',
@@ -253,6 +260,7 @@ function AthletesTable() {
       enableSorting: true,
       enableColumnFilters: true,
     },
+    onTableStateChange: 'requestQuery',
   });
 
   const table = useReactTable(tableOptions);
