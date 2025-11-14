@@ -10,7 +10,7 @@ import {
   getCoreRowModel,
   getFacetedMinMaxValues,
   getFacetedRowModel,
-  getFacetedUniqueValues,
+  // getFacetedUniqueValues,
 } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
@@ -20,13 +20,20 @@ import {
 } from './utils';
 
 import type {
+  Coordinator,
   FieldInfo,
   FieldInfoRequest,
   Param,
+  Selection,
   SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
-import type { ColumnDef, RowData, TableOptions } from '@tanstack/table-core';
+import type {
+  ColumnDef,
+  RowData,
+  Table,
+  TableOptions,
+} from '@tanstack/table-core';
 import type { MosaicDataTableOptions, MosaicDataTableStore } from './types';
 
 /**
@@ -56,6 +63,8 @@ export class MosaicDataTable<
 > extends MosaicClient {
   from: Param<string> | string;
   schema: Array<FieldInfo> = [];
+
+  facets: Map<string, any> = new Map();
 
   #store!: Store<MosaicDataTableStore<TData, TValue>>;
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
@@ -191,6 +200,29 @@ export class MosaicDataTable<
     statement
       .limit(pagination.pageSize)
       .offset(pagination.pageIndex * pagination.pageSize);
+
+    this.facets.clear();
+
+    // TODO: Figure out where's the best place to do this logic
+    // TODO: Make it dynamic based on which columns actually need it
+    ['name', 'sport', 'sex', 'nationality'].forEach((sqlColumn) => {
+      const uniqueValuesClient = new UniqueColumnValuesClient({
+        table: tableName,
+        column: sqlColumn,
+        filterBy: this.filterBy,
+        coordinator: this.coordinator,
+        onResult: (values: Array<unknown>) => {
+          const columnId = Array.from(
+            this.#columnDefIdToFieldInfo.entries(),
+          ).find((d) => d[1].column === sqlColumn)?.[0];
+
+          if (!columnId) return;
+          this.facets.set(columnId, values);
+        },
+      });
+
+      uniqueValuesClient.requestUpdate();
+    });
 
     return statement;
   }
@@ -515,7 +547,7 @@ export class MosaicDataTable<
       columns,
       getCoreRowModel: getCoreRowModel(),
       getFacetedRowModel: getFacetedRowModel(),
-      getFacetedUniqueValues: getFacetedUniqueValues(), // TODO: Remove this for actual server-side faceting.
+      getFacetedUniqueValues: this.getFacetedUniqueValues(),
       getFacetedMinMaxValues: getFacetedMinMaxValues(), // TODO: Remove this for actual server-side faceting.
       state: state.tableState,
       onStateChange: (updater) => {
@@ -547,7 +579,88 @@ export class MosaicDataTable<
     };
   }
 
+  getFacetedUniqueValues<TData extends RowData>(): (
+    table: Table<TData>,
+    columnId: string,
+  ) => () => Map<any, number> {
+    return (_table, columnId) => {
+      const values = this.getFacets().get(columnId);
+
+      if (!values) {
+        return () => new Map<any, number>();
+      }
+
+      if (Array.isArray(values)) {
+        const map = new Map<any, number>();
+        values.forEach((value) => {
+          map.set(value, 1);
+        });
+        return () => map;
+      }
+
+      return () => new Map<any, number>();
+    };
+  }
+
   get store(): Store<MosaicDataTableStore<TData, TValue>> {
     return this.#store;
+  }
+
+  getFacets(): Map<string, any> {
+    return this.facets;
+  }
+}
+
+class UniqueColumnValuesClient extends MosaicClient {
+  from: string;
+  column: string;
+  onResult: (values: Array<unknown>) => void;
+
+  constructor(options: {
+    filterBy?: Selection | undefined;
+    coordinator?: Coordinator | undefined | null;
+    table: string;
+    column: string;
+    onResult: (values: Array<unknown>) => void;
+  }) {
+    super(options.filterBy);
+
+    if (options.coordinator) {
+      this.coordinator = options.coordinator;
+    } else {
+      this.coordinator = defaultCoordinator();
+    }
+
+    this.from = options.table;
+    this.column = options.column;
+    this.onResult = options.onResult;
+  }
+
+  override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
+    const statement = mSql.Query.from(this.from).select(this.column);
+
+    if (primaryFilter) {
+      statement.where(primaryFilter);
+    }
+
+    statement.groupby(this.column);
+
+    return statement;
+  }
+
+  override queryResult(table: unknown): this {
+    if (isArrowTable(table)) {
+      const rows = table.toArray();
+      const values: Array<unknown> = [];
+
+      rows.forEach((row) => {
+        const value = row[this.column];
+        values.push(value);
+      });
+
+      this.onResult(values);
+    }
+
+    return this;
   }
 }
