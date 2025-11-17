@@ -201,28 +201,29 @@ export class MosaicDataTable<
       .limit(pagination.pageSize)
       .offset(pagination.pageIndex * pagination.pageSize);
 
+    // Kick off the requests for the unique column values for faceting to be queried
+    // TODO: Figure out where's the best place to do this logic
+    // TODO: Figure out the best way (and/or ways to support) the retrieval of unique values for faceting
     this.facets.clear();
 
-    // TODO: Figure out where's the best place to do this logic
-    // TODO: Make it dynamic based on which columns actually need it
-    ['name', 'sport', 'sex', 'nationality'].forEach((sqlColumn) => {
-      const uniqueValuesClient = new UniqueColumnValuesClient({
-        table: tableName,
-        column: sqlColumn,
-        filterBy: this.filterBy,
-        coordinator: this.coordinator,
-        onResult: (values: Array<unknown>) => {
-          const columnId = Array.from(
-            this.#columnDefIdToFieldInfo.entries(),
-          ).find((d) => d[1].column === sqlColumn)?.[0];
+    // ['name', 'sport', 'sex', 'nationality'].forEach((sqlColumn) => {
+    //   const uniqueValuesClient = new UniqueColumnValuesClient({
+    //     table: tableName,
+    //     column: sqlColumn,
+    //     filterBy: this.filterBy,
+    //     coordinator: this.coordinator,
+    //     onResult: (values: Array<unknown>) => {
+    //       const columnId = Array.from(
+    //         this.#columnDefIdToFieldInfo.entries(),
+    //       ).find((d) => d[1].column === sqlColumn)?.[0];
 
-          if (!columnId) return;
-          this.facets.set(columnId, values);
-        },
-      });
+    //       if (!columnId) return;
+    //       this.facets.set(columnId, values);
+    //     },
+    //   });
 
-      uniqueValuesClient.requestUpdate();
-    });
+    //   uniqueValuesClient.requestUpdate();
+    // });
 
     return statement;
   }
@@ -579,6 +580,11 @@ export class MosaicDataTable<
     };
   }
 
+  /**
+   * A server-side implementation of TanStack Table's
+   * `getFacetedUniqueValues` function, to retrieve
+   * unique values for a given column from the pre-fetched facets.
+   */
   getFacetedUniqueValues<TData extends RowData>(): (
     table: Table<TData>,
     columnId: string,
@@ -611,6 +617,10 @@ export class MosaicDataTable<
   }
 }
 
+/**
+ * This is a helper Mosaic Client to query unique values for a given column
+ * in a table. This is useful for faceting operations.
+ */
 class UniqueColumnValuesClient extends MosaicClient {
   from: string;
   column: string;
