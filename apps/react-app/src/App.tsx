@@ -7,6 +7,7 @@ import { MosaicProvider, type SelectionConfig } from '@mosaic-tanstack/react';
 import { AthletesDashboard } from './dashboards/AthletesDashboard';
 import { NycTaxiDashboard } from './dashboards/NycTaxiDashboard';
 import { FlightsDashboard } from './dashboards/FlightsDashboard';
+import { CrimeLensDashboard } from './dashboards/CrimeLensDashboard';
 
 // --- ATHLETES DASHBOARD INTERACTION GRAPH ---
 // Defines the complete set of reactive variables (Selections) for this dashboard.
@@ -132,12 +133,30 @@ const flightsSelections: SelectionConfig[] = [
   }
 ];
 
+
+// --- NYC CRIMELENS DASHBOARD INTERACTION GRAPH (SIMPLIFIED) ---
+const crimeLensSelections: SelectionConfig[] = [
+  // ATOMIC SELECTIONS (from UI controls)
+  { name: 'crime_boro_filter', type: 'intersect' },
+  { name: 'crime_sev_filter', type: 'intersect' },
+  { name: 'crime_timeline_brush', type: 'intersect' },
+  
+  // COMPOSITE "MASTER" SELECTION
+  // This combines all filters into a single context for the timeline and table.
+  {
+      name: 'crime_master_query',
+      type: 'intersect',
+      options: { include: ['crime_boro_filter', 'crime_sev_filter', 'crime_timeline_brush'] }
+  },
+];
+
+
 // Combine all configurations into a single source of truth for the provider.
-const allDashboardSelections = [...athleteSelections, ...taxiSelections, ...flightsSelections];
+const allDashboardSelections = [...athleteSelections, ...taxiSelections, ...flightsSelections, ...crimeLensSelections];
 
 // The root App component is a simple tab container that renders the active dashboard.
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'athletes' | 'taxis' | 'flights'>('athletes');
+  const [activeTab, setActiveTab] = useState<'athletes' | 'taxis' | 'flights' | 'crime'>('athletes');
 
   return (
     // The provider is initialized ONCE with the complete application interaction graph.
@@ -155,18 +174,24 @@ export default function App() {
           <button onClick={() => setActiveTab('flights')} disabled={activeTab === 'flights'}>
             Flights Dashboard
           </button>
+          <button onClick={() => setActiveTab('crime')} disabled={activeTab === 'crime'}>
+            NYC CrimeLens
+          </button>
         </nav>
         <hr />
-        {/* Conditional rendering based on the active tab state */}
-        <div style={{ display: activeTab === 'athletes' ? 'block' : 'none' }}>
-          <AthletesDashboard />
-        </div>
-        <div style={{ display: activeTab === 'taxis' ? 'block' : 'none' }}>
-          <NycTaxiDashboard />
-        </div>
-        <div style={{ display: activeTab === 'flights' ? 'block' : 'none' }}>
-          <FlightsDashboard />
-        </div>
+        {/*
+          PERFORMANCE FIX: Implement true conditional rendering.
+          REASON: Using `{condition && <Component/>}` ensures that only the active
+          dashboard component is mounted in the DOM. The previous method using
+          `style={{ display: 'none' }}` kept all dashboards mounted, causing
+          them to fetch data unnecessarily on initial load, leading to a
+          significant performance bottleneck. This change ensures that data is
+          only requested for the dashboard that is currently visible.
+        */}
+        {activeTab === 'athletes' && <AthletesDashboard />}
+        {activeTab === 'taxis' && <NycTaxiDashboard />}
+        {activeTab === 'flights' && <FlightsDashboard />}
+        {activeTab === 'crime' && <CrimeLensDashboard />}
       </div>
     </MosaicProvider>
   );

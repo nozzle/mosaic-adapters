@@ -172,7 +172,7 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
     // We pass `this.filterBy?.predicate(this)` to ensure the scroll fetch uses the latest external filter.
     const query = this.query(this.filterBy?.predicate(this), { type: QueryType.DATA });
     if (query) {
-        this.pendingQueryOffset = this.offset;
+        // NOTE: We do not set pendingQueryOffset here because the main query() method now handles it.
         this.requestQuery(query);
     }
   }
@@ -294,24 +294,13 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
   fields() { return null; }
   fieldInfo() {}
 
-  // This `filter` method is the designated Mosaic hook for external filter changes.
-  // It is NOT used in our current architecture because the Coordinator's default
-  // update mechanism calls `query(filter)` instead. We place the logic there.
-  // We leave this here to demonstrate knowledge of the full API.
-  filter(_filter: FilterExpr): void {
-      // This method is intentionally left blank. See the detailed comments in the
-      // `query()` method for the full explanation of the architectural choice.
-  }
+  filter(_filter: FilterExpr): void { }
 
   query(filter?: FilterExpr, options?: any): Query | null {
     const currentFilterString = filter ? String(filter) : '[]';
     
-    // This check is the definitive entry point for an EXTERNAL filter change.
-    // We compare the stringified version of the incoming filter with the last one we processed.
     if (currentFilterString !== this._lastExternalFilter) {
         this.logger.warn(`MOSAIC EVENT: External filter changed. Resetting table state.`);
-        
-        // CRITICAL: Update the cache BEFORE resetting state.
         this._lastExternalFilter = currentFilterString;
 
         this.data = [];
@@ -326,16 +315,17 @@ export abstract class DataTable<TData extends object = any> extends MosaicClient
                 pagination: { ...this.state.pagination, pageIndex: 0 },
             };
             this.state = newState;
-            
             this.table.setOptions(prev => ({ ...prev, state: this.state }));
         }
-
-        // IMPORTANT: By not returning here, we allow this very same `query` call
-        // to proceed and build the *first* query for the newly filtered data.
-        // This avoids race conditions and needing to call `requestQuery` from here.
     }
     
-    return query(this, filter, options);
+    const finalQuery = query(this, filter, options);
+
+    if (finalQuery && (!options || options.type === QueryType.DATA)) {
+        this.pendingQueryOffset = this.offset;
+    }
+
+    return finalQuery;
   }
 
   queryResult = (data: any, query?: any) => queryResult(this, data, query);

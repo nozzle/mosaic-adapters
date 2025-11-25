@@ -43,24 +43,21 @@ export function queryResult<T extends object>(instance: DataTable<T>, data: Arro
     const queryOffset = instance.pendingQueryOffset;
     instance.pendingQueryOffset = null;
     
-    instance.logger.log(`MOSAIC RECEIVE: queryResult() received ${data.numRows} rows.`);
+    instance.logger.log(`MOSAIC RECEIVE: queryResult() received ${data.numRows} rows for offset ${queryOffset}.`);
     instance.loadingState = 'idle';
     instance.error = null;
     
     const newRows = data.toArray().map(row => ({ ...row })) as T[];
-    
-    const pageBaseOffset = instance.state.pagination.pageIndex * instance.state.pagination.pageSize;
-    const expectedOffsetForAppend = pageBaseOffset + instance.data.length;
 
-    if (instance.data.length === 0 || queryOffset === expectedOffsetForAppend) {
-        instance.data = instance.data.concat(newRows);
-    } else {
-        instance.logger.warn(`Received data for unexpected offset ${queryOffset}. Resetting data.`);
+    if (queryOffset !== instance.offset) {
+        instance.logger.warn(`Received data for unexpected offset ${queryOffset} (expected ${instance.offset}). This may be due to a race condition or stale data. Resetting data.`);
         instance.data = newRows;
+        instance.offset = (queryOffset ?? 0) + newRows.length;
+    } else {
+        instance.data = instance.data.concat(newRows);
+        instance.offset += newRows.length;
     }
     
-    instance.offset = pageBaseOffset + instance.data.length;
-
     if (newRows.length < instance.chunkSize) {
         instance.logger.log('MOSAIC: End of data detected for current view.');
         instance.isDataLoaded = true;
@@ -70,8 +67,6 @@ export function queryResult<T extends object>(instance: DataTable<T>, data: Arro
         const prefetchQuery = instance.query(instance.filterBy?.predicate(instance));
         if (prefetchQuery) {
             instance.isPrefetching = true;
-            // The query function already uses the current offset, so we need to
-            // construct the prefetch query with the *next* offset.
             instance.coordinator.prefetch(prefetchQuery.offset(instance.offset))
                 .finally(() => { instance.isPrefetching = false; });
         }
