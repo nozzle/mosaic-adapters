@@ -1,3 +1,7 @@
+// packages/mosaic-tanstack-table-core/src/trimmed/types.ts
+// This file centralizes the TypeScript definitions for the trimmed Mosaic-TanStack core.
+// It defines the shape of the internal store, configuration options, and custom
+// metadata extensions for TanStack Table to support SQL mapping.
 import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
 import type {
   ColumnDef,
@@ -6,30 +10,22 @@ import type {
   TableState,
 } from '@tanstack/table-core';
 
-export type MosaicDataTableSqlFilterType = 'equals' | 'in' | 'like' | 'range';
+export type MosaicDataTableSqlFilterType =
+  | 'equals' // = value (Exact match, good for IDs, Numbers)
+  | 'in' // IN (v1, v2) (Good for Select/Multi-select)
+  | 'like' // LIKE %value% (Case sensitive text)
+  | 'ilike' // ILIKE %value% (Case insensitive text)
+  | 'range'; // >= min AND <= max (Good for Sliders, Dates)
+
+// Type for storing faceted values: ColumnID -> Map<Value, Count>
+export type FacetMap = Map<string, Map<any, number>>;
+
+// Type for storing faceted min/max: ColumnID -> [Min, Max]
+export type MinMaxTuple = [number | null, number | null];
 
 /**
  * This will be merged into the TanStack Table ColumnDef type
  * to provide Mosaic-specific metadata options.
- *
- * This is pretty much exclusively for TypeScript users to get
- * type safety and autocompletion when defining columns.
- *
- * @example
- * ```ts
- * // tanstack.-table.d.ts
- * import "@tanstack/react-table";
- * import type {
- *  MosaicDataTableColumnDefMetaOptions
- * } from "@nozzleio/mosaic-tanstack-table-core/trimmed";
- *
- * declare module "@tanstack/react-table" {
- *   interface ColumnMeta<TData extends RowData, TValue>
- *     extends MosaicDataTableColumnDefMetaOptions {
- *     // Additional custom meta options can go here too
- *   }
- * }
- * ```
  */
 export type MosaicDataTableColumnDefMetaOptions = {
   mosaicDataTable?: {
@@ -76,6 +72,29 @@ export interface MosaicDataTableOptions<
    */
   filterBy?: Selection | undefined;
   /**
+   * Selection to write internal table filters (column filters) to.
+   * This allows the table to filter other visuals.
+   * @default undefined
+   */
+  internalFilter?: Selection | undefined;
+  /**
+   * Selection to update when a row is hovered.
+   * Used for cross-highlighting.
+   * @default undefined
+   */
+  hoverAs?: Selection | undefined;
+  /**
+   * Selection to update when a row is clicked.
+   * @default undefined
+   */
+  clickAs?: Selection | undefined;
+  /**
+   * The primary key column(s) of the data.
+   * Used to identify rows uniquely for hover/click predicates.
+   * @default ['id']
+   */
+  primaryKey?: string[];
+  /**
    * Column Definitions to use for the table instance.
    *
    * When not provided, the column definitions will be inferred
@@ -110,5 +129,9 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   tableState: TableState;
   rows: Array<TData>;
   totalRows: number | undefined;
+  // Store for server-fetched facets. Key = columnId, Value = Map of (Value -> Count)
+  facets: FacetMap;
+  // Store for Range bounds (Sliders). Key = ColumnId, Value = [Min, Max]
+  facetMinMax: Map<string, MinMaxTuple>;
   tableOptions: SubsetTableOptions<TData>;
 };

@@ -1,3 +1,6 @@
+// examples/react/trimmed/src/components/views/athletes.tsx
+// Updated visual style for the highlight dot to be yellow and larger.
+import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
@@ -13,6 +16,12 @@ const fileURL =
 const tableName = 'athletes';
 
 const $query = vg.Selection.intersect();
+const $tableFilter = vg.Selection.intersect();
+// Highlight selection: defaults to empty (select none), updates on hover
+const $hover = vg.Selection.intersect({ empty: true });
+
+// Combined filter for the main visualizations
+const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
 type AthleteRowData = {
   id: number;
@@ -29,35 +38,164 @@ type AthleteRowData = {
   info: string | null;
 };
 
+// --- Filter Components (Debounced) ---
+
+function DebouncedInput({
+  value: initialValue,
+  onChange,
+  debounce = 500,
+  ...props
+}: {
+  value: string | number;
+  onChange: (value: string | number) => void;
+  debounce?: number;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'>) {
+  const [value, setValue] = React.useState(initialValue);
+
+  React.useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+
+  React.useEffect(() => {
+    const timeout = setTimeout(() => {
+      onChange(value);
+    }, debounce);
+
+    return () => clearTimeout(timeout);
+  }, [value, debounce]);
+
+  return (
+    <input
+      {...props}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+    />
+  );
+}
+
+function DebouncedTextFilter({ column }: { column: any }) {
+  const columnFilterValue = column.getFilterValue();
+  return (
+    <DebouncedInput
+      type="text"
+      value={columnFilterValue ?? ''}
+      onChange={(value) => column.setFilterValue(value)}
+      placeholder="Search..."
+      className="mt-1 px-2 py-1 text-xs border rounded shadow-sm w-full font-normal text-gray-600 focus:border-blue-500 outline-none"
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+}
+
+function DebouncedRangeFilter({
+  column,
+  type = 'number',
+  placeholderPrefix = '',
+}: {
+  column: any;
+  type?: 'number' | 'date';
+  placeholderPrefix?: string;
+}) {
+  const columnFilterValue = column.getFilterValue();
+  const minMax = column.getFacetedMinMaxValues();
+
+  return (
+    <div className="flex gap-1 mt-1">
+      <DebouncedInput
+        type={type}
+        value={(columnFilterValue as [any, any])?.[0] ?? ''}
+        onChange={(value) =>
+          column.setFilterValue((old: [any, any]) => [value, old?.[1]])
+        }
+        placeholder={`Min ${
+          minMax?.[0] !== undefined ? `(${minMax[0]})` : placeholderPrefix
+        }`}
+        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-[40px]"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <DebouncedInput
+        type={type}
+        value={(columnFilterValue as [any, any])?.[1] ?? ''}
+        onChange={(value) =>
+          column.setFilterValue((old: [any, any]) => [old?.[0], value])
+        }
+        placeholder={`Max ${
+          minMax?.[1] !== undefined ? `(${minMax[1]})` : placeholderPrefix
+        }`}
+        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-[40px]"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  );
+}
+
+const noopFilter = () => true;
+
+// --- Main View ---
+
 export function AthletesView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
+  const hasInitialized = useRef(false);
 
   useEffect(() => {
-    if (!chartDivRef.current) return;
+    if (!chartDivRef.current || hasInitialized.current) return;
 
     async function setup() {
+      hasInitialized.current = true;
       setIsPending(true);
 
-      // Setup the Athletes Linear Regression Plot from https://idl.uw.edu/mosaic/examples/linear-regression.html
       await vg
         .coordinator()
         .exec([
           `CREATE OR REPLACE TABLE ${tableName} AS SELECT * FROM '${fileURL}'`,
         ]);
 
+      const inputs = vg.hconcat(
+        vg.menu({
+          label: 'Sport',
+          as: $query,
+          from: tableName,
+          column: 'sport',
+        }),
+        vg.menu({
+          label: 'Gender',
+          as: $query,
+          from: tableName,
+          column: 'sex',
+        }),
+        vg.search({
+          label: 'Name',
+          as: $query,
+          from: tableName,
+          column: 'name',
+          type: 'contains',
+        }),
+      );
+
       const plot = vg.plot(
-        vg.dot(vg.from(tableName), {
+        // Base Layer
+        vg.dot(vg.from(tableName, { filterBy: $combined }), {
           x: 'weight',
           y: 'height',
           fill: 'sex',
           r: 2,
           opacity: 0.05,
         }),
-        vg.regressionY(vg.from(tableName, { filterBy: $query }), {
+        // Regression Layer
+        vg.regressionY(vg.from(tableName, { filterBy: $combined }), {
           x: 'weight',
           y: 'height',
           stroke: 'sex',
+        }),
+        // Highlight Layer - Listens to $hover selection
+        vg.dot(vg.from(tableName, { filterBy: $hover }), {
+          x: 'weight',
+          y: 'height',
+          fill: 'yellow',
+          stroke: 'black',
+          strokeWidth: 2,
+          r: 6,
         }),
         vg.intervalXY({
           as: $query,
@@ -66,8 +204,9 @@ export function AthletesView() {
         vg.xyDomain(vg.Fixed),
         vg.colorDomain(vg.Fixed),
       );
-      chartDivRef.current?.replaceChildren(plot);
 
+      const layout = vg.vconcat(inputs, vg.vspace(10), plot);
+      chartDivRef.current?.replaceChildren(layout);
       setIsPending(false);
     }
 
@@ -76,7 +215,7 @@ export function AthletesView() {
 
   return (
     <>
-      <h4 className="text-lg mb-2 font-medium">Chart area</h4>
+      <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
       {isPending && <div className="italic">Loading data...</div>}
       <div ref={chartDivRef} />
       <hr className="my-4" />
@@ -110,40 +249,69 @@ function AthletesTable() {
         {
           id: 'Name',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="Name" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="Name" view={view} />
+              <DebouncedTextFilter column={column} />
+            </div>
           ),
           accessorFn: (row) => row.name,
+          enableColumnFilter: true,
+          filterFn: noopFilter,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'name',
+              sqlFilterType: 'ilike',
             },
           },
         },
         {
           id: 'nationality',
           header: ({ column }) => (
-            <RenderTableHeader
-              column={column}
-              title="Nationality"
-              view={view}
-            />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader
+                column={column}
+                title="Nationality"
+                view={view}
+              />
+              <DebouncedTextFilter column={column} />
+            </div>
           ),
           accessorKey: 'nationality',
+          enableColumnFilter: true,
+          filterFn: noopFilter,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'nationality',
+              sqlFilterType: 'ilike',
+            },
+          },
         },
         {
           id: 'Gender',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="Gender" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="Gender" view={view} />
+              <DebouncedTextFilter column={column} />
+            </div>
           ),
           accessorKey: 'sex',
+          enableColumnFilter: true,
+          filterFn: noopFilter,
           meta: {
+            mosaicDataTable: {
+              sqlColumn: 'sex',
+              sqlFilterType: 'ilike',
+            },
             filterVariant: 'select',
           },
         },
         {
           id: 'dob',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="DOB" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="DOB" view={view} />
+              <DebouncedRangeFilter column={column} type="date" />
+            </div>
           ),
           cell: (props) => {
             const value = props.getValue();
@@ -153,11 +321,22 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'date_of_birth',
+          enableColumnFilter: true,
+          filterFn: noopFilter,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'date_of_birth',
+              sqlFilterType: 'range',
+            },
+          },
         },
         {
           id: 'Height',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="Height" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="Height" view={view} />
+              <DebouncedRangeFilter column={column} type="number" />
+            </div>
           ),
           cell: (props) => {
             const value = props.getValue();
@@ -169,13 +348,21 @@ function AthletesTable() {
           accessorKey: 'height',
           meta: {
             filterVariant: 'range',
+            mosaicDataTable: {
+              sqlColumn: 'height',
+              sqlFilterType: 'range',
+            },
           },
-          enableColumnFilter: false,
+          enableColumnFilter: true,
+          filterFn: noopFilter,
         },
         {
           id: 'Weight',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="Weight" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="Weight" view={view} />
+              <DebouncedRangeFilter column={column} type="number" />
+            </div>
           ),
           cell: (props) => {
             const value = props.getValue();
@@ -185,13 +372,33 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'weight',
+          enableColumnFilter: true,
+          filterFn: noopFilter,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'weight',
+              sqlFilterType: 'range',
+            },
+          },
         },
         {
           id: 'Sport',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="Sport" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="Sport" view={view} />
+              <DebouncedTextFilter column={column} />
+            </div>
           ),
           accessorKey: 'sport',
+          enableColumnFilter: true,
+          filterFn: noopFilter,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'sport',
+              sqlFilterType: 'ilike',
+            },
+            filterVariant: 'select',
+          },
         },
         {
           id: 'Gold(s)',
@@ -250,18 +457,40 @@ function AthletesTable() {
     [view],
   );
 
-  const { tableOptions } = useMosaicReactTable<AthleteRowData>({
-    table: tableName,
-    filterBy: $query,
-    columns,
-    tableOptions: {
-      enableHiding: true,
-      enableMultiSort: true,
-      enableSorting: true,
-      enableColumnFilters: true,
-    },
-    onTableStateChange: 'requestQuery',
-  });
+  const mosaicTableOptions = useMemo(
+    () => ({
+      table: tableName,
+      filterBy: $query,
+      internalFilter: $tableFilter,
+      hoverAs: $hover, // Pass the hover selection here
+      columns,
+      primaryKey: ['id'], // Critical for hover predicates
+      tableOptions: {
+        enableHiding: true,
+        enableMultiSort: true,
+        enableSorting: true,
+        enableColumnFilters: true,
+      },
+      onTableStateChange: 'requestUpdate' as const,
+    }),
+    [columns],
+  );
+
+  const { tableOptions, client } = useMosaicReactTable<AthleteRowData>(
+    mosaicTableOptions,
+  );
+
+  // Trigger Server-Side Facet Loading
+  // This ensures that when the user opens the filter menu, the data is ready.
+  useEffect(() => {
+    // Load range bounds for Height and Weight
+    client.loadColumnMinMax('Height');
+    client.loadColumnMinMax('Weight');
+
+    // Load unique values for Sport and Gender
+    client.loadColumnFacet('Sport');
+    client.loadColumnFacet('Gender');
+  }, [client]);
 
   const table = useReactTable(tableOptions);
 

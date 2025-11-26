@@ -8,8 +8,19 @@ export function BareTable<TData extends RowData, TValue>(props: {
 }) {
   const { table } = props;
 
+  // Helper to safely access metadata handlers
+  const meta = table.options.meta as
+    | {
+        onRowHover?: (row: TData | null) => void;
+        onRowClick?: (row: TData) => void;
+      }
+    | undefined;
+
   return (
-    <div className="grid gap-4 overflow-scroll">
+    <div
+      className="grid gap-4 overflow-scroll"
+      onMouseLeave={() => meta?.onRowHover?.(null)}
+    >
       <div>
         <ColumnVisibilityControls table={table} />
       </div>
@@ -39,7 +50,16 @@ export function BareTable<TData extends RowData, TValue>(props: {
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => (
-            <tr key={row.id} className="py-1">
+            <tr
+              key={row.id}
+              className="py-1"
+              onMouseEnter={() => meta?.onRowHover?.(row.original)}
+              onClick={() => meta?.onRowClick?.(row.original)}
+              style={{
+                cursor:
+                  meta?.onRowHover || meta?.onRowClick ? 'pointer' : 'default',
+              }}
+            >
               {row.getVisibleCells().map((cell) => (
                 <td key={cell.id} className="text-nowrap px-2">
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}

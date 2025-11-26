@@ -50,6 +50,14 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
 }) {
   const { table, columns } = props;
 
+  // Helper to safely access metadata handlers
+  const meta = table.options.meta as
+    | {
+        onRowHover?: (row: TData | null) => void;
+        onRowClick?: (row: TData) => void;
+      }
+    | undefined;
+
   return (
     <div className="grid gap-2">
       <div>
@@ -60,7 +68,10 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
           </div>
         </div>
       </div>
-      <div className="overflow-hidden rounded-md border">
+      <div
+        className="overflow-hidden rounded-md border"
+        onMouseLeave={() => meta?.onRowHover?.(null)}
+      >
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -86,6 +97,13 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
+                  className={cn(
+                    meta?.onRowHover || meta?.onRowClick
+                      ? 'cursor-pointer'
+                      : '',
+                  )}
+                  onMouseEnter={() => meta?.onRowHover?.(row.original)}
+                  onClick={() => meta?.onRowClick?.(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
