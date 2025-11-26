@@ -2,6 +2,7 @@
 // A structured logging utility that separates console output from stored logs.
 // It allows for quiet console output while retaining detailed metadata
 // (state snapshots, SQL queries) in a downloadable JSON format for debugging.
+// Now supports debouncing to handle high-frequency events like brush selections.
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type LogCategory = 'Core' | 'React' | 'TanStack' | 'Mosaic' | 'SQL';
@@ -18,6 +19,7 @@ interface LogEntry {
 class LogManager {
   private logs: LogEntry[] = [];
   private maxLogs = 2000;
+  private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   // Configuration: Console is quiet (INFO+), Storage is loud (DEBUG+)
   private consoleLevel: number = 1; // 0=Debug, 1=Info, 2=Warn, 3=Error
@@ -76,6 +78,37 @@ class LogManager {
         this.logs.shift();
       }
     }
+  }
+
+  /**
+   * Debounces a log entry. Useful for high-frequency events like brush selections or scroll updates.
+   * Only the last log entry within the `delay` window for a given `id` will be recorded.
+   *
+   * @param id - Unique identifier for the debounce group (e.g., 'query-generation')
+   * @param delay - Debounce delay in ms
+   * @param level - Log level
+   * @param category - Log category
+   * @param message - Log message
+   * @param meta - Metadata
+   */
+  debounce(
+    id: string,
+    delay: number,
+    level: LogLevel,
+    category: LogCategory,
+    message: string,
+    meta?: any,
+  ) {
+    if (this.debounceTimers.has(id)) {
+      clearTimeout(this.debounceTimers.get(id));
+    }
+
+    const timer = setTimeout(() => {
+      this.add(level, category, `${message} (Debounced)`, meta);
+      this.debounceTimers.delete(id);
+    }, delay);
+
+    this.debounceTimers.set(id, timer);
   }
 
   // Public API

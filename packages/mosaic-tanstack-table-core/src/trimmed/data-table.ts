@@ -1,7 +1,7 @@
 // packages/mosaic-tanstack-table-core/src/trimmed/data-table.ts
 // This file contains the MosaicDataTable class, which acts as the "Brain" of the integration.
 // It manages state, translates TanStack Table state to Mosaic queries, and handles
-// filtering and faceting logic. Instrumented with detailed logging.
+// filtering and faceting logic. Instrumented with detailed, debounced logging.
 import {
   MosaicClient,
   coordinator as defaultCoordinator,
@@ -312,14 +312,20 @@ export class MosaicDataTable<
 
     const sqlString = statement.toString();
 
-    logger.info('SQL', 'Generated Query', {
+    // Use the debounced logger for the query execution.
+    // This prevents log flooding when dragging a brush over a linked chart.
+    // We only capture the "final" query of the interaction sequence.
+    logger.debounce('sql-query', 300, 'info', 'SQL', 'Generated Query', {
       sql: sqlString,
       context: {
         pagination: tableState.pagination,
         sorting: tableState.sorting,
         columnFilters: tableState.columnFilters,
         globalFilter: tableState.globalFilter,
-        primaryFilter: primaryFilter ? 'Present' : 'None',
+        // Extract a readable string from the primary filter AST if possible
+        primaryFilter: primaryFilter
+          ? primaryFilter.toString()
+          : 'None (or null)',
       },
     });
 
@@ -454,10 +460,7 @@ export class MosaicDataTable<
   private getColumnsDefs() {
     // Safety check
     if (!this.#store || !this.#store.state) {
-      logger.warn(
-        'Core',
-        'getColumnsDefs called before store initialized',
-      );
+      logger.warn('Core', 'getColumnsDefs called before store initialized');
       return {
         columnDefs: [],
         columnAccessorKeys: [],
@@ -592,8 +595,16 @@ export class MosaicDataTable<
         }
 
         // Log the state transition
+        // Use debounce for state transitions to avoid flood during rapid interactions if they trigger state
         if (Object.keys(diffs).length > 0) {
-          logger.debug('TanStack', 'State Update Detected', { diffs });
+          logger.debounce(
+            'state-update',
+            300,
+            'debug',
+            'TanStack',
+            'State Update Detected',
+            { diffs },
+          );
         }
 
         const filtersChanged =
