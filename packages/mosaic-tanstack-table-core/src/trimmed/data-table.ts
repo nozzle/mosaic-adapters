@@ -1,6 +1,7 @@
 // packages/mosaic-tanstack-table-core/src/trimmed/data-table.ts
 // This file contains the MosaicDataTable class, which acts as the "Brain" of the integration.
-// Updated to use the new Logger utility and reduce log noise.
+// It manages state, translates TanStack Table state to Mosaic queries, and handles
+// filtering and faceting logic. Instrumented with detailed logging.
 import {
   MosaicClient,
   coordinator as defaultCoordinator,
@@ -135,7 +136,13 @@ export class MosaicDataTable<
   }
 
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    logger.debug('[MosaicDataTable] updateOptions called'); // Removed verbose options logging
+    // Use DEBUG level (hidden from console by default)
+    logger.debug('Core', 'updateOptions received', {
+      newTable: options.table,
+      hasColumns: !!options.columns,
+      hasFilterBy: !!options.filterBy,
+      columnsCount: options.columns?.length,
+    });
 
     if (
       options.onTableStateChange &&
@@ -148,9 +155,7 @@ export class MosaicDataTable<
       options.internalFilter &&
       this.internalFilterSelection !== options.internalFilter
     ) {
-      logger.debug(
-        '[MosaicDataTable] Updating internalFilterSelection reference',
-      );
+      logger.debug('Core', 'Updating internalFilterSelection reference');
       this.internalFilterSelection = options.internalFilter;
     }
 
@@ -213,8 +218,6 @@ export class MosaicDataTable<
     const state = this.#store.state.tableState;
     const where: Array<mSql.FilterExpr> = [];
 
-    // logger.debug('[MosaicDataTable] _generateFilterPredicates called');
-
     // ALWAYS refresh the map to ensure we are in sync with the store
     this.getColumnsDefs();
 
@@ -222,14 +225,12 @@ export class MosaicDataTable<
       const sqlColumnName = this.#columnDefIdToSqlColumnAccessor.get(id);
 
       if (!sqlColumnName) {
-        logger.warn(
-          `[MosaicDataTable] Filter ignored: No SQL column found for Column ID "${id}". Available IDs:`,
-          Array.from(this.#columnDefIdToSqlColumnAccessor.keys()),
-        );
+        logger.warn('Core', `Filter ignored: No SQL column found`, {
+          columnId: id,
+          availableIds: Array.from(this.#columnDefIdToSqlColumnAccessor.keys()),
+        });
         return null;
       }
-
-      // logger.debug(`[MosaicDataTable] Generating predicate for ID "${id}"`);
 
       const sqlCol = column(sqlColumnName);
 
@@ -292,7 +293,6 @@ export class MosaicDataTable<
     // 2. Add Internal Filter (from table columns)
     const internalFilters = this._generateFilterPredicates();
     if (internalFilters.length > 0) {
-      // logger.debug('[MosaicDataTable] Adding internal filters to query');
       whereClauses.push(...internalFilters);
     }
 
@@ -309,6 +309,19 @@ export class MosaicDataTable<
     statement
       .limit(pagination.pageSize)
       .offset(pagination.pageIndex * pagination.pageSize);
+
+    const sqlString = statement.toString();
+
+    logger.info('SQL', 'Generated Query', {
+      sql: sqlString,
+      context: {
+        pagination: tableState.pagination,
+        sorting: tableState.sorting,
+        columnFilters: tableState.columnFilters,
+        globalFilter: tableState.globalFilter,
+        primaryFilter: primaryFilter ? 'Present' : 'None',
+      },
+    });
 
     return statement;
   }
@@ -334,7 +347,7 @@ export class MosaicDataTable<
         });
       });
     } else {
-      logger.error('[MosaicDataTable] Received non-Arrow result:', table);
+      logger.error('Core', 'Received non-Arrow result:', { table });
     }
     return this;
   }
@@ -362,7 +375,9 @@ export class MosaicDataTable<
         return { ...prev, facets: newFacets };
       });
     } catch (e) {
-      logger.error(`Failed to load facet for ${columnId}`, e);
+      logger.error('Core', `Failed to load facet for ${columnId}`, {
+        error: e,
+      });
     }
   }
 
@@ -370,7 +385,7 @@ export class MosaicDataTable<
     return this;
   }
   override queryError(error: Error): this {
-    logger.error('[MosaicDataTable] Query Error:', error);
+    logger.error('Core', 'Query Error', { error });
     return this;
   }
   override async prepare(): Promise<void> {
@@ -387,7 +402,8 @@ export class MosaicDataTable<
         const matchedField = map.get(value);
         if (!matchedField) {
           logger.warn(
-            `[MosaicDataTable] Column ID "${id}" mapped to SQL "${value}" which does not exist in schema.`,
+            'Core',
+            `Column ID "${id}" mapped to SQL "${value}" which does not exist in schema.`,
           );
         } else {
           this.#columnDefIdToFieldInfo.set(id, matchedField);
@@ -439,7 +455,8 @@ export class MosaicDataTable<
     // Safety check
     if (!this.#store || !this.#store.state) {
       logger.warn(
-        '[MosaicDataTable] getColumnsDefs called before store initialized',
+        'Core',
+        'getColumnsDefs called before store initialized',
       );
       return {
         columnDefs: [],
@@ -485,7 +502,6 @@ export class MosaicDataTable<
           columnAccessor = mosaicColumn;
         } else {
           // This is valid for non-sql columns (like actions), but we shouldn't try to query them
-          // logger.warn('[MosaicDataTable] accessorFn found without meta.mosaicDataTable.sqlColumn', def);
         }
       }
 
@@ -542,9 +558,43 @@ export class MosaicDataTable<
       getFacetedMinMaxValues: getFacetedMinMaxValues(),
       state: state.tableState,
       onStateChange: (updater) => {
-        // logger.debug('[MosaicDataTable] onStateChange triggered');
         const oldState = this.#store.state.tableState;
         const nextTableState = functionalUpdate(updater, oldState);
+
+        // Calculate explicit diffs for the log file
+        const diffs: Record<string, any> = {};
+        if (
+          JSON.stringify(oldState.pagination) !==
+          JSON.stringify(nextTableState.pagination)
+        ) {
+          diffs.pagination = {
+            from: oldState.pagination,
+            to: nextTableState.pagination,
+          };
+        }
+        if (
+          JSON.stringify(oldState.sorting) !==
+          JSON.stringify(nextTableState.sorting)
+        ) {
+          diffs.sorting = {
+            from: oldState.sorting,
+            to: nextTableState.sorting,
+          };
+        }
+        if (
+          JSON.stringify(oldState.columnFilters) !==
+          JSON.stringify(nextTableState.columnFilters)
+        ) {
+          diffs.filters = {
+            from: oldState.columnFilters,
+            to: nextTableState.columnFilters,
+          };
+        }
+
+        // Log the state transition
+        if (Object.keys(diffs).length > 0) {
+          logger.debug('TanStack', 'State Update Detected', { diffs });
+        }
 
         const filtersChanged =
           JSON.stringify(oldState.columnFilters) !==
@@ -552,10 +602,9 @@ export class MosaicDataTable<
           oldState.globalFilter !== nextTableState.globalFilter;
 
         if (filtersChanged) {
-          logger.debug(
-            '[MosaicDataTable] Filters changed:',
-            nextTableState.columnFilters,
-          );
+          logger.debug('Core', 'Filters changed:', {
+            filters: nextTableState.columnFilters,
+          });
           nextTableState.pagination.pageIndex = 0;
         }
 
@@ -573,9 +622,7 @@ export class MosaicDataTable<
             const combinedPredicate =
               predicates.length > 0 ? mSql.and(...predicates) : null;
 
-            logger.debug(
-              '[MosaicDataTable] Updating internalFilterSelection', // Reduced detail
-            );
+            logger.debug('Core', 'Updating internalFilterSelection');
 
             this.internalFilterSelection.update({
               source: this,
@@ -587,7 +634,8 @@ export class MosaicDataTable<
             });
           } else {
             logger.warn(
-              '[MosaicDataTable] Filters changed but no internalFilterSelection is configured!',
+              'Core',
+              'Filters changed but no internalFilterSelection is configured!',
             );
           }
         }
