@@ -19,6 +19,7 @@ import {
   count,
   column,
   isIn as sqlIn,
+  eq,
 } from '@uwdata/mosaic-sql';
 import {
   getCoreRowModel,
@@ -81,7 +82,9 @@ function isDeepEqual(obj1: any, obj2: any) {
       key === 'filterBy' ||
       key === 'internalFilter' ||
       key === 'coordinator' ||
-      key === 'table'
+      key === 'table' ||
+      key === 'hoverAs' ||
+      key === 'clickAs'
     ) {
       if (val1 !== val2) return false;
       continue;
@@ -108,6 +111,9 @@ export class MosaicDataTable<
   schema: Array<FieldInfo> = [];
 
   internalFilterSelection?: Selection;
+  hoverAs?: Selection;
+  clickAs?: Selection;
+  primaryKey: string[] = ['id']; // Default PK
 
   #store!: Store<MosaicDataTableStore<TData, TValue>>;
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
@@ -125,10 +131,16 @@ export class MosaicDataTable<
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
 
-    // Explicitly set internal filter from options on init
     if (options.internalFilter) {
       this.internalFilterSelection = options.internalFilter;
     }
+
+    // Initialize hover/click selections
+    if (options.hoverAs) this.hoverAs = options.hoverAs;
+    if (options.clickAs) this.clickAs = options.clickAs;
+
+    // Set Primary Key if provided (crucial for row identification)
+    if (options.primaryKey) this.primaryKey = options.primaryKey;
 
     this.updateOptions(options);
   }
@@ -140,11 +152,8 @@ export class MosaicDataTable<
   }
 
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    // Use DEBUG level (hidden from console by default)
     logger.debug('Core', 'updateOptions received', {
       newTable: options.table,
-      hasColumns: !!options.columns,
-      hasFilterBy: !!options.filterBy,
       columnsCount: options.columns?.length,
     });
 
@@ -155,13 +164,11 @@ export class MosaicDataTable<
       this.#onTableStateChange = options.onTableStateChange;
     }
 
-    if (
-      options.internalFilter &&
-      this.internalFilterSelection !== options.internalFilter
-    ) {
-      logger.debug('Core', 'Updating internalFilterSelection reference');
+    if (options.internalFilter)
       this.internalFilterSelection = options.internalFilter;
-    }
+    if (options.hoverAs) this.hoverAs = options.hoverAs;
+    if (options.clickAs) this.clickAs = options.clickAs;
+    if (options.primaryKey) this.primaryKey = options.primaryKey;
 
     if (!this.coordinator) {
       const coordinatorInstance = options.coordinator ?? defaultCoordinator();
@@ -212,86 +219,57 @@ export class MosaicDataTable<
       }));
     }
 
-    // Force a map rebuild when options change to ensure we have the latest definitions
     this.getColumnsDefs();
   }
 
-  /**
-   * Generates SQL predicates from the current TanStack filter state.
-   *
-   * @nuance
-   * Unlike Client-Side filtering where everything is often string comparison,
-   * Server-Side filtering must respect data types to use indices effectively.
-   * We use the `sqlFilterType` meta property to decide which SQL operator to use.
-   */
   private _generateFilterPredicates(): Array<mSql.FilterExpr> {
     const state = this.#store.state.tableState;
     const where: Array<mSql.FilterExpr> = [];
-
-    // ALWAYS refresh the map to ensure we are in sync with the store
     this.getColumnsDefs();
 
-    // Helper to look up column meta
     const getColMeta = (id: string) => {
       const colDef = this.#store.state.columnDefs.find(
         (c) => c.id === id || ('accessorKey' in c && c.accessorKey === id),
       );
-      // @ts-ignore - meta is optional on ColumnDef
+      // @ts-ignore
       return (colDef?.meta as MosaicDataTableColumnDefMetaOptions | undefined)
         ?.mosaicDataTable;
     };
 
     const createPredicate = (id: string, value: any) => {
       const sqlColumnName = this.#columnDefIdToSqlColumnAccessor.get(id);
-
-      if (!sqlColumnName) {
-        logger.warn('Core', `Filter ignored: No SQL column found`, {
-          columnId: id,
-          availableIds: Array.from(this.#columnDefIdToSqlColumnAccessor.keys()),
-        });
-        return null;
-      }
+      if (!sqlColumnName) return null;
 
       const sqlCol = column(sqlColumnName);
       const meta = getColMeta(id);
-      const filterType = meta?.sqlFilterType || 'ilike'; // Default to ILIKE (case-insensitive search)
+      const filterType = meta?.sqlFilterType || 'ilike';
 
-      // 1. Handle Range Filter (e.g. Slider: [10, 50])
-      // Note: TanStack range filters are often [number | null, number | null]
       if (filterType === 'range' && Array.isArray(value)) {
         const [min, max] = value;
         const clauses = [];
-        // Handle "open" ranges (e.g. >= 10, unbounded max)
         if (min !== null && min !== '' && min !== undefined)
           clauses.push(mSql.gte(sqlCol, literal(min)));
         if (max !== null && max !== '' && max !== undefined)
           clauses.push(mSql.lte(sqlCol, literal(max)));
-
         return clauses.length > 0 ? mSql.and(...clauses) : null;
       }
 
-      // 2. Handle List Filter (e.g. Multi-Select: ['USA', 'CAN'])
       if (filterType === 'in' && Array.isArray(value)) {
-        if (value.length === 0) return null; // Empty array = no filter
+        if (value.length === 0) return null;
         return sqlIn(
           sqlCol,
           value.map((v) => literal(v)),
         );
       }
 
-      // 3. Handle Exact Match (e.g. ID lookup, Status enum)
       if (filterType === 'equals') {
         return mSql.eq(sqlCol, literal(value));
       }
 
-      // 4. Handle LIKE (Case Sensitive)
       if (filterType === 'like') {
         return sql`CAST(${sqlCol} AS VARCHAR) LIKE ${literal(`%${value}%`)}`;
       }
 
-      // 5. Default / ILIKE (Case Insensitive Text Search)
-      // CAST to VARCHAR ensures numeric/date columns don't crash if searched as text,
-      // though performance is better if 'equals' or 'range' is used for those types.
       return sql`CAST(${sqlCol} AS VARCHAR) ILIKE ${literal(`%${value}%`)}`;
     };
 
@@ -306,9 +284,6 @@ export class MosaicDataTable<
       const globalPredicates: Array<mSql.FilterExpr> = [];
       this.#columnDefIdToSqlColumnAccessor.forEach((_, id) => {
         const meta = getColMeta(id);
-        // Only apply global filter to columns that default to text search or explicitly opt-in via ilike/like.
-        // Trying to ILIKE a numeric/date column (range) is usually not what user wants for global text search
-        // unless explicitly configured.
         if (
           !meta?.sqlFilterType ||
           meta.sqlFilterType === 'ilike' ||
@@ -318,7 +293,6 @@ export class MosaicDataTable<
           if (predicate) globalPredicates.push(predicate);
         }
       });
-
       if (globalPredicates.length > 0) {
         where.push(or(...globalPredicates));
       }
@@ -327,12 +301,62 @@ export class MosaicDataTable<
     return where;
   }
 
+  /**
+   * Handles interaction events (Hover/Click) on a row.
+   * Generates a predicate based on the Primary Key (e.g. ID = 5) and updates the target selection.
+   */
+  private handleRowInteraction(
+    row: TData | null,
+    selection: Selection | undefined,
+    type: 'hover' | 'click',
+  ) {
+    if (!selection) return;
+
+    // Case 1: Mouse Leave or Clear -> Update with NULL predicate
+    // This is crucial for { empty: true } selections to reset to "Select None"
+    if (!row) {
+      selection.update({
+        source: this,
+        // @ts-ignore - Mosaic API allows null predicate to clear
+        predicate: null,
+        value: null,
+      });
+      return;
+    }
+
+    // Case 2: Interaction -> Generate PK Predicate
+    // We assume the row object contains the keys defined in this.primaryKey
+    const predicates: any[] = [];
+
+    for (const key of this.primaryKey) {
+      if (typeof row === 'object' && row !== null && key in row) {
+        // @ts-ignore
+        const val = row[key];
+        // We use simple equality for PKs
+        predicates.push(eq(column(key), literal(val)));
+      } else {
+        logger.warn(
+          'Core',
+          `Primary key "${key}" not found in row data during ${type} interaction.`,
+          { row },
+        );
+      }
+    }
+
+    if (predicates.length > 0) {
+      selection.update({
+        source: this,
+        predicate:
+          predicates.length === 1 ? predicates[0] : mSql.and(...predicates),
+        value: row,
+      });
+    }
+  }
+
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
     const tableName = this.sourceTable();
     const tableState = this.#store.state.tableState;
     const pagination = tableState.pagination;
-
-    // Refresh column mappings
     this.getColumnsDefs();
 
     const sorting = tableState.sorting.filter((sort) =>
@@ -346,17 +370,10 @@ export class MosaicDataTable<
     });
 
     const whereClauses: Array<mSql.FilterExpr> = [];
+    if (primaryFilter) whereClauses.push(primaryFilter);
 
-    // 1. Add External Filter (from filterBy / Top Widgets)
-    if (primaryFilter) {
-      whereClauses.push(primaryFilter);
-    }
-
-    // 2. Add Internal Filter (from table columns)
     const internalFilters = this._generateFilterPredicates();
-    if (internalFilters.length > 0) {
-      whereClauses.push(...internalFilters);
-    }
+    if (internalFilters.length > 0) whereClauses.push(...internalFilters);
 
     statement.where(...whereClauses);
 
@@ -372,22 +389,12 @@ export class MosaicDataTable<
       .limit(pagination.pageSize)
       .offset(pagination.pageIndex * pagination.pageSize);
 
-    const sqlString = statement.toString();
-
-    // Use the debounced logger for the query execution.
-    // This prevents log flooding when dragging a brush over a linked chart.
-    // We only capture the "final" query of the interaction sequence.
     logger.debounce('sql-query', 300, 'info', 'SQL', 'Generated Query', {
-      sql: sqlString,
+      sql: statement.toString(),
       context: {
         pagination: tableState.pagination,
         sorting: tableState.sorting,
         columnFilters: tableState.columnFilters,
-        globalFilter: tableState.globalFilter,
-        // Extract a readable string from the primary filter AST if possible
-        primaryFilter: primaryFilter
-          ? primaryFilter.toString()
-          : 'None (or null)',
       },
     });
 
@@ -420,19 +427,6 @@ export class MosaicDataTable<
     return this;
   }
 
-  /**
-   * Loads the global Minimum and Maximum values for a specific column from the database.
-   *
-   * @why
-   * TanStack Table's default `getFacetedMinMaxValues` only looks at the rows currently
-   * loaded in the client (e.g., the current page of 10 rows). This is incorrect for
-   * server-side data. We must query DuckDB to get the true bounds of the dataset.
-   *
-   * @context
-   * This query applies the `filterBy` (Dashboard Context) selections, ensuring the
-   * slider bounds reflect the current global filter state, but ignores the table's
-   * own internal filters to prevent the slider from collapsing on itself.
-   */
   public async loadColumnMinMax(columnId: string) {
     if (this.#columnDefIdToSqlColumnAccessor.size === 0) {
       this.getColumnsDefs();
@@ -447,8 +441,6 @@ export class MosaicDataTable<
     }
 
     const sqlCol = column(sqlColumnName);
-
-    // SELECT MIN(col), MAX(col) ...
     const query = mSql.Query.from(this.sourceTable())
       .select({
         min: mSql.min(sqlCol),
@@ -458,22 +450,15 @@ export class MosaicDataTable<
 
     try {
       if (!this.coordinator) return;
-
       const result = await this.coordinator.query(query);
-      const row = result.get(0); // Arrow result is iterable, get first row
+      const row = result.get(0);
 
       batch(() => {
         this.#store.setState((prev) => {
           const newMinMax = new Map(prev.facetMinMax);
-          // Ensure we store [null, null] if data is empty to avoid UI crashes
           newMinMax.set(columnId, [row?.min ?? null, row?.max ?? null]);
           return { ...prev, facetMinMax: newMinMax };
         });
-      });
-
-      logger.debug('Core', `Loaded MinMax for ${columnId}`, {
-        min: row?.min,
-        max: row?.max,
       });
     } catch (e) {
       logger.error('Core', `Failed to load MinMax for ${columnId}`, {
@@ -518,6 +503,7 @@ export class MosaicDataTable<
     logger.error('Core', 'Query Error', { error });
     return this;
   }
+
   override async prepare(): Promise<void> {
     if (!this.coordinator) return;
     const schema = await queryFieldInfo(this.coordinator, this.fields());
@@ -530,12 +516,7 @@ export class MosaicDataTable<
     Array.from(this.#columnDefIdToSqlColumnAccessor.entries()).forEach(
       ([id, value]) => {
         const matchedField = map.get(value);
-        if (!matchedField) {
-          logger.warn(
-            'Core',
-            `Column ID "${id}" mapped to SQL "${value}" which does not exist in schema.`,
-          );
-        } else {
+        if (matchedField) {
           this.#columnDefIdToFieldInfo.set(id, matchedField);
         }
       },
@@ -582,25 +563,18 @@ export class MosaicDataTable<
   }
 
   private getColumnsDefs() {
-    // Safety check
-    if (!this.#store || !this.#store.state) {
-      logger.warn('Core', 'getColumnsDefs called before store initialized');
+    if (!this.#store || !this.#store.state)
       return {
         columnDefs: [],
         columnAccessorKeys: [],
         shouldSearchAllColumns: false,
       };
-    }
 
     const columnDefs = this.#store.state.columnDefs;
     this.#columnDefIdToSqlColumnAccessor.clear();
 
     const queryableColumns = columnDefs.filter((def) => {
-      if (
-        'accessorKey' in def &&
-        typeof def.accessorKey === 'string' &&
-        def.accessorKey.length > 0
-      )
+      if ('accessorKey' in def && typeof def.accessorKey === 'string')
         return true;
       if ('accessorFn' in def && typeof def.accessorFn === 'function')
         return true;
@@ -612,36 +586,25 @@ export class MosaicDataTable<
 
     queryableColumns.forEach((def) => {
       let columnAccessor: string | undefined = undefined;
-      // 1. Try Accessor Key
       if ('accessorKey' in def && def.accessorKey) {
-        const accessor =
+        columnAccessor =
           typeof def.accessorKey === 'string'
             ? def.accessorKey
             : def.accessorKey.toString();
-        columnAccessorKeys.push(accessor);
-        columnAccessor = accessor;
-      }
-      // 2. Try Accessor Fn + SQL Column Meta
-      else if ('accessorFn' in def && typeof def.accessorFn === 'function') {
+      } else if ('accessorFn' in def && typeof def.accessorFn === 'function') {
         if (def.meta?.mosaicDataTable?.sqlColumn) {
-          const mosaicColumn = def.meta.mosaicDataTable.sqlColumn;
-          columnAccessorKeys.push(mosaicColumn);
-          columnAccessor = mosaicColumn;
-        } else {
-          // This is valid for non-sql columns (like actions), but we shouldn't try to query them
+          columnAccessor = def.meta.mosaicDataTable.sqlColumn;
         }
       }
 
-      // Ensure we map the ID correctly
       if (columnAccessor) {
-        // Fallback: If ID is missing (TanStack generates one at runtime, but we operate on definitions), try to use accessor
+        columnAccessorKeys.push(columnAccessor);
         const id = def.id ?? columnAccessor;
         this.#columnDefIdToSqlColumnAccessor.set(id, columnAccessor);
       }
     });
 
     if (shouldSearchAllColumns) columnAccessorKeys = [];
-
     return {
       columnDefs: queryableColumns,
       columnAccessorKeys,
@@ -680,83 +643,37 @@ export class MosaicDataTable<
       getCoreRowModel: getCoreRowModel(),
       getFacetedRowModel: getFacetedRowModel(),
       getFilteredRowModel: getFilteredRowModel(),
-      // NATIVE FACETING OVERRIDE (Unique Values)
-      // Returns a getter that reads from our server-populated store.
       getFacetedUniqueValues: (table, columnId) => () =>
         state.facets.get(columnId) || new Map(),
-      // NATIVE FACETING OVERRIDE (Min/Max)
-      // We replace the default client-side calculator with a getter that reads
-      // from our server-populated store.
-      // We transform the stored tuple [number | null, number | null] into [number, number] | undefined
-      // to satisfy TanStack Table's strict typing.
       getFacetedMinMaxValues: (table, columnId) => () => {
         const cached = state.facetMinMax.get(columnId);
         if (!cached) return undefined;
         const [min, max] = cached;
-        if (typeof min === 'number' && typeof max === 'number') {
+        if (typeof min === 'number' && typeof max === 'number')
           return [min, max];
-        }
         return undefined;
       },
       state: state.tableState,
+
+      // Inject metadata handlers for Interaction
+      meta: {
+        onRowHover: (row: TData | null) =>
+          this.handleRowInteraction(row, this.hoverAs, 'hover'),
+        onRowClick: (row: TData | null) =>
+          this.handleRowInteraction(row, this.clickAs, 'click'),
+        ...state.tableOptions.meta,
+      },
+
       onStateChange: (updater) => {
         const oldState = this.#store.state.tableState;
         const nextTableState = functionalUpdate(updater, oldState);
-
-        // Calculate explicit diffs for the log file
-        const diffs: Record<string, any> = {};
-        if (
-          JSON.stringify(oldState.pagination) !==
-          JSON.stringify(nextTableState.pagination)
-        ) {
-          diffs.pagination = {
-            from: oldState.pagination,
-            to: nextTableState.pagination,
-          };
-        }
-        if (
-          JSON.stringify(oldState.sorting) !==
-          JSON.stringify(nextTableState.sorting)
-        ) {
-          diffs.sorting = {
-            from: oldState.sorting,
-            to: nextTableState.sorting,
-          };
-        }
-        if (
-          JSON.stringify(oldState.columnFilters) !==
-          JSON.stringify(nextTableState.columnFilters)
-        ) {
-          diffs.filters = {
-            from: oldState.columnFilters,
-            to: nextTableState.columnFilters,
-          };
-        }
-
-        // Log the state transition
-        // Use debounce for state transitions to avoid flood during rapid interactions if they trigger state
-        if (Object.keys(diffs).length > 0) {
-          logger.debounce(
-            'state-update',
-            300,
-            'debug',
-            'TanStack',
-            'State Update Detected',
-            { diffs },
-          );
-        }
 
         const filtersChanged =
           JSON.stringify(oldState.columnFilters) !==
             JSON.stringify(nextTableState.columnFilters) ||
           oldState.globalFilter !== nextTableState.globalFilter;
 
-        if (filtersChanged) {
-          logger.debug('Core', 'Filters changed:', {
-            filters: nextTableState.columnFilters,
-          });
-          nextTableState.pagination.pageIndex = 0;
-        }
+        if (filtersChanged) nextTableState.pagination.pageIndex = 0;
 
         const hashedOldState = JSON.stringify(oldState);
         const hashedNewState = JSON.stringify(nextTableState);
@@ -766,28 +683,19 @@ export class MosaicDataTable<
           tableState: nextTableState,
         }));
 
-        if (filtersChanged) {
-          if (this.internalFilterSelection) {
-            const predicates = this._generateFilterPredicates();
-            const combinedPredicate =
-              predicates.length > 0 ? mSql.and(...predicates) : null;
+        if (filtersChanged && this.internalFilterSelection) {
+          const predicates = this._generateFilterPredicates();
+          const combinedPredicate =
+            predicates.length > 0 ? mSql.and(...predicates) : null;
 
-            logger.debug('Core', 'Updating internalFilterSelection');
-
-            this.internalFilterSelection.update({
-              source: this,
-              predicate: combinedPredicate,
-              value: {
-                columnFilters: nextTableState.columnFilters,
-                globalFilter: nextTableState.globalFilter,
-              },
-            });
-          } else {
-            logger.warn(
-              'Core',
-              'Filters changed but no internalFilterSelection is configured!',
-            );
-          }
+          this.internalFilterSelection.update({
+            source: this,
+            predicate: combinedPredicate,
+            value: {
+              columnFilters: nextTableState.columnFilters,
+              globalFilter: nextTableState.globalFilter,
+            },
+          });
         }
 
         if (hashedOldState !== hashedNewState) {

@@ -78,6 +78,23 @@ export interface MosaicDataTableOptions<
    */
   internalFilter?: Selection | undefined;
   /**
+   * Selection to update when a row is hovered.
+   * Used for cross-highlighting.
+   * @default undefined
+   */
+  hoverAs?: Selection | undefined;
+  /**
+   * Selection to update when a row is clicked.
+   * @default undefined
+   */
+  clickAs?: Selection | undefined;
+  /**
+   * The primary key column(s) of the data.
+   * Used to identify rows uniquely for hover/click predicates.
+   * @default ['id']
+   */
+  primaryKey?: string[];
+  /**
    * Column Definitions to use for the table instance.
    *
    * When not provided, the column definitions will be inferred

@@ -1,6 +1,5 @@
 // examples/react/trimmed/src/components/views/athletes.tsx
-// Updated to include Min/Max Range filters for Height, Weight, and Date of Birth.
-// Implements 'between' logic using sqlFilterType: 'range'.
+// Updated visual style for the highlight dot to be yellow and larger.
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
@@ -18,6 +17,10 @@ const tableName = 'athletes';
 
 const $query = vg.Selection.intersect();
 const $tableFilter = vg.Selection.intersect();
+// Highlight selection: defaults to empty (select none), updates on hover
+const $hover = vg.Selection.intersect({ empty: true });
+
+// Combined filter for the main visualizations
 const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
 type AthleteRowData = {
@@ -35,9 +38,8 @@ type AthleteRowData = {
   info: string | null;
 };
 
-// --- Filter Components ---
+// --- Filter Components (Debounced) ---
 
-// A Debounced Input for performance
 function DebouncedInput({
   value: initialValue,
   onChange,
@@ -60,7 +62,7 @@ function DebouncedInput({
     }, debounce);
 
     return () => clearTimeout(timeout);
-  }, [value, debounce]); // Added debounce to deps
+  }, [value, debounce]);
 
   return (
     <input
@@ -73,9 +75,6 @@ function DebouncedInput({
 
 function DebouncedTextFilter({ column }: { column: any }) {
   const columnFilterValue = column.getFilterValue();
-  
-  // We pass the filter value directly to the debounced input
-  // The DebouncedInput handles the internal state and effect
   return (
     <DebouncedInput
       type="text"
@@ -98,7 +97,7 @@ function DebouncedRangeFilter({
   placeholderPrefix?: string;
 }) {
   const columnFilterValue = column.getFilterValue();
-  const minMax = column.getFacetedMinMaxValues(); // Only works for numbers based on current core implementation
+  const minMax = column.getFacetedMinMaxValues();
 
   return (
     <div className="flex gap-1 mt-1">
@@ -175,6 +174,7 @@ export function AthletesView() {
       );
 
       const plot = vg.plot(
+        // Base Layer
         vg.dot(vg.from(tableName, { filterBy: $combined }), {
           x: 'weight',
           y: 'height',
@@ -182,10 +182,20 @@ export function AthletesView() {
           r: 2,
           opacity: 0.05,
         }),
+        // Regression Layer
         vg.regressionY(vg.from(tableName, { filterBy: $combined }), {
           x: 'weight',
           y: 'height',
           stroke: 'sex',
+        }),
+        // Highlight Layer - Listens to $hover selection
+        vg.dot(vg.from(tableName, { filterBy: $hover }), {
+          x: 'weight',
+          y: 'height',
+          fill: 'yellow',
+          stroke: 'black',
+          strokeWidth: 2,
+          r: 6,
         }),
         vg.intervalXY({
           as: $query,
@@ -196,9 +206,7 @@ export function AthletesView() {
       );
 
       const layout = vg.vconcat(inputs, vg.vspace(10), plot);
-
       chartDivRef.current?.replaceChildren(layout);
-
       setIsPending(false);
     }
 
@@ -302,11 +310,7 @@ function AthletesTable() {
           header: ({ column }) => (
             <div className="flex flex-col items-start gap-1">
               <RenderTableHeader column={column} title="DOB" view={view} />
-              <DebouncedRangeFilter
-                column={column}
-                type="date"
-                placeholderPrefix=""
-              />
+              <DebouncedRangeFilter column={column} type="date" />
             </div>
           ),
           cell: (props) => {
@@ -458,7 +462,9 @@ function AthletesTable() {
       table: tableName,
       filterBy: $query,
       internalFilter: $tableFilter,
+      hoverAs: $hover, // Pass the hover selection here
       columns,
+      primaryKey: ['id'], // Critical for hover predicates
       tableOptions: {
         enableHiding: true,
         enableMultiSort: true,
