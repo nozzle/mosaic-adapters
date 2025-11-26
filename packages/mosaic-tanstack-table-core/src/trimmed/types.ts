@@ -10,10 +10,18 @@ import type {
   TableState,
 } from '@tanstack/table-core';
 
-export type MosaicDataTableSqlFilterType = 'equals' | 'in' | 'like' | 'range';
+export type MosaicDataTableSqlFilterType =
+  | 'equals' // = value (Exact match, good for IDs, Numbers)
+  | 'in' // IN (v1, v2) (Good for Select/Multi-select)
+  | 'like' // LIKE %value% (Case sensitive text)
+  | 'ilike' // ILIKE %value% (Case insensitive text)
+  | 'range'; // >= min AND <= max (Good for Sliders, Dates)
 
 // Type for storing faceted values: ColumnID -> Map<Value, Count>
 export type FacetMap = Map<string, Map<any, number>>;
+
+// Type for storing faceted min/max: ColumnID -> [Min, Max]
+export type MinMaxTuple = [number | null, number | null];
 
 /**
  * This will be merged into the TanStack Table ColumnDef type
@@ -106,5 +114,7 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   totalRows: number | undefined;
   // Store for server-fetched facets. Key = columnId, Value = Map of (Value -> Count)
   facets: FacetMap;
+  // Store for Range bounds (Sliders). Key = ColumnId, Value = [Min, Max]
+  facetMinMax: Map<string, MinMaxTuple>;
   tableOptions: SubsetTableOptions<TData>;
 };

@@ -43,7 +43,11 @@ import type {
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ColumnDef, RowData, TableOptions } from '@tanstack/table-core';
-import type { MosaicDataTableOptions, MosaicDataTableStore } from './types';
+import type {
+  MosaicDataTableColumnDefMetaOptions,
+  MosaicDataTableOptions,
+  MosaicDataTableStore,
+} from './types';
 
 // Robust deep equality check for config objects
 function isDeepEqual(obj1: any, obj2: any) {
@@ -194,6 +198,7 @@ export class MosaicDataTable<
         totalRows: undefined as ResolvedStore['totalRows'],
         columnDefs: options.columns ?? ([] as ResolvedStore['columnDefs']),
         facets: new Map(),
+        facetMinMax: new Map(),
       });
     } else {
       this.#store.setState((prev) => ({
@@ -213,6 +218,11 @@ export class MosaicDataTable<
 
   /**
    * Generates SQL predicates from the current TanStack filter state.
+   *
+   * @nuance
+   * Unlike Client-Side filtering where everything is often string comparison,
+   * Server-Side filtering must respect data types to use indices effectively.
+   * We use the `sqlFilterType` meta property to decide which SQL operator to use.
    */
   private _generateFilterPredicates(): Array<mSql.FilterExpr> {
     const state = this.#store.state.tableState;
@@ -220,6 +230,16 @@ export class MosaicDataTable<
 
     // ALWAYS refresh the map to ensure we are in sync with the store
     this.getColumnsDefs();
+
+    // Helper to look up column meta
+    const getColMeta = (id: string) => {
+      const colDef = this.#store.state.columnDefs.find(
+        (c) => c.id === id || ('accessorKey' in c && c.accessorKey === id),
+      );
+      // @ts-ignore - meta is optional on ColumnDef
+      return (colDef?.meta as MosaicDataTableColumnDefMetaOptions | undefined)
+        ?.mosaicDataTable;
+    };
 
     const createPredicate = (id: string, value: any) => {
       const sqlColumnName = this.#columnDefIdToSqlColumnAccessor.get(id);
@@ -233,13 +253,45 @@ export class MosaicDataTable<
       }
 
       const sqlCol = column(sqlColumnName);
+      const meta = getColMeta(id);
+      const filterType = meta?.sqlFilterType || 'ilike'; // Default to ILIKE (case-insensitive search)
 
-      if (Array.isArray(value) && value.length > 0) {
-        const options = value.map((v) => literal(v));
-        return sqlIn(sqlCol, options);
+      // 1. Handle Range Filter (e.g. Slider: [10, 50])
+      // Note: TanStack range filters are often [number | null, number | null]
+      if (filterType === 'range' && Array.isArray(value)) {
+        const [min, max] = value;
+        const clauses = [];
+        // Handle "open" ranges (e.g. >= 10, unbounded max)
+        if (min !== null && min !== '' && min !== undefined)
+          clauses.push(mSql.gte(sqlCol, literal(min)));
+        if (max !== null && max !== '' && max !== undefined)
+          clauses.push(mSql.lte(sqlCol, literal(max)));
+
+        return clauses.length > 0 ? mSql.and(...clauses) : null;
       }
 
-      // Default string matching
+      // 2. Handle List Filter (e.g. Multi-Select: ['USA', 'CAN'])
+      if (filterType === 'in' && Array.isArray(value)) {
+        if (value.length === 0) return null; // Empty array = no filter
+        return sqlIn(
+          sqlCol,
+          value.map((v) => literal(v)),
+        );
+      }
+
+      // 3. Handle Exact Match (e.g. ID lookup, Status enum)
+      if (filterType === 'equals') {
+        return mSql.eq(sqlCol, literal(value));
+      }
+
+      // 4. Handle LIKE (Case Sensitive)
+      if (filterType === 'like') {
+        return sql`CAST(${sqlCol} AS VARCHAR) LIKE ${literal(`%${value}%`)}`;
+      }
+
+      // 5. Default / ILIKE (Case Insensitive Text Search)
+      // CAST to VARCHAR ensures numeric/date columns don't crash if searched as text,
+      // though performance is better if 'equals' or 'range' is used for those types.
       return sql`CAST(${sqlCol} AS VARCHAR) ILIKE ${literal(`%${value}%`)}`;
     };
 
@@ -253,8 +305,18 @@ export class MosaicDataTable<
     if (state.globalFilter) {
       const globalPredicates: Array<mSql.FilterExpr> = [];
       this.#columnDefIdToSqlColumnAccessor.forEach((_, id) => {
-        const predicate = createPredicate(id, state.globalFilter);
-        if (predicate) globalPredicates.push(predicate);
+        const meta = getColMeta(id);
+        // Only apply global filter to columns that default to text search or explicitly opt-in via ilike/like.
+        // Trying to ILIKE a numeric/date column (range) is usually not what user wants for global text search
+        // unless explicitly configured.
+        if (
+          !meta?.sqlFilterType ||
+          meta.sqlFilterType === 'ilike' ||
+          meta.sqlFilterType === 'like'
+        ) {
+          const predicate = createPredicate(id, state.globalFilter);
+          if (predicate) globalPredicates.push(predicate);
+        }
       });
 
       if (globalPredicates.length > 0) {
@@ -356,6 +418,68 @@ export class MosaicDataTable<
       logger.error('Core', 'Received non-Arrow result:', { table });
     }
     return this;
+  }
+
+  /**
+   * Loads the global Minimum and Maximum values for a specific column from the database.
+   *
+   * @why
+   * TanStack Table's default `getFacetedMinMaxValues` only looks at the rows currently
+   * loaded in the client (e.g., the current page of 10 rows). This is incorrect for
+   * server-side data. We must query DuckDB to get the true bounds of the dataset.
+   *
+   * @context
+   * This query applies the `filterBy` (Dashboard Context) selections, ensuring the
+   * slider bounds reflect the current global filter state, but ignores the table's
+   * own internal filters to prevent the slider from collapsing on itself.
+   */
+  public async loadColumnMinMax(columnId: string) {
+    if (this.#columnDefIdToSqlColumnAccessor.size === 0) {
+      this.getColumnsDefs();
+    }
+    const sqlColumnName = this.#columnDefIdToSqlColumnAccessor.get(columnId);
+    if (!sqlColumnName) {
+      logger.warn(
+        'Core',
+        `Cannot load MinMax: No SQL column found for ${columnId}`,
+      );
+      return;
+    }
+
+    const sqlCol = column(sqlColumnName);
+
+    // SELECT MIN(col), MAX(col) ...
+    const query = mSql.Query.from(this.sourceTable())
+      .select({
+        min: mSql.min(sqlCol),
+        max: mSql.max(sqlCol),
+      })
+      .where(this.filterBy?.predicate(this) || []);
+
+    try {
+      if (!this.coordinator) return;
+
+      const result = await this.coordinator.query(query);
+      const row = result.get(0); // Arrow result is iterable, get first row
+
+      batch(() => {
+        this.#store.setState((prev) => {
+          const newMinMax = new Map(prev.facetMinMax);
+          // Ensure we store [null, null] if data is empty to avoid UI crashes
+          newMinMax.set(columnId, [row?.min ?? null, row?.max ?? null]);
+          return { ...prev, facetMinMax: newMinMax };
+        });
+      });
+
+      logger.debug('Core', `Loaded MinMax for ${columnId}`, {
+        min: row?.min,
+        max: row?.max,
+      });
+    } catch (e) {
+      logger.error('Core', `Failed to load MinMax for ${columnId}`, {
+        error: e,
+      });
+    }
   }
 
   public async loadColumnFacet(columnId: string) {
@@ -556,9 +680,24 @@ export class MosaicDataTable<
       getCoreRowModel: getCoreRowModel(),
       getFacetedRowModel: getFacetedRowModel(),
       getFilteredRowModel: getFilteredRowModel(),
+      // NATIVE FACETING OVERRIDE (Unique Values)
+      // Returns a getter that reads from our server-populated store.
       getFacetedUniqueValues: (table, columnId) => () =>
         state.facets.get(columnId) || new Map(),
-      getFacetedMinMaxValues: getFacetedMinMaxValues(),
+      // NATIVE FACETING OVERRIDE (Min/Max)
+      // We replace the default client-side calculator with a getter that reads
+      // from our server-populated store.
+      // We transform the stored tuple [number | null, number | null] into [number, number] | undefined
+      // to satisfy TanStack Table's strict typing.
+      getFacetedMinMaxValues: (table, columnId) => () => {
+        const cached = state.facetMinMax.get(columnId);
+        if (!cached) return undefined;
+        const [min, max] = cached;
+        if (typeof min === 'number' && typeof max === 'number') {
+          return [min, max];
+        }
+        return undefined;
+      },
       state: state.tableState,
       onStateChange: (updater) => {
         const oldState = this.#store.state.tableState;

@@ -1,5 +1,6 @@
 // examples/react/trimmed/src/components/views/athletes.tsx
-// Updated to fix the infinite loop in DebouncedTextFilter
+// Updated to include Min/Max Range filters for Height, Weight, and Date of Birth.
+// Implements 'between' logic using sqlFilterType: 'range'.
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
@@ -34,36 +35,98 @@ type AthleteRowData = {
   info: string | null;
 };
 
-// --- Filter Component ---
+// --- Filter Components ---
 
-function DebouncedTextFilter({ column }: { column: any }) {
-  const columnFilterValue = column.getFilterValue();
-  const [value, setValue] = useState(columnFilterValue ?? '');
+// A Debounced Input for performance
+function DebouncedInput({
+  value: initialValue,
+  onChange,
+  debounce = 500,
+  ...props
+}: {
+  value: string | number;
+  onChange: (value: string | number) => void;
+  debounce?: number;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'>) {
+  const [value, setValue] = React.useState(initialValue);
 
   React.useEffect(() => {
-    setValue(columnFilterValue ?? '');
-  }, [columnFilterValue]);
+    setValue(initialValue);
+  }, [initialValue]);
 
   React.useEffect(() => {
     const timeout = setTimeout(() => {
-      // Fix: Handle undefined vs empty string logic strictly
-      const currentFilterValue = column.getFilterValue() ?? '';
-      if (value !== currentFilterValue) {
-        column.setFilterValue(value);
-      }
-    }, 300);
+      onChange(value);
+    }, debounce);
+
     return () => clearTimeout(timeout);
-  }, [value, column]);
+  }, [value, debounce]); // Added debounce to deps
 
   return (
     <input
-      type="text"
+      {...props}
       value={value}
       onChange={(e) => setValue(e.target.value)}
+    />
+  );
+}
+
+function DebouncedTextFilter({ column }: { column: any }) {
+  const columnFilterValue = column.getFilterValue();
+  
+  // We pass the filter value directly to the debounced input
+  // The DebouncedInput handles the internal state and effect
+  return (
+    <DebouncedInput
+      type="text"
+      value={columnFilterValue ?? ''}
+      onChange={(value) => column.setFilterValue(value)}
       placeholder="Search..."
       className="mt-1 px-2 py-1 text-xs border rounded shadow-sm w-full font-normal text-gray-600 focus:border-blue-500 outline-none"
       onClick={(e) => e.stopPropagation()}
     />
+  );
+}
+
+function DebouncedRangeFilter({
+  column,
+  type = 'number',
+  placeholderPrefix = '',
+}: {
+  column: any;
+  type?: 'number' | 'date';
+  placeholderPrefix?: string;
+}) {
+  const columnFilterValue = column.getFilterValue();
+  const minMax = column.getFacetedMinMaxValues(); // Only works for numbers based on current core implementation
+
+  return (
+    <div className="flex gap-1 mt-1">
+      <DebouncedInput
+        type={type}
+        value={(columnFilterValue as [any, any])?.[0] ?? ''}
+        onChange={(value) =>
+          column.setFilterValue((old: [any, any]) => [value, old?.[1]])
+        }
+        placeholder={`Min ${
+          minMax?.[0] !== undefined ? `(${minMax[0]})` : placeholderPrefix
+        }`}
+        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-[40px]"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <DebouncedInput
+        type={type}
+        value={(columnFilterValue as [any, any])?.[1] ?? ''}
+        onChange={(value) =>
+          column.setFilterValue((old: [any, any]) => [old?.[0], value])
+        }
+        placeholder={`Max ${
+          minMax?.[1] !== undefined ? `(${minMax[1]})` : placeholderPrefix
+        }`}
+        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-[40px]"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
   );
 }
 
@@ -189,6 +252,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'name',
+              sqlFilterType: 'ilike',
             },
           },
         },
@@ -208,7 +272,10 @@ function AthletesTable() {
           enableColumnFilter: true,
           filterFn: noopFilter,
           meta: {
-            mosaicDataTable: { sqlColumn: 'nationality' },
+            mosaicDataTable: {
+              sqlColumn: 'nationality',
+              sqlFilterType: 'ilike',
+            },
           },
         },
         {
@@ -225,13 +292,22 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sex',
+              sqlFilterType: 'ilike',
             },
+            filterVariant: 'select',
           },
         },
         {
           id: 'dob',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="DOB" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="DOB" view={view} />
+              <DebouncedRangeFilter
+                column={column}
+                type="date"
+                placeholderPrefix=""
+              />
+            </div>
           ),
           cell: (props) => {
             const value = props.getValue();
@@ -241,11 +317,22 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'date_of_birth',
+          enableColumnFilter: true,
+          filterFn: noopFilter,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'date_of_birth',
+              sqlFilterType: 'range',
+            },
+          },
         },
         {
           id: 'Height',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="Height" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="Height" view={view} />
+              <DebouncedRangeFilter column={column} type="number" />
+            </div>
           ),
           cell: (props) => {
             const value = props.getValue();
@@ -257,13 +344,21 @@ function AthletesTable() {
           accessorKey: 'height',
           meta: {
             filterVariant: 'range',
+            mosaicDataTable: {
+              sqlColumn: 'height',
+              sqlFilterType: 'range',
+            },
           },
-          enableColumnFilter: false,
+          enableColumnFilter: true,
+          filterFn: noopFilter,
         },
         {
           id: 'Weight',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="Weight" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="Weight" view={view} />
+              <DebouncedRangeFilter column={column} type="number" />
+            </div>
           ),
           cell: (props) => {
             const value = props.getValue();
@@ -273,6 +368,14 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'weight',
+          enableColumnFilter: true,
+          filterFn: noopFilter,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'weight',
+              sqlFilterType: 'range',
+            },
+          },
         },
         {
           id: 'Sport',
@@ -288,7 +391,9 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sport',
+              sqlFilterType: 'ilike',
             },
+            filterVariant: 'select',
           },
         },
         {
@@ -365,9 +470,21 @@ function AthletesTable() {
     [columns],
   );
 
-  const { tableOptions } = useMosaicReactTable<AthleteRowData>(
+  const { tableOptions, client } = useMosaicReactTable<AthleteRowData>(
     mosaicTableOptions,
   );
+
+  // Trigger Server-Side Facet Loading
+  // This ensures that when the user opens the filter menu, the data is ready.
+  useEffect(() => {
+    // Load range bounds for Height and Weight
+    client.loadColumnMinMax('Height');
+    client.loadColumnMinMax('Weight');
+
+    // Load unique values for Sport and Gender
+    client.loadColumnFacet('Sport');
+    client.loadColumnFacet('Gender');
+  }, [client]);
 
   const table = useReactTable(tableOptions);
 
