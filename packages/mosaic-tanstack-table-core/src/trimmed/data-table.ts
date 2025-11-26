@@ -1,3 +1,6 @@
+// packages/mosaic-tanstack-table-core/src/trimmed/data-table.ts
+// This file contains the MosaicDataTable class, which acts as the "Brain" of the integration.
+// Updated to use the new Logger utility and reduce log noise.
 import {
   MosaicClient,
   coordinator as defaultCoordinator,
@@ -7,10 +10,20 @@ import {
 } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import {
+  sql,
+  literal,
+  or,
+  desc,
+  asc,
+  count,
+  column,
+  isIn as sqlIn,
+} from '@uwdata/mosaic-sql';
+import {
   getCoreRowModel,
   getFacetedMinMaxValues,
   getFacetedRowModel,
-  // getFacetedUniqueValues,
+  getFilteredRowModel,
 } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
@@ -18,9 +31,9 @@ import {
   seedInitialTableState,
   toSafeSqlColumnName,
 } from './utils';
+import { logger } from './logger';
 
 import type {
-  Coordinator,
   FieldInfo,
   FieldInfoRequest,
   Param,
@@ -28,35 +41,60 @@ import type {
   SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
-import type {
-  ColumnDef,
-  RowData,
-  Table,
-  TableOptions,
-} from '@tanstack/table-core';
+import type { ColumnDef, RowData, TableOptions } from '@tanstack/table-core';
 import type { MosaicDataTableOptions, MosaicDataTableStore } from './types';
 
-/**
- * This is a factory function to create a MosaicDataTable client.
- *
- * @typeParam `TData` The row data type used in TanStack Table.
- * @typeParam `TValue` The cell value type used in TanStack Table.
- * @param options Options to be passed into the constructor of the MosaicDataTable.
- * @returns A new instance of the MosaicDataTable client.
- */
+// Robust deep equality check for config objects
+function isDeepEqual(obj1: any, obj2: any) {
+  if (obj1 === obj2) return true;
+  if (!obj1 || !obj2) return false;
+  if (typeof obj1 !== 'object' || typeof obj2 !== 'object') return false;
+
+  if (Array.isArray(obj1)) {
+    if (!Array.isArray(obj2) || obj1.length !== obj2.length) return false;
+    for (let i = 0; i < obj1.length; i++) {
+      if (!isDeepEqual(obj1[i], obj2[i])) return false;
+    }
+    return true;
+  }
+
+  const keys1 = Object.keys(obj1);
+  const keys2 = Object.keys(obj2);
+
+  if (keys1.length !== keys2.length) return false;
+
+  for (const key of keys1) {
+    const val1 = obj1[key];
+    const val2 = obj2[key];
+
+    if (typeof val1 === 'function' && typeof val2 === 'function') {
+      if (val1.toString() !== val2.toString()) return false;
+      continue;
+    }
+
+    if (
+      key === 'filterBy' ||
+      key === 'internalFilter' ||
+      key === 'coordinator' ||
+      key === 'table'
+    ) {
+      if (val1 !== val2) return false;
+      continue;
+    }
+
+    if (!isDeepEqual(val1, val2)) return false;
+  }
+
+  return true;
+}
+
 export function createMosaicDataTableClient<
   TData extends RowData,
   TValue = unknown,
 >(options: MosaicDataTableOptions<TData, TValue>) {
-  // Initialize the table client
-  const client = new MosaicDataTable<TData, TValue>(options);
-  return client;
+  return new MosaicDataTable<TData, TValue>(options);
 }
 
-/**
- * A Mosaic Client that does the glue work to drive TanStack Table, using it's
- * TableOptions for configuration.
- */
 export class MosaicDataTable<
   TData extends RowData,
   TValue = unknown,
@@ -64,7 +102,7 @@ export class MosaicDataTable<
   from: Param<string> | string;
   schema: Array<FieldInfo> = [];
 
-  facets: Map<string, any> = new Map();
+  internalFilterSelection?: Selection;
 
   #store!: Store<MosaicDataTableStore<TData, TValue>>;
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
@@ -75,36 +113,70 @@ export class MosaicDataTable<
   #sqlColumnAccessorToFieldInfo: Map<string, FieldInfo> = new Map();
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
-    super(options.filterBy); // pass the appropriate Filter Selection
-
+    super(options.filterBy);
     this.from = options.table;
 
     if (!this.sourceTable()) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
 
+    // Explicitly set internal filter from options on init
+    if (options.internalFilter) {
+      this.internalFilterSelection = options.internalFilter;
+    }
+
     this.updateOptions(options);
   }
 
-  /**
-   * When options are updated from framework-land, we need to update
-   * the internal store and state accordingly.
-   * @param options The updated options from framework-land.
-   */
+  // @ts-ignore
+  override requestQuery(query: any): Promise<void> {
+    if (!this.coordinator) return Promise.resolve();
+    return super.requestQuery(query) as Promise<void>;
+  }
+
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    if (options.onTableStateChange) {
+    logger.debug('[MosaicDataTable] updateOptions called'); // Removed verbose options logging
+
+    if (
+      options.onTableStateChange &&
+      this.#onTableStateChange !== options.onTableStateChange
+    ) {
       this.#onTableStateChange = options.onTableStateChange;
     }
 
-    // Ensure we have a coordinator assigned
+    if (
+      options.internalFilter &&
+      this.internalFilterSelection !== options.internalFilter
+    ) {
+      logger.debug(
+        '[MosaicDataTable] Updating internalFilterSelection reference',
+      );
+      this.internalFilterSelection = options.internalFilter;
+    }
+
     if (!this.coordinator) {
       const coordinatorInstance = options.coordinator ?? defaultCoordinator();
       this.coordinator = coordinatorInstance;
     }
 
+    const currentStore = this.#store?.state;
+
+    if (currentStore) {
+      const columnsChanged =
+        options.columns &&
+        !isDeepEqual(options.columns, currentStore.columnDefs);
+
+      const tableOptionsChanged =
+        options.tableOptions &&
+        !isDeepEqual(options.tableOptions, currentStore.tableOptions);
+
+      if (!columnsChanged && !tableOptionsChanged) {
+        return;
+      }
+    }
+
     type ResolvedStore = MosaicDataTableStore<TData, TValue>;
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (!this.#store) {
       this.#store = new Store({
         tableState: seedInitialTableState<TData>(
@@ -116,136 +188,136 @@ export class MosaicDataTable<
         rows: [] as ResolvedStore['rows'],
         totalRows: undefined as ResolvedStore['totalRows'],
         columnDefs: options.columns ?? ([] as ResolvedStore['columnDefs']),
+        facets: new Map(),
       });
     } else {
       this.#store.setState((prev) => ({
         ...prev,
         columnDefs:
           options.columns !== undefined ? options.columns : prev.columnDefs,
+        tableOptions:
+          options.tableOptions !== undefined
+            ? { ...prev.tableOptions, ...options.tableOptions }
+            : prev.tableOptions,
       }));
     }
+
+    // Force a map rebuild when options change to ensure we have the latest definitions
+    this.getColumnsDefs();
+  }
+
+  /**
+   * Generates SQL predicates from the current TanStack filter state.
+   */
+  private _generateFilterPredicates(): Array<mSql.FilterExpr> {
+    const state = this.#store.state.tableState;
+    const where: Array<mSql.FilterExpr> = [];
+
+    // logger.debug('[MosaicDataTable] _generateFilterPredicates called');
+
+    // ALWAYS refresh the map to ensure we are in sync with the store
+    this.getColumnsDefs();
+
+    const createPredicate = (id: string, value: any) => {
+      const sqlColumnName = this.#columnDefIdToSqlColumnAccessor.get(id);
+
+      if (!sqlColumnName) {
+        logger.warn(
+          `[MosaicDataTable] Filter ignored: No SQL column found for Column ID "${id}". Available IDs:`,
+          Array.from(this.#columnDefIdToSqlColumnAccessor.keys()),
+        );
+        return null;
+      }
+
+      // logger.debug(`[MosaicDataTable] Generating predicate for ID "${id}"`);
+
+      const sqlCol = column(sqlColumnName);
+
+      if (Array.isArray(value) && value.length > 0) {
+        const options = value.map((v) => literal(v));
+        return sqlIn(sqlCol, options);
+      }
+
+      // Default string matching
+      return sql`CAST(${sqlCol} AS VARCHAR) ILIKE ${literal(`%${value}%`)}`;
+    };
+
+    for (const f of state.columnFilters) {
+      if (f.value != null && f.value !== '') {
+        const predicate = createPredicate(f.id, f.value);
+        if (predicate) where.push(predicate);
+      }
+    }
+
+    if (state.globalFilter) {
+      const globalPredicates: Array<mSql.FilterExpr> = [];
+      this.#columnDefIdToSqlColumnAccessor.forEach((_, id) => {
+        const predicate = createPredicate(id, state.globalFilter);
+        if (predicate) globalPredicates.push(predicate);
+      });
+
+      if (globalPredicates.length > 0) {
+        where.push(or(...globalPredicates));
+      }
+    }
+
+    return where;
   }
 
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
     const tableName = this.sourceTable();
-
     const tableState = this.#store.state.tableState;
-
     const pagination = tableState.pagination;
 
-    // Only consider sorting for columns that can be mapped to Mosaic columns
+    // Refresh column mappings
+    this.getColumnsDefs();
+
     const sorting = tableState.sorting.filter((sort) =>
       this.#columnDefIdToSqlColumnAccessor.has(sort.id),
     );
 
-    // Only consider column filters for columns that can be mapped to Mosaic columns
-    const columnFilters = tableState.columnFilters.filter((filter) =>
-      this.#columnDefIdToSqlColumnAccessor.has(filter.id),
-    );
-
-    // Get the Table SQL columns to select
     const tableColumns = this.sqlColumns();
 
-    // Initialize the main query statement
-    // This is where the actual main Columns with Pagination will be applied
     const statement = mSql.Query.from(tableName).select(...tableColumns, {
-      [this.#sql_total_rows]: mSql.sql`COUNT(*) OVER()`, // Window function to get total rows
+      [this.#sql_total_rows]: mSql.sql`COUNT(*) OVER()`,
     });
 
     const whereClauses: Array<mSql.FilterExpr> = [];
 
-    // Conditionally add the primary filter
+    // 1. Add External Filter (from filterBy / Top Widgets)
     if (primaryFilter) {
       whereClauses.push(primaryFilter);
     }
 
-    // Add column filters
-    columnFilters.forEach((columnFilter) => {
-      const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(
-        columnFilter.id,
-      )!; // Assertion is safe due to filtering above
-      // Build the filter expression based on the filter value
+    // 2. Add Internal Filter (from table columns)
+    const internalFilters = this._generateFilterPredicates();
+    if (internalFilters.length > 0) {
+      // logger.debug('[MosaicDataTable] Adding internal filters to query');
+      whereClauses.push(...internalFilters);
+    }
 
-      // TODO: Support different filter types based on ColumnDef meta.
-      // TODO: Move this building logic into its own utility function/method.
-      // TODO: Figure out the best usage for AND and OR combinations.
-
-      // POC of what this could look like
-      if (columnFilter.value && typeof columnFilter.value === 'string') {
-        // Simple equals filter for now
-        whereClauses.push(
-          mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value.trim())}`,
-        );
-      }
-    });
-
-    // Apply all where clauses
     statement.where(...whereClauses);
 
-    // Add sorting
     const orderingCriteria: Array<mSql.OrderByNode> = [];
     sorting.forEach((sort) => {
-      const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(sort.id)!; // Assertion is safe due to filtering above
-
-      // Build the sorting command based on direction
-      orderingCriteria.push(
-        sort.desc ? mSql.desc(columnAccessor) : mSql.asc(columnAccessor),
-      );
+      const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(sort.id)!;
+      const colExpr = column(columnAccessor);
+      orderingCriteria.push(sort.desc ? desc(colExpr) : asc(colExpr));
     });
 
-    // Apply ordering criteria
     statement.orderby(...orderingCriteria);
-
-    // Add offset and limit based pagination
     statement
       .limit(pagination.pageSize)
       .offset(pagination.pageIndex * pagination.pageSize);
 
-    // Kick off the requests for the unique column values for faceting to be queried
-    // TODO: Figure out where's the best place to do this logic
-    // TODO: Figure out the best way (and/or ways to support) the retrieval of unique values for faceting
-    this.facets.clear();
-
-    // ['name', 'sport', 'sex', 'nationality'].forEach((sqlColumn) => {
-    //   const uniqueValuesClient = new UniqueColumnValuesClient({
-    //     table: tableName,
-    //     column: sqlColumn,
-    //     filterBy: this.filterBy,
-    //     coordinator: this.coordinator,
-    //     onResult: (values: Array<unknown>) => {
-    //       const columnId = Array.from(
-    //         this.#columnDefIdToFieldInfo.entries(),
-    //       ).find((d) => d[1].column === sqlColumn)?.[0];
-
-    //       if (!columnId) return;
-    //       this.facets.set(columnId, values);
-    //     },
-    //   });
-
-    //   uniqueValuesClient.requestUpdate();
-    // });
-
     return statement;
-  }
-
-  override queryPending(): this {
-    return this;
-  }
-
-  override queryError(error: Error): this {
-    console.error('[MosaicDataTable] queryError() Query error:', error);
-    return this;
   }
 
   override queryResult(table: unknown): this {
     if (isArrowTable(table)) {
       let totalRows: number | undefined = undefined;
-
-      // Convert Arrow Table to rows array for TanStack Table
       const rows = table.toArray() as Array<TData>;
 
-      // Check for the total rows column identifier, and pull out the value if present
-      // We only need to check the first row since it's the same value for all rows
       if (
         rows.length > 0 &&
         rows[0] &&
@@ -258,94 +330,92 @@ export class MosaicDataTable<
 
       batch(() => {
         this.#store.setState((prev) => {
-          return {
-            ...prev,
-            rows,
-            totalRows,
-          };
+          return { ...prev, rows, totalRows };
         });
       });
     } else {
-      console.error(
-        '[MosaicDataTable] queryResult() Received non-Arrow Table result:',
-        table,
-      );
-      console.error('Please report this issue to the developers.');
+      logger.error('[MosaicDataTable] Received non-Arrow result:', table);
     }
-
     return this;
   }
 
-  override async prepare(): Promise<void> {
-    const schema = await queryFieldInfo(this.coordinator!, this.fields());
-    this.schema = schema;
+  public async loadColumnFacet(columnId: string) {
+    if (this.#columnDefIdToSqlColumnAccessor.size === 0) {
+      this.getColumnsDefs();
+    }
+    const sqlColumnName = this.#columnDefIdToSqlColumnAccessor.get(columnId);
+    if (!sqlColumnName) return;
+    const sqlCol = column(sqlColumnName);
+    const query = mSql.Query.from(this.sourceTable())
+      .select({ value: sqlCol, count: count() })
+      .groupby(sqlCol)
+      .orderby(desc('count'))
+      .where(this.filterBy?.predicate(this) || []);
+    try {
+      if (!this.coordinator) return;
+      const result = await this.coordinator.query(query);
+      const facetMap = new Map<any, number>();
+      for (const row of result) facetMap.set(row.value, row.count);
+      this.#store.setState((prev) => {
+        const newFacets = new Map(prev.facets);
+        newFacets.set(columnId, facetMap);
+        return { ...prev, facets: newFacets };
+      });
+    } catch (e) {
+      logger.error(`Failed to load facet for ${columnId}`, e);
+    }
+  }
 
-    // Clear previous mappings
+  override queryPending(): this {
+    return this;
+  }
+  override queryError(error: Error): this {
+    logger.error('[MosaicDataTable] Query Error:', error);
+    return this;
+  }
+  override async prepare(): Promise<void> {
+    if (!this.coordinator) return;
+    const schema = await queryFieldInfo(this.coordinator, this.fields());
+    this.schema = schema;
     this.#columnDefIdToFieldInfo.clear();
     this.#sqlColumnAccessorToFieldInfo.clear();
-
-    // Build a map of SQL Column name to FieldInfo for performant lookup
     const map = new Map<string, FieldInfo>();
-    schema.forEach((field) => {
-      map.set(field.column, field);
-    });
-
+    schema.forEach((field) => map.set(field.column, field));
     this.#sqlColumnAccessorToFieldInfo = map;
-
-    // Map ColumnDef IDs to FieldInfo
     Array.from(this.#columnDefIdToSqlColumnAccessor.entries()).forEach(
       ([id, value]) => {
         const matchedField = map.get(value);
         if (!matchedField) {
-          console.warn(
-            `[MosaicDataTable] Column definition with id "${id}" has an accessorKey or mosaicDataTable.sqlColumn "${value}" that does not exist in the table schema.`,
+          logger.warn(
+            `[MosaicDataTable] Column ID "${id}" mapped to SQL "${value}" which does not exist in schema.`,
           );
         } else {
           this.#columnDefIdToFieldInfo.set(id, matchedField);
         }
       },
     );
-
     return Promise.resolve();
   }
 
   connect(): () => void {
-    // Connect to the coordinator
-    // so that it can also start piping data from Mosaic to the table
-    this.coordinator?.connect(this);
-
-    // Mark the client as enabled, so that it can start requesting queries
-    // and processing results. This process happens internally in MosaicClient,
-    // when the `enabled` setter is called.
+    if (!this.coordinator) this.coordinator = defaultCoordinator();
+    this.coordinator.connect(this);
     this.enabled = true;
-
-    // Bind and return the destroy function
-    // so that Mosaic do its cleanup properly
     const destroy = this.destroy.bind(this);
-
-    // Setup the primary selection change listener to reset pagination
     const selectionCb = (_: Array<SelectionClause> | undefined) => {
       batch(() => {
-        // When the selection changes, we reset pagination to the first page
         this.#store.setState((prev) => ({
           ...prev,
           tableState: {
             ...prev.tableState,
-            pagination: {
-              ...prev.tableState.pagination,
-              pageIndex: 0,
-            },
+            pagination: { ...prev.tableState.pagination, pageIndex: 0 },
           },
         }));
       });
     };
     this.filterBy?.addEventListener('value', selectionCb);
-
     return () => {
-      // Remove the primary selection change listener
       this.filterBy?.removeEventListener('value', selectionCb);
-
-      // Cleanup and perform destroy operations
       destroy();
     };
   }
@@ -354,138 +424,80 @@ export class MosaicDataTable<
     super.destroy();
   }
 
-  /**
-   * Helper utility to build the SQL select columns,
-   * taking into account any column remaps defined
-   * and other TanStack Table ColumnDef options.
-   */
   private sqlColumns(): Array<mSql.SelectExpr> {
-    // Get the columns to select in SQL-land
     const selectColumns = this.fields().map((d) =>
       typeof d.column !== 'string' ? d.column.toString() : d.column,
     );
-
     return [selectColumns];
   }
 
-  /**
-   * Resolve the table name based on the constructor options.
-   * This is mostly useful if the table name is a Mosaic Param,
-   * then it will return the resolved value.
-   */
   sourceTable(): string {
     return (isParam(this.from) ? this.from.value : this.from) as string;
   }
 
-  /**
-   * This function validates the ColumnDefs provided to the MosaicDataTable,
-   * ensuring that they can be mapped to Mosaic columns for querying.
-   *
-   * Additionally, this functions builds up any necessary internal metadata
-   * needed to drive the query generation and resolution.
-   */
   private getColumnsDefs() {
-    const columnDefs = this.#store.state.columnDefs;
+    // Safety check
+    if (!this.#store || !this.#store.state) {
+      logger.warn(
+        '[MosaicDataTable] getColumnsDefs called before store initialized',
+      );
+      return {
+        columnDefs: [],
+        columnAccessorKeys: [],
+        shouldSearchAllColumns: false,
+      };
+    }
 
-    // Clear previous mappings
+    const columnDefs = this.#store.state.columnDefs;
     this.#columnDefIdToSqlColumnAccessor.clear();
 
-    // We should only consider columns that can be mapped to Mosaic columns
     const queryableColumns = columnDefs.filter((def) => {
-      // If the column has an accessorKey, we can use that
       if (
         'accessorKey' in def &&
         typeof def.accessorKey === 'string' &&
         def.accessorKey.length > 0
-      ) {
+      )
         return true;
-      }
-
-      // If the column has an accessorFn, we can use that
-      if ('accessorFn' in def && typeof def.accessorFn === 'function') {
+      if ('accessorFn' in def && typeof def.accessorFn === 'function')
         return true;
-      }
-
-      // Otherwise, we cannot map this column to a Mosaic column
       return false;
     });
 
     let shouldSearchAllColumns = queryableColumns.length === 0;
-
     let columnAccessorKeys: Array<string> = [];
 
-    // Validate each ColumnDef, by running through them and checking
-    // These are considered to be MosaicColumns, so this validation pass is required.
     queryableColumns.forEach((def) => {
       let columnAccessor: string | undefined = undefined;
-      // When using an accessorKey, we can directly map that to a Mosaic column.
+      // 1. Try Accessor Key
       if ('accessorKey' in def && def.accessorKey) {
         const accessor =
           typeof def.accessorKey === 'string'
             ? def.accessorKey
             : def.accessorKey.toString();
-
-        // If the user has provided `mosaicColumn` metadata, we need to ensure
-        // that it matches the accessorKey, otherwise we warn them that accessorKey
-        // will be used instead.
-        if (
-          def.meta !== undefined &&
-          def.meta.mosaicDataTable !== undefined &&
-          def.meta.mosaicDataTable.sqlColumn !== undefined &&
-          def.meta.mosaicDataTable.sqlColumn !== accessor
-        ) {
-          console.warn(
-            `[MosaicDataTable] Column definition accessorKey "${accessor}" does not match the provided mosaicDataTable.sqlColumn "${def.meta.mosaicDataTable.sqlColumn}". The accessorKey will be used for querying in SQL-land.`,
-            def,
-          );
-        }
-        def.meta;
-
         columnAccessorKeys.push(accessor);
         columnAccessor = accessor;
-      } else if ('accessorFn' in def && typeof def.accessorFn === 'function') {
-        // When using an accessorFn, things change a bit since we don't know the resulting column
-        // unless the user has provided the `mosaicColumn` metadata.
-        if (
-          def.meta !== undefined &&
-          def.meta.mosaicDataTable !== undefined &&
-          def.meta.mosaicDataTable.sqlColumn !== undefined
-        ) {
+      }
+      // 2. Try Accessor Fn + SQL Column Meta
+      else if ('accessorFn' in def && typeof def.accessorFn === 'function') {
+        if (def.meta?.mosaicDataTable?.sqlColumn) {
           const mosaicColumn = def.meta.mosaicDataTable.sqlColumn;
-
           columnAccessorKeys.push(mosaicColumn);
           columnAccessor = mosaicColumn;
         } else {
-          shouldSearchAllColumns = true;
-          console.warn(
-            `[MosaicDataTable] Column definition using \`accessorFn\` is missing required \`mosaicDataTable.sqlColumn\` metadata to map to a Mosaic Query column. Please provide this property to improve query performance.`,
-            def,
-            `Without this, the resulting query will need to return all columns to try and satisfy the accessor function.`,
-          );
-          return;
+          // This is valid for non-sql columns (like actions), but we shouldn't try to query them
+          // logger.warn('[MosaicDataTable] accessorFn found without meta.mosaicDataTable.sqlColumn', def);
         }
       }
 
-      if (!columnAccessor) {
-        const message = `[MosaicDataTable] Column definition is missing an \`accessorKey\` or valid \`mosaicDataTable.sqlColumn\` metadata to map to a Mosaic Query column. Please provide one of these properties.`;
-        console.error(message, def);
-        throw new Error(message);
+      // Ensure we map the ID correctly
+      if (columnAccessor) {
+        // Fallback: If ID is missing (TanStack generates one at runtime, but we operate on definitions), try to use accessor
+        const id = def.id ?? columnAccessor;
+        this.#columnDefIdToSqlColumnAccessor.set(id, columnAccessor);
       }
-
-      // Make sure we have a valid ID for the column
-      if (!def.id) {
-        const message = `[MosaicDataTable] Column definition is missing an \`id\` property and could not be inferred. Please provide an explicit \`id\` or use \`accessorKey\`.`;
-        console.error(message, def);
-        throw new Error(message);
-      }
-
-      // Store the mapping of ColumnDef ID to Mosaic column accessor
-      this.#columnDefIdToSqlColumnAccessor.set(def.id, columnAccessor);
     });
 
-    if (shouldSearchAllColumns) {
-      columnAccessorKeys = [];
-    }
+    if (shouldSearchAllColumns) columnAccessorKeys = [];
 
     return {
       columnDefs: queryableColumns,
@@ -494,82 +506,97 @@ export class MosaicDataTable<
     };
   }
 
-  /**
-   * Map TanStack Table's ColumnDefs to Mosaic FieldInfoRequests
-   * to be used in queries.
-   */
   fields(): Array<FieldInfoRequest> {
     const table = this.sourceTable();
-
     const result = this.getColumnsDefs();
     const { shouldSearchAllColumns, columnAccessorKeys } = result;
-
     return shouldSearchAllColumns
-      ? [
-          {
-            table,
-            column: '*', // This means "all columns" in Mosaic SQL
-          },
-        ]
-      : columnAccessorKeys.map((accessor) => {
-          return {
-            table,
-            column: accessor,
-          };
-        });
+      ? [{ table, column: '*' }]
+      : columnAccessorKeys.map((accessor) => ({ table, column: accessor }));
   }
 
-  /**
-   * Map the MosaicDataTableStore state to TanStack TableOptions,
-   * with the necessary callbacks to handle state changes and re-querying
-   * from Mosaic.
-   *
-   * @param state The MosaicDataTableStore state from framework-land.
-   * @returns Valid TanStack TableOptions for driving a TanStack Table instance in framework-land.
-   */
   getTableOptions(
     state: Store<MosaicDataTableStore<TData, TValue>>['state'],
   ): TableOptions<TData> {
     const columns =
       state.columnDefs.length === 0
-        ? // No ColDefs were provided, so we default to all columns
-          this.schema.map((field) => {
-            return {
-              accessorKey: field.column,
-              header: field.column,
-            } satisfies ColumnDef<TData, TValue>;
-          })
-        : state.columnDefs.map((column) => {
-            return column satisfies ColumnDef<TData, TValue>;
-          });
+        ? this.schema.map(
+            (field) =>
+              ({
+                accessorKey: field.column,
+                header: field.column,
+              }) satisfies ColumnDef<TData, TValue>,
+          )
+        : state.columnDefs.map(
+            (column) => column satisfies ColumnDef<TData, TValue>,
+          );
 
     return {
       data: state.rows,
       columns,
       getCoreRowModel: getCoreRowModel(),
       getFacetedRowModel: getFacetedRowModel(),
-      getFacetedUniqueValues: this.getFacetedUniqueValues(),
-      getFacetedMinMaxValues: getFacetedMinMaxValues(), // TODO: Remove this for actual server-side faceting.
+      getFilteredRowModel: getFilteredRowModel(),
+      getFacetedUniqueValues: (table, columnId) => () =>
+        state.facets.get(columnId) || new Map(),
+      getFacetedMinMaxValues: getFacetedMinMaxValues(),
       state: state.tableState,
       onStateChange: (updater) => {
-        // TODO: Add something like `ohash` for stable object hashing
-        // Stored the old hashed table state to compare after update
-        const hashedOldState = JSON.stringify(this.#store.state.tableState);
+        // logger.debug('[MosaicDataTable] onStateChange triggered');
+        const oldState = this.#store.state.tableState;
+        const nextTableState = functionalUpdate(updater, oldState);
 
-        const tableState = functionalUpdate(
-          updater,
-          this.#store.state.tableState,
-        );
+        const filtersChanged =
+          JSON.stringify(oldState.columnFilters) !==
+            JSON.stringify(nextTableState.columnFilters) ||
+          oldState.globalFilter !== nextTableState.globalFilter;
+
+        if (filtersChanged) {
+          logger.debug(
+            '[MosaicDataTable] Filters changed:',
+            nextTableState.columnFilters,
+          );
+          nextTableState.pagination.pageIndex = 0;
+        }
+
+        const hashedOldState = JSON.stringify(oldState);
+        const hashedNewState = JSON.stringify(nextTableState);
 
         this.#store.setState((prev) => ({
           ...prev,
-          tableState,
+          tableState: nextTableState,
         }));
 
-        // Compare the new hashed table state to the old one to determine if we need to request a new query
-        const hashedNewState = JSON.stringify(tableState);
+        if (filtersChanged) {
+          if (this.internalFilterSelection) {
+            const predicates = this._generateFilterPredicates();
+            const combinedPredicate =
+              predicates.length > 0 ? mSql.and(...predicates) : null;
+
+            logger.debug(
+              '[MosaicDataTable] Updating internalFilterSelection', // Reduced detail
+            );
+
+            this.internalFilterSelection.update({
+              source: this,
+              predicate: combinedPredicate,
+              value: {
+                columnFilters: nextTableState.columnFilters,
+                globalFilter: nextTableState.globalFilter,
+              },
+            });
+          } else {
+            logger.warn(
+              '[MosaicDataTable] Filters changed but no internalFilterSelection is configured!',
+            );
+          }
+        }
+
         if (hashedOldState !== hashedNewState) {
-          this[this.#onTableStateChange]();
+          if (typeof this[this.#onTableStateChange] === 'function') {
+            // @ts-ignore
+            this[this.#onTableStateChange]();
+          }
         }
       },
       manualPagination: true,
@@ -580,97 +607,7 @@ export class MosaicDataTable<
     };
   }
 
-  /**
-   * A server-side implementation of TanStack Table's
-   * `getFacetedUniqueValues` function, to retrieve
-   * unique values for a given column from the pre-fetched facets.
-   */
-  getFacetedUniqueValues<TData extends RowData>(): (
-    table: Table<TData>,
-    columnId: string,
-  ) => () => Map<any, number> {
-    return (_table, columnId) => {
-      const values = this.getFacets().get(columnId);
-
-      if (!values) {
-        return () => new Map<any, number>();
-      }
-
-      if (Array.isArray(values)) {
-        const map = new Map<any, number>();
-        values.forEach((value) => {
-          map.set(value, 1);
-        });
-        return () => map;
-      }
-
-      return () => new Map<any, number>();
-    };
-  }
-
   get store(): Store<MosaicDataTableStore<TData, TValue>> {
     return this.#store;
-  }
-
-  getFacets(): Map<string, any> {
-    return this.facets;
-  }
-}
-
-/**
- * This is a helper Mosaic Client to query unique values for a given column
- * in a table. This is useful for faceting operations.
- */
-class UniqueColumnValuesClient extends MosaicClient {
-  from: string;
-  column: string;
-  onResult: (values: Array<unknown>) => void;
-
-  constructor(options: {
-    filterBy?: Selection | undefined;
-    coordinator?: Coordinator | undefined | null;
-    table: string;
-    column: string;
-    onResult: (values: Array<unknown>) => void;
-  }) {
-    super(options.filterBy);
-
-    if (options.coordinator) {
-      this.coordinator = options.coordinator;
-    } else {
-      this.coordinator = defaultCoordinator();
-    }
-
-    this.from = options.table;
-    this.column = options.column;
-    this.onResult = options.onResult;
-  }
-
-  override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
-    const statement = mSql.Query.from(this.from).select(this.column);
-
-    if (primaryFilter) {
-      statement.where(primaryFilter);
-    }
-
-    statement.groupby(this.column);
-
-    return statement;
-  }
-
-  override queryResult(table: unknown): this {
-    if (isArrowTable(table)) {
-      const rows = table.toArray();
-      const values: Array<unknown> = [];
-
-      rows.forEach((row) => {
-        const value = row[this.column];
-        values.push(value);
-      });
-
-      this.onResult(values);
-    }
-
-    return this;
   }
 }

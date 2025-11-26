@@ -1,3 +1,7 @@
+// packages/mosaic-tanstack-table-core/src/trimmed/types.ts
+// This file centralizes the TypeScript definitions for the trimmed Mosaic-TanStack core.
+// It defines the shape of the internal store, configuration options, and custom
+// metadata extensions for TanStack Table to support SQL mapping.
 import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
 import type {
   ColumnDef,
@@ -8,28 +12,12 @@ import type {
 
 export type MosaicDataTableSqlFilterType = 'equals' | 'in' | 'like' | 'range';
 
+// Type for storing faceted values: ColumnID -> Map<Value, Count>
+export type FacetMap = Map<string, Map<any, number>>;
+
 /**
  * This will be merged into the TanStack Table ColumnDef type
  * to provide Mosaic-specific metadata options.
- *
- * This is pretty much exclusively for TypeScript users to get
- * type safety and autocompletion when defining columns.
- *
- * @example
- * ```ts
- * // tanstack.-table.d.ts
- * import "@tanstack/react-table";
- * import type {
- *  MosaicDataTableColumnDefMetaOptions
- * } from "@nozzleio/mosaic-tanstack-table-core/trimmed";
- *
- * declare module "@tanstack/react-table" {
- *   interface ColumnMeta<TData extends RowData, TValue>
- *     extends MosaicDataTableColumnDefMetaOptions {
- *     // Additional custom meta options can go here too
- *   }
- * }
- * ```
  */
 export type MosaicDataTableColumnDefMetaOptions = {
   mosaicDataTable?: {
@@ -76,6 +64,12 @@ export interface MosaicDataTableOptions<
    */
   filterBy?: Selection | undefined;
   /**
+   * Selection to write internal table filters (column filters) to.
+   * This allows the table to filter other visuals.
+   * @default undefined
+   */
+  internalFilter?: Selection | undefined;
+  /**
    * Column Definitions to use for the table instance.
    *
    * When not provided, the column definitions will be inferred
@@ -110,5 +104,7 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   tableState: TableState;
   rows: Array<TData>;
   totalRows: number | undefined;
+  // Store for server-fetched facets. Key = columnId, Value = Map of (Value -> Count)
+  facets: FacetMap;
   tableOptions: SubsetTableOptions<TData>;
 };

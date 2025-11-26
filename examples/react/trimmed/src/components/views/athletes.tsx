@@ -1,3 +1,6 @@
+// examples/react/trimmed/src/components/views/athletes.tsx
+// Updated to fix the infinite loop in DebouncedTextFilter
+import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
@@ -13,6 +16,8 @@ const fileURL =
 const tableName = 'athletes';
 
 const $query = vg.Selection.intersect();
+const $tableFilter = vg.Selection.intersect();
+const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
 type AthleteRowData = {
   id: number;
@@ -29,32 +34,92 @@ type AthleteRowData = {
   info: string | null;
 };
 
+// --- Filter Component ---
+
+function DebouncedTextFilter({ column }: { column: any }) {
+  const columnFilterValue = column.getFilterValue();
+  const [value, setValue] = useState(columnFilterValue ?? '');
+
+  React.useEffect(() => {
+    setValue(columnFilterValue ?? '');
+  }, [columnFilterValue]);
+
+  React.useEffect(() => {
+    const timeout = setTimeout(() => {
+      // Fix: Handle undefined vs empty string logic strictly
+      const currentFilterValue = column.getFilterValue() ?? '';
+      if (value !== currentFilterValue) {
+        column.setFilterValue(value);
+      }
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [value, column]);
+
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      placeholder="Search..."
+      className="mt-1 px-2 py-1 text-xs border rounded shadow-sm w-full font-normal text-gray-600 focus:border-blue-500 outline-none"
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+}
+
+const noopFilter = () => true;
+
+// --- Main View ---
+
 export function AthletesView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
+  const hasInitialized = useRef(false);
 
   useEffect(() => {
-    if (!chartDivRef.current) return;
+    if (!chartDivRef.current || hasInitialized.current) return;
 
     async function setup() {
+      hasInitialized.current = true;
       setIsPending(true);
 
-      // Setup the Athletes Linear Regression Plot from https://idl.uw.edu/mosaic/examples/linear-regression.html
       await vg
         .coordinator()
         .exec([
           `CREATE OR REPLACE TABLE ${tableName} AS SELECT * FROM '${fileURL}'`,
         ]);
 
+      const inputs = vg.hconcat(
+        vg.menu({
+          label: 'Sport',
+          as: $query,
+          from: tableName,
+          column: 'sport',
+        }),
+        vg.menu({
+          label: 'Gender',
+          as: $query,
+          from: tableName,
+          column: 'sex',
+        }),
+        vg.search({
+          label: 'Name',
+          as: $query,
+          from: tableName,
+          column: 'name',
+          type: 'contains',
+        }),
+      );
+
       const plot = vg.plot(
-        vg.dot(vg.from(tableName), {
+        vg.dot(vg.from(tableName, { filterBy: $combined }), {
           x: 'weight',
           y: 'height',
           fill: 'sex',
           r: 2,
           opacity: 0.05,
         }),
-        vg.regressionY(vg.from(tableName, { filterBy: $query }), {
+        vg.regressionY(vg.from(tableName, { filterBy: $combined }), {
           x: 'weight',
           y: 'height',
           stroke: 'sex',
@@ -66,7 +131,10 @@ export function AthletesView() {
         vg.xyDomain(vg.Fixed),
         vg.colorDomain(vg.Fixed),
       );
-      chartDivRef.current?.replaceChildren(plot);
+
+      const layout = vg.vconcat(inputs, vg.vspace(10), plot);
+
+      chartDivRef.current?.replaceChildren(layout);
 
       setIsPending(false);
     }
@@ -76,7 +144,7 @@ export function AthletesView() {
 
   return (
     <>
-      <h4 className="text-lg mb-2 font-medium">Chart area</h4>
+      <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
       {isPending && <div className="italic">Loading data...</div>}
       <div ref={chartDivRef} />
       <hr className="my-4" />
@@ -110,9 +178,14 @@ function AthletesTable() {
         {
           id: 'Name',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="Name" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="Name" view={view} />
+              <DebouncedTextFilter column={column} />
+            </div>
           ),
           accessorFn: (row) => row.name,
+          enableColumnFilter: true,
+          filterFn: noopFilter,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'name',
@@ -122,22 +195,37 @@ function AthletesTable() {
         {
           id: 'nationality',
           header: ({ column }) => (
-            <RenderTableHeader
-              column={column}
-              title="Nationality"
-              view={view}
-            />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader
+                column={column}
+                title="Nationality"
+                view={view}
+              />
+              <DebouncedTextFilter column={column} />
+            </div>
           ),
           accessorKey: 'nationality',
+          enableColumnFilter: true,
+          filterFn: noopFilter,
+          meta: {
+            mosaicDataTable: { sqlColumn: 'nationality' },
+          },
         },
         {
           id: 'Gender',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="Gender" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="Gender" view={view} />
+              <DebouncedTextFilter column={column} />
+            </div>
           ),
           accessorKey: 'sex',
+          enableColumnFilter: true,
+          filterFn: noopFilter,
           meta: {
-            filterVariant: 'select',
+            mosaicDataTable: {
+              sqlColumn: 'sex',
+            },
           },
         },
         {
@@ -189,9 +277,19 @@ function AthletesTable() {
         {
           id: 'Sport',
           header: ({ column }) => (
-            <RenderTableHeader column={column} title="Sport" view={view} />
+            <div className="flex flex-col items-start gap-1">
+              <RenderTableHeader column={column} title="Sport" view={view} />
+              <DebouncedTextFilter column={column} />
+            </div>
           ),
           accessorKey: 'sport',
+          enableColumnFilter: true,
+          filterFn: noopFilter,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'sport',
+            },
+          },
         },
         {
           id: 'Gold(s)',
@@ -250,18 +348,26 @@ function AthletesTable() {
     [view],
   );
 
-  const { tableOptions } = useMosaicReactTable<AthleteRowData>({
-    table: tableName,
-    filterBy: $query,
-    columns,
-    tableOptions: {
-      enableHiding: true,
-      enableMultiSort: true,
-      enableSorting: true,
-      enableColumnFilters: true,
-    },
-    onTableStateChange: 'requestQuery',
-  });
+  const mosaicTableOptions = useMemo(
+    () => ({
+      table: tableName,
+      filterBy: $query,
+      internalFilter: $tableFilter,
+      columns,
+      tableOptions: {
+        enableHiding: true,
+        enableMultiSort: true,
+        enableSorting: true,
+        enableColumnFilters: true,
+      },
+      onTableStateChange: 'requestUpdate' as const,
+    }),
+    [columns],
+  );
+
+  const { tableOptions } = useMosaicReactTable<AthleteRowData>(
+    mosaicTableOptions,
+  );
 
   const table = useReactTable(tableOptions);
 
