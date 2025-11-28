@@ -1,3 +1,6 @@
+// packages/mosaic-tanstack-table-core/src/trimmed/data-table.ts
+// The Core Logic for the Mosaic-TanStack integration.
+// Manages state, translates TanStack options to Mosaic/SQL queries, and handles data results.
 import {
   MosaicClient,
   coordinator as defaultCoordinator,
@@ -18,6 +21,7 @@ import {
   seedInitialTableState,
   toSafeSqlColumnName,
 } from './utils';
+import { logger } from './logger';
 
 import type {
   Coordinator,
@@ -92,6 +96,11 @@ export class MosaicDataTable<
    * @param options The updated options from framework-land.
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
+    logger.debug('Core', 'updateOptions received', {
+      newTable: options.table,
+      columnsCount: options.columns?.length,
+    });
+
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
     }
@@ -201,6 +210,15 @@ export class MosaicDataTable<
       .limit(pagination.pageSize)
       .offset(pagination.pageIndex * pagination.pageSize);
 
+    logger.debounce('sql-query', 300, 'info', 'SQL', 'Generated Query', {
+      sql: statement.toString(),
+      context: {
+        pagination: tableState.pagination,
+        sorting: tableState.sorting,
+        columnFilters: tableState.columnFilters,
+      },
+    });
+
     // Kick off the requests for the unique column values for faceting to be queried
     // TODO: Figure out where's the best place to do this logic
     // TODO: Figure out the best way (and/or ways to support) the retrieval of unique values for faceting
@@ -233,7 +251,7 @@ export class MosaicDataTable<
   }
 
   override queryError(error: Error): this {
-    console.error('[MosaicDataTable] queryError() Query error:', error);
+    logger.error('Core', 'Query Error', { error });
     return this;
   }
 
@@ -266,11 +284,7 @@ export class MosaicDataTable<
         });
       });
     } else {
-      console.error(
-        '[MosaicDataTable] queryResult() Received non-Arrow Table result:',
-        table,
-      );
-      console.error('Please report this issue to the developers.');
+      logger.error('Core', 'Received non-Arrow result:', { table });
     }
 
     return this;

@@ -1,7 +1,6 @@
-// This file contains the factory function `createDataTable`. It is a React-specific
-// layer that wraps the UI-agnostic DataTable class. It is responsible for rendering the UI,
-// managing UI-specific side effects (like column resizing), and wiring the DataTable's
-// callbacks to the Mosaic Provider's selections.
+// packages/mosaic-tanstack-react-table/src/createDataTable.tsx
+// React Factory for creating DataTable components.
+// Instrumenting with lifecycle logging to debug mount/unmount and error boundaries.
 import React, {
   Fragment,
   useEffect,
@@ -10,7 +9,7 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { DataTable } from '@nozzleio/mosaic-tanstack-table-core';
+import { DataTable, logger } from '@nozzleio/mosaic-tanstack-table-core';
 import { flexRender } from '@tanstack/react-table';
 import type {
   DataTableLogicConfig,
@@ -383,6 +382,17 @@ export function createDataTable<TData extends object>(
   uiConfig: DataTableUIConfig<TData>,
 ) {
   return function CreatedTableComponent(props: CreatedTableProps) {
+    useEffect(() => {
+      logger.debug('React', 'DataTable Component Mounted', {
+        tableId: logicConfig.name || 'Anonymous',
+        propsConfig: Object.keys(props),
+      });
+
+      return () => {
+        logger.debug('React', 'DataTable Component Unmounted');
+      };
+    }, []);
+
     const { filterBy, internalFilterAs, rowSelectionAs, hoverAs, clickAs } =
       props;
 
@@ -442,6 +452,7 @@ export function createDataTable<TData extends object>(
     const tableContainerRef = useRef<HTMLDivElement>(null);
 
     if (error) {
+      logger.error('React', 'DataTable Boundary Error', { error });
       return <div style={{ color: 'red' }}>Error: {error.message}</div>;
     }
 
