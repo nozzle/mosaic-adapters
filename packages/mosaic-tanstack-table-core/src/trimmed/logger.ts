@@ -1,4 +1,5 @@
 // packages/mosaic-tanstack-table-core/src/trimmed/logger.ts
+/* eslint-disable no-console */
 // A structured logging utility that separates console output from stored logs.
 // It allows for quiet console output while retaining detailed metadata
 // (state snapshots, SQL queries) in a downloadable JSON format for debugging.
