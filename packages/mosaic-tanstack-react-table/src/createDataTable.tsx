@@ -383,13 +383,13 @@ export function createDataTable<TData extends object>(
 ) {
   return function CreatedTableComponent(props: CreatedTableProps) {
     useEffect(() => {
-      logger.debug('React', 'DataTable Component Mounted', {
+      logger.debug('Framework', 'DataTable Component Mounted', {
         tableId: logicConfig.name || 'Anonymous',
         propsConfig: Object.keys(props),
       });
 
       return () => {
-        logger.debug('React', 'DataTable Component Unmounted');
+        logger.debug('Framework', 'DataTable Component Unmounted');
       };
     }, []);
 
@@ -452,7 +452,7 @@ export function createDataTable<TData extends object>(
     const tableContainerRef = useRef<HTMLDivElement>(null);
 
     if (error) {
-      logger.error('React', 'DataTable Boundary Error', { error });
+      logger.error('Framework', 'DataTable Boundary Error', { error });
       return <div style={{ color: 'red' }}>Error: {error.message}</div>;
     }
 

@@ -1,11 +1,14 @@
-// packages/mosaic-tanstack-table-core/src/trimmed/logger.ts
-/* eslint-disable no-console */
 // A structured logging utility that separates console output from stored logs.
 // It allows for quiet console output while retaining detailed metadata
 // (state snapshots, SQL queries) in a downloadable JSON format for debugging.
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-export type LogCategory = 'Core' | 'React' | 'TanStack' | 'Mosaic' | 'SQL';
+export type LogCategory =
+  | 'Core'
+  | 'Framework'
+  | 'TanStack-Table'
+  | 'Mosaic'
+  | 'SQL';
 
 interface LogEntry {
   timestamp: string;
@@ -17,13 +20,13 @@ interface LogEntry {
 }
 
 class LogManager {
-  private logs: LogEntry[] = [];
+  private logs: Array<LogEntry> = [];
   private maxLogs = 2000;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   // Configuration: Console is quiet (INFO+), Storage is loud (DEBUG+)
-  private consoleLevel: number = 1; // 0=Debug, 1=Info, 2=Warn, 3=Error
-  private storageLevel: number = 0;
+  private consoleLevel = 1; // 0=Debug, 1=Info, 2=Warn, 3=Error
+  private storageLevel = 0;
 
   private levelMap: Record<LogLevel, number> = {
     debug: 0,
@@ -129,7 +132,9 @@ class LogManager {
     const data = {
       generatedAt: new Date().toISOString(),
       environment:
-        typeof process !== 'undefined' && process.env
+        typeof process !== 'undefined' &&
+        'env' in process &&
+        typeof process.env.NODE_ENV !== 'undefined'
           ? process.env.NODE_ENV
           : 'unknown',
       userAgent:
@@ -155,11 +160,11 @@ class LogManager {
     switch (category) {
       case 'SQL':
         return 'color: #8e44ad; font-weight: bold;';
-      case 'TanStack':
+      case 'TanStack-Table':
         return 'color: #e67e22; font-weight: bold;';
       case 'Mosaic':
         return 'color: #2980b9; font-weight: bold;';
-      case 'React':
+      case 'Framework':
         return 'color: #27ae60; font-weight: bold;';
       default:
         return 'color: gray;';

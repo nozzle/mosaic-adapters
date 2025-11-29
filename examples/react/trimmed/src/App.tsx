@@ -1,5 +1,5 @@
-import { RenderView } from '@/components/render-view';
 import { logger } from '@nozzleio/mosaic-tanstack-table-core/trimmed';
+import { RenderView } from '@/components/render-view';
 
 function App() {
   return (
@@ -7,7 +7,7 @@ function App() {
       <div className="absolute top-2 right-2 flex gap-2">
         <button
           onClick={() =>
-            logger.info('React', 'User triggered manual log marker')
+            logger.info('Framework', 'User triggered manual log marker')
           }
           className="text-xs border px-2 py-1 rounded bg-slate-100 hover:bg-slate-200"
         >
