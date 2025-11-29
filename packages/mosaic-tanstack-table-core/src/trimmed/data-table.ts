@@ -18,6 +18,7 @@ import {
   seedInitialTableState,
   toSafeSqlColumnName,
 } from './utils';
+import { logger } from './logger';
 
 import type {
   Coordinator,
@@ -92,6 +93,11 @@ export class MosaicDataTable<
    * @param options The updated options from framework-land.
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
+    logger.debug('Core', 'updateOptions received', {
+      newTable: options.table,
+      columnsCount: options.columns?.length,
+    });
+
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
     }
@@ -201,6 +207,15 @@ export class MosaicDataTable<
       .limit(pagination.pageSize)
       .offset(pagination.pageIndex * pagination.pageSize);
 
+    logger.debounce('sql-query', 300, 'info', 'SQL', 'Generated Query', {
+      sql: statement.toString(),
+      context: {
+        pagination: tableState.pagination,
+        sorting: tableState.sorting,
+        columnFilters: tableState.columnFilters,
+      },
+    });
+
     // Kick off the requests for the unique column values for faceting to be queried
     // TODO: Figure out where's the best place to do this logic
     // TODO: Figure out the best way (and/or ways to support) the retrieval of unique values for faceting
@@ -233,7 +248,7 @@ export class MosaicDataTable<
   }
 
   override queryError(error: Error): this {
-    console.error('[MosaicDataTable] queryError() Query error:', error);
+    logger.error('Core', 'Query Error', { error });
     return this;
   }
 
@@ -266,11 +281,7 @@ export class MosaicDataTable<
         });
       });
     } else {
-      console.error(
-        '[MosaicDataTable] queryResult() Received non-Arrow Table result:',
-        table,
-      );
-      console.error('Please report this issue to the developers.');
+      logger.error('Core', 'Received non-Arrow result:', { table });
     }
 
     return this;
@@ -297,7 +308,8 @@ export class MosaicDataTable<
       ([id, value]) => {
         const matchedField = map.get(value);
         if (!matchedField) {
-          console.warn(
+          logger.warn(
+            'Core',
             `[MosaicDataTable] Column definition with id "${id}" has an accessorKey or mosaicDataTable.sqlColumn "${value}" that does not exist in the table schema.`,
           );
         } else {
@@ -434,9 +446,10 @@ export class MosaicDataTable<
           def.meta.mosaicDataTable.sqlColumn !== undefined &&
           def.meta.mosaicDataTable.sqlColumn !== accessor
         ) {
-          console.warn(
+          logger.warn(
+            'Core',
             `[MosaicDataTable] Column definition accessorKey "${accessor}" does not match the provided mosaicDataTable.sqlColumn "${def.meta.mosaicDataTable.sqlColumn}". The accessorKey will be used for querying in SQL-land.`,
-            def,
+            { def },
           );
         }
         def.meta;
@@ -457,10 +470,13 @@ export class MosaicDataTable<
           columnAccessor = mosaicColumn;
         } else {
           shouldSearchAllColumns = true;
-          console.warn(
-            `[MosaicDataTable] Column definition using \`accessorFn\` is missing required \`mosaicDataTable.sqlColumn\` metadata to map to a Mosaic Query column. Please provide this property to improve query performance.`,
-            def,
-            `Without this, the resulting query will need to return all columns to try and satisfy the accessor function.`,
+          logger.warn(
+            'Core',
+            `[MosaicDataTable] Column definition using \`accessorFn\` is missing required \`mosaicDataTable.sqlColumn\` metadata.`,
+            {
+              def,
+              hint: `Without this, the resulting query will need to return all columns to try and satisfy the accessor function.`,
+            },
           );
           return;
         }
@@ -468,14 +484,14 @@ export class MosaicDataTable<
 
       if (!columnAccessor) {
         const message = `[MosaicDataTable] Column definition is missing an \`accessorKey\` or valid \`mosaicDataTable.sqlColumn\` metadata to map to a Mosaic Query column. Please provide one of these properties.`;
-        console.error(message, def);
+        logger.error('Core', message, { def });
         throw new Error(message);
       }
 
       // Make sure we have a valid ID for the column
       if (!def.id) {
         const message = `[MosaicDataTable] Column definition is missing an \`id\` property and could not be inferred. Please provide an explicit \`id\` or use \`accessorKey\`.`;
-        console.error(message, def);
+        logger.error('Core', message, { def });
         throw new Error(message);
       }
 
@@ -621,7 +637,7 @@ export class MosaicDataTable<
  * This is a helper Mosaic Client to query unique values for a given column
  * in a table. This is useful for faceting operations.
  */
-class UniqueColumnValuesClient extends MosaicClient {
+export class UniqueColumnValuesClient extends MosaicClient {
   from: string;
   column: string;
   onResult: (values: Array<unknown>) => void;

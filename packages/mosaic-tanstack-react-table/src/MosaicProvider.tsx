@@ -1,11 +1,9 @@
 // src/mosaic-tanstack-adapter/MosaicProvider.tsx
-// This file introduces a React Context Provider for Mosaic. It is the core of the
-// new architecture, responsible for instantiating and managing all Mosaic Selections
-// based on a declarative configuration. It exposes a `useMosaicSelection` hook that
-// allows any child component to access a selection by its string name, completely
-// abstracting away the underlying Mosaic objects from the rest of the React application.
+// Provides a context to manage the lifecycle of Mosaic Selections.
+// Instrumenting with logging to debug the selection dependency resolution.
 import React, { createContext, useContext, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
+import { logger } from '@nozzleio/mosaic-tanstack-table-core';
 import type { Selection } from '@uwdata/mosaic-core';
 import type { ReactNode } from 'react';
 
@@ -96,6 +94,10 @@ export function MosaicProvider({
           }
 
           registry.set(config.name, sel);
+          logger.debug('Mosaic', `Registered Selection: ${config.name}`, {
+            type: config.type,
+            dependencies: config.options?.include,
+          });
           createdInPass = true;
         } else {
           // Dependencies not met, try again in the next pass.
@@ -111,22 +113,6 @@ export function MosaicProvider({
         );
       }
     } while (remainingConfigs.length > 0 && createdInPass);
-
-    // --- START: IMPLEMENTED CHANGE ---
-    // This initialization sweep synchronously updates any selection intended to be "empty"
-    // by default. This sends an initial `predicate: null` update to the coordinator,
-    // which resolves to `WHERE FALSE`, preventing an initial unfiltered query.
-    // This eliminates the initialization race condition.
-    for (const config of selectionConfigs) {
-      if (config.options?.empty === true) {
-        const selection = registry.get(config.name);
-        if (selection) {
-          // @ts-expect-error Argument of type '{ predicate: null; }' is not assignable to parameter of type 'SelectionClause'
-          selection.update({ predicate: null });
-        }
-      }
-    }
-    // --- END: IMPLEMENTED CHANGE ---
 
     return registry;
   });
