@@ -6,7 +6,12 @@ import type {
   TableState,
 } from '@tanstack/table-core';
 
-export type MosaicDataTableSqlFilterType = 'equals' | 'in' | 'like' | 'range';
+export type MosaicDataTableSqlFilterType =
+  | 'equals'
+  | 'in'
+  | 'like'
+  | 'ilike'
+  | 'range';
 
 /**
  * This will be merged into the TanStack Table ColumnDef type
@@ -76,6 +81,12 @@ export interface MosaicDataTableOptions<
    */
   filterBy?: Selection | undefined;
   /**
+   * The selection that the table writes its own internal filter state to.
+   * This allows other Mosaic clients (like charts) to react to table filters.
+   * @default undefined
+   */
+  internalFilter?: Selection | undefined;
+  /**
    * Column Definitions to use for the table instance.
    *
    * When not provided, the column definitions will be inferred
@@ -98,7 +109,7 @@ export interface MosaicDataTableOptions<
    */
   totalRowsColumnName?: string;
   /**
-   * TODO: Add description
+   * Controls when the table requests a new query.
    *
    * @default 'requestUpdate'
    */

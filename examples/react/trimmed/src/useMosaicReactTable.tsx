@@ -3,38 +3,46 @@
 import * as React from 'react';
 import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-core/trimmed';
 import { useStore } from '@tanstack/react-store';
-import type { MosaicDataTableOptions } from '@nozzleio/mosaic-tanstack-table-core/trimmed';
+import type {
+  MosaicDataTable,
+  MosaicDataTableOptions,
+} from '@nozzleio/mosaic-tanstack-table-core/trimmed';
 import type { RowData, TableOptions } from '@tanstack/react-table';
 
 export type * from '@nozzleio/mosaic-tanstack-table-core/trimmed';
 
 export function useMosaicReactTable<TData extends RowData, TValue = any>(
   options: MosaicDataTableOptions<TData, TValue>,
-): { tableOptions: TableOptions<TData> } {
+): {
+  tableOptions: TableOptions<TData>;
+  client: MosaicDataTable<TData, TValue>;
+} {
   // Create a stable `MosaicDataTable` client instance.
-  const client = React.useRef(
+  // Use useState lazy initializer to ensure the client is created exactly once per component lifecycle.
+  const [client] = React.useState(() =>
     createMosaicDataTableClient<TData, TValue>(options),
   );
 
   // Subscribe to the client's store to get framework-land updates.
-  const store = useStore(client.current.store);
+  const store = useStore(client.store);
 
   // Get the current table options from the client.
   const tableOptions = React.useMemo(
-    () => client.current.getTableOptions(store),
+    () => client.getTableOptions(store),
     [store],
   );
 
+  // Update the client options when they change.
+  // We rely on standard React dependency checks here.
   React.useEffect(() => {
-    // Update the client options when they change.
-    client.current.updateOptions(options);
-  }, [options]);
+    client.updateOptions(options);
+  }, [options, client]);
 
   React.useEffect(() => {
     // Connect the client to the coordinator on mount, and disconnect on unmount.
-    const unsub = client.current.connect();
+    const unsub = client.connect();
     return unsub;
-  }, []);
+  }, [client]);
 
-  return { tableOptions };
+  return { tableOptions, client };
 }

@@ -8,9 +8,7 @@ import {
 import * as mSql from '@uwdata/mosaic-sql';
 import {
   getCoreRowModel,
-  getFacetedMinMaxValues,
   getFacetedRowModel,
-  // getFacetedUniqueValues,
 } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
@@ -64,6 +62,7 @@ export class MosaicDataTable<
 > extends MosaicClient {
   from: Param<string> | string;
   schema: Array<FieldInfo> = [];
+  internalFilter?: Selection;
 
   facets: Map<string, any> = new Map();
 
@@ -79,6 +78,7 @@ export class MosaicDataTable<
     super(options.filterBy); // pass the appropriate Filter Selection
 
     this.from = options.table;
+    this.internalFilter = options.internalFilter;
 
     if (!this.sourceTable()) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
@@ -100,6 +100,10 @@ export class MosaicDataTable<
 
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
+    }
+
+    if (options.internalFilter) {
+      this.internalFilter = options.internalFilter;
     }
 
     // Ensure we have a coordinator assigned
@@ -166,32 +170,74 @@ export class MosaicDataTable<
     }
 
     // Add column filters
+    const internalClauses: Array<mSql.FilterExpr> = [];
+
     columnFilters.forEach((columnFilter) => {
       const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(
         columnFilter.id,
-      )!; // Assertion is safe due to filtering above
-      // Build the filter expression based on the filter value
+      )!;
+      // Assertion is safe due to filtering above
 
-      // TODO: Support different filter types based on ColumnDef meta.
-      // TODO: Move this building logic into its own utility function/method.
-      // TODO: Figure out the best usage for AND and OR combinations.
+      // Find the Column Definition to check for metadata
+      const colDef = this.#store.state.columnDefs.find(
+        (c) => c.id === columnFilter.id,
+      );
 
-      // POC of what this could look like
-      if (columnFilter.value && typeof columnFilter.value === 'string') {
-        // Simple equals filter for now
-        whereClauses.push(
-          mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value.trim())}`,
-        );
+      const filterType =
+        colDef?.meta?.mosaicDataTable?.sqlFilterType ?? 'equals';
+
+      let clause: mSql.FilterExpr | undefined;
+
+      if (filterType === 'range' && Array.isArray(columnFilter.value)) {
+        // Range Filter (BETWEEN)
+        const [min, max] = columnFilter.value as [unknown, unknown];
+        if (typeof min === 'number' && typeof max === 'number') {
+          clause = mSql.sql`${columnAccessor} BETWEEN ${min} AND ${max}`;
+        }
+      } else if (
+        filterType === 'ilike' &&
+        typeof columnFilter.value === 'string'
+      ) {
+        // ILIKE Filter
+        clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value.trim())}`;
+      } else if (filterType === 'equals') {
+        // Direct equality (useful for Selects)
+        if (columnFilter.value !== '') {
+          clause = mSql.eq(columnAccessor, mSql.literal(columnFilter.value));
+        }
+      } else {
+        // Fallback default
+        if (typeof columnFilter.value === 'string') {
+          clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value.trim())}`;
+        }
+      }
+
+      if (clause) {
+        whereClauses.push(clause);
+        internalClauses.push(clause);
       }
     });
 
-    // Apply all where clauses
+    // Update Internal Filter Selection
+    // This allows bidirectional filtering (Table -> Charts)
+    if (this.internalFilter) {
+      const predicate =
+        internalClauses.length > 0 ? mSql.and(...internalClauses) : null;
+
+      this.internalFilter.update({
+        source: this,
+        value: tableState.columnFilters,
+        predicate: predicate,
+      });
+    }
+
+    // Apply all where clauses to the Table Query
     statement.where(...whereClauses);
 
     // Add sorting
     const orderingCriteria: Array<mSql.OrderByNode> = [];
     sorting.forEach((sort) => {
-      const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(sort.id)!; // Assertion is safe due to filtering above
+      const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(sort.id)!;
 
       // Build the sorting command based on direction
       orderingCriteria.push(
@@ -215,30 +261,6 @@ export class MosaicDataTable<
         columnFilters: tableState.columnFilters,
       },
     });
-
-    // Kick off the requests for the unique column values for faceting to be queried
-    // TODO: Figure out where's the best place to do this logic
-    // TODO: Figure out the best way (and/or ways to support) the retrieval of unique values for faceting
-    this.facets.clear();
-
-    // ['name', 'sport', 'sex', 'nationality'].forEach((sqlColumn) => {
-    //   const uniqueValuesClient = new UniqueColumnValuesClient({
-    //     table: tableName,
-    //     column: sqlColumn,
-    //     filterBy: this.filterBy,
-    //     coordinator: this.coordinator,
-    //     onResult: (values: Array<unknown>) => {
-    //       const columnId = Array.from(
-    //         this.#columnDefIdToFieldInfo.entries(),
-    //       ).find((d) => d[1].column === sqlColumn)?.[0];
-
-    //       if (!columnId) return;
-    //       this.facets.set(columnId, values);
-    //     },
-    //   });
-
-    //   uniqueValuesClient.requestUpdate();
-    // });
 
     return statement;
   }
@@ -365,6 +387,64 @@ export class MosaicDataTable<
   destroy(): void {
     super.destroy();
   }
+
+  // --- Faceting Support ---
+
+  /**
+   * Loads unique values for a specific column (for Select dropdowns).
+   * Respects the external `filterBy` selection (so dropdowns update when charts are brushed).
+   */
+  loadColumnFacet(columnId: string) {
+    const sqlColumn = this.#columnDefIdToSqlColumnAccessor.get(columnId);
+    if (!sqlColumn) return;
+
+    // Use a helper client to fetch unique values
+    const facetClient = new UniqueColumnValuesClient({
+      table: this.sourceTable(),
+      column: sqlColumn,
+      filterBy: this.filterBy, // Listen to global filters
+      coordinator: this.coordinator,
+      onResult: (values) => {
+        this.facets.set(columnId, values);
+        // Trigger a state update so React re-renders the dropdowns
+        batch(() => {
+          this.#store.setState((prev) => ({ ...prev }));
+        });
+      },
+    });
+
+    facetClient.requestUpdate();
+  }
+
+  /**
+   * Loads Min/Max values for a column (for Range Sliders).
+   */
+  loadColumnMinMax(columnId: string) {
+    const sqlColumn = this.#columnDefIdToSqlColumnAccessor.get(columnId);
+    if (!sqlColumn) return;
+
+    // We create a temporary query just to fetch this one metric
+    const query = mSql.Query.from(this.sourceTable()).select({
+      min: mSql.min(sqlColumn),
+      max: mSql.max(sqlColumn),
+    });
+
+    this.coordinator?.exec(query).then((result) => {
+      if (isArrowTable(result)) {
+        const row = result.toArray()[0] as any;
+        // TanStack expects [min, max]
+        const minMax = [row.min, row.max];
+
+        this.facets.set(columnId, minMax);
+
+        batch(() => {
+          this.#store.setState((prev) => ({ ...prev }));
+        });
+      }
+    });
+  }
+
+  // --- Core Helpers ---
 
   /**
    * Helper utility to build the SQL select columns,
@@ -565,7 +645,7 @@ export class MosaicDataTable<
       getCoreRowModel: getCoreRowModel(),
       getFacetedRowModel: getFacetedRowModel(),
       getFacetedUniqueValues: this.getFacetedUniqueValues(),
-      getFacetedMinMaxValues: getFacetedMinMaxValues(), // TODO: Remove this for actual server-side faceting.
+      getFacetedMinMaxValues: this.getFacetedMinMaxValues(),
       state: state.tableState,
       onStateChange: (updater) => {
         // TODO: Add something like `ohash` for stable object hashing
@@ -621,6 +701,19 @@ export class MosaicDataTable<
       }
 
       return () => new Map<any, number>();
+    };
+  }
+
+  getFacetedMinMaxValues<TData extends RowData>(): (
+    table: Table<TData>,
+    columnId: string,
+  ) => () => [any, any] | undefined {
+    return (_table, columnId) => {
+      const values = this.getFacets().get(columnId);
+      if (Array.isArray(values) && values.length === 2) {
+        return () => values as [any, any];
+      }
+      return () => undefined;
     };
   }
 
