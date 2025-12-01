@@ -6,10 +6,7 @@ import {
   queryFieldInfo,
 } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
-import {
-  getCoreRowModel,
-  getFacetedRowModel,
-} from '@tanstack/table-core';
+import { getCoreRowModel, getFacetedRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
   functionalUpdate,
