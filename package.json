@@ -22,12 +22,12 @@
     "dev": "pnpm run watch"
   },
   "devDependencies": {
-    "@tanstack/config": "^0.22.0",
+    "@tanstack/config": "^0.22.2",
     "eslint": "catalog:",
     "eslint-plugin-unused-imports": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
-    "nx": "^22.0.2",
-    "prettier": "^3.6.2",
+    "nx": "^22.1.3",
+    "prettier": "^3.7.3",
     "prettier-plugin-svelte": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:",
