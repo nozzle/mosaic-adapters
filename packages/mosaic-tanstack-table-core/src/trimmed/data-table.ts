@@ -216,22 +216,33 @@ export class MosaicDataTable<
           // LESS THAN OR EQUAL TO FILTER
           clause = mSql.lte(columnAccessor, max);
         }
-      } else if (
-        filterType === 'ilike' &&
-        typeof columnFilter.value === 'string'
-      ) {
+      } else if (filterType === 'ilike') {
         // ILIKE Filter
-        clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value.trim())}`;
+        if (
+          typeof columnFilter.value !== 'string' ||
+          columnFilter.value === ''
+        ) {
+          return;
+        }
+
+        clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value)}`;
       } else if (filterType === 'equals') {
         // Direct equality (useful for Selects)
-        if (columnFilter.value !== '') {
-          clause = mSql.eq(columnAccessor, mSql.literal(columnFilter.value));
+        if (
+          typeof columnFilter.value !== 'string' ||
+          columnFilter.value === ''
+        ) {
+          return;
         }
+
+        clause = mSql.eq(columnAccessor, mSql.literal(columnFilter.value));
       } else {
         // Fallback default
-        if (typeof columnFilter.value === 'string') {
-          clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value.trim())}`;
+        if (columnFilter.value === 'string' || columnFilter.value === '') {
+          return;
         }
+
+        clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value)}`;
       }
 
       if (clause) {
