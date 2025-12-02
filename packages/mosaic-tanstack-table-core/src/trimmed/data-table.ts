@@ -30,7 +30,11 @@ import type {
   Table,
   TableOptions,
 } from '@tanstack/table-core';
-import type { MosaicDataTableOptions, MosaicDataTableStore } from './types';
+import type {
+  MosaicDataTableOptions,
+  MosaicDataTableSqlFilterType,
+  MosaicDataTableStore,
+} from './types';
 
 /**
  * This is a factory function to create a MosaicDataTable client.
@@ -48,6 +52,8 @@ export function createMosaicDataTableClient<
   const client = new MosaicDataTable<TData, TValue>(options);
   return client;
 }
+
+const DEFAULT_FILTER_TYPE: MosaicDataTableSqlFilterType = 'equals';
 
 /**
  * A Mosaic Client that does the glue work to drive TanStack Table, using it's
@@ -181,7 +187,7 @@ export class MosaicDataTable<
       );
 
       const filterType =
-        colDef?.meta?.mosaicDataTable?.sqlFilterType ?? 'equals';
+        colDef?.meta?.mosaicDataTable?.sqlFilterType ?? DEFAULT_FILTER_TYPE;
 
       let clause: mSql.FilterExpr | undefined;
 
