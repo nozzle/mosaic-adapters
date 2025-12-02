@@ -76,6 +76,8 @@ export class MosaicDataTable<
   #columnDefIdToSqlColumnAccessor: Map<string, string> = new Map();
   #columnDefIdToFieldInfo: Map<string, FieldInfo> = new Map();
   #sqlColumnAccessorToFieldInfo: Map<string, FieldInfo> = new Map();
+  #sqlColumnAccessorToColumnDef: Map<string, ColumnDef<TData, TValue>> =
+    new Map();
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
@@ -178,16 +180,14 @@ export class MosaicDataTable<
     columnFilters.forEach((columnFilter) => {
       const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(
         columnFilter.id,
-      )!;
-      // Assertion is safe due to filtering above
+      )!; // Assertion is safe due to filtering above
 
       // Find the Column Definition to check for metadata
-      const colDef = this.#store.state.columnDefs.find(
-        (c) => c.id === columnFilter.id,
-      );
+      const columnDefMeta =
+        this.#sqlColumnAccessorToColumnDef.get(columnAccessor)?.meta
+          ?.mosaicDataTable;
 
-      const filterType =
-        colDef?.meta?.mosaicDataTable?.sqlFilterType ?? DEFAULT_FILTER_TYPE;
+      const filterType = columnDefMeta?.sqlFilterType ?? DEFAULT_FILTER_TYPE;
 
       let clause: mSql.FilterExpr | undefined;
 
@@ -484,6 +484,7 @@ export class MosaicDataTable<
 
     // Clear previous mappings
     this.#columnDefIdToSqlColumnAccessor.clear();
+    this.#sqlColumnAccessorToColumnDef.clear();
 
     // We should only consider columns that can be mapped to Mosaic columns
     const queryableColumns = columnDefs.filter((def) => {
@@ -580,6 +581,7 @@ export class MosaicDataTable<
 
       // Store the mapping of ColumnDef ID to Mosaic column accessor
       this.#columnDefIdToSqlColumnAccessor.set(def.id, columnAccessor);
+      this.#sqlColumnAccessorToColumnDef.set(columnAccessor, def);
     });
 
     if (shouldSearchAllColumns) {
