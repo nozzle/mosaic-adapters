@@ -8,7 +8,7 @@ import { RenderTableHeader } from '@/components/render-table-header';
 import { useMosaicReactTable } from '@/useMosaicReactTable';
 import { simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
-import { DebouncedInput } from '../ui/debounced-input';
+import { DebouncedInput } from '@/components/ui/debounced-input';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
@@ -102,26 +102,30 @@ function DebouncedRangeFilter({
     <div className="flex gap-1 mt-1">
       <DebouncedInput
         type={type}
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         value={(columnFilterValue as [any, any])?.[0] ?? ''}
         onChange={(value) =>
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           column.setFilterValue((old: [any, any]) => [value, old?.[1]])
         }
         placeholder={`Min ${
           minMax?.[0] !== undefined ? `(${minMax[0]})` : placeholderPrefix
         }`}
-        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-[40px]"
+        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
         onClick={(e) => e.stopPropagation()}
       />
       <DebouncedInput
         type={type}
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         value={(columnFilterValue as [any, any])?.[1] ?? ''}
         onChange={(value) =>
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           column.setFilterValue((old: [any, any]) => [old?.[0], value])
         }
         placeholder={`Max ${
           minMax?.[1] !== undefined ? `(${minMax[1]})` : placeholderPrefix
         }`}
-        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-[40px]"
+        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
         onClick={(e) => e.stopPropagation()}
       />
     </div>
