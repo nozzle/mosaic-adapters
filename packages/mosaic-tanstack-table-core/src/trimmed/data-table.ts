@@ -17,7 +17,6 @@ import {
 import { logger } from './logger';
 
 import type {
-  Coordinator,
   FieldInfo,
   FieldInfoRequest,
   Param,
@@ -431,22 +430,22 @@ export class MosaicDataTable<
     const sqlColumn = this.#columnDefIdToSqlColumnAccessor.get(columnId);
     if (!sqlColumn) return;
 
-    // Use a helper client to fetch unique values
-    const facetClient = new UniqueColumnValuesClient({
-      table: this.sourceTable(),
-      column: sqlColumn,
-      filterBy: this.filterBy, // Listen to global filters
-      coordinator: this.coordinator,
-      onResult: (values) => {
+    const query = mSql.Query.from(this.sourceTable())
+      .select(sqlColumn)
+      .groupby(sqlColumn)
+      .orderby(mSql.asc(sqlColumn));
+
+    // https://idl.uw.edu/mosaic/api/core/coordinator.html#prefetch
+    this.coordinator?.prefetch(query).then((table) => {
+      if (isArrowTable(table)) {
+        const values = table.toArray().map((row) => (row as any)[sqlColumn]);
         this.facets.set(columnId, values);
-        // Trigger a state update so the Framework re-renders the dropdowns
+
         batch(() => {
           this.#store.setState((prev) => ({ ...prev }));
         });
-      },
+      }
     });
-
-    facetClient.requestUpdate();
   }
 
   /**
@@ -462,13 +461,14 @@ export class MosaicDataTable<
       max: mSql.max(sqlColumn),
     });
 
-    this.coordinator?.exec(query).then((result) => {
+    // https://idl.uw.edu/mosaic/api/core/coordinator.html#prefetch
+    this.coordinator?.prefetch(query).then((result) => {
       if (isArrowTable(result)) {
         const row = result.toArray()[0] as any;
-        // TanStack expects [min, max]
-        const minMax = [row.min, row.max];
 
-        this.facets.set(columnId, minMax);
+        const minMaxTuple = [row.min, row.max]; // TanStack Table expects a tuple like [min, max]
+
+        this.facets.set(columnId, minMaxTuple);
 
         batch(() => {
           this.#store.setState((prev) => ({ ...prev }));
@@ -758,63 +758,5 @@ export class MosaicDataTable<
 
   getFacets(): Map<string, any> {
     return this.facets;
-  }
-}
-
-/**
- * This is a helper Mosaic Client to query unique values for a given column
- * in a table. This is useful for faceting operations.
- */
-export class UniqueColumnValuesClient extends MosaicClient {
-  from: string;
-  column: string;
-  onResult: (values: Array<unknown>) => void;
-
-  constructor(options: {
-    filterBy?: Selection | undefined;
-    coordinator?: Coordinator | undefined | null;
-    table: string;
-    column: string;
-    onResult: (values: Array<unknown>) => void;
-  }) {
-    super(options.filterBy);
-
-    if (options.coordinator) {
-      this.coordinator = options.coordinator;
-    } else {
-      this.coordinator = defaultCoordinator();
-    }
-
-    this.from = options.table;
-    this.column = options.column;
-    this.onResult = options.onResult;
-  }
-
-  override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
-    const statement = mSql.Query.from(this.from).select(this.column);
-
-    if (primaryFilter) {
-      statement.where(primaryFilter);
-    }
-
-    statement.groupby(this.column);
-
-    return statement;
-  }
-
-  override queryResult(table: unknown): this {
-    if (isArrowTable(table)) {
-      const rows = table.toArray();
-      const values: Array<unknown> = [];
-
-      rows.forEach((row) => {
-        const value = row[this.column];
-        values.push(value);
-      });
-
-      this.onResult(values);
-    }
-
-    return this;
   }
 }
