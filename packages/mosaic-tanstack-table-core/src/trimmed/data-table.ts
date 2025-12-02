@@ -11,6 +11,7 @@ import { Store, batch } from '@tanstack/store';
 import {
   functionalUpdate,
   seedInitialTableState,
+  toNumberOrNull,
   toSafeSqlColumnName,
 } from './utils';
 import { logger } from './logger';
@@ -191,11 +192,29 @@ export class MosaicDataTable<
 
       let clause: mSql.FilterExpr | undefined;
 
-      if (filterType === 'range' && Array.isArray(columnFilter.value)) {
+      if (filterType === 'range') {
+        if (!Array.isArray(columnFilter.value)) {
+          return;
+        }
+
         // Range Filter (BETWEEN)
-        const [min, max] = columnFilter.value as [unknown, unknown];
+        const [minCandidate, maxCandidate] = columnFilter.value as [
+          unknown,
+          unknown,
+        ];
+
+        const min: number | null = toNumberOrNull(minCandidate);
+        const max: number | null = toNumberOrNull(maxCandidate);
+
         if (typeof min === 'number' && typeof max === 'number') {
-          clause = mSql.sql`${columnAccessor} BETWEEN ${min} AND ${max}`;
+          // BETWEEN FILTER OF MIN AND MAX
+          clause = mSql.isBetween(columnAccessor, [min, max]);
+        } else if (typeof min === 'number') {
+          // GREATER THAN OR EQUAL TO FILTER
+          clause = mSql.gte(columnAccessor, min);
+        } else if (typeof max === 'number') {
+          // LESS THAN OR EQUAL TO FILTER
+          clause = mSql.lte(columnAccessor, max);
         }
       } else if (
         filterType === 'ilike' &&
