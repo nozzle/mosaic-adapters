@@ -409,7 +409,7 @@ export class MosaicDataTable<
       coordinator: this.coordinator,
       onResult: (values) => {
         this.facets.set(columnId, values);
-        // Trigger a state update so React re-renders the dropdowns
+        // Trigger a state update so the Framework re-renders the dropdowns
         batch(() => {
           this.#store.setState((prev) => ({ ...prev }));
         });
