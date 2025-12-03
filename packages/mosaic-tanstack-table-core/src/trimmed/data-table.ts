@@ -281,7 +281,7 @@ export class MosaicDataTable<
     // Add sorting
     const orderingCriteria: Array<mSql.OrderByNode> = [];
     sorting.forEach((sort) => {
-      const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(sort.id)!;
+      const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(sort.id)!; // Assertion is safe due to filtering above
 
       // Build the sorting command based on direction
       orderingCriteria.push(
