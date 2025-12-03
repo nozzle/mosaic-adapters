@@ -86,7 +86,7 @@ export interface MosaicDataTableOptions<
    * This allows other Mosaic clients (like charts) to react to table filters.
    * @default undefined
    */
-  internalFilter?: Selection | undefined;
+  tableFilterSelection?: Selection | undefined;
   /**
    * Column Definitions to use for the table instance.
    *

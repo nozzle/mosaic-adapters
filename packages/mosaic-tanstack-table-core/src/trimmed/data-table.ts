@@ -1,5 +1,6 @@
 import {
   MosaicClient,
+  Selection,
   coordinator as defaultCoordinator,
   isArrowTable,
   isParam,
@@ -15,12 +16,10 @@ import {
   toSafeSqlColumnName,
 } from './utils';
 import { logger } from './logger';
-
 import type {
   FieldInfo,
   FieldInfoRequest,
   Param,
-  Selection,
   SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
@@ -65,7 +64,7 @@ export class MosaicDataTable<
 > extends MosaicClient {
   from: Param<string> | string;
   schema: Array<FieldInfo> = [];
-  internalFilter?: Selection;
+  tableFilterSelection!: Selection;
 
   facets: Map<string, any> = new Map();
 
@@ -83,7 +82,6 @@ export class MosaicDataTable<
     super(options.filterBy); // pass the appropriate Filter Selection
 
     this.from = options.table;
-    this.internalFilter = options.internalFilter;
 
     if (!this.sourceTable()) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
@@ -107,8 +105,11 @@ export class MosaicDataTable<
       this.#onTableStateChange = options.onTableStateChange;
     }
 
-    if (options.internalFilter) {
-      this.internalFilter = options.internalFilter;
+    if (options.tableFilterSelection) {
+      this.tableFilterSelection = options.tableFilterSelection;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    } else if (!this.tableFilterSelection) {
+      this.tableFilterSelection = new Selection();
     }
 
     // Ensure we have a coordinator assigned
@@ -263,18 +264,16 @@ export class MosaicDataTable<
       }
     });
 
-    // Update Internal Filter Selection
+    // Update the Table Filter Selection
     // This allows bidirectional filtering (Table -> Charts)
-    if (this.internalFilter) {
-      const predicate =
-        internalClauses.length > 0 ? mSql.and(...internalClauses) : null;
+    const predicate =
+      internalClauses.length > 0 ? mSql.and(...internalClauses) : null;
 
-      this.internalFilter.update({
-        source: this,
-        value: tableState.columnFilters,
-        predicate: predicate,
-      });
-    }
+    this.tableFilterSelection.update({
+      source: this,
+      value: tableState.columnFilters,
+      predicate: predicate,
+    });
 
     // Apply all where clauses to the Table Query
     statement.where(...whereClauses);

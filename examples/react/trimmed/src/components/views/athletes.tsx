@@ -448,25 +448,19 @@ function AthletesTable() {
     [view],
   );
 
-  const mosaicTableOptions = useMemo(
-    () => ({
-      table: tableName,
-      filterBy: $query,
-      internalFilter: $tableFilter,
-      columns,
-      tableOptions: {
-        enableHiding: true,
-        enableMultiSort: true,
-        enableSorting: true,
-        enableColumnFilters: true,
-      },
-      onTableStateChange: 'requestUpdate' as const,
-    }),
-    [columns],
-  );
-
-  const { tableOptions, client } =
-    useMosaicReactTable<AthleteRowData>(mosaicTableOptions);
+  const { tableOptions, client } = useMosaicReactTable<AthleteRowData>({
+    table: tableName,
+    filterBy: $query,
+    tableFilterSelection: $tableFilter,
+    columns,
+    tableOptions: {
+      enableHiding: true,
+      enableMultiSort: true,
+      enableSorting: true,
+      enableColumnFilters: true,
+    },
+    onTableStateChange: 'requestUpdate',
+  });
 
   // Trigger Server-Side Facet Loading
   useEffect(() => {
