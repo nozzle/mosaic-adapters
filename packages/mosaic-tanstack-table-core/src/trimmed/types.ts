@@ -1,3 +1,4 @@
+// packages/mosaic-tanstack-table-core/src/trimmed/types.ts
 import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
 import type {
   ColumnDef,
@@ -7,12 +8,11 @@ import type {
 } from '@tanstack/table-core';
 
 export type MosaicDataTableSqlFilterType =
-  | 'EQUALS'
-  | 'LIKE'
-  | 'PARTIAL_LIKE'
-  | 'ILIKE'
-  | 'PARTIAL_ILIKE'
-  | 'RANGE';
+  | 'equals'
+  | 'in'
+  | 'like'
+  | 'ilike'
+  | 'range';
 
 /**
  * This will be merged into the TanStack Table ColumnDef type
@@ -86,7 +86,7 @@ export interface MosaicDataTableOptions<
    * This allows other Mosaic clients (like charts) to react to table filters.
    * @default undefined
    */
-  tableFilterSelection?: Selection | undefined;
+  internalFilter?: Selection | undefined;
   /**
    * Column Definitions to use for the table instance.
    *
