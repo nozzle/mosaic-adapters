@@ -7,11 +7,12 @@ import type {
 } from '@tanstack/table-core';
 
 export type MosaicDataTableSqlFilterType =
-  | 'equals'
-  | 'in'
-  | 'like'
-  | 'ilike'
-  | 'range';
+  | 'EQUALS'
+  | 'LIKE'
+  | 'PARTIAL_LIKE'
+  | 'ILIKE'
+  | 'PARTIAL_ILIKE'
+  | 'RANGE';
 
 /**
  * This will be merged into the TanStack Table ColumnDef type

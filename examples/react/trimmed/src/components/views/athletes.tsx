@@ -250,7 +250,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'name',
-              sqlFilterType: 'ilike',
+              sqlFilterType: 'PARTIAL_ILIKE',
             },
           },
         },
@@ -272,7 +272,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'nationality',
-              sqlFilterType: 'equals',
+              sqlFilterType: 'EQUALS',
             },
             filterVariant: 'select',
           },
@@ -291,7 +291,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sex',
-              sqlFilterType: 'ilike',
+              sqlFilterType: 'EQUALS',
             },
             filterVariant: 'select',
           },
@@ -317,7 +317,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'date_of_birth',
-              sqlFilterType: 'range',
+              sqlFilterType: 'RANGE',
             },
           },
         },
@@ -341,7 +341,7 @@ function AthletesTable() {
             filterVariant: 'range',
             mosaicDataTable: {
               sqlColumn: 'height',
-              sqlFilterType: 'range',
+              sqlFilterType: 'RANGE',
             },
           },
           enableColumnFilter: true,
@@ -368,7 +368,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'weight',
-              sqlFilterType: 'range',
+              sqlFilterType: 'RANGE',
             },
           },
         },
@@ -386,7 +386,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sport',
-              sqlFilterType: 'ilike',
+              sqlFilterType: 'EQUALS',
             },
             filterVariant: 'select',
           },

@@ -53,7 +53,7 @@ export function createMosaicDataTableClient<
   return client;
 }
 
-const DEFAULT_FILTER_TYPE: MosaicDataTableSqlFilterType = 'equals';
+const DEFAULT_FILTER_TYPE: MosaicDataTableSqlFilterType = 'EQUALS';
 
 /**
  * A Mosaic Client that does the glue work to drive TanStack Table, using it's
@@ -191,7 +191,7 @@ export class MosaicDataTable<
 
       let clause: mSql.FilterExpr | undefined;
 
-      if (filterType === 'range') {
+      if (filterType === 'RANGE') {
         if (!Array.isArray(columnFilter.value)) {
           return;
         }
@@ -215,7 +215,7 @@ export class MosaicDataTable<
           // LESS THAN OR EQUAL TO FILTER
           clause = mSql.lte(columnAccessor, max);
         }
-      } else if (filterType === 'ilike') {
+      } else if (filterType === 'ILIKE' || filterType === 'PARTIAL_ILIKE') {
         // ILIKE Filter
         if (
           typeof columnFilter.value !== 'string' ||
@@ -224,9 +224,29 @@ export class MosaicDataTable<
           return;
         }
 
-        clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value)}`;
-      } else if (filterType === 'equals') {
-        // Direct equality (useful for Selects)
+        const comparer =
+          filterType === 'PARTIAL_ILIKE'
+            ? `%${columnFilter.value}%`
+            : columnFilter.value;
+
+        clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal(comparer)}`;
+      } else if (filterType === 'LIKE' || filterType === 'PARTIAL_LIKE') {
+        // LIKE Filter
+        if (
+          typeof columnFilter.value !== 'string' ||
+          columnFilter.value === ''
+        ) {
+          return;
+        }
+
+        const comparer =
+          filterType === 'PARTIAL_LIKE'
+            ? `%${columnFilter.value}%`
+            : columnFilter.value;
+
+        clause = mSql.sql`${columnAccessor} LIKE ${mSql.literal(comparer)}`;
+      } else {
+        // EQUALS Filter
         if (
           typeof columnFilter.value !== 'string' ||
           columnFilter.value === ''
@@ -235,13 +255,6 @@ export class MosaicDataTable<
         }
 
         clause = mSql.eq(columnAccessor, mSql.literal(columnFilter.value));
-      } else {
-        // Fallback default
-        if (columnFilter.value === 'string' || columnFilter.value === '') {
-          return;
-        }
-
-        clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal(columnFilter.value)}`;
       }
 
       if (clause) {
