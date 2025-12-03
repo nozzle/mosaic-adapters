@@ -293,7 +293,7 @@ export class MosaicDataTable<
           break;
         }
 
-        const [rawMin, rawMax] = columnFilter.value as [unknown, unknown];
+        const [rawMin, rawMax] = columnFilter.value;
 
         const min = toRangeValue(rawMin);
         const max = toRangeValue(rawMax);
