@@ -1,3 +1,5 @@
+// examples/react/trimmed/src/components/views/athletes.tsx
+// Athletes view component implementing the table and filter controls.
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
@@ -250,7 +252,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'name',
-              sqlFilterType: 'PARTIAL_ILIKE',
+              sqlFilterType: 'ilike',
             },
           },
         },
@@ -272,7 +274,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'nationality',
-              sqlFilterType: 'EQUALS',
+              sqlFilterType: 'ilike',
             },
             filterVariant: 'select',
           },
@@ -291,7 +293,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sex',
-              sqlFilterType: 'EQUALS',
+              sqlFilterType: 'ilike',
             },
             filterVariant: 'select',
           },
@@ -317,7 +319,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'date_of_birth',
-              sqlFilterType: 'RANGE',
+              sqlFilterType: 'range',
             },
           },
         },
@@ -341,7 +343,7 @@ function AthletesTable() {
             filterVariant: 'range',
             mosaicDataTable: {
               sqlColumn: 'height',
-              sqlFilterType: 'RANGE',
+              sqlFilterType: 'range',
             },
           },
           enableColumnFilter: true,
@@ -368,7 +370,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'weight',
-              sqlFilterType: 'RANGE',
+              sqlFilterType: 'range',
             },
           },
         },
@@ -386,7 +388,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sport',
-              sqlFilterType: 'EQUALS',
+              sqlFilterType: 'ilike',
             },
             filterVariant: 'select',
           },
@@ -451,7 +453,7 @@ function AthletesTable() {
   const { tableOptions, client } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
     filterBy: $query,
-    tableFilterSelection: $tableFilter,
+    internalFilter: $tableFilter,
     columns,
     tableOptions: {
       enableHiding: true,

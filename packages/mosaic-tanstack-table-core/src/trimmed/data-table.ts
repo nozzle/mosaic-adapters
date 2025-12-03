@@ -182,57 +182,87 @@ export class MosaicDataTable<
         (c) => c.id === columnFilter.id,
       );
 
-      const filterType =
-        colDef?.meta?.mosaicDataTable?.sqlFilterType ?? 'equals';
+      // Normalize to lowercase to prevent configuration case sensitivity issues
+      const filterType = (
+        colDef?.meta?.mosaicDataTable?.sqlFilterType ?? 'equals'
+      ).toLowerCase();
 
       let clause: mSql.FilterExpr | undefined;
 
-      if (filterType === 'range' && Array.isArray(columnFilter.value)) {
-        // Range Filter (BETWEEN, >=, or <=)
-        const [rawMin, rawMax] = columnFilter.value as [unknown, unknown];
+      // Handle Range Filters (Array values for Min/Max)
+      if (Array.isArray(columnFilter.value)) {
+        if (filterType === 'range') {
+          const [rawMin, rawMax] = columnFilter.value as [unknown, unknown];
 
-        // HTML Inputs return strings, even for type="number".
-        // We must safely parse these, treating empty strings or nulls as missing values.
-        const min =
-          rawMin !== '' && rawMin !== null && rawMin !== undefined
-            ? Number(rawMin)
-            : NaN;
-        const max =
-          rawMax !== '' && rawMax !== null && rawMax !== undefined
-            ? Number(rawMax)
-            : NaN;
+          // Safely parse input values into valid SQL Literals (Numbers or JS Dates).
+          // This handles empty UI strings and distinguishes between numeric and date inputs.
+          const parseRangeValue = (val: unknown): number | Date | null => {
+            // Filter out "empty" UI states
+            if (val === '' || val === null || val === undefined) return null;
 
-        const hasMin = !Number.isNaN(min);
-        const hasMax = !Number.isNaN(max);
+            // Try Numeric Parse first
+            const num = Number(val);
+            if (!Number.isNaN(num)) return num;
 
-        if (hasMin && hasMax) {
-          clause = mSql.sql`${columnAccessor} BETWEEN ${min} AND ${max}`;
-        } else if (hasMin) {
-          clause = mSql.gte(columnAccessor, mSql.literal(min));
-        } else if (hasMax) {
-          clause = mSql.lte(columnAccessor, mSql.literal(max));
+            // If it's not a number, it might be a date string (e.g. '1995-12-17').
+            if (typeof val === 'string') {
+              const date = new Date(val);
+              // Check if the date is valid (getTime is NaN for Invalid Date)
+              if (!Number.isNaN(date.getTime())) return date;
+            }
+
+            return null;
+          };
+
+          const min = parseRangeValue(rawMin);
+          const max = parseRangeValue(rawMax);
+
+          // Build SQL clauses using Mosaic literals to handle type safety
+          if (min !== null && max !== null) {
+            clause = mSql.sql`${mSql.column(columnAccessor)} BETWEEN ${mSql.literal(min)} AND ${mSql.literal(max)}`;
+          } else if (min !== null) {
+            clause = mSql.sql`${mSql.column(columnAccessor)} >= ${mSql.literal(min)}`;
+          } else if (max !== null) {
+            clause = mSql.sql`${mSql.column(columnAccessor)} <= ${mSql.literal(max)}`;
+          }
+        } else {
+          logger.warn(
+            'Core',
+            `[MosaicDataTable] Column "${columnFilter.id}" has an array value but filterType is "${filterType}". Skipping to avoid invalid SQL.`,
+          );
         }
-      } else if (
-        filterType === 'ilike' &&
-        typeof columnFilter.value === 'string'
-      ) {
-        // ILIKE Filter (Contains)
-        // We wrap the value in wildcards to ensure it acts as a "Contains" search
-        const val = columnFilter.value.trim();
-        if (val) {
-          clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal('%' + val + '%')}`;
-        }
-      } else if (filterType === 'equals') {
-        // Direct equality (useful for Selects / Dropdowns)
-        if (columnFilter.value !== '') {
-          clause = mSql.eq(columnAccessor, mSql.literal(columnFilter.value));
-        }
-      } else {
-        // Fallback default: assume string search
-        if (typeof columnFilter.value === 'string') {
+      }
+      // Handle Single Values (Strings/Numbers)
+      else {
+        // ILIKE Filter (Case-insensitive Contains)
+        // We also allow 'partial_ilike' as an alias for 'ilike' to support legacy configs
+        if (
+          (filterType === 'ilike' || filterType === 'partial_ilike') &&
+          typeof columnFilter.value === 'string'
+        ) {
           const val = columnFilter.value.trim();
           if (val) {
-            clause = mSql.sql`${columnAccessor} ILIKE ${mSql.literal('%' + val + '%')}`;
+            clause = mSql.sql`${mSql.column(columnAccessor)} ILIKE ${mSql.literal('%' + val + '%')}`;
+          }
+        }
+        // Direct equality (useful for Selects / Dropdowns)
+        else if (filterType === 'equals') {
+          if (columnFilter.value !== '') {
+            clause = mSql.sql`${mSql.column(columnAccessor)} = ${mSql.literal(columnFilter.value)}`;
+          }
+        }
+        // Fallback default
+        else {
+          if (typeof columnFilter.value === 'string') {
+            const val = columnFilter.value.trim();
+            if (val) {
+              clause = mSql.sql`${mSql.column(columnAccessor)} ILIKE ${mSql.literal('%' + val + '%')}`;
+            }
+          } else if (
+            columnFilter.value !== null &&
+            columnFilter.value !== undefined
+          ) {
+            clause = mSql.sql`${mSql.column(columnAccessor)} = ${mSql.literal(columnFilter.value)}`;
           }
         }
       }
@@ -246,13 +276,18 @@ export class MosaicDataTable<
     // Update Internal Filter Selection
     // This allows bidirectional filtering (Table -> Charts)
     if (this.internalFilter) {
-      const predicate =
-        internalClauses.length > 0 ? mSql.and(...internalClauses) : null;
+      let predicate: mSql.FilterExpr | null = null;
+
+      if (internalClauses.length === 1) {
+        predicate = internalClauses[0]!;
+      } else if (internalClauses.length > 1) {
+        predicate = mSql.and(...internalClauses);
+      }
 
       this.internalFilter.update({
         source: this,
         value: tableState.columnFilters,
-        predicate: predicate,
+        predicate: predicate as any,
       });
     }
 
@@ -266,7 +301,9 @@ export class MosaicDataTable<
 
       // Build the sorting command based on direction
       orderingCriteria.push(
-        sort.desc ? mSql.desc(columnAccessor) : mSql.asc(columnAccessor),
+        sort.desc
+          ? mSql.desc(mSql.column(columnAccessor))
+          : mSql.asc(mSql.column(columnAccessor)),
       );
     });
 
@@ -450,8 +487,8 @@ export class MosaicDataTable<
 
     // We create a temporary query just to fetch this one metric
     const query = mSql.Query.from(this.sourceTable()).select({
-      min: mSql.min(sqlColumn),
-      max: mSql.max(sqlColumn),
+      min: mSql.min(mSql.column(sqlColumn)),
+      max: mSql.max(mSql.column(sqlColumn)),
     });
 
     this.coordinator?.exec(query).then((result) => {
