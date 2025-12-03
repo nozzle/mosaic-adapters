@@ -28,6 +28,7 @@ import type {
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
+  ColumnFilter,
   RowData,
   Table,
   TableOptions,
@@ -72,6 +73,9 @@ export class MosaicDataTable<
   #columnDefIdToSqlColumnAccessor: Map<string, string> = new Map();
   #columnDefIdToFieldInfo: Map<string, FieldInfo> = new Map();
   #sqlColumnAccessorToFieldInfo: Map<string, FieldInfo> = new Map();
+
+  // Registry to track active facet sidecar clients
+  #activeFacetClients: Map<string, UniqueColumnValuesClient> = new Map();
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
@@ -147,11 +151,6 @@ export class MosaicDataTable<
       this.#columnDefIdToSqlColumnAccessor.has(sort.id),
     );
 
-    // Only consider column filters for columns that can be mapped to Mosaic columns
-    const columnFilters = tableState.columnFilters.filter((filter) =>
-      this.#columnDefIdToSqlColumnAccessor.has(filter.id),
-    );
-
     // Get the Table SQL columns to select
     const tableColumns = this.sqlColumns();
 
@@ -168,110 +167,13 @@ export class MosaicDataTable<
       whereClauses.push(primaryFilter);
     }
 
-    // Add column filters
-    const internalClauses: Array<mSql.FilterExpr> = [];
+    // Add column filters (internal filters)
+    // We get all filters without exclusion for the main table query
+    const internalClauses = this.getSqlFilters();
 
-    columnFilters.forEach((columnFilter) => {
-      const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(
-        columnFilter.id,
-      )!;
-      // Assertion is safe due to filtering above
-
-      // Find the Column Definition to check for metadata
-      const colDef = this.#store.state.columnDefs.find(
-        (c) => c.id === columnFilter.id,
-      );
-
-      // Normalize to lowercase to prevent configuration case sensitivity issues
-      const filterType = (
-        colDef?.meta?.mosaicDataTable?.sqlFilterType ?? 'equals'
-      ).toLowerCase();
-
-      let clause: mSql.FilterExpr | undefined;
-
-      // Handle Range Filters (Array values for Min/Max)
-      if (Array.isArray(columnFilter.value)) {
-        if (filterType === 'range') {
-          const [rawMin, rawMax] = columnFilter.value as [unknown, unknown];
-
-          // Safely parse input values into valid SQL Literals (Numbers or JS Dates).
-          // This handles empty UI strings and distinguishes between numeric and date inputs.
-          const parseRangeValue = (val: unknown): number | Date | null => {
-            // Filter out "empty" UI states
-            if (val === '' || val === null || val === undefined) return null;
-
-            // Try Numeric Parse first
-            const num = Number(val);
-            if (!Number.isNaN(num)) return num;
-
-            // If it's not a number, it might be a date string (e.g. '1995-12-17').
-            if (typeof val === 'string') {
-              const date = new Date(val);
-              // Check if the date is valid (getTime is NaN for Invalid Date)
-              if (!Number.isNaN(date.getTime())) return date;
-            }
-
-            return null;
-          };
-
-          const min = parseRangeValue(rawMin);
-          const max = parseRangeValue(rawMax);
-
-          // Build SQL clauses using Mosaic literals to handle type safety
-          if (min !== null && max !== null) {
-            clause = mSql.sql`${mSql.column(columnAccessor)} BETWEEN ${mSql.literal(min)} AND ${mSql.literal(max)}`;
-          } else if (min !== null) {
-            clause = mSql.sql`${mSql.column(columnAccessor)} >= ${mSql.literal(min)}`;
-          } else if (max !== null) {
-            clause = mSql.sql`${mSql.column(columnAccessor)} <= ${mSql.literal(max)}`;
-          }
-        } else {
-          logger.warn(
-            'Core',
-            `[MosaicDataTable] Column "${columnFilter.id}" has an array value but filterType is "${filterType}". Skipping to avoid invalid SQL.`,
-          );
-        }
-      }
-      // Handle Single Values (Strings/Numbers)
-      else {
-        // ILIKE Filter (Case-insensitive Contains)
-        // We also allow 'partial_ilike' as an alias for 'ilike' to support legacy configs
-        if (
-          (filterType === 'ilike' || filterType === 'partial_ilike') &&
-          typeof columnFilter.value === 'string'
-        ) {
-          const val = columnFilter.value.trim();
-          if (val) {
-            clause = mSql.sql`${mSql.column(columnAccessor)} ILIKE ${mSql.literal('%' + val + '%')}`;
-          }
-        }
-        // Direct equality (useful for Selects / Dropdowns)
-        else if (filterType === 'equals') {
-          if (columnFilter.value !== '') {
-            clause = mSql.sql`${mSql.column(columnAccessor)} = ${mSql.literal(columnFilter.value)}`;
-          }
-        }
-        // Fallback default
-        else {
-          if (typeof columnFilter.value === 'string') {
-            const val = columnFilter.value.trim();
-            if (val) {
-              clause = mSql.sql`${mSql.column(columnAccessor)} ILIKE ${mSql.literal('%' + val + '%')}`;
-            }
-          } else if (
-            columnFilter.value !== null &&
-            columnFilter.value !== undefined
-          ) {
-            clause = mSql.sql`${mSql.column(columnAccessor)} = ${mSql.literal(columnFilter.value)}`;
-          }
-        }
-      }
-
-      if (clause) {
-        whereClauses.push(clause);
-        internalClauses.push(clause);
-      }
-    });
+    if (internalClauses.length > 0) {
+      whereClauses.push(...internalClauses);
+    }
 
     // Update Internal Filter Selection
     // This allows bidirectional filtering (Table -> Charts)
@@ -325,6 +227,138 @@ export class MosaicDataTable<
     });
 
     return statement;
+  }
+
+  /**
+   * Generates SQL Filter Expressions from the current table state,
+   * optionally excluding a specific column ID (for cascading facets).
+   */
+  private getSqlFilters(excludeColumnId?: string): Array<mSql.FilterExpr> {
+    const tableState = this.#store.state.tableState;
+    const columnFilters = tableState.columnFilters;
+    const filters: Array<mSql.FilterExpr> = [];
+
+    columnFilters.forEach((filter) => {
+      // THE CASCADING LOGIC: Skip if it matches the excluded ID
+      if (excludeColumnId && filter.id === excludeColumnId) {
+        return;
+      }
+
+      const clause = this.generateClause(filter);
+      if (clause) filters.push(clause);
+    });
+
+    return filters;
+  }
+
+  /**
+   * Helper to generate a single SQL clause from a ColumnFilter
+   */
+  private generateClause(
+    columnFilter: ColumnFilter,
+  ): mSql.FilterExpr | undefined {
+    // Only consider filters for columns that can be mapped to Mosaic columns
+    if (!this.#columnDefIdToSqlColumnAccessor.has(columnFilter.id)) {
+      return undefined;
+    }
+
+    const columnAccessor = this.#columnDefIdToSqlColumnAccessor.get(
+      columnFilter.id,
+    )!;
+
+    // Find the Column Definition to check for metadata
+    const colDef = this.#store.state.columnDefs.find(
+      (c) => c.id === columnFilter.id,
+    );
+
+    // Normalize to lowercase to prevent configuration case sensitivity issues
+    const filterType = (
+      colDef?.meta?.mosaicDataTable?.sqlFilterType ?? 'equals'
+    ).toLowerCase();
+
+    let clause: mSql.FilterExpr | undefined;
+
+    // Handle Range Filters (Array values for Min/Max)
+    if (Array.isArray(columnFilter.value)) {
+      if (filterType === 'range') {
+        const [rawMin, rawMax] = columnFilter.value as [unknown, unknown];
+
+        // Safely parse input values into valid SQL Literals (Numbers or JS Dates).
+        const parseRangeValue = (val: unknown): number | Date | null => {
+          // Filter out "empty" UI states
+          if (val === '' || val === null || val === undefined) return null;
+
+          // Try Numeric Parse first
+          const num = Number(val);
+          if (!Number.isNaN(num)) return num;
+
+          // If it's not a number, it might be a date string (e.g. '1995-12-17').
+          if (typeof val === 'string') {
+            const date = new Date(val);
+            // Check if the date is valid (getTime is NaN for Invalid Date)
+            if (!Number.isNaN(date.getTime())) return date;
+          }
+
+          return null;
+        };
+
+        const min = parseRangeValue(rawMin);
+        const max = parseRangeValue(rawMax);
+
+        // Build SQL clauses using Mosaic literals to handle type safety
+        if (min !== null && max !== null) {
+          clause = mSql.sql`${mSql.column(columnAccessor)} BETWEEN ${mSql.literal(min)} AND ${mSql.literal(max)}`;
+        } else if (min !== null) {
+          clause = mSql.sql`${mSql.column(columnAccessor)} >= ${mSql.literal(min)}`;
+        } else if (max !== null) {
+          clause = mSql.sql`${mSql.column(columnAccessor)} <= ${mSql.literal(max)}`;
+        }
+      } else {
+        logger.warn(
+          'Core',
+          `[MosaicDataTable] Column "${columnFilter.id}" has an array value but filterType is "${filterType}". Skipping to avoid invalid SQL.`,
+        );
+      }
+    }
+    // Handle Single Values (Strings/Numbers)
+    else {
+      // ILIKE Filter (Case-insensitive Contains)
+      if (
+        (filterType === 'ilike' || filterType === 'partial_ilike') &&
+        typeof columnFilter.value === 'string'
+      ) {
+        const val = columnFilter.value.trim();
+        if (val) {
+          clause = mSql.sql`${mSql.column(columnAccessor)} ILIKE ${mSql.literal('%' + val + '%')}`;
+        }
+      }
+      // Direct equality (useful for Selects / Dropdowns)
+      else if (filterType === 'equals') {
+        if (
+          columnFilter.value !== '' &&
+          columnFilter.value !== null &&
+          columnFilter.value !== undefined
+        ) {
+          clause = mSql.sql`${mSql.column(columnAccessor)} = ${mSql.literal(columnFilter.value)}`;
+        }
+      }
+      // Fallback default
+      else {
+        if (typeof columnFilter.value === 'string') {
+          const val = columnFilter.value.trim();
+          if (val) {
+            clause = mSql.sql`${mSql.column(columnAccessor)} ILIKE ${mSql.literal('%' + val + '%')}`;
+          }
+        } else if (
+          columnFilter.value !== null &&
+          columnFilter.value !== undefined
+        ) {
+          clause = mSql.sql`${mSql.column(columnAccessor)} = ${mSql.literal(columnFilter.value)}`;
+        }
+      }
+    }
+
+    return clause;
   }
 
   override queryPending(): this {
@@ -448,17 +482,23 @@ export class MosaicDataTable<
 
   destroy(): void {
     super.destroy();
+    // Clean up sidecar clients
+    this.#activeFacetClients.forEach((client) => client.disconnect());
+    this.#activeFacetClients.clear();
   }
 
   // --- Faceting Support ---
 
   /**
    * Loads unique values for a specific column (for Select dropdowns).
-   * Respects the external `filterBy` selection (so dropdowns update when charts are brushed).
+   * Respects the external `filterBy` selection AND internal cascading filters.
    */
   loadColumnFacet(columnId: string) {
     const sqlColumn = this.#columnDefIdToSqlColumnAccessor.get(columnId);
     if (!sqlColumn) return;
+
+    // Prevent duplicate clients
+    if (this.#activeFacetClients.has(columnId)) return;
 
     // Use a helper client to fetch unique values
     const facetClient = new UniqueColumnValuesClient({
@@ -466,6 +506,8 @@ export class MosaicDataTable<
       column: sqlColumn,
       filterBy: this.filterBy, // Listen to global filters
       coordinator: this.coordinator,
+      // Provide a callback to get internal filters excluding self (cascading)
+      getInternalFilter: () => this.getSqlFilters(columnId),
       onResult: (values) => {
         this.facets.set(columnId, values);
         // Trigger a state update so React re-renders the dropdowns
@@ -475,6 +517,9 @@ export class MosaicDataTable<
       },
     });
 
+    // Register and connect the sidecar client
+    this.#activeFacetClients.set(columnId, facetClient);
+    facetClient.connect();
     facetClient.requestUpdate();
   }
 
@@ -727,6 +772,19 @@ export class MosaicDataTable<
         // Compare the new hashed table state to the old one to determine if we need to request a new query
         const hashedNewState = JSON.stringify(tableState);
         if (hashedOldState !== hashedNewState) {
+          // Check if filters changed to update facet sidecars
+          const oldFilters = JSON.stringify(
+            JSON.parse(hashedOldState).columnFilters,
+          );
+          const newFilters = JSON.stringify(tableState.columnFilters);
+
+          if (oldFilters !== newFilters) {
+            // Wake up sidecars to re-calculate facets with new cascading filters
+            this.#activeFacetClients.forEach((client) =>
+              client.requestUpdate(),
+            );
+          }
+
           this[this.#onTableStateChange]();
         }
       },
@@ -795,6 +853,7 @@ export class MosaicDataTable<
 export class UniqueColumnValuesClient extends MosaicClient {
   from: string;
   column: string;
+  getInternalFilter?: () => Array<mSql.FilterExpr>;
   onResult: (values: Array<unknown>) => void;
 
   constructor(options: {
@@ -802,6 +861,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
     coordinator?: Coordinator | undefined | null;
     table: string;
     column: string;
+    getInternalFilter?: () => Array<mSql.FilterExpr>;
     onResult: (values: Array<unknown>) => void;
   }) {
     super(options.filterBy);
@@ -814,17 +874,42 @@ export class UniqueColumnValuesClient extends MosaicClient {
 
     this.from = options.table;
     this.column = options.column;
+    this.getInternalFilter = options.getInternalFilter;
     this.onResult = options.onResult;
+  }
+
+  connect(): void {
+    this.coordinator?.connect(this);
+  }
+
+  disconnect(): void {
+    this.coordinator?.disconnect(this);
   }
 
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
     const statement = mSql.Query.from(this.from).select(this.column);
 
+    const whereClauses: Array<mSql.FilterExpr> = [];
+
+    // 1. Add Global Filters (Charts, etc)
     if (primaryFilter) {
-      statement.where(primaryFilter);
+      whereClauses.push(primaryFilter);
+    }
+
+    // 2. Add "Cascading" Internal Filters
+    if (this.getInternalFilter) {
+      const internalFilters = this.getInternalFilter();
+      if (internalFilters.length > 0) {
+        whereClauses.push(...internalFilters);
+      }
+    }
+
+    if (whereClauses.length > 0) {
+      statement.where(mSql.and(...whereClauses));
     }
 
     statement.groupby(this.column);
+    statement.orderby(mSql.asc(mSql.column(this.column))); // Good UX to sort facets
 
     return statement;
   }

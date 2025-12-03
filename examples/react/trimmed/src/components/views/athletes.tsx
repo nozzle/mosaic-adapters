@@ -274,7 +274,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'nationality',
-              sqlFilterType: 'ilike',
+              sqlFilterType: 'equals', // 'equals' for drop-down exact match
             },
             filterVariant: 'select',
           },
@@ -293,7 +293,7 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sex',
-              sqlFilterType: 'ilike',
+              sqlFilterType: 'equals',
             },
             filterVariant: 'select',
           },
