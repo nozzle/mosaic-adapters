@@ -77,12 +77,7 @@ export function seedInitialTableState<TData extends RowData>(
   };
 }
 
-/**
- * This function attempts to coerce a value into a finite number.
- * @param value Candidate value to be turned into a number
- * @returns A valid finite number or null
- */
-export function toNumberOrNull(value: unknown): number | null {
+export function toRangeValue(value: unknown): number | Date | null {
   // Handle null and undefined
   if (value === null || value === undefined) {
     return null;
@@ -94,8 +89,23 @@ export function toNumberOrNull(value: unknown): number | null {
     return isFinite(value) ? value : null;
   }
 
+  // If it's a boolean, coerce it
+  if (typeof value === 'boolean') {
+    return value ? 1 : 0;
+  }
+
+  // If it's a Date, return it
+  if (value instanceof Date) {
+    return value;
+  }
+
   // If it's a string, try to coerce it
   if (typeof value === 'string') {
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+
     // Trim whitespace
     const trimmed = value.trim();
 
@@ -108,12 +118,7 @@ export function toNumberOrNull(value: unknown): number | null {
     return isFinite(num) ? num : null;
   }
 
-  // If it's a boolean, coerce it
-  if (typeof value === 'boolean') {
-    return value ? 1 : 0;
-  }
-
-  // Try coercing other types (like Date, objects with valueOf, etc.)
+  // Try coercing other types (like objects with valueOf, etc.)
   const num = Number(value);
   return isFinite(num) ? num : null;
 }

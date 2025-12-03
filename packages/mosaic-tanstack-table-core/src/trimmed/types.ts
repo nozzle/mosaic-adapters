@@ -8,11 +8,12 @@ import type {
 } from '@tanstack/table-core';
 
 export type MosaicDataTableSqlFilterType =
-  | 'equals'
-  | 'in'
-  | 'like'
-  | 'ilike'
-  | 'range';
+  | 'EQUALS'
+  | 'LIKE'
+  | 'PARTIAL_LIKE'
+  | 'ILIKE'
+  | 'PARTIAL_ILIKE'
+  | 'RANGE';
 
 /**
  * This will be merged into the TanStack Table ColumnDef type
@@ -86,7 +87,7 @@ export interface MosaicDataTableOptions<
    * This allows other Mosaic clients (like charts) to react to table filters.
    * @default undefined
    */
-  internalFilter?: Selection | undefined;
+  tableFilterSelection?: Selection | undefined;
   /**
    * Column Definitions to use for the table instance.
    *
