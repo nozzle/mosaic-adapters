@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { flexRender } from '@tanstack/react-table';
 import { DropdownMenuTrigger } from '@radix-ui/react-dropdown-menu';
 import {
@@ -43,6 +44,10 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@/components/ui/native-select';
 
 export function ShadcnTable<TData extends RowData, TValue>(props: {
   table: TanStackTable<TData>;
@@ -68,12 +73,17 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
                 {headerGroup.headers.map((header) => {
                   return (
                     <TableHead key={header.id}>
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
+                      <div className="grid gap-1 items-start h-full">
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                        {header.column.getCanFilter() ? (
+                          <DataTableFilter column={header.column} />
+                        ) : null}
+                      </div>
                     </TableHead>
                   );
                 })}
@@ -275,7 +285,7 @@ export function DataTableColumnHeader<TData, TValue>({
   className,
 }: DataTableColumnHeaderProps<TData, TValue>) {
   if (!column.getCanSort()) {
-    return <div className={cn(className)}>{title}</div>;
+    return <div className={cn(className, 'h-8 py-1.5 px-2')}>{title}</div>;
   }
 
   const sorting = column.getIsSorted();
@@ -335,5 +345,164 @@ export function DataTableColumnHeader<TData, TValue>({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  );
+}
+
+function DataTableFilter<TData, TValue>({
+  column,
+}: {
+  column: Column<TData, TValue>;
+}) {
+  const { filterVariant = 'text', rangeFilterType } =
+    column.columnDef.meta || {};
+
+  return (
+    <div className="pb-2 w-full">
+      {filterVariant === 'range' ? (
+        <DebouncedRangeFilter column={column} type={rangeFilterType} />
+      ) : filterVariant === 'select' ? (
+        <SelectFilter column={column} />
+      ) : (
+        <DebouncedTextFilter column={column} />
+      )}
+    </div>
+  );
+}
+
+function DebouncedRangeFilter({
+  column,
+  type = 'number',
+  placeholderPrefix = '',
+}: {
+  column: any;
+  type?: 'number' | 'date';
+  placeholderPrefix?: string;
+}) {
+  const columnFilterValue = column.getFilterValue();
+  const minMax = column.getFacetedMinMaxValues();
+
+  return (
+    <div className="flex gap-1">
+      <DebouncedInput
+        type={type}
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        value={(columnFilterValue as [any, any])?.[0] ?? ''}
+        onChange={(value) =>
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+          column.setFilterValue((old: [any, any]) => [value, old?.[1]])
+        }
+        placeholder={`${
+          minMax?.[0] !== undefined ? `min ${minMax[0]}` : placeholderPrefix
+        }`}
+        // className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
+        className="text-xs placeholder:text-xs py-1 px-2 min-w-24"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <DebouncedInput
+        type={type}
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        value={(columnFilterValue as [any, any])?.[1] ?? ''}
+        onChange={(value) =>
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+          column.setFilterValue((old: [any, any]) => [old?.[0], value])
+        }
+        placeholder={`${
+          minMax?.[1] !== undefined ? `max ${minMax[1]}` : placeholderPrefix
+        }`}
+        className="text-xs placeholder:text-xs py-1 px-2 min-w-24"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  );
+}
+
+function DebouncedTextFilter<TData extends RowData, TValue>({
+  column,
+}: {
+  column: Column<TData, TValue>;
+}) {
+  const columnFilterValue = column.getFilterValue();
+
+  const inputValue =
+    typeof columnFilterValue === 'string' ? columnFilterValue : '';
+
+  return (
+    <DebouncedInput
+      type="text"
+      value={inputValue}
+      onChange={(value) => column.setFilterValue(value)}
+      placeholder="Search..."
+      className="px-2 py-1 text-xs placeholder:text-xs"
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+}
+
+function SelectFilter<TData extends RowData, TValue>({
+  column,
+}: {
+  column: Column<TData, TValue>;
+}) {
+  const colId = column.id;
+  const columnFilterValue = column.getFilterValue();
+  const uniqueValues = column.getFacetedUniqueValues();
+
+  const value =
+    typeof columnFilterValue === 'string' ||
+    typeof columnFilterValue === 'number'
+      ? columnFilterValue
+      : '';
+
+  const sortedUniqueValues = React.useMemo(
+    () => Array.from(uniqueValues.keys()).sort(),
+    [uniqueValues],
+  );
+
+  return (
+    <NativeSelect
+      value={value}
+      onChange={(e) => column.setFilterValue(e.target.value)}
+      className="px-2 py-1 text-xs w-full"
+    >
+      <NativeSelectOption value="">All</NativeSelectOption>
+      {sortedUniqueValues.map((value) => (
+        <NativeSelectOption value={value} key={colId + value}>
+          {value}
+        </NativeSelectOption>
+      ))}
+    </NativeSelect>
+  );
+}
+
+function DebouncedInput({
+  value: initialValue,
+  onChange,
+  debounce = 500,
+  ...props
+}: {
+  value: string | number;
+  onChange: (value: string | number) => void;
+  debounce?: number;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'>) {
+  const [value, setValue] = React.useState(initialValue);
+
+  React.useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+
+  React.useEffect(() => {
+    const timeout = setTimeout(() => {
+      onChange(value);
+    }, debounce);
+
+    return () => clearTimeout(timeout);
+  }, [value]);
+
+  return (
+    <Input
+      {...props}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+    />
   );
 }

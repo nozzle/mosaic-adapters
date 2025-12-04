@@ -208,98 +208,126 @@ function ColumnVisibilityControls<TData extends RowData>({
   );
 }
 
-function Filter({ column }: { column: Column<any, unknown> }) {
-  const columnFilterValue = column.getFilterValue();
-
-  const { filterVariant } = column.columnDef.meta ?? {};
-
-  const sortedUniqueValues = React.useMemo(
-    () =>
-      filterVariant === 'range'
-        ? []
-        : Array.from(column.getFacetedUniqueValues().keys())
-            .sort()
-            .slice(0, 5000),
-    [column.getFacetedUniqueValues(), filterVariant],
-  );
+function Filter<TData extends RowData, TValue>({
+  column,
+}: {
+  column: Column<TData, TValue>;
+}) {
+  const { filterVariant = 'text' } = column.columnDef.meta ?? {};
 
   return filterVariant === 'range' ? (
-    <div>
-      <div className="flex space-x-2">
-        <DebouncedInput
-          type="number"
-          min={Number(column.getFacetedMinMaxValues()?.[0] ?? '')}
-          max={Number(column.getFacetedMinMaxValues()?.[1] ?? '')}
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          value={(columnFilterValue as [number, number])?.[0] ?? ''}
-          onChange={(value) =>
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-            column.setFilterValue((old: [number, number]) => [value, old?.[1]])
-          }
-          placeholder={`Min ${
-            column.getFacetedMinMaxValues()?.[0] !== undefined
-              ? `(${column.getFacetedMinMaxValues()?.[0]})`
-              : ''
-          }`}
-          className="w-24 border shadow rounded placeholder:text-sm text-sm"
-        />
-        <DebouncedInput
-          type="number"
-          min={Number(column.getFacetedMinMaxValues()?.[0] ?? '')}
-          max={Number(column.getFacetedMinMaxValues()?.[1] ?? '')}
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          value={(columnFilterValue as [number, number])?.[1] ?? ''}
-          onChange={(value) =>
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-            column.setFilterValue((old: [number, number]) => [old?.[0], value])
-          }
-          placeholder={`Max ${
-            column.getFacetedMinMaxValues()?.[1]
-              ? `(${column.getFacetedMinMaxValues()?.[1]})`
-              : ''
-          }`}
-          className="w-24 border shadow rounded placeholder:text-sm"
-        />
-      </div>
-      <div className="h-1" />
-    </div>
+    <>
+      <DebouncedRangeFilter
+        column={column}
+        type={column.columnDef.meta?.rangeFilterType}
+      />
+    </>
   ) : filterVariant === 'select' ? (
+    <>
+      <SelectFilter column={column} />
+    </>
+  ) : (
+    <>
+      <DebouncedTextFilter column={column} />
+    </>
+  );
+}
+
+function DebouncedTextFilter<TData extends RowData, TValue>({
+  column,
+}: {
+  column: Column<TData, TValue>;
+}) {
+  const columnFilterValue = column.getFilterValue();
+
+  const inputValue =
+    typeof columnFilterValue === 'string' ? columnFilterValue : '';
+
+  return (
+    <DebouncedInput
+      type="text"
+      value={inputValue}
+      onChange={(value) => column.setFilterValue(value)}
+      placeholder="Search..."
+      className="mt-1 px-2 py-1 text-xs border rounded shadow-sm w-full font-normal text-gray-600 focus:border-blue-500 outline-none"
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+}
+
+function SelectFilter<TData extends RowData, TValue>({
+  column,
+}: {
+  column: Column<TData, TValue>;
+}) {
+  const columnFilterValue = column.getFilterValue();
+  const uniqueValues = column.getFacetedUniqueValues();
+
+  const sortedUniqueValues = React.useMemo(
+    () => Array.from(uniqueValues.keys()).sort(),
+    [uniqueValues],
+  );
+
+  return (
     <select
       onChange={(e) => column.setFilterValue(e.target.value)}
-      value={columnFilterValue?.toString()}
-      className="w-36 border shadow rounded placeholder:text-sm text-sm m-0"
+      value={columnFilterValue?.toString() || ''}
+      className="px-2 py-1 text-xs border rounded shadow-sm w-full font-normal text-gray-600 focus:border-blue-500 outline-none bg-white mt-1"
+      onClick={(e) => e.stopPropagation()}
     >
-      <option value="" className="text-sm placeholder:text-sm">
-        All
-      </option>
-      {sortedUniqueValues.map((value) => (
-        <option
-          value={value}
-          key={value}
-          className="text-sm placeholder:text-sm"
-        >
+      <option value="">All</option>
+      {sortedUniqueValues.map((value: any) => (
+        <option value={value} key={value}>
           {value}
         </option>
       ))}
     </select>
-  ) : (
-    <>
-      {/* Autocomplete suggestions from faceted values feature */}
-      <datalist id={column.id + 'list'}>
-        {sortedUniqueValues.map((value: any) => (
-          <option value={value} key={value} />
-        ))}
-      </datalist>
+  );
+}
+
+function DebouncedRangeFilter({
+  column,
+  type = 'number',
+  placeholderPrefix = '',
+}: {
+  column: any;
+  type?: 'number' | 'date';
+  placeholderPrefix?: string;
+}) {
+  const columnFilterValue = column.getFilterValue();
+  const minMax = column.getFacetedMinMaxValues();
+
+  return (
+    <div className="flex gap-1 mt-1">
       <DebouncedInput
-        type="text"
-        value={(columnFilterValue ?? '') as string}
-        onChange={(value) => column.setFilterValue(value)}
-        placeholder={`Search... (${column.getFacetedUniqueValues().size})`}
-        className="w-36 border shadow rounded placeholder:text-sm text-sm"
-        list={column.id + 'list'}
+        type={type}
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        value={(columnFilterValue as [any, any])?.[0] ?? ''}
+        onChange={(value) =>
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+          column.setFilterValue((old: [any, any]) => [value, old?.[1]])
+        }
+        placeholder={`Min ${
+          minMax?.[0] !== undefined ? `(${minMax[0]})` : placeholderPrefix
+        }`}
+        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
+        onClick={(e) => e.stopPropagation()}
       />
-      <div className="h-1" />
-    </>
+      <DebouncedInput
+        type={type}
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        value={(columnFilterValue as [any, any])?.[1] ?? ''}
+        onChange={(value) =>
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+          column.setFilterValue((old: [any, any]) => [old?.[0], value])
+        }
+        placeholder={`Max ${
+          minMax?.[1] !== undefined ? `(${minMax[1]})` : placeholderPrefix
+        }`}
+        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
   );
 }
 

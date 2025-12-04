@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
@@ -13,6 +14,9 @@ const fileURL =
 const tableName = 'athletes';
 
 const $query = vg.Selection.intersect();
+const $tableFilter = vg.Selection.intersect();
+// Combined filter for the main visualizations
+const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
 type AthleteRowData = {
   id: number;
@@ -34,7 +38,7 @@ export function AthletesView() {
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!chartDivRef.current) return;
+    if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) return;
 
     async function setup() {
       setIsPending(true);
@@ -46,15 +50,37 @@ export function AthletesView() {
           `CREATE OR REPLACE TABLE ${tableName} AS SELECT * FROM '${fileURL}'`,
         ]);
 
+      const inputs = vg.hconcat(
+        vg.menu({
+          label: 'Sport',
+          as: $query,
+          from: tableName,
+          column: 'sport',
+        }),
+        vg.menu({
+          label: 'Gender',
+          as: $query,
+          from: tableName,
+          column: 'sex',
+        }),
+        vg.search({
+          label: 'Name',
+          as: $query,
+          from: tableName,
+          column: 'name',
+          type: 'contains',
+        }),
+      );
+
       const plot = vg.plot(
-        vg.dot(vg.from(tableName), {
+        vg.dot(vg.from(tableName, { filterBy: $combined }), {
           x: 'weight',
           y: 'height',
           fill: 'sex',
           r: 2,
           opacity: 0.05,
         }),
-        vg.regressionY(vg.from(tableName, { filterBy: $query }), {
+        vg.regressionY(vg.from(tableName, { filterBy: $combined }), {
           x: 'weight',
           y: 'height',
           stroke: 'sex',
@@ -66,7 +92,9 @@ export function AthletesView() {
         vg.xyDomain(vg.Fixed),
         vg.colorDomain(vg.Fixed),
       );
-      chartDivRef.current?.replaceChildren(plot);
+
+      const layout = vg.vconcat(inputs, vg.vspace(10), plot);
+      chartDivRef.current?.replaceChildren(layout);
 
       setIsPending(false);
     }
@@ -76,7 +104,7 @@ export function AthletesView() {
 
   return (
     <>
-      <h4 className="text-lg mb-2 font-medium">Chart area</h4>
+      <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
       {isPending && <div className="italic">Loading data...</div>}
       <div ref={chartDivRef} />
       <hr className="my-4" />
@@ -113,10 +141,13 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Name" view={view} />
           ),
           accessorFn: (row) => row.name,
+          enableColumnFilter: true,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'name',
+              sqlFilterType: 'PARTIAL_ILIKE',
             },
+            filterVariant: 'text',
           },
         },
         {
@@ -129,6 +160,14 @@ function AthletesTable() {
             />
           ),
           accessorKey: 'nationality',
+          enableColumnFilter: true,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'nationality',
+              sqlFilterType: 'EQUALS', // 'equals' for drop-down exact match
+            },
+            filterVariant: 'select',
+          },
         },
         {
           id: 'Gender',
@@ -136,7 +175,12 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Gender" view={view} />
           ),
           accessorKey: 'sex',
+          enableColumnFilter: true,
           meta: {
+            mosaicDataTable: {
+              sqlColumn: 'sex',
+              sqlFilterType: 'EQUALS',
+            },
             filterVariant: 'select',
           },
         },
@@ -153,6 +197,15 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'date_of_birth',
+          enableColumnFilter: true,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'date_of_birth',
+              sqlFilterType: 'RANGE',
+            },
+            filterVariant: 'range',
+            rangeFilterType: 'date',
+          },
         },
         {
           id: 'Height',
@@ -169,8 +222,13 @@ function AthletesTable() {
           accessorKey: 'height',
           meta: {
             filterVariant: 'range',
+            rangeFilterType: 'number',
+            mosaicDataTable: {
+              sqlColumn: 'height',
+              sqlFilterType: 'RANGE',
+            },
           },
-          enableColumnFilter: false,
+          enableColumnFilter: true,
         },
         {
           id: 'Weight',
@@ -185,6 +243,14 @@ function AthletesTable() {
             return value;
           },
           accessorKey: 'weight',
+          enableColumnFilter: true,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'weight',
+              sqlFilterType: 'RANGE',
+            },
+            filterVariant: 'range',
+          },
         },
         {
           id: 'Sport',
@@ -192,6 +258,15 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Sport" view={view} />
           ),
           accessorKey: 'sport',
+          enableColumnFilter: true,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'sport',
+              // Using PARTIAL_ILIKE so 'gym' finds 'Gymnastics'
+              sqlFilterType: 'PARTIAL_ILIKE',
+            },
+            filterVariant: 'select',
+          },
         },
         {
           id: 'Gold(s)',
@@ -199,6 +274,7 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Gold(s)" view={view} />
           ),
           accessorKey: 'gold',
+          enableColumnFilter: false,
         },
         {
           id: 'Silver(s)',
@@ -206,6 +282,7 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Silver(s)" view={view} />
           ),
           accessorKey: 'silver',
+          enableColumnFilter: false,
         },
         {
           id: 'Bronze(s)',
@@ -213,6 +290,7 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Bronze(s)" view={view} />
           ),
           accessorKey: 'bronze',
+          enableColumnFilter: false,
         },
         {
           id: 'Info',
@@ -250,9 +328,10 @@ function AthletesTable() {
     [view],
   );
 
-  const { tableOptions } = useMosaicReactTable<AthleteRowData>({
+  const { tableOptions, client } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
     filterBy: $query,
+    tableFilterSelection: $tableFilter,
     columns,
     tableOptions: {
       enableHiding: true,
@@ -260,8 +339,23 @@ function AthletesTable() {
       enableSorting: true,
       enableColumnFilters: true,
     },
-    onTableStateChange: 'requestQuery',
+    onTableStateChange: 'requestUpdate',
   });
+
+  // Trigger Server-Side Facet Loading
+  useEffect(() => {
+    // TODO: Explore having these auto-load based config used in the column meta.
+
+    // Load range bounds for Height and Weight
+    client.loadColumnMinMax('Height');
+    client.loadColumnMinMax('Weight');
+
+    // Load unique values for Gender and Nationality
+    // Removed Sport facet loading as it's now a text search
+    client.loadColumnFacet('Gender');
+    client.loadColumnFacet('nationality');
+    client.loadColumnFacet('Sport');
+  }, [client]);
 
   const table = useReactTable(tableOptions);
 

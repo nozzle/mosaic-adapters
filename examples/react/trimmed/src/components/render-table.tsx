@@ -1,7 +1,7 @@
-import { useURLSearchParam } from '../hooks/useURLSearchParam';
 import { BareTable } from './bare-table';
 import { ShadcnTable } from './shadcn-table';
 import type { ColumnDef, RowData, Table } from '@tanstack/react-table';
+import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 import { Button } from '@/components/ui/button';
 
 const items = [

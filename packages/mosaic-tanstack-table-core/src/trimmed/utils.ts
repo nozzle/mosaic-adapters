@@ -37,6 +37,18 @@ export function toSafeSqlColumnName(input: string): string {
 }
 
 /**
+ * Escapes characters that have special meaning in SQL LIKE patterns.
+ * DuckDB uses backslash (\) as the default escape character.
+ *
+ * @param input - The raw user input string
+ * @returns The string with %, _, and \ escaped (e.g., "100%" -> "100\%")
+ */
+export function escapeSqlLikePattern(input: string): string {
+  // Replace backslash first to avoid double-escaping later replacements
+  return input.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+/**
  * Utility to seed initial table state with defaults.
  * @param initial - The initial state to seed from
  * @returns The seeded table state
@@ -75,4 +87,56 @@ export function seedInitialTableState<TData extends RowData>(
     },
     rowSelection: initial?.rowSelection || {},
   };
+}
+
+export function toRangeValue(value: unknown): number | Date | null {
+  // Handle null and undefined explicitly
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  // If it's already a number
+  if (typeof value === 'number') {
+    // Check for NaN and Infinity
+    return isFinite(value) ? value : null;
+  }
+
+  // If it's a boolean, coerce it
+  if (typeof value === 'boolean') {
+    return value ? 1 : 0;
+  }
+
+  // If it's a Date, return it
+  if (value instanceof Date) {
+    return value;
+  }
+
+  // If it's a string, try to coerce it
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+
+    // Empty string should return null
+    if (trimmed === '') {
+      return null;
+    }
+
+    // if simple numbers are entered.
+    // We check if it is a valid number first.
+    const num = Number(trimmed);
+    if (!isNaN(num) && isFinite(num)) {
+      return num;
+    }
+
+    // If not a number, try Date
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+
+    return null;
+  }
+
+  // Fallback for other types
+  const num = Number(value);
+  return isFinite(num) ? num : null;
 }

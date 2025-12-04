@@ -6,7 +6,13 @@ import type {
   TableState,
 } from '@tanstack/table-core';
 
-export type MosaicDataTableSqlFilterType = 'equals' | 'in' | 'like' | 'range';
+export type MosaicDataTableSqlFilterType =
+  | 'EQUALS'
+  | 'LIKE'
+  | 'PARTIAL_LIKE'
+  | 'ILIKE'
+  | 'PARTIAL_ILIKE'
+  | 'RANGE';
 
 /**
  * This will be merged into the TanStack Table ColumnDef type
@@ -76,6 +82,12 @@ export interface MosaicDataTableOptions<
    */
   filterBy?: Selection | undefined;
   /**
+   * The selection that the table writes its own internal filter state to.
+   * This allows other Mosaic clients (like charts) to react to table filters.
+   * @default undefined
+   */
+  tableFilterSelection?: Selection | undefined;
+  /**
    * Column Definitions to use for the table instance.
    *
    * When not provided, the column definitions will be inferred
@@ -98,7 +110,7 @@ export interface MosaicDataTableOptions<
    */
   totalRowsColumnName?: string;
   /**
-   * TODO: Add description
+   * Controls when the table requests a new query.
    *
    * @default 'requestUpdate'
    */
@@ -111,4 +123,10 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   rows: Array<TData>;
   totalRows: number | undefined;
   tableOptions: SubsetTableOptions<TData>;
+  /**
+   * Internal counter to force React reactivity when sidecar facet data updates.
+   * Since the Facet Maps are external to the store state, updating them doesn't
+   * naturally trigger a Store update unless we touch a value in the store.
+   */
+  _facetsUpdateCount: number;
 };
