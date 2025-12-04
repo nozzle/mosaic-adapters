@@ -46,10 +46,7 @@ export function toSafeSqlColumnName(input: string): string {
  */
 export function escapeSqlLikePattern(input: string): string {
   // Replace backslash first to avoid double-escaping later replacements
-  return input
-    .replace(/\\/g, '\\\\')
-    .replace(/%/g, '\\%')
-    .replace(/_/g, '\\_');
+  return input.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
 /**
