@@ -8,7 +8,6 @@ import { RenderTableHeader } from '@/components/render-table-header';
 import { useMosaicReactTable } from '@/useMosaicReactTable';
 import { simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
-import { DebouncedInput } from '@/components/ui/debounced-input';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
@@ -33,104 +32,6 @@ type AthleteRowData = {
   bronze: number | null;
   info: string | null;
 };
-
-// --- Filter Components ---
-
-function DebouncedTextFilter({ column }: { column: any }) {
-  const columnFilterValue = column.getFilterValue();
-  return (
-    <DebouncedInput
-      type="text"
-      value={columnFilterValue ?? ''}
-      onChange={(value) => column.setFilterValue(value)}
-      placeholder="Search..."
-      className="mt-1 px-2 py-1 text-xs border rounded shadow-sm w-full font-normal text-gray-600 focus:border-blue-500 outline-none"
-      onClick={(e) => e.stopPropagation()}
-    />
-  );
-}
-
-function SelectFilter({ column }: { column: any }) {
-  const columnFilterValue = column.getFilterValue();
-  const uniqueValues = column.getFacetedUniqueValues();
-
-  // Debug Log
-  React.useEffect(() => {
-    console.log(
-      `SelectFilter (${column.id}) Options Updated:`,
-      uniqueValues.size,
-    );
-  }, [uniqueValues, column.id]);
-
-  const sortedUniqueValues = React.useMemo(
-    () => Array.from(uniqueValues.keys()).sort().slice(0, 5000),
-    [uniqueValues],
-  );
-
-  return (
-    <div className="mt-1 w-full">
-      <select
-        onChange={(e) => column.setFilterValue(e.target.value)}
-        value={columnFilterValue?.toString() || ''}
-        className="px-2 py-1 text-xs border rounded shadow-sm w-full font-normal text-gray-600 focus:border-blue-500 outline-none bg-white"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <option value="">All</option>
-        {sortedUniqueValues.map((value: any) => (
-          <option value={value} key={value}>
-            {value}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function DebouncedRangeFilter({
-  column,
-  type = 'number',
-  placeholderPrefix = '',
-}: {
-  column: any;
-  type?: 'number' | 'date';
-  placeholderPrefix?: string;
-}) {
-  const columnFilterValue = column.getFilterValue();
-  const minMax = column.getFacetedMinMaxValues();
-
-  return (
-    <div className="flex gap-1 mt-1">
-      <DebouncedInput
-        type={type}
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        value={(columnFilterValue as [any, any])?.[0] ?? ''}
-        onChange={(value) =>
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          column.setFilterValue((old: [any, any]) => [value, old?.[1]])
-        }
-        placeholder={`Min ${
-          minMax?.[0] !== undefined ? `(${minMax[0]})` : placeholderPrefix
-        }`}
-        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
-        onClick={(e) => e.stopPropagation()}
-      />
-      <DebouncedInput
-        type={type}
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        value={(columnFilterValue as [any, any])?.[1] ?? ''}
-        onChange={(value) =>
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          column.setFilterValue((old: [any, any]) => [old?.[0], value])
-        }
-        placeholder={`Max ${
-          minMax?.[1] !== undefined ? `(${minMax[1]})` : placeholderPrefix
-        }`}
-        className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
-        onClick={(e) => e.stopPropagation()}
-      />
-    </div>
-  );
-}
 
 const noopFilter = () => true;
 
@@ -239,10 +140,7 @@ function AthletesTable() {
         {
           id: 'Name',
           header: ({ column }) => (
-            <div className="flex flex-col items-start gap-1">
-              <RenderTableHeader column={column} title="Name" view={view} />
-              <DebouncedTextFilter column={column} />
-            </div>
+            <RenderTableHeader column={column} title="Name" view={view} />
           ),
           accessorFn: (row) => row.name,
           enableColumnFilter: true,
@@ -252,19 +150,17 @@ function AthletesTable() {
               sqlColumn: 'name',
               sqlFilterType: 'PARTIAL_ILIKE',
             },
+            filterVariant: 'text',
           },
         },
         {
           id: 'nationality',
           header: ({ column }) => (
-            <div className="flex flex-col items-start gap-1">
-              <RenderTableHeader
-                column={column}
-                title="Nationality"
-                view={view}
-              />
-              <SelectFilter column={column} />
-            </div>
+            <RenderTableHeader
+              column={column}
+              title="Nationality"
+              view={view}
+            />
           ),
           accessorKey: 'nationality',
           enableColumnFilter: true,
@@ -280,11 +176,7 @@ function AthletesTable() {
         {
           id: 'Gender',
           header: ({ column }) => (
-            <div className="flex flex-col items-start gap-1">
-              <RenderTableHeader column={column} title="Gender" view={view} />
-              {/* Changed to SelectFilter for Categorical Dropdown */}
-              <SelectFilter column={column} />
-            </div>
+            <RenderTableHeader column={column} title="Gender" view={view} />
           ),
           accessorKey: 'sex',
           enableColumnFilter: true,
@@ -300,10 +192,7 @@ function AthletesTable() {
         {
           id: 'dob',
           header: ({ column }) => (
-            <div className="flex flex-col items-start gap-1">
-              <RenderTableHeader column={column} title="DOB" view={view} />
-              <DebouncedRangeFilter column={column} type="date" />
-            </div>
+            <RenderTableHeader column={column} title="DOB" view={view} />
           ),
           cell: (props) => {
             const value = props.getValue();
@@ -320,15 +209,14 @@ function AthletesTable() {
               sqlColumn: 'date_of_birth',
               sqlFilterType: 'RANGE',
             },
+            filterVariant: 'range',
+            rangeFilterType: 'date',
           },
         },
         {
           id: 'Height',
           header: ({ column }) => (
-            <div className="flex flex-col items-start gap-1">
-              <RenderTableHeader column={column} title="Height" view={view} />
-              <DebouncedRangeFilter column={column} type="number" />
-            </div>
+            <RenderTableHeader column={column} title="Height" view={view} />
           ),
           cell: (props) => {
             const value = props.getValue();
@@ -340,6 +228,7 @@ function AthletesTable() {
           accessorKey: 'height',
           meta: {
             filterVariant: 'range',
+            rangeFilterType: 'number',
             mosaicDataTable: {
               sqlColumn: 'height',
               sqlFilterType: 'RANGE',
@@ -351,10 +240,7 @@ function AthletesTable() {
         {
           id: 'Weight',
           header: ({ column }) => (
-            <div className="flex flex-col items-start gap-1">
-              <RenderTableHeader column={column} title="Weight" view={view} />
-              <DebouncedRangeFilter column={column} type="number" />
-            </div>
+            <RenderTableHeader column={column} title="Weight" view={view} />
           ),
           cell: (props) => {
             const value = props.getValue();
@@ -371,15 +257,13 @@ function AthletesTable() {
               sqlColumn: 'weight',
               sqlFilterType: 'RANGE',
             },
+            filterVariant: 'range',
           },
         },
         {
           id: 'Sport',
           header: ({ column }) => (
-            <div className="flex flex-col items-start gap-1">
-              <RenderTableHeader column={column} title="Sport" view={view} />
-              <DebouncedTextFilter column={column} />
-            </div>
+            <RenderTableHeader column={column} title="Sport" view={view} />
           ),
           accessorKey: 'sport',
           enableColumnFilter: true,
@@ -390,7 +274,7 @@ function AthletesTable() {
               // Using PARTIAL_ILIKE so 'gym' finds 'Gymnastics'
               sqlFilterType: 'PARTIAL_ILIKE',
             },
-            filterVariant: 'text',
+            filterVariant: 'select',
           },
         },
         {
@@ -399,6 +283,7 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Gold(s)" view={view} />
           ),
           accessorKey: 'gold',
+          enableColumnFilter: false,
         },
         {
           id: 'Silver(s)',
@@ -406,6 +291,7 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Silver(s)" view={view} />
           ),
           accessorKey: 'silver',
+          enableColumnFilter: false,
         },
         {
           id: 'Bronze(s)',
@@ -413,6 +299,7 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="Bronze(s)" view={view} />
           ),
           accessorKey: 'bronze',
+          enableColumnFilter: false,
         },
         {
           id: 'Info',
@@ -476,6 +363,7 @@ function AthletesTable() {
     // Removed Sport facet loading as it's now a text search
     client.loadColumnFacet('Gender');
     client.loadColumnFacet('nationality');
+    client.loadColumnFacet('Sport');
   }, [client]);
 
   const table = useReactTable(tableOptions);

@@ -5,5 +5,6 @@ declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue>
     extends MosaicDataTableColumnDefMetaOptions {
     filterVariant?: 'text' | 'range' | 'select';
+    rangeFilterType?: 'number' | 'date';
   }
 }
