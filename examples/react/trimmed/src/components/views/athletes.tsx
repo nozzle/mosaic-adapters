@@ -1,4 +1,3 @@
-// examples/react/trimmed/src/components/views/athletes.tsx
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
