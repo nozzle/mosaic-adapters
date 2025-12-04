@@ -124,4 +124,10 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   rows: Array<TData>;
   totalRows: number | undefined;
   tableOptions: SubsetTableOptions<TData>;
+  /**
+   * Internal counter to force React reactivity when sidecar facet data updates.
+   * Since the Facet Maps are external to the store state, updating them doesn't
+   * naturally trigger a Store update unless we touch a value in the store.
+   */
+  _facetsUpdateCount: number;
 };

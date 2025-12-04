@@ -1,3 +1,4 @@
+// packages/mosaic-tanstack-table-core/src/trimmed/data-table.ts
 import {
   MosaicClient,
   Selection,
@@ -10,6 +11,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { getCoreRowModel, getFacetedRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
+  escapeSqlLikePattern,
   functionalUpdate,
   seedInitialTableState,
   toRangeValue,
@@ -57,6 +59,10 @@ export function createMosaicDataTableClient<
 
 const DEFAULT_SQL_FILTER_TYPE: MosaicDataTableSqlFilterType = 'EQUALS';
 
+interface ActiveFacetClient extends MosaicClient {
+  disconnect: () => void;
+}
+
 /**
  * A Mosaic Client that does the glue work to drive TanStack Table, using it's
  * TableOptions for configuration.
@@ -81,8 +87,10 @@ export class MosaicDataTable<
   #sqlColumnAccessorToColumnDef: Map<string, ColumnDef<TData, TValue>> =
     new Map();
 
-  // Registry to track active facet sidecar clients
-  #activeFacetClients: Map<string, UniqueColumnValuesClient> = new Map();
+  // Registry to track active facet sidecar clients.
+  // We generalize this to ActiveFacetClient to support both List (Unique Values) and Range (Min/Max) clients
+  // while ensuring we can call disconnect() on them.
+  #activeFacetClients: Map<string, ActiveFacetClient> = new Map();
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
@@ -138,6 +146,7 @@ export class MosaicDataTable<
         rows: [] as ResolvedStore['rows'],
         totalRows: undefined as ResolvedStore['totalRows'],
         columnDefs: options.columns ?? ([] as ResolvedStore['columnDefs']),
+        _facetsUpdateCount: 0,
       });
     } else {
       this.#store.setState((prev) => ({
@@ -145,6 +154,16 @@ export class MosaicDataTable<
         columnDefs:
           options.columns !== undefined ? options.columns : prev.columnDefs,
       }));
+    }
+
+    // CRITICAL FIX:
+    // If columns are provided, we must immediately rebuild the internal maps
+    // that link ColumnIDs to SQL columns and Metadata.
+    // Without this, `getSqlFilters` (called during query generation) will fail
+    // to find the correct SQL column or filter type, defaulting to EQUALS
+    // which breaks Range filtering.
+    if (options.columns) {
+      this.getColumnsDefs();
     }
   }
 
@@ -186,18 +205,17 @@ export class MosaicDataTable<
 
     // Update Internal Filter Selection
     // to allow bidirectional filtering (Table -> Charts)
-    let predicate: mSql.FilterExpr | null = null;
-
-    if (internalClauses.length === 1 && internalClauses[0]) {
-      predicate = internalClauses[0];
-    } else if (internalClauses.length > 1) {
-      predicate = mSql.and(...internalClauses);
-    }
+    // We rely on mSql.and() to handle the variadic logic.
+    // If the array is empty, it returns null/undefined.
+    // If it has one item, it returns that item (identity).
+    // If it has multiple, it wraps them in a LogicalAnd node.
+    const predicate =
+      internalClauses.length > 0 ? mSql.and(...internalClauses) : null;
 
     this.tableFilterSelection.update({
       source: this,
       value: tableState.columnFilters,
-      predicate: predicate, // TODO: Get answers from Christian on why we can't just do this: mSql.and(...internalClauses)
+      predicate: predicate,
     });
 
     // Apply all where clauses to the Table Query
@@ -293,10 +311,15 @@ export class MosaicDataTable<
           break;
         }
 
-        const [rawMin, rawMax] = columnFilter.value;
+        const [rawMin, rawMax] = columnFilter.value as [unknown, unknown];
 
         const min = toRangeValue(rawMin);
         const max = toRangeValue(rawMax);
+
+        // Explicit check: If both are null, we cannot generate a valid range clause
+        if (min === null && max === null) {
+          break;
+        }
 
         // Build SQL clauses using Mosaic literals to handle type safety
         if (min !== null && max !== null) {
@@ -310,40 +333,71 @@ export class MosaicDataTable<
           clause = mSql.lte(mSql.column(columnAccessor), mSql.literal(max));
         }
 
+        // Logging to debug "Literal" input issues
+        if (!clause) {
+          logger.debug('Core', 'Empty RANGE clause generated', {
+            id: columnFilter.id,
+            rawMin,
+            rawMax,
+            parsedMin: min,
+            parsedMax: max,
+          });
+        }
+
         break;
       }
       case 'ILIKE':
       case 'LIKE':
       case 'PARTIAL_LIKE':
       case 'PARTIAL_ILIKE': {
-        if (typeof columnFilter.value !== 'string' || !columnFilter.value) {
+        const rawValue = columnFilter.value;
+
+        // 1. Strict Input Validation
+        if (typeof rawValue !== 'string' || rawValue.length === 0) {
           logger.warn(
             'Core',
-            `[MosaicDataTable] Column "${columnFilter.id}" has a non-string value but filterType is "${filterType}". Skipping to avoid invalid SQL.`,
+            `[MosaicDataTable] Column "${columnFilter.id}" has invalid value for text filter. Expected non-empty string.`,
+            { value: rawValue, filterType },
           );
           break;
         }
-        const isLike = filterType === 'LIKE' || filterType === 'PARTIAL_ILIKE';
+
+        // 2. Determine Operator (Case Sensitivity)
+        // Explicitly map types to operators to avoid boolean logic confusion
+        const isCaseSensitive =
+          filterType === 'LIKE' || filterType === 'PARTIAL_LIKE';
+        const operator = isCaseSensitive ? 'LIKE' : 'ILIKE';
+
+        // 3. Determine Pattern (Partial vs Exact)
         const isPartial =
           filterType === 'PARTIAL_LIKE' || filterType === 'PARTIAL_ILIKE';
 
-        const operator = isLike ? 'LIKE' : 'ILIKE';
-        const lookup = isPartial
-          ? mSql.literal('%' + columnFilter.value + '%')
-          : mSql.literal(columnFilter.value);
+        let pattern: string;
 
-        clause = mSql.sql`${mSql.column(columnAccessor)} ${operator} ${lookup}`;
+        if (isPartial) {
+          // Hardening: Escape wildcards so "100%" means literal 100%, not "100[anything]"
+          pattern = `%${escapeSqlLikePattern(rawValue)}%`;
+        } else {
+          // For exact/wildcard modes, we trust the input is either exact
+          // or the developer intentionally wants to allow wildcards (standard SQL behavior)
+          pattern = rawValue;
+        }
+
+        // 4. Construct Query
+        // mSql.literal handles SQL Injection safety (quote escaping)
+        clause = mSql.sql`${mSql.column(columnAccessor)} ${operator} ${mSql.literal(pattern)}`;
         break;
       }
       case 'EQUALS': {
+        // Fix: Allow 0, false, but reject null, undefined, empty string
         if (
-          columnFilter.value === '' ||
           columnFilter.value === null ||
-          columnFilter.value === undefined
+          columnFilter.value === undefined ||
+          columnFilter.value === ''
         ) {
           logger.warn(
             'Core',
-            `[MosaicDataTable] Column "${columnFilter.id}" has an empty value but filterType is "equals". Skipping to avoid invalid SQL.`,
+            `[MosaicDataTable] Column "${columnFilter.id}" has empty value for EQUALS filter.`,
           );
           break;
         }
@@ -511,7 +565,10 @@ export class MosaicDataTable<
         this.facets.set(columnId, values);
         // Trigger a state update so React re-renders the dropdowns
         batch(() => {
-          this.#store.setState((prev) => ({ ...prev }));
+          this.#store.setState((prev) => ({
+            ...prev,
+            _facetsUpdateCount: prev._facetsUpdateCount + 1,
+          }));
         });
       },
     });
@@ -524,31 +581,45 @@ export class MosaicDataTable<
 
   /**
    * Loads Min/Max values for a column (for Range Sliders).
+   *
+   * This registers a "Sidecar Client" that listens to the Coordinator.
+   * Unlike a one-off query, this ensures that if external charts filter the data,
+   * the Min/Max bounds of our slider will update to reflect the new subset.
    */
   loadColumnMinMax(columnId: string) {
     const sqlColumn = this.#columnDefIdToSqlColumnAccessor.get(columnId);
     if (!sqlColumn) return;
 
-    // TODO: Get answers from Christian on why a Mosaic client is not being used here.
-    // We create a temporary query just to fetch this one metric
-    const query = mSql.Query.from(this.sourceTable()).select({
-      min: mSql.min(mSql.column(sqlColumn)),
-      max: mSql.max(mSql.column(sqlColumn)),
-    });
+    // Unique key to prevent duplicate listeners for the same column
+    const clientKey = `${columnId}_minmax`;
+    if (this.#activeFacetClients.has(clientKey)) return;
 
-    this.coordinator?.exec(query).then((result) => {
-      if (isArrowTable(result)) {
-        const row = result.toArray()[0] as any;
-        // TanStack expects [min, max]
-        const minMax = [row.min, row.max];
+    const facetClient = new MinMaxColumnValuesClient({
+      table: this.sourceTable(),
+      column: sqlColumn,
+      filterBy: this.filterBy, // Listen to global selection
+      coordinator: this.coordinator,
+      // Cascading: Include all table filters *except* this column's own filter
+      getInternalFilter: () => this.getSqlFilters(columnId),
+      onResult: (min, max) => {
+        this.facets.set(columnId, [min, max]);
 
-        this.facets.set(columnId, minMax);
-
+        // Trigger React re-render by touching the store
         batch(() => {
-          this.#store.setState((prev) => ({ ...prev }));
+          this.#store.setState((prev) => ({
+            ...prev,
+            _facetsUpdateCount: prev._facetsUpdateCount + 1,
+          }));
         });
-      }
+      },
     });
+
+    // Register for automatic cleanup via destroy()
+    this.#activeFacetClients.set(clientKey, facetClient);
+
+    // Activate
+    facetClient.connect();
+    facetClient.requestUpdate();
   }
 
   // --- Core Helpers ---
@@ -809,21 +880,25 @@ export class MosaicDataTable<
     columnId: string,
   ) => () => Map<any, number> {
     return (_table, columnId) => {
-      const values = this.getFacets().get(columnId);
+      // Return a closure that reads the current value from the Map at the time of execution.
+      // Previously, this captured the value at the time of *option creation*, leading to stale closures.
+      return () => {
+        const values = this.getFacets().get(columnId);
 
-      if (!values) {
-        return () => new Map<any, number>();
-      }
+        if (!values) {
+          return new Map<any, number>();
+        }
 
-      if (Array.isArray(values)) {
-        const map = new Map<any, number>();
-        values.forEach((value) => {
-          map.set(value, 1);
-        });
-        return () => map;
-      }
+        if (Array.isArray(values)) {
+          const map = new Map<any, number>();
+          values.forEach((value) => {
+            map.set(value, 1);
+          });
+          return map;
+        }
 
-      return () => new Map<any, number>();
+        return new Map<any, number>();
+      };
     };
   }
 
@@ -832,11 +907,14 @@ export class MosaicDataTable<
     columnId: string,
   ) => () => [any, any] | undefined {
     return (_table, columnId) => {
-      const values = this.getFacets().get(columnId);
-      if (Array.isArray(values) && values.length === 2) {
-        return () => values as [any, any];
-      }
-      return () => undefined;
+      // Return a closure that reads the current value from the Map at the time of execution.
+      return () => {
+        const values = this.getFacets().get(columnId);
+        if (Array.isArray(values) && values.length === 2) {
+          return values as [any, any];
+        }
+        return undefined;
+      };
     };
   }
 
@@ -930,6 +1008,94 @@ export class UniqueColumnValuesClient extends MosaicClient {
       this.onResult(values);
     }
 
+    return this;
+  }
+}
+
+/**
+ * A sidecar Mosaic Client specifically for fetching Min/Max values.
+ *
+ * ARCHITECTURE NOTE:
+ * We use a separate Client instance for this (instead of a one-off query)
+ * so that it participates in the Mosaic lifecycle. When global filters change
+ * (e.g. a user brushes a chart), the Coordinator will notify this client,
+ * causing it to re-fetch the new Min/Max bounds automatically.
+ */
+export class MinMaxColumnValuesClient extends MosaicClient {
+  private from: string;
+  private column: string;
+  private getInternalFilter?: () => Array<mSql.FilterExpr>;
+  private onResult: (min: any, max: any) => void;
+
+  constructor(options: {
+    filterBy?: Selection;
+    coordinator?: Coordinator | null;
+    table: string;
+    column: string;
+    getInternalFilter?: () => Array<mSql.FilterExpr>;
+    onResult: (min: any, max: any) => void;
+  }) {
+    super(options.filterBy);
+    this.coordinator = options.coordinator ?? defaultCoordinator();
+    this.from = options.table;
+    this.column = options.column;
+    this.getInternalFilter = options.getInternalFilter;
+    this.onResult = options.onResult;
+  }
+
+  connect(): void {
+    this.coordinator?.connect(this);
+  }
+
+  disconnect(): void {
+    this.coordinator?.disconnect(this);
+  }
+
+  override query(primaryFilter?: FilterExpr | null): SelectQuery {
+    const col = mSql.column(this.column);
+
+    // Select Min and Max.
+    // Note: We do not GROUP BY here, as we want the extent of the whole filtered dataset.
+    const statement = mSql.Query.from(this.from).select({
+      min: mSql.min(col),
+      max: mSql.max(col),
+    });
+
+    const whereClauses: Array<mSql.FilterExpr> = [];
+
+    // 1. Apply Global Mosaic Filters (e.g. Charts)
+    if (primaryFilter) {
+      whereClauses.push(primaryFilter);
+    }
+
+    // 2. Apply Table Internal Filters (Cascading)
+    if (this.getInternalFilter) {
+      const internal = this.getInternalFilter();
+      if (internal.length > 0) {
+        whereClauses.push(...internal);
+      }
+    }
+
+    if (whereClauses.length > 0) {
+      statement.where(mSql.and(...whereClauses));
+    }
+
+    logger.debug('Core', `[MinMax] Generated Query for ${this.column}`, {
+      sql: statement.toString(),
+    });
+
+    return statement;
+  }
+
+  override queryResult(table: unknown): this {
+    if (isArrowTable(table)) {
+      const rows = table.toArray();
+      if (rows.length > 0) {
+        const row = rows[0] as any;
+        // Callback to update the main Table store
+        this.onResult(row.min, row.max);
+      }
+    }
     return this;
   }
 }

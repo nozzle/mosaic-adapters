@@ -1,3 +1,4 @@
+// packages/mosaic-tanstack-table-core/src/trimmed/utils.ts
 import type { RowData, TableOptions, TableState } from '@tanstack/table-core';
 
 /**
@@ -34,6 +35,21 @@ export function toSafeSqlColumnName(input: string): string {
   }
 
   return name;
+}
+
+/**
+ * Escapes characters that have special meaning in SQL LIKE patterns.
+ * DuckDB uses backslash (\) as the default escape character.
+ *
+ * @param input - The raw user input string
+ * @returns The string with %, _, and \ escaped (e.g., "100%" -> "100\%")
+ */
+export function escapeSqlLikePattern(input: string): string {
+  // Replace backslash first to avoid double-escaping later replacements
+  return input
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_');
 }
 
 /**
@@ -78,7 +94,7 @@ export function seedInitialTableState<TData extends RowData>(
 }
 
 export function toRangeValue(value: unknown): number | Date | null {
-  // Handle null and undefined
+  // Handle null and undefined explicitly
   if (value === null || value === undefined) {
     return null;
   }
@@ -101,12 +117,6 @@ export function toRangeValue(value: unknown): number | Date | null {
 
   // If it's a string, try to coerce it
   if (typeof value === 'string') {
-    const date = new Date(value);
-    if (!isNaN(date.getTime())) {
-      return date;
-    }
-
-    // Trim whitespace
     const trimmed = value.trim();
 
     // Empty string should return null
@@ -114,11 +124,23 @@ export function toRangeValue(value: unknown): number | Date | null {
       return null;
     }
 
+    // if simple numbers are entered.
+    // We check if it is a valid number first.
     const num = Number(trimmed);
-    return isFinite(num) ? num : null;
+    if (!isNaN(num) && isFinite(num)) {
+      return num;
+    }
+
+    // If not a number, try Date
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+
+    return null;
   }
 
-  // Try coercing other types (like objects with valueOf, etc.)
+  // Fallback for other types
   const num = Number(value);
   return isFinite(num) ? num : null;
 }

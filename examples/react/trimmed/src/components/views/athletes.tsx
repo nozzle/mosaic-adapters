@@ -1,3 +1,4 @@
+// examples/react/trimmed/src/components/views/athletes.tsx
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
@@ -282,7 +283,8 @@ function AthletesTable() {
           header: ({ column }) => (
             <div className="flex flex-col items-start gap-1">
               <RenderTableHeader column={column} title="Gender" view={view} />
-              <DebouncedTextFilter column={column} />
+              {/* Changed to SelectFilter for Categorical Dropdown */}
+              <SelectFilter column={column} />
             </div>
           ),
           accessorKey: 'sex',
@@ -386,9 +388,10 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sport',
-              sqlFilterType: 'ILIKE',
+              // Using PARTIAL_ILIKE so 'gym' finds 'Gymnastics'
+              sqlFilterType: 'PARTIAL_ILIKE',
             },
-            filterVariant: 'select',
+            filterVariant: 'text',
           },
         },
         {
@@ -468,10 +471,9 @@ function AthletesTable() {
     client.loadColumnMinMax('Height');
     client.loadColumnMinMax('Weight');
 
-    // Load unique values for Sport and Gender
-    client.loadColumnFacet('Sport');
+    // Load unique values for Gender and Nationality
+    // Removed Sport facet loading as it's now a text search
     client.loadColumnFacet('Gender');
-    // NEW: Load unique values for Nationality
     client.loadColumnFacet('nationality');
   }, [client]);
 
