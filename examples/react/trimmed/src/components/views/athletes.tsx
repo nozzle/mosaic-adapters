@@ -33,8 +33,6 @@ type AthleteRowData = {
   info: string | null;
 };
 
-const noopFilter = () => true;
-
 export function AthletesView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
@@ -144,7 +142,6 @@ function AthletesTable() {
           ),
           accessorFn: (row) => row.name,
           enableColumnFilter: true,
-          filterFn: noopFilter,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'name',
@@ -164,7 +161,6 @@ function AthletesTable() {
           ),
           accessorKey: 'nationality',
           enableColumnFilter: true,
-          filterFn: noopFilter,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'nationality',
@@ -180,7 +176,6 @@ function AthletesTable() {
           ),
           accessorKey: 'sex',
           enableColumnFilter: true,
-          filterFn: noopFilter,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sex',
@@ -203,7 +198,6 @@ function AthletesTable() {
           },
           accessorKey: 'date_of_birth',
           enableColumnFilter: true,
-          filterFn: noopFilter,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'date_of_birth',
@@ -235,7 +229,6 @@ function AthletesTable() {
             },
           },
           enableColumnFilter: true,
-          filterFn: noopFilter,
         },
         {
           id: 'Weight',
@@ -251,7 +244,6 @@ function AthletesTable() {
           },
           accessorKey: 'weight',
           enableColumnFilter: true,
-          filterFn: noopFilter,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'weight',
@@ -267,7 +259,6 @@ function AthletesTable() {
           ),
           accessorKey: 'sport',
           enableColumnFilter: true,
-          filterFn: noopFilter,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sport',
