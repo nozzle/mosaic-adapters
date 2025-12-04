@@ -1,4 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/trimmed/types.ts
 import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
 import type {
   ColumnDef,

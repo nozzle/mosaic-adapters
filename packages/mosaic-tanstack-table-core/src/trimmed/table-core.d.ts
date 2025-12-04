@@ -1,4 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/trimmed/table-core.d.ts
 import '@tanstack/table-core';
 import type { RowData } from '@tanstack/table-core';
 import type { MosaicDataTableColumnDefMetaOptions } from './types';

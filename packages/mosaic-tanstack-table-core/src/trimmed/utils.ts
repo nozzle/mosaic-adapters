@@ -1,4 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/trimmed/utils.ts
 import type { RowData, TableOptions, TableState } from '@tanstack/table-core';
 
 /**
