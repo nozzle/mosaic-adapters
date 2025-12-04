@@ -466,6 +466,8 @@ function AthletesTable() {
 
   // Trigger Server-Side Facet Loading
   useEffect(() => {
+    // TODO: Explore having these auto-load based config used in the column meta.
+
     // Load range bounds for Height and Weight
     client.loadColumnMinMax('Height');
     client.loadColumnMinMax('Weight');
