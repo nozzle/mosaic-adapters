@@ -18,25 +18,6 @@ export type MosaicDataTableSqlFilterType =
 /**
  * This will be merged into the TanStack Table ColumnDef type
  * to provide Mosaic-specific metadata options.
- *
- * This is pretty much exclusively for TypeScript users to get
- * type safety and autocompletion when defining columns.
- *
- * @example
- * ```ts
- * // tanstack.-table.d.ts
- * import "@tanstack/react-table";
- * import type {
- *  MosaicDataTableColumnDefMetaOptions
- * } from "@nozzleio/mosaic-tanstack-table-core/trimmed";
- *
- * declare module "@tanstack/react-table" {
- *   interface ColumnMeta<TData extends RowData, TValue>
- *     extends MosaicDataTableColumnDefMetaOptions {
- *     // Additional custom meta options can go here too
- *   }
- * }
- * ```
  */
 export type MosaicDataTableColumnDefMetaOptions = {
   mosaicDataTable?: {
@@ -138,8 +119,11 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   tableOptions: SubsetTableOptions<TData>;
   /**
    * Internal counter to force React reactivity when sidecar facet data updates.
-   * Since the Facet Maps are external to the store state, updating them doesn't
-   * naturally trigger a Store update unless we touch a value in the store.
    */
   _facetsUpdateCount: number;
+  /**
+   * Stores the filter state signature from the last successful query.
+   * Used to determine if we can skip the expensive COUNT(*) OVER() operation.
+   */
+  _lastFilterSignature?: string;
 };

@@ -11,13 +11,20 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   mapper: ColumnMapper<TData, TValue>;
   totalRowsColumnName: string;
   excludeColumnId?: string; // For cascading facets
+  includeTotalCount?: boolean; // Optimization flag
 }
 
 export function buildTableQuery<TData extends RowData, TValue>(
   options: QueryBuilderOptions<TData, TValue>,
 ): SelectQuery {
-  const { source, tableState, mapper, totalRowsColumnName, excludeColumnId } =
-    options;
+  const {
+    source,
+    tableState,
+    mapper,
+    totalRowsColumnName,
+    excludeColumnId,
+    includeTotalCount = true,
+  } = options;
 
   const { pagination, sorting, columnFilters } = tableState;
 
@@ -27,18 +34,18 @@ export function buildTableQuery<TData extends RowData, TValue>(
     .map((col) => mSql.column(col));
 
   // 2. Base Query Construction
-  // We use the "Wrapper Query" pattern.
-  // Whether the source is a raw table string or a complex subquery object,
-  // we wrap it in a new SELECT statement.
-  // This allows us to apply Pagination (LIMIT/OFFSET) and Sorting (ORDER BY)
-  // to the *results* of complex aggregations uniformly.
-  const statement = mSql.Query.from(source).select(...selectColumns, {
-    // Window Function Trick:
-    // We ask the DB to count the total rows in the *result set* (OVER())
-    // and return it as a column on every row.
-    // This avoids a separate network round-trip just to get the page count.
-    [totalRowsColumnName]: mSql.sql`COUNT(*) OVER()`,
-  });
+  const selectMap: Record<string, any> = {};
+
+  // Optimization: Only include the Window Function if requested
+  if (includeTotalCount) {
+    selectMap[totalRowsColumnName] = mSql.sql`COUNT(*) OVER()`;
+  }
+
+  // We append the selectColumns...
+  const statement = mSql.Query.from(source).select(
+    ...selectColumns,
+    selectMap,
+  );
 
   // 3. Generate WHERE Clauses (Internal Table Filters)
   const whereClauses: Array<mSql.FilterExpr> = [];
@@ -74,7 +81,6 @@ export function buildTableQuery<TData extends RowData, TValue>(
   }
 
   // 4. Apply Sorting
-  // Only sort by columns that exist in our mapping
   const orderingCriteria: Array<mSql.OrderByNode> = [];
   sorting.forEach((sort) => {
     const sqlColumn = mapper.getSqlColumn(sort.id);
@@ -103,6 +109,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
     {
       sql: statement.toString(),
       isSubQuery: typeof source !== 'string',
+      includesCount: includeTotalCount,
       context: {
         pagination,
         sorting,
@@ -116,7 +123,6 @@ export function buildTableQuery<TData extends RowData, TValue>(
 
 /**
  * Helper to extract just the internal filter expressions for cross-filtering.
- * This effectively runs the "WHERE" generation logic without constructing a full SELECT.
  */
 export function extractInternalFilters<TData extends RowData, TValue>(options: {
   tableState: TableState;

@@ -41,19 +41,10 @@ import type {
   MosaicTableSource,
 } from './types';
 
-/**
- * This is a factory function to create a MosaicDataTable client.
- *
- * @typeParam `TData` The row data type used in TanStack Table.
- * @typeParam `TValue` The cell value type used in TanStack Table.
- * @param options Options to be passed into the constructor of the MosaicDataTable.
- * @returns A new instance of the MosaicDataTable client.
- */
 export function createMosaicDataTableClient<
   TData extends RowData,
   TValue = unknown,
 >(options: MosaicDataTableOptions<TData, TValue>) {
-  // Initialize the table client
   const client = new MosaicDataTable<TData, TValue>(options);
   return client;
 }
@@ -63,10 +54,6 @@ interface ActiveFacetClient extends MosaicClient {
   requestUpdate: () => void;
 }
 
-/**
- * A Mosaic Client that does the glue work to drive TanStack Table, using it's
- * TableOptions for configuration.
- */
 export class MosaicDataTable<
   TData extends RowData,
   TValue = unknown,
@@ -87,18 +74,13 @@ export class MosaicDataTable<
   #facetValues: Map<string, any> = new Map();
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
-    super(options.filterBy); // pass the appropriate Filter Selection
+    super(options.filterBy);
 
     this.source = options.table;
 
     this.updateOptions(options);
   }
 
-  /**
-   * When options are updated from framework-land, we need to update
-   * the internal store and state accordingly.
-   * @param options The updated options from framework-land.
-   */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
     logger.debug('Core', 'updateOptions received', {
       columnsCount: options.columns?.length,
@@ -117,7 +99,6 @@ export class MosaicDataTable<
       this.tableFilterSelection = new Selection();
     }
 
-    // Ensure we have a coordinator assigned
     if (!this.coordinator) {
       const coordinatorInstance = options.coordinator ?? defaultCoordinator();
       this.coordinator = coordinatorInstance;
@@ -127,7 +108,8 @@ export class MosaicDataTable<
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (!this.#store) {
-      this.#store = new Store({
+      // Explicitly type the Store to ensure _lastFilterSignature is string | undefined, not just undefined
+      this.#store = new Store<ResolvedStore>({
         tableState: seedInitialTableState<TData>(
           options.tableOptions?.initialState,
         ),
@@ -138,6 +120,7 @@ export class MosaicDataTable<
         totalRows: undefined as ResolvedStore['totalRows'],
         columnDefs: options.columns ?? ([] as ResolvedStore['columnDefs']),
         _facetsUpdateCount: 0,
+        _lastFilterSignature: undefined,
       });
     } else {
       this.#store.setState((prev) => ({
@@ -147,15 +130,11 @@ export class MosaicDataTable<
       }));
     }
 
-    // If columns are provided, update the mapper.
     if (options.columns) {
       this.#columnMapper = new ColumnMapper(options.columns);
     }
   }
 
-  /**
-   * Resolves the current source. If it's a function, call it with the optional filter.
-   */
   resolveSource(filter?: FilterExpr | null): string | SelectQuery {
     if (typeof this.source === 'function') {
       return this.source(filter);
@@ -163,28 +142,61 @@ export class MosaicDataTable<
     return this.source;
   }
 
+  /**
+   * Generates a signature of the current filtering state.
+   * This includes external filters (filterBy) and internal table filters.
+   */
+  private generateFilterSignature(
+    primaryFilter?: FilterExpr | null,
+  ): string | undefined {
+    // We need to capture everything that affects the Row Count.
+    // 1. Primary Filter (external)
+    const primarySig = primaryFilter ? primaryFilter.toString() : 'null';
+
+    // 2. Internal Filters (column filters)
+    // We can use the tableState directly
+    const internalFilters = this.#store.state.tableState.columnFilters;
+    const internalSig = JSON.stringify(internalFilters);
+
+    return `${primarySig}::${internalSig}`;
+  }
+
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
     // 1. Resolve Source
-    // Pass the primary filter down. If source is a function, it should handle it.
     const source = this.resolveSource(primaryFilter);
     const tableState = this.#store.state.tableState;
 
-    // 2. Delegate Query Building
+    // 2. Smart Counting Logic
+    // We compare the current filter signature with the previous one.
+    // If they match, and we already have a total row count, we can skip the COUNT(*) OVER() overhead.
+    const currentFilterSignature = this.generateFilterSignature(primaryFilter);
+    const lastSignature = this.#store.state._lastFilterSignature;
+    const hasTotalRows = this.#store.state.totalRows !== undefined;
+
+    // Optimization: Skip count if filters haven't changed and we have a count
+    const shouldRecalculateCount =
+      !hasTotalRows || currentFilterSignature !== lastSignature;
+
+    // If we skip recalculation, update the store to confirm the signature remains valid
+    if (!shouldRecalculateCount) {
+      logger.info('Core', 'Smart Count Optimization: Skipping COUNT(*) OVER()');
+    }
+
+    // 3. Delegate Query Building
     const statement = buildTableQuery({
       source,
       tableState,
       mapper: this.#columnMapper,
       totalRowsColumnName: this.#sql_total_rows,
+      includeTotalCount: shouldRecalculateCount,
     });
 
-    // 3. Apply Primary Filter (Conditional)
-    // Only apply the filter to the wrapper query if the source was a raw string.
-    // If source was a Query object (from a function), we assume the function applied the filter internally.
+    // 4. Apply Primary Filter (Conditional)
     if (primaryFilter && typeof this.source === 'string') {
       statement.where(primaryFilter);
     }
 
-    // 4. Side Effect: Update Internal Filter Selection
+    // 5. Side Effect: Update Internal Filter Selection
     const internalClauses = extractInternalFilters({
       tableState,
       mapper: this.#columnMapper,
@@ -199,20 +211,25 @@ export class MosaicDataTable<
       predicate: predicate,
     });
 
+    // 6. Persist the signature for next time
+    // We update the store signature NOW, so the next query knows.
+    if (shouldRecalculateCount) {
+      batch(() => {
+        this.#store.setState((prev) => ({
+          ...prev,
+          _lastFilterSignature: currentFilterSignature,
+        }));
+      });
+    }
+
     return statement;
   }
 
-  /**
-   * Generates SQL Filter Expressions from the current table state,
-   * excluding a specific column ID (for cascading facets).
-   * Used by the Facet Sidecar Clients.
-   */
   public getCascadingFilters(options: {
     excludeColumnId: string;
   }): Array<mSql.FilterExpr> {
     const tableState = this.#store.state.tableState;
 
-    // Filter the state before passing to helper.
     const filteredState = {
       ...tableState,
       columnFilters: tableState.columnFilters.filter(
@@ -238,11 +255,9 @@ export class MosaicDataTable<
   override queryResult(table: unknown): this {
     if (isArrowTable(table)) {
       let totalRows: number | undefined = undefined;
-
-      // Convert Arrow Table to rows array for TanStack Table
       const rows = table.toArray() as Array<TData>;
 
-      // Check for the total rows column identifier
+      // 1. Try to get Total Rows from the current result set
       if (
         rows.length > 0 &&
         rows[0] &&
@@ -251,6 +266,12 @@ export class MosaicDataTable<
       ) {
         const firstRow = rows[0] as Record<string, any>;
         totalRows = firstRow[this.#sql_total_rows];
+      }
+
+      // 2. Fallback: If optimization was triggered, the column is missing.
+      // We retain the existing totalRows from the store.
+      if (totalRows === undefined) {
+        totalRows = this.#store.state.totalRows;
       }
 
       batch(() => {
@@ -271,8 +292,6 @@ export class MosaicDataTable<
 
   override async prepare(): Promise<void> {
     const source = this.resolveSource();
-    // Only query schema if source is a table name.
-    // Schema inference for arbitrary queries is harder/not supported by `queryFieldInfo` yet.
     if (typeof source === 'string') {
       const schema = await queryFieldInfo(this.coordinator!, this.fields());
       this.schema = schema;
@@ -281,16 +300,12 @@ export class MosaicDataTable<
   }
 
   connect(): () => void {
-    // Connect to the coordinator
     this.coordinator?.connect(this);
     this.enabled = true;
 
     const destroy = this.destroy.bind(this);
 
-    // Setup the primary selection change listener to reset pagination
     const selectionCb = (_: Array<SelectionClause> | undefined) => {
-      // Re-trigger query because if source is a function, it might rely on the Selection value
-      // which has just updated.
       this.requestUpdate();
 
       batch(() => {
@@ -320,21 +335,12 @@ export class MosaicDataTable<
     this.#facetClients.clear();
   }
 
-  /**
-   * Loads unique values for a specific column (for Select dropdowns).
-   * Respects the external `filterBy` selection AND internal cascading filters.
-   */
   loadColumnFacet(columnId: string) {
-    // Resolve SQL column via Mapper
     const sqlColumn = this.#columnMapper.getSqlColumn(columnId);
-    if (!sqlColumn) {
-      return;
-    }
+    if (!sqlColumn) return;
 
     const clientKey = `${columnId}:unique`;
-    if (this.#facetClients.has(clientKey)) {
-      return;
-    }
+    if (this.#facetClients.has(clientKey)) return;
 
     const facetClient = new UniqueColumnValuesClient({
       source: this.source,
@@ -360,20 +366,12 @@ export class MosaicDataTable<
     facetClient.requestUpdate();
   }
 
-  /**
-   * Loads Min/Max values for a column (for Range Sliders).
-   */
   loadColumnMinMax(columnId: string) {
-    // Resolve SQL column via Mapper
     const sqlColumn = this.#columnMapper.getSqlColumn(columnId);
-    if (!sqlColumn) {
-      return;
-    }
+    if (!sqlColumn) return;
 
     const clientKey = `${columnId}:minmax`;
-    if (this.#facetClients.has(clientKey)) {
-      return;
-    }
+    if (this.#facetClients.has(clientKey)) return;
 
     const facetClient = new MinMaxColumnValuesClient({
       source: this.source,
@@ -399,21 +397,14 @@ export class MosaicDataTable<
     facetClient.requestUpdate();
   }
 
-  /**
-   * Map TanStack Table's ColumnDefs to Mosaic FieldInfoRequests.
-   */
   fields(): Array<FieldInfoRequest> {
     const source = this.resolveSource();
     if (typeof source !== 'string') {
-      return []; // Cannot pre-fetch schema for query objects
+      return [];
     }
-    // Use the Mapper logic
     return this.#columnMapper.getMosaicFieldRequests(source);
   }
 
-  /**
-   * Map the MosaicDataTableStore state to TanStack TableOptions.
-   */
   getTableOptions(
     state: Store<MosaicDataTableStore<TData, TValue>>['state'],
   ): TableOptions<TData> {
@@ -460,7 +451,6 @@ export class MosaicDataTable<
             this.#facetClients.forEach((client) => client.requestUpdate());
           }
 
-          // Semantic logging hook: Logs only the diff between previous and new state
           logger.info('Core', 'StateChange', tableState);
 
           this[this.#onTableStateChange]();
@@ -529,21 +519,16 @@ type FacetClientConfig<TResult extends Array<any>> = {
   onResult: (...values: TResult) => void;
 };
 
-/**
- * This is a helper Mosaic Client to query unique values for a given column.
- */
 export class UniqueColumnValuesClient extends MosaicClient {
   source: MosaicTableSource;
   column: string;
   getFilterExpressions?: () => Array<mSql.FilterExpr>;
   onResult: (values: Array<unknown>) => void;
+  lastQuerySql?: string; // Cache for deduping
 
   constructor(options: FacetClientConfig<Array<unknown>>) {
     super(options.filterBy);
-
-    // Explicitly set coordinator to avoid null reference in requestQuery
     this.coordinator = options.coordinator ?? defaultCoordinator();
-
     this.source = options.source;
     this.column = options.column;
     this.getFilterExpressions = options.getFilterExpressions;
@@ -551,11 +536,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
   }
 
   connect(): void {
-    // Safety check
     if (!this.coordinator) {
-      console.warn(
-        '[UniqueColumnValuesClient] Coordinator is missing in connect(), attempting to use default',
-      );
       this.coordinator = defaultCoordinator();
     }
     this.coordinator?.connect(this);
@@ -566,6 +547,23 @@ export class UniqueColumnValuesClient extends MosaicClient {
   }
 
   override requestQuery(query?: any) {
+    // Optimization: Dedupe query generation
+    if (!query) {
+      // If we are requesting a generic update (no explicit query override),
+      // verify if the generated SQL is different from the last run.
+      // We have to simulate the query generation to check.
+      const predicate = this.filterBy ? this.filterBy.predicate(this) : null;
+      const nextQuery = this.query(predicate);
+      const nextSql = nextQuery.toString();
+
+      if (this.lastQuerySql === nextSql) {
+        // No change, skip the roundtrip
+        // return resolved promise
+        return Promise.resolve(this);
+      }
+      this.lastQuerySql = nextSql;
+    }
+
     if (!this.coordinator) {
       return Promise.resolve(this);
     }
@@ -573,7 +571,6 @@ export class UniqueColumnValuesClient extends MosaicClient {
   }
 
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
-    // Resolve source with filter if it's a function
     let src: string | SelectQuery;
     if (typeof this.source === 'function') {
       src = this.source(primaryFilter);
@@ -581,11 +578,9 @@ export class UniqueColumnValuesClient extends MosaicClient {
       src = this.source;
     }
 
-    // Select column FROM source
     const statement = mSql.Query.from(src).select(this.column);
     const whereClauses: Array<mSql.FilterExpr> = [];
 
-    // Only apply primaryFilter here if source is a string
     if (primaryFilter && typeof this.source === 'string') {
       whereClauses.push(primaryFilter);
     }
@@ -621,21 +616,16 @@ export class UniqueColumnValuesClient extends MosaicClient {
   }
 }
 
-/**
- * A helper Mosaic Client to query Min and Max values for a given column.
- */
 export class MinMaxColumnValuesClient extends MosaicClient {
   private source: MosaicTableSource;
   private column: string;
   private getFilterExpressions?: () => Array<mSql.FilterExpr>;
   private onResult: (min: number, max: number) => void;
+  private lastQuerySql?: string;
 
   constructor(options: FacetClientConfig<[number, number]>) {
     super(options.filterBy);
-
-    // Explicitly set coordinator to avoid null reference in requestQuery
     this.coordinator = options.coordinator ?? defaultCoordinator();
-
     this.source = options.source;
     this.column = options.column;
     this.getFilterExpressions = options.getFilterExpressions;
@@ -643,11 +633,7 @@ export class MinMaxColumnValuesClient extends MosaicClient {
   }
 
   connect(): void {
-    // Safety check
     if (!this.coordinator) {
-      console.warn(
-        '[MinMaxColumnValuesClient] Coordinator is missing in connect(), attempting to use default',
-      );
       this.coordinator = defaultCoordinator();
     }
     this.coordinator?.connect(this);
@@ -658,6 +644,17 @@ export class MinMaxColumnValuesClient extends MosaicClient {
   }
 
   override requestQuery(query?: any) {
+    if (!query) {
+      const predicate = this.filterBy ? this.filterBy.predicate(this) : null;
+      const nextQuery = this.query(predicate);
+      const nextSql = nextQuery.toString();
+
+      if (this.lastQuerySql === nextSql) {
+        return Promise.resolve(this);
+      }
+      this.lastQuerySql = nextSql;
+    }
+
     if (!this.coordinator) {
       return Promise.resolve(this);
     }
@@ -665,7 +662,6 @@ export class MinMaxColumnValuesClient extends MosaicClient {
   }
 
   override query(primaryFilter?: FilterExpr | null): SelectQuery {
-    // Resolve source with filter if it's a function
     let src: string | SelectQuery;
     if (typeof this.source === 'function') {
       src = this.source(primaryFilter);
@@ -681,7 +677,6 @@ export class MinMaxColumnValuesClient extends MosaicClient {
 
     const whereClauses: Array<mSql.FilterExpr> = [];
 
-    // Only apply primaryFilter here if source is a string
     if (primaryFilter && typeof this.source === 'string') {
       whereClauses.push(primaryFilter);
     }
