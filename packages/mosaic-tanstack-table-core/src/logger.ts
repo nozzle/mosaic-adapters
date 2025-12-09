@@ -6,7 +6,12 @@
 
 import { formatters } from './log-formatter';
 
-export type LogCategory = 'Core' | 'Framework' | 'TanStack-Table' | 'Mosaic' | 'SQL';
+export type LogCategory =
+  | 'Core'
+  | 'Framework'
+  | 'TanStack-Table'
+  | 'Mosaic'
+  | 'SQL';
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 interface CompactLog {
@@ -22,6 +27,7 @@ class LogManager {
   private startTime = Date.now();
   private maxLogs = 1000;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private debounceCounts = new Map<string, number>();
 
   // Keep track of the last known state to auto-calculate diffs per category
   private stateSnapshots: Record<string, any> = {};
@@ -103,6 +109,7 @@ class LogManager {
 
   /**
    * Debounces a log entry. Useful for high-frequency events like brush selections or scroll updates.
+   * Tracks hit counts during the debounce window.
    */
   debounce(
     id: string,
@@ -112,13 +119,21 @@ class LogManager {
     message: string,
     meta?: any,
   ) {
+    const currentCount = (this.debounceCounts.get(id) || 0) + 1;
+    this.debounceCounts.set(id, currentCount);
+
     if (this.debounceTimers.has(id)) {
       clearTimeout(this.debounceTimers.get(id));
     }
 
     const timer = setTimeout(() => {
-      this.add(level, category, `${message} (Debounced)`, meta);
+      const totalHits = this.debounceCounts.get(id) || 1;
+      const suffix = totalHits > 1 ? ` (x${totalHits})` : '';
+
+      this.add(level, category, `${message}${suffix}`, meta);
+
       this.debounceTimers.delete(id);
+      this.debounceCounts.delete(id);
     }, delay);
 
     this.debounceTimers.set(id, timer);

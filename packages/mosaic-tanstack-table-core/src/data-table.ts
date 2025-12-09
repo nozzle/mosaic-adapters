@@ -19,6 +19,7 @@ import {
   toSafeSqlColumnName,
 } from './utils';
 import { logger } from './logger';
+import { formatters } from './log-formatter';
 import { ColumnMapper } from './query/column-mapper';
 import { buildTableQuery, extractInternalFilters } from './query/query-builder';
 
@@ -73,6 +74,8 @@ export class MosaicDataTable<
   #facetClients: Map<string, ActiveFacetClient> = new Map();
   #facetValues: Map<string, any> = new Map();
 
+  private lastOptionsFingerprint: any;
+
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy);
 
@@ -82,9 +85,31 @@ export class MosaicDataTable<
   }
 
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    logger.debug('Core', 'updateOptions received', {
-      columnsCount: options.columns?.length,
-    });
+    // Fingerprinting to reduce log noise on redundant updates
+    const optionsFingerprint = {
+      source: typeof options.table === 'string' ? options.table : 'function',
+      columns: options.columns?.length ?? 0,
+      hasCoordinator: !!options.coordinator,
+      hasFilterBy: !!options.filterBy,
+    };
+
+    const changes = formatters.diff(
+      this.lastOptionsFingerprint || {},
+      optionsFingerprint,
+    );
+
+    if (changes) {
+      logger.info('Core', 'updateOptions received', { changes });
+      this.lastOptionsFingerprint = optionsFingerprint;
+    } else {
+      logger.debounce(
+        'update-options-loop',
+        2000,
+        'warn',
+        'Framework',
+        'Rapid/Redundant updateOptions calls detected',
+      );
+    }
 
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
@@ -179,7 +204,18 @@ export class MosaicDataTable<
 
     // If we skip recalculation, update the store to confirm the signature remains valid
     if (!shouldRecalculateCount) {
-      logger.info('Core', 'Smart Count Optimization: Skipping COUNT(*) OVER()');
+      logger.debounce(
+        'smart-count-opt',
+        1000,
+        'debug',
+        'Core',
+        'Smart Count Optimization: Skipping COUNT(*) OVER()',
+      );
+    } else {
+      logger.debug(
+        'Core',
+        'Recalculating Total Row Count due to filter change',
+      );
     }
 
     // 3. Delegate Query Building
@@ -599,6 +635,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
     statement.groupby(this.column);
     statement.orderby(mSql.asc(mSql.column(this.column)));
 
+    // LOGGING REMOVED to prevent flooding during animation loop
     return statement;
   }
 
@@ -692,10 +729,7 @@ export class MinMaxColumnValuesClient extends MosaicClient {
       statement.where(mSql.and(...whereClauses));
     }
 
-    logger.debug('Core', `[MinMax] Generated Query for ${this.column}`, {
-      sql: statement.toString(),
-    });
-
+    // LOGGING REMOVED to prevent flooding during animation loop
     return statement;
   }
 

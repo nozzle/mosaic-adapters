@@ -246,7 +246,7 @@ function TripsDetailTable() {
         enableColumnFilter: true,
         meta: {
           filterVariant: 'range',
-          rangeFilterType: 'date',
+          rangeFilterType: 'datetime', // Changed from 'date' to 'datetime'
           mosaicDataTable: { sqlColumn: 'datetime', sqlFilterType: 'RANGE' },
         },
       },
@@ -285,6 +285,7 @@ function TripsDetailTable() {
   // Load facets
   useEffect(() => {
     client.loadColumnMinMax('fare_amount');
+    client.loadColumnMinMax('datetime'); // Load min/max for the datetime column
   }, [client]);
 
   const table = useReactTable(tableOptions);

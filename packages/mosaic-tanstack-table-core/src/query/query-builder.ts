@@ -102,7 +102,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
 
   logger.debounce(
     'sql-query-builder',
-    300,
+    500,
     'info',
     'SQL',
     'Generated Table Query',
