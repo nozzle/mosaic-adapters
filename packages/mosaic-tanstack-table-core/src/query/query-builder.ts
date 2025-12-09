@@ -42,10 +42,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
   }
 
   // We append the selectColumns...
-  const statement = mSql.Query.from(source).select(
-    ...selectColumns,
-    selectMap,
-  );
+  const statement = mSql.Query.from(source).select(...selectColumns, selectMap);
 
   // 3. Generate WHERE Clauses (Internal Table Filters)
   const whereClauses: Array<mSql.FilterExpr> = [];

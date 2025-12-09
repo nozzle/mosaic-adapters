@@ -23,7 +23,7 @@ interface CompactLog {
 }
 
 class LogManager {
-  private logs: CompactLog[] = [];
+  private logs: Array<CompactLog> = [];
   private startTime = Date.now();
   private maxLogs = 1000;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -89,7 +89,7 @@ class LogManager {
         if (optimizedData.length > 500) {
           optimizedData = optimizedData.substring(0, 500) + '...[TRUNCATED]';
         }
-      } catch (e) {
+      } catch {
         optimizedData = '[Circular/Unserializable]';
       }
     }

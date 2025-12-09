@@ -575,7 +575,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
     if (!this.coordinator) {
       this.coordinator = defaultCoordinator();
     }
-    this.coordinator?.connect(this);
+    this.coordinator.connect(this);
   }
 
   disconnect(): void {
@@ -673,7 +673,7 @@ export class MinMaxColumnValuesClient extends MosaicClient {
     if (!this.coordinator) {
       this.coordinator = defaultCoordinator();
     }
-    this.coordinator?.connect(this);
+    this.coordinator.connect(this);
   }
 
   disconnect(): void {
