@@ -1,5 +1,5 @@
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
-import type { SelectQuery } from '@uwdata/mosaic-sql';
+import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
   RowData,
@@ -68,10 +68,12 @@ export type SubsetTableOptions<TData extends RowData> = Omit<
 /**
  * Defines the source of data for the table.
  * - `string`: A raw table name. Defaults to `SELECT * FROM {string}`.
- * - `() => SelectQuery`: A factory function that returns a Mosaic Query Builder object.
- *   Useful for CTEs, Joins, and Group By aggregations.
+ * - `(filter?: FilterExpr) => SelectQuery`: A factory function that returns a Mosaic Query Builder object.
+ *   The function receives the primary filter (from `filterBy`) and should apply it internally.
  */
-export type MosaicTableSource = string | (() => SelectQuery);
+export type MosaicTableSource =
+  | string
+  | ((filter?: FilterExpr | null) => SelectQuery);
 
 export interface MosaicDataTableOptions<
   TData extends RowData,

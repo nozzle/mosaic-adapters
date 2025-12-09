@@ -153,21 +153,22 @@ export class MosaicDataTable<
   }
 
   /**
-   * Resolves the current source. If it's a function, call it.
+   * Resolves the current source. If it's a function, call it with the optional filter.
    */
-  resolveSource(): string | SelectQuery {
+  resolveSource(filter?: FilterExpr | null): string | SelectQuery {
     if (typeof this.source === 'function') {
-      return this.source();
+      return this.source(filter);
     }
     return this.source;
   }
 
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
-    const source = this.resolveSource();
+    // 1. Resolve Source
+    // Pass the primary filter down. If source is a function, it should handle it.
+    const source = this.resolveSource(primaryFilter);
     const tableState = this.#store.state.tableState;
 
-    // 1. Delegate Query Building
-    // The QueryBuilder handles Columns, Pagination, Sorting, and Internal Filters
+    // 2. Delegate Query Building
     const statement = buildTableQuery({
       source,
       tableState,
@@ -175,23 +176,19 @@ export class MosaicDataTable<
       totalRowsColumnName: this.#sql_total_rows,
     });
 
-    // 2. Apply Primary Filter (Global/External Context)
-    // If the source is a string (Raw Table), we apply the Primary Filter via WHERE.
-    // If the source is a Query (Subquery), we assume the user applied the Primary Filter
-    // inside that subquery function closure, OR we apply it to the wrapper.
-    // Applying to the wrapper is safer for consistency.
-    if (primaryFilter) {
+    // 3. Apply Primary Filter (Conditional)
+    // Only apply the filter to the wrapper query if the source was a raw string.
+    // If source was a Query object (from a function), we assume the function applied the filter internally.
+    if (primaryFilter && typeof this.source === 'string') {
       statement.where(primaryFilter);
     }
 
-    // 3. Side Effect: Update Internal Filter Selection
-    // This allows bidirectional filtering (Table -> Charts)
+    // 4. Side Effect: Update Internal Filter Selection
     const internalClauses = extractInternalFilters({
       tableState,
       mapper: this.#columnMapper,
     });
 
-    // We rely on mSql.and() to handle variadic logic (0, 1, or N items)
     const predicate =
       internalClauses.length > 0 ? mSql.and(...internalClauses) : null;
 
@@ -339,12 +336,28 @@ export class MosaicDataTable<
     }
 
     // Pass `this.source` directly to avoid type error
+    // Note: Facet clients for complex queries might need better handling of `source`
+    // if the source relies on the primary filter logic.
+    // For now, we assume simple source usage for facets or that `resolveSource` behavior handles it.
+    // But `resolveSource` depends on instance state.
+    // We bind a source resolver that mimics the main table behavior.
+    const sourceResolver = () => {
+      // Facets should likely respect the primary filter as well?
+      // Yes, usually. But `filterBy` is passed to the client constructor.
+      // So the client.query() will receive the filter.
+      // We just need to ensure the source function uses it if provided.
+      return this.resolveSource(null); // Initial resolution without filter, let `query` handle it?
+      // Actually, sidecar clients manage `filterBy` separately.
+      // If `this.source` is a function, it expects the filter arg.
+      // The sidecar client `query` method will receive the filter from the coordinator.
+      // So we can just pass `this.source`.
+    };
+
     const facetClient = new UniqueColumnValuesClient({
       source: this.source,
       column: sqlColumn,
       filterBy: this.filterBy,
-      coordinator: this.coordinator, // Explicitly pass the parent's coordinator
-      // Cascading logic: get filters excluding this column
+      coordinator: this.coordinator,
       getFilterExpressions: () => {
         return this.getCascadingFilters({ excludeColumnId: columnId });
       },
@@ -379,13 +392,11 @@ export class MosaicDataTable<
       return;
     }
 
-    // Pass `this.source` directly to avoid type error
     const facetClient = new MinMaxColumnValuesClient({
       source: this.source,
       column: sqlColumn,
       filterBy: this.filterBy,
-      coordinator: this.coordinator, // Explicitly pass the parent's coordinator
-      // Cascading logic: get filters excluding this column
+      coordinator: this.coordinator,
       getFilterExpressions: () => {
         return this.getCascadingFilters({ excludeColumnId: columnId });
       },
@@ -576,13 +587,20 @@ export class UniqueColumnValuesClient extends MosaicClient {
   }
 
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
-    const src = typeof this.source === 'function' ? this.source() : this.source;
+    // Resolve source with filter if it's a function
+    let src: string | SelectQuery;
+    if (typeof this.source === 'function') {
+      src = this.source(primaryFilter);
+    } else {
+      src = this.source;
+    }
 
     // Select column FROM source
     const statement = mSql.Query.from(src).select(this.column);
     const whereClauses: Array<mSql.FilterExpr> = [];
 
-    if (primaryFilter) {
+    // Only apply primaryFilter here if source is a string
+    if (primaryFilter && typeof this.source === 'string') {
       whereClauses.push(primaryFilter);
     }
 
@@ -661,7 +679,14 @@ export class MinMaxColumnValuesClient extends MosaicClient {
   }
 
   override query(primaryFilter?: FilterExpr | null): SelectQuery {
-    const src = typeof this.source === 'function' ? this.source() : this.source;
+    // Resolve source with filter if it's a function
+    let src: string | SelectQuery;
+    if (typeof this.source === 'function') {
+      src = this.source(primaryFilter);
+    } else {
+      src = this.source;
+    }
+
     const col = mSql.column(this.column);
     const statement = mSql.Query.from(src).select({
       min: mSql.min(col),
@@ -670,7 +695,8 @@ export class MinMaxColumnValuesClient extends MosaicClient {
 
     const whereClauses: Array<mSql.FilterExpr> = [];
 
-    if (primaryFilter) {
+    // Only apply primaryFilter here if source is a string
+    if (primaryFilter && typeof this.source === 'string') {
       whereClauses.push(primaryFilter);
     }
 
