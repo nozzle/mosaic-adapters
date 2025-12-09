@@ -15,8 +15,8 @@ import {
   toSafeSqlColumnName,
 } from './utils';
 import { logger } from './logger';
-import { ColumnMapper } from './query/ColumnMapper';
-import { buildTableQuery, extractInternalFilters } from './query/QueryBuilder';
+import { ColumnMapper } from './query/column-mapper';
+import { buildTableQuery, extractInternalFilters } from './query/query-builder';
 
 import type {
   Coordinator,
@@ -76,7 +76,7 @@ export class MosaicDataTable<
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
 
   // The Mapper handles all ColumnDef <-> SQL Column logic
-  private columnMapper: ColumnMapper<TData, TValue>;
+  #columnMapper!: ColumnMapper<TData, TValue>;
 
   // Registry to track active facet sidecar clients.
   #facetClients: Map<string, ActiveFacetClient> = new Map();
@@ -90,9 +90,6 @@ export class MosaicDataTable<
     if (!this.sourceTable()) {
       throw new Error('[MosaicDataTable] A table name must be provided.');
     }
-
-    // Initialize mapper with empty columns initially, will be populated in updateOptions
-    this.columnMapper = new ColumnMapper([]);
 
     this.updateOptions(options);
   }
@@ -151,7 +148,7 @@ export class MosaicDataTable<
 
     // If columns are provided, update the mapper.
     if (options.columns) {
-      this.columnMapper = new ColumnMapper(options.columns);
+      this.#columnMapper = new ColumnMapper(options.columns);
     }
   }
 
@@ -164,7 +161,7 @@ export class MosaicDataTable<
     const statement = buildTableQuery({
       tableName,
       tableState,
-      mapper: this.columnMapper,
+      mapper: this.#columnMapper,
       totalRowsColumnName: this.#sql_total_rows,
     });
 
@@ -175,10 +172,10 @@ export class MosaicDataTable<
 
     // 3. Side Effect: Update Internal Filter Selection
     // This allows bidirectional filtering (Table -> Charts)
-    const internalClauses = extractInternalFilters(
+    const internalClauses = extractInternalFilters({
       tableState,
-      this.columnMapper,
-    );
+      mapper: this.#columnMapper,
+    });
 
     // We rely on mSql.and() to handle variadic logic (0, 1, or N items)
     const predicate =
@@ -198,18 +195,23 @@ export class MosaicDataTable<
    * excluding a specific column ID (for cascading facets).
    * Used by the Facet Sidecar Clients.
    */
-  public getCascadingFilters(excludeColumnId: string): Array<mSql.FilterExpr> {
+  public getCascadingFilters(options: {
+    excludeColumnId: string;
+  }): Array<mSql.FilterExpr> {
     const tableState = this.#store.state.tableState;
 
     // Filter the state before passing to helper.
     const filteredState = {
       ...tableState,
       columnFilters: tableState.columnFilters.filter(
-        (f) => f.id !== excludeColumnId,
+        (f) => f.id !== options.excludeColumnId,
       ),
     };
 
-    return extractInternalFilters(filteredState, this.columnMapper);
+    return extractInternalFilters({
+      tableState: filteredState,
+      mapper: this.#columnMapper,
+    });
   }
 
   override queryPending(): this {
@@ -304,7 +306,7 @@ export class MosaicDataTable<
    */
   loadColumnFacet(columnId: string) {
     // Resolve SQL column via Mapper
-    const sqlColumn = this.columnMapper.getSqlColumn(columnId);
+    const sqlColumn = this.#columnMapper.getSqlColumn(columnId);
     if (!sqlColumn) return;
 
     const clientKey = `${columnId}:unique`;
@@ -316,7 +318,9 @@ export class MosaicDataTable<
       filterBy: this.filterBy,
       coordinator: this.coordinator,
       // Cascading logic: get filters excluding this column
-      getFilterExpressions: () => this.getCascadingFilters(columnId),
+      getFilterExpressions: () => {
+        return this.getCascadingFilters({ excludeColumnId: columnId });
+      },
       onResult: (values) => {
         this.#facetValues.set(columnId, values);
         batch(() => {
@@ -338,7 +342,7 @@ export class MosaicDataTable<
    */
   loadColumnMinMax(columnId: string) {
     // Resolve SQL column via Mapper
-    const sqlColumn = this.columnMapper.getSqlColumn(columnId);
+    const sqlColumn = this.#columnMapper.getSqlColumn(columnId);
     if (!sqlColumn) return;
 
     const clientKey = `${columnId}:minmax`;
@@ -350,7 +354,9 @@ export class MosaicDataTable<
       filterBy: this.filterBy,
       coordinator: this.coordinator,
       // Cascading logic: get filters excluding this column
-      getFilterExpressions: () => this.getCascadingFilters(columnId),
+      getFilterExpressions: () => {
+        return this.getCascadingFilters({ excludeColumnId: columnId });
+      },
       onResult: (min, max) => {
         this.#facetValues.set(columnId, [min, max]);
         batch(() => {
@@ -368,14 +374,6 @@ export class MosaicDataTable<
   }
 
   /**
-   * Helper utility to build the SQL select columns
-   */
-  private sqlColumns(): Array<mSql.SelectExpr> {
-    // Removed private implementation, logic is now in fields() + Mapper
-    return [];
-  }
-
-  /**
    * Resolve the table name.
    */
   sourceTable(): string {
@@ -388,7 +386,7 @@ export class MosaicDataTable<
   fields(): Array<FieldInfoRequest> {
     const table = this.sourceTable();
     // Use the Mapper logic
-    return this.columnMapper.getMosaicFieldRequests(table);
+    return this.#columnMapper.getMosaicFieldRequests(table);
   }
 
   /**

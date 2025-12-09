@@ -1,6 +1,3 @@
-// Maps TanStack Table Column Definitions to Mosaic/SQL columns.
-// This class validates column metadata and provides performant lookups during query generation.
-
 import { logger } from '../logger';
 import type { ColumnDef, RowData } from '@tanstack/table-core';
 import type { FieldInfoRequest } from '@uwdata/mosaic-core';

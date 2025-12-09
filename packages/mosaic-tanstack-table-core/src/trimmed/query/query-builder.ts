@@ -1,12 +1,9 @@
-// Orchestrates the construction of the final SQL SELECT query for the Table.
-// Joins Pagination, Sorting, Columns, and Filters.
-
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
-import { createFilterClause } from './FilterFactory';
+import { createFilterClause } from './filter-factory';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
 import type { RowData, TableState } from '@tanstack/table-core';
-import type { ColumnMapper } from './ColumnMapper';
+import type { ColumnMapper } from './column-mapper';
 
 export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   tableName: string;
@@ -54,12 +51,12 @@ export function buildTableQuery<TData extends RowData, TValue>(
     const colDef = mapper.getColumnDef(sqlColumn);
     const filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
 
-    const clause = createFilterClause(
+    const clause = createFilterClause({
       sqlColumn,
       filterType,
-      filter.value,
-      filter.id,
-    );
+      value: filter.value,
+      columnId: filter.id,
+    });
 
     if (clause) {
       whereClauses.push(clause);
@@ -114,25 +111,25 @@ export function buildTableQuery<TData extends RowData, TValue>(
  * Helper to extract just the internal filter expressions for cross-filtering.
  * This effectively runs the "WHERE" generation logic without constructing a full SELECT.
  */
-export function extractInternalFilters<TData extends RowData, TValue>(
-  tableState: TableState,
-  mapper: ColumnMapper<TData, TValue>,
-): Array<mSql.FilterExpr> {
+export function extractInternalFilters<TData extends RowData, TValue>(options: {
+  tableState: TableState;
+  mapper: ColumnMapper<TData, TValue>;
+}): Array<mSql.FilterExpr> {
   const clauses: Array<mSql.FilterExpr> = [];
 
-  tableState.columnFilters.forEach((filter) => {
-    const sqlColumn = mapper.getSqlColumn(filter.id);
+  options.tableState.columnFilters.forEach((filter) => {
+    const sqlColumn = options.mapper.getSqlColumn(filter.id);
     if (!sqlColumn) return;
 
-    const colDef = mapper.getColumnDef(sqlColumn);
+    const colDef = options.mapper.getColumnDef(sqlColumn);
     const filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
 
-    const clause = createFilterClause(
+    const clause = createFilterClause({
       sqlColumn,
       filterType,
-      filter.value,
-      filter.id,
-    );
+      value: filter.value,
+      columnId: filter.id,
+    });
 
     if (clause) {
       clauses.push(clause);
