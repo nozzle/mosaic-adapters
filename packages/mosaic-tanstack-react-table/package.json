@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
+    "@tanstack/react-store": "catalog:",
     "@tanstack/table-core": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
@@ -29,7 +30,6 @@
   },
   "peerDependencies": {
     "@tanstack/react-table": ">=8.17.3",
-    "@tanstack/react-virtual": ">=3.5.0",
     "react": ">=18.2.0",
     "react-dom": ">=18.2.0"
   },
@@ -39,6 +39,7 @@
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
+    "eslint": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:"
   }

@@ -6,12 +6,6 @@
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
   "exports": {
-    "./trimmed": {
-      "import": {
-        "types": "./dist/esm/trimmed/index.d.ts",
-        "default": "./dist/esm/trimmed/index.js"
-      }
-    },
     ".": {
       "import": {
         "types": "./dist/esm/index.d.ts",
@@ -28,14 +22,13 @@
     "test:lint": "eslint ./src"
   },
   "dependencies": {
-    "@tanstack/store": "^0.8.0",
+    "@tanstack/store": "catalog:",
     "@tanstack/table-core": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
-    "@uwdata/mosaic-sql": "catalog:",
-    "@uwdata/vgplot": "catalog:",
-    "apache-arrow": "^21.1.0"
+    "@uwdata/mosaic-sql": "catalog:"
   },
   "devDependencies": {
+    "eslint": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:"
   }

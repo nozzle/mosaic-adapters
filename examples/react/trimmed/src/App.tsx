@@ -1,4 +1,4 @@
-import { logger } from '@nozzleio/mosaic-tanstack-table-core/trimmed';
+import { logger } from '@nozzleio/mosaic-tanstack-react-table';
 import { RenderView } from '@/components/render-view';
 
 function App() {
