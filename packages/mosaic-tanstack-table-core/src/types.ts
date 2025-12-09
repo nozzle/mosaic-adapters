@@ -1,4 +1,5 @@
-import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
+import type { Coordinator, Selection } from '@uwdata/mosaic-core';
+import type { SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
   RowData,
@@ -64,14 +65,24 @@ export type SubsetTableOptions<TData extends RowData> = Omit<
   | 'getCoreRowModel'
 >;
 
+/**
+ * Defines the source of data for the table.
+ * - `string`: A raw table name. Defaults to `SELECT * FROM {string}`.
+ * - `() => SelectQuery`: A factory function that returns a Mosaic Query Builder object.
+ *   Useful for CTEs, Joins, and Group By aggregations.
+ */
+export type MosaicTableSource = string | (() => SelectQuery);
+
 export interface MosaicDataTableOptions<
   TData extends RowData,
   TValue = unknown,
 > {
   /**
-   * The Mosaic Data Table to use as the data source for the table instance.
+   * The source of data.
+   * If a function is provided, it will be treated as a Subquery/View.
+   * Pagination and Sorting will be applied to the *result* of this query.
    */
-  table: Param<string> | string;
+  table: MosaicTableSource;
   /**
    * Mosaic Coordinator instance to connect to for querying data.
    */

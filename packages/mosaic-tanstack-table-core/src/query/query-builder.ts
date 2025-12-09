@@ -6,7 +6,7 @@ import type { RowData, TableState } from '@tanstack/table-core';
 import type { ColumnMapper } from './column-mapper';
 
 export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
-  tableName: string;
+  source: string | SelectQuery;
   tableState: TableState;
   mapper: ColumnMapper<TData, TValue>;
   totalRowsColumnName: string;
@@ -16,13 +16,8 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
 export function buildTableQuery<TData extends RowData, TValue>(
   options: QueryBuilderOptions<TData, TValue>,
 ): SelectQuery {
-  const {
-    tableName,
-    tableState,
-    mapper,
-    totalRowsColumnName,
-    excludeColumnId,
-  } = options;
+  const { source, tableState, mapper, totalRowsColumnName, excludeColumnId } =
+    options;
 
   const { pagination, sorting, columnFilters } = tableState;
 
@@ -31,12 +26,21 @@ export function buildTableQuery<TData extends RowData, TValue>(
     .getSelectColumns()
     .map((col) => mSql.column(col));
 
-  // Initialize statement with Total Rows Window Function
-  const statement = mSql.Query.from(tableName).select(...selectColumns, {
+  // 2. Base Query Construction
+  // We use the "Wrapper Query" pattern.
+  // Whether the source is a raw table string or a complex subquery object,
+  // we wrap it in a new SELECT statement.
+  // This allows us to apply Pagination (LIMIT/OFFSET) and Sorting (ORDER BY)
+  // to the *results* of complex aggregations uniformly.
+  const statement = mSql.Query.from(source).select(...selectColumns, {
+    // Window Function Trick:
+    // We ask the DB to count the total rows in the *result set* (OVER())
+    // and return it as a column on every row.
+    // This avoids a separate network round-trip just to get the page count.
     [totalRowsColumnName]: mSql.sql`COUNT(*) OVER()`,
   });
 
-  // 2. Generate WHERE Clauses (Internal Table Filters)
+  // 3. Generate WHERE Clauses (Internal Table Filters)
   const whereClauses: Array<mSql.FilterExpr> = [];
 
   columnFilters.forEach((filter) => {
@@ -69,7 +73,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
     statement.where(...whereClauses);
   }
 
-  // 3. Apply Sorting
+  // 4. Apply Sorting
   // Only sort by columns that exist in our mapping
   const orderingCriteria: Array<mSql.OrderByNode> = [];
   sorting.forEach((sort) => {
@@ -85,7 +89,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
 
   statement.orderby(...orderingCriteria);
 
-  // 4. Apply Pagination
+  // 5. Apply Pagination
   statement
     .limit(pagination.pageSize)
     .offset(pagination.pageIndex * pagination.pageSize);
@@ -98,6 +102,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
     'Generated Table Query',
     {
       sql: statement.toString(),
+      isSubQuery: typeof source !== 'string',
       context: {
         pagination,
         sorting,
