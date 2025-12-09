@@ -2,10 +2,10 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
+import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
-import { useMosaicReactTable } from '@/useMosaicReactTable';
 import { simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 

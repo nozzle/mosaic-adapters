@@ -1,15 +1,13 @@
-// This is an example of the React-specific hook that'd be used to allow
-// Mosaic's data to drive an instance of TanStack Table in an app.
 import * as React from 'react';
-import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-core/trimmed';
+import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-core';
 import { useStore } from '@tanstack/react-store';
 import type {
   MosaicDataTable,
   MosaicDataTableOptions,
-} from '@nozzleio/mosaic-tanstack-table-core/trimmed';
+} from '@nozzleio/mosaic-tanstack-table-core';
 import type { RowData, TableOptions } from '@tanstack/react-table';
 
-export type * from '@nozzleio/mosaic-tanstack-table-core/trimmed';
+export type * from '@nozzleio/mosaic-tanstack-table-core';
 
 export function useMosaicReactTable<TData extends RowData, TValue = any>(
   options: MosaicDataTableOptions<TData, TValue>,
@@ -29,7 +27,7 @@ export function useMosaicReactTable<TData extends RowData, TValue = any>(
   // Get the current table options from the client.
   const tableOptions = React.useMemo(
     () => client.getTableOptions(store),
-    [store],
+    [client, store],
   );
 
   // Update the client options when they change.
