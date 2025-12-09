@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as vg from '@uwdata/vgplot';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
+import { NycTaxiView } from '@/components/views/nyc-taxi';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 
 const wasmConnector = vg.wasmConnector({ log: false });
@@ -13,6 +14,13 @@ const views = new Map([
     {
       title: 'Athletes Dashboard',
       Component: AthletesView,
+    },
+  ],
+  [
+    'nyc-taxi',
+    {
+      title: 'NYC Taxi Dashboard',
+      Component: NycTaxiView,
     },
   ],
   [
