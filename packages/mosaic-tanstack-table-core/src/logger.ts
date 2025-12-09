@@ -1,32 +1,35 @@
-// A structured logging utility that separates console output from stored logs.
-// It allows for quiet console output while retaining detailed metadata
-// (state snapshots, SQL queries) in a downloadable JSON format for debugging.
+/**
+ * A structured logging utility designed for token efficiency and LLM readability.
+ * It separates ephemeral console output (developer UX) from persistent storage (debugging).
+ * It uses semantic diffing to reduce log noise.
+ */
 
+import { formatters } from './log-formatter';
+
+export type LogCategory = 'Core' | 'Framework' | 'TanStack-Table' | 'Mosaic' | 'SQL';
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-export type LogCategory =
-  | 'Core'
-  | 'Framework'
-  | 'TanStack-Table'
-  | 'Mosaic'
-  | 'SQL';
 
-interface LogEntry {
-  timestamp: string;
-  level: LogLevel;
-  category: LogCategory;
-  message: string;
-  // meta is for heavy objects (Table State, columns, etc)
-  meta?: Record<string, any>;
+interface CompactLog {
+  t: number; // Timestamp (ms)
+  c: LogCategory; // Category
+  l: LogLevel; // Level
+  m: string; // Message
+  d?: string; // Data/Diff (Stringified to save memory/tokens)
 }
 
 class LogManager {
-  private logs: Array<LogEntry> = [];
-  private maxLogs = 2000;
+  private logs: CompactLog[] = [];
+  private startTime = Date.now();
+  private maxLogs = 1000;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  // Configuration: Console is quiet (INFO+), Storage is loud (DEBUG+)
-  private consoleLevel = 1; // 0=Debug, 1=Info, 2=Warn, 3=Error
-  private storageLevel = 0;
+  // Keep track of the last known state to auto-calculate diffs per category
+  private stateSnapshots: Record<string, any> = {};
+
+  // Configuration
+  public enabled = true;
+  // Console levels: 0=Debug, 1=Info, 2=Warn, 3=Error
+  private consoleLevel = 1;
 
   private levelMap: Record<LogLevel, number> = {
     debug: 0,
@@ -41,58 +44,65 @@ class LogManager {
     message: string,
     meta?: any,
   ) {
-    const numericLevel = this.levelMap[level];
+    if (!this.enabled) return;
 
-    // 1. Handle Console Output (The "Quiet" Channel)
-    if (numericLevel >= this.consoleLevel) {
-      const badge = `[${category}]`;
-      const style = this.getConsoleStyle(category);
+    // --- 1. Console Output (Developer UX) ---
+    // We print to console if it meets the level requirement
+    if (this.levelMap[level] >= this.consoleLevel) {
+      this.printConsole(level, category, message, meta);
+    }
 
-      if (level === 'error') {
-        console.error(`%c${badge} ${message}`, style, meta || '');
-      } else if (level === 'warn') {
-        console.warn(`%c${badge} ${message}`, style, meta || '');
-      } else {
-        // For Info/Debug in console, use collapsed groups if meta exists to keep it tidy
-        if (meta) {
-          console.groupCollapsed(`%c${badge} ${message}`, style);
-          console.log(meta);
-          console.groupEnd();
-        } else {
-          console.log(`%c${badge} ${message}`, style);
+    // --- 2. Storage Optimization (LLM Efficiency) ---
+    let optimizedData: string | undefined;
+
+    // Special handling for State Updates: Use Diffing
+    if (message.includes('StateChange') && meta) {
+      const stateKey = category; // simplified grouping by category for state tracking
+      const diff = formatters.diff(this.stateSnapshots[stateKey] || {}, meta);
+
+      if (!diff) return; // Ignore identical updates (Noise reduction)
+
+      // Update snapshot for next time
+      try {
+        this.stateSnapshots[stateKey] = JSON.parse(JSON.stringify(meta));
+      } catch {
+        // Fallback if meta is not serializable
+        this.stateSnapshots[stateKey] = meta;
+      }
+      optimizedData = diff;
+    }
+    // Special handling for SQL: Minify
+    else if (category === 'SQL' && meta?.sql) {
+      optimizedData = formatters.sql(meta.sql);
+    }
+    // Fallback: If meta exists but isn't special, simple stringify
+    else if (meta) {
+      try {
+        optimizedData = JSON.stringify(meta);
+        // Truncate huge objects
+        if (optimizedData.length > 500) {
+          optimizedData = optimizedData.substring(0, 500) + '...[TRUNCATED]';
         }
+      } catch (e) {
+        optimizedData = '[Circular/Unserializable]';
       }
     }
 
-    // 2. Handle Storage (The "Loud" Channel)
-    if (numericLevel >= this.storageLevel) {
-      this.logs.push({
-        timestamp: new Date().toISOString(),
-        level,
-        category,
-        message,
-        // Deep clone meta to prevent mutation references later
-        meta: meta
-          ? JSON.parse(JSON.stringify(meta, this.circularReplacer()))
-          : undefined,
-      });
+    this.logs.push({
+      t: Date.now(),
+      c: category,
+      l: level,
+      m: message,
+      d: optimizedData,
+    });
 
-      if (this.logs.length > this.maxLogs) {
-        this.logs.shift();
-      }
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift();
     }
   }
 
   /**
    * Debounces a log entry. Useful for high-frequency events like brush selections or scroll updates.
-   * Only the last log entry within the `delay` window for a given `id` will be recorded.
-   *
-   * @param id - Unique identifier for the debounce group (e.g., 'query-generation')
-   * @param delay - Debounce delay in ms
-   * @param level - Log level
-   * @param category - Log category
-   * @param message - Log message
-   * @param meta - Metadata
    */
   debounce(
     id: string,
@@ -114,48 +124,86 @@ class LogManager {
     this.debounceTimers.set(id, timer);
   }
 
-  // Public API
-  debug(category: LogCategory, message: string, meta?: any) {
-    this.add('debug', category, message, meta);
-  }
-  info(category: LogCategory, message: string, meta?: any) {
-    this.add('info', category, message, meta);
-  }
-  warn(category: LogCategory, message: string, meta?: any) {
-    this.add('warn', category, message, meta);
-  }
-  error(category: LogCategory, message: string, meta?: any) {
-    this.add('error', category, message, meta);
+  /**
+   * Generates a highly dense text report optimized for LLMs.
+   */
+  exportForLLM(): string {
+    let output = `--- MOSAIC DEBUG LOG (Start: ${new Date(
+      this.startTime,
+    ).toISOString()}) ---\n`;
+    output += `Format: [TimeDelta] [Category] Message | Data\n\n`;
+
+    let lastTime = this.startTime;
+
+    for (const log of this.logs) {
+      const delta = log.t - lastTime;
+      const timeStr = delta > 0 ? `+${delta}ms`.padEnd(7) : '0ms'.padEnd(7);
+      const catStr = `[${log.c}]`.padEnd(16); // Padding for alignment
+
+      let line = `${timeStr} ${catStr} ${log.m}`;
+      if (log.d) {
+        line += ` | ${log.d}`;
+      }
+
+      output += line + '\n';
+      lastTime = log.t;
+    }
+
+    return output;
   }
 
   download() {
-    const data = {
-      generatedAt: new Date().toISOString(),
-      environment:
-        typeof process !== 'undefined' &&
-        'env' in process &&
-        typeof process.env.NODE_ENV !== 'undefined'
-          ? process.env.NODE_ENV
-          : 'unknown',
-      userAgent:
-        typeof window !== 'undefined' ? window.navigator.userAgent : 'node',
-      logs: this.logs,
-    };
-
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: 'application/json',
-    });
+    const text = this.exportForLLM();
+    const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mosaic-debug-logs-${Date.now()}.json`;
+    a.download = `mosaic-llm-logs-${Date.now()}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
 
-  // Helper: Color code console logs by category
+  // Public Wrappers
+  info(cat: LogCategory, msg: string, meta?: any) {
+    this.add('info', cat, msg, meta);
+  }
+  debug(cat: LogCategory, msg: string, meta?: any) {
+    this.add('debug', cat, msg, meta);
+  }
+  warn(cat: LogCategory, msg: string, meta?: any) {
+    this.add('warn', cat, msg, meta);
+  }
+  error(cat: LogCategory, msg: string, meta?: any) {
+    this.add('error', cat, msg, meta);
+  }
+
+  private printConsole(
+    level: LogLevel,
+    category: LogCategory,
+    message: string,
+    meta?: any,
+  ) {
+    const badge = `[${category}]`;
+    const style = this.getConsoleStyle(category);
+
+    if (level === 'error') {
+      console.error(`%c${badge} ${message}`, style, meta || '');
+    } else if (level === 'warn') {
+      console.warn(`%c${badge} ${message}`, style, meta || '');
+    } else {
+      // For Info/Debug in console, use collapsed groups if meta exists
+      if (meta) {
+        console.groupCollapsed(`%c${badge} ${message}`, style);
+        console.log(meta);
+        console.groupEnd();
+      } else {
+        console.log(`%c${badge} ${message}`, style);
+      }
+    }
+  }
+
   private getConsoleStyle(category: LogCategory): string {
     switch (category) {
       case 'SQL':
@@ -169,20 +217,6 @@ class LogManager {
       default:
         return 'color: gray;';
     }
-  }
-
-  // Helper: Handle circular references in JSON
-  private circularReplacer() {
-    const seen = new WeakSet();
-    return (key: string, value: any) => {
-      if (typeof value === 'object' && value !== null) {
-        if (seen.has(value)) {
-          return '[Circular]';
-        }
-        seen.add(value);
-      }
-      return value;
-    };
   }
 }
 

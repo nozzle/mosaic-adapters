@@ -1,3 +1,8 @@
+/**
+ * The core Orchestrator for the Mosaic <-> TanStack Table integration.
+ * Manages state, schema mapping, query generation, and facet sidecars.
+ */
+
 import {
   MosaicClient,
   Selection,
@@ -61,10 +66,6 @@ interface ActiveFacetClient extends MosaicClient {
 /**
  * A Mosaic Client that does the glue work to drive TanStack Table, using it's
  * TableOptions for configuration.
- *
- * REFACTOR NOTE: This class now acts as an Orchestrator. The heavy lifting of
- * Schema Mapping and Query Generation has been moved to `query/ColumnMapper`
- * and `query/QueryBuilder`.
  */
 export class MosaicDataTable<
   TData extends RowData,
@@ -335,24 +336,6 @@ export class MosaicDataTable<
       return;
     }
 
-    // Pass `this.source` directly to avoid type error
-    // Note: Facet clients for complex queries might need better handling of `source`
-    // if the source relies on the primary filter logic.
-    // For now, we assume simple source usage for facets or that `resolveSource` behavior handles it.
-    // But `resolveSource` depends on instance state.
-    // We bind a source resolver that mimics the main table behavior.
-    const sourceResolver = () => {
-      // Facets should likely respect the primary filter as well?
-      // Yes, usually. But `filterBy` is passed to the client constructor.
-      // So the client.query() will receive the filter.
-      // We just need to ensure the source function uses it if provided.
-      return this.resolveSource(null); // Initial resolution without filter, let `query` handle it?
-      // Actually, sidecar clients manage `filterBy` separately.
-      // If `this.source` is a function, it expects the filter arg.
-      // The sidecar client `query` method will receive the filter from the coordinator.
-      // So we can just pass `this.source`.
-    };
-
     const facetClient = new UniqueColumnValuesClient({
       source: this.source,
       column: sqlColumn,
@@ -476,6 +459,9 @@ export class MosaicDataTable<
           if (oldFilters !== newFilters) {
             this.#facetClients.forEach((client) => client.requestUpdate());
           }
+
+          // Semantic logging hook: Logs only the diff between previous and new state
+          logger.info('Core', 'StateChange', tableState);
 
           this[this.#onTableStateChange]();
         }
