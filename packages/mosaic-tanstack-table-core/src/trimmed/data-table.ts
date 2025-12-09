@@ -307,10 +307,14 @@ export class MosaicDataTable<
   loadColumnFacet(columnId: string) {
     // Resolve SQL column via Mapper
     const sqlColumn = this.#columnMapper.getSqlColumn(columnId);
-    if (!sqlColumn) return;
+    if (!sqlColumn) {
+      return;
+    }
 
     const clientKey = `${columnId}:unique`;
-    if (this.#facetClients.has(clientKey)) return;
+    if (this.#facetClients.has(clientKey)) {
+      return;
+    }
 
     const facetClient = new UniqueColumnValuesClient({
       table: this.sourceTable(),
@@ -343,10 +347,14 @@ export class MosaicDataTable<
   loadColumnMinMax(columnId: string) {
     // Resolve SQL column via Mapper
     const sqlColumn = this.#columnMapper.getSqlColumn(columnId);
-    if (!sqlColumn) return;
+    if (!sqlColumn) {
+      return;
+    }
 
     const clientKey = `${columnId}:minmax`;
-    if (this.#facetClients.has(clientKey)) return;
+    if (this.#facetClients.has(clientKey)) {
+      return;
+    }
 
     const facetClient = new MinMaxColumnValuesClient({
       table: this.sourceTable(),
@@ -456,7 +464,9 @@ export class MosaicDataTable<
     return (_table, columnId) => {
       return () => {
         const values = this.getFacets().get(columnId);
-        if (!values) return new Map<any, number>();
+        if (!values) {
+          return new Map<any, number>();
+        }
         if (Array.isArray(values)) {
           const map = new Map<any, number>();
           values.forEach((value) => {

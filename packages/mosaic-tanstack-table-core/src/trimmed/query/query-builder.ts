@@ -46,7 +46,9 @@ export function buildTableQuery<TData extends RowData, TValue>(
     }
 
     const sqlColumn = mapper.getSqlColumn(filter.id);
-    if (!sqlColumn) return;
+    if (!sqlColumn) {
+      return;
+    }
 
     const colDef = mapper.getColumnDef(sqlColumn);
     const filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
@@ -119,7 +121,9 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
 
   options.tableState.columnFilters.forEach((filter) => {
     const sqlColumn = options.mapper.getSqlColumn(filter.id);
-    if (!sqlColumn) return;
+    if (!sqlColumn) {
+      return;
+    }
 
     const colDef = options.mapper.getColumnDef(sqlColumn);
     const filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
