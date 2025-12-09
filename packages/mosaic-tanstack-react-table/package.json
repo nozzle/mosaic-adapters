@@ -39,6 +39,7 @@
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
+    "eslint": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:"
   }

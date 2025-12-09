@@ -28,6 +28,7 @@
     "@uwdata/mosaic-sql": "catalog:"
   },
   "devDependencies": {
+    "eslint": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:"
   }
