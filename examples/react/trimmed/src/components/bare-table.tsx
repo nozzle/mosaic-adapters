@@ -307,7 +307,10 @@ function DebouncedRangeFilter({
   const formatValue = (val: unknown) => {
     if (type === 'datetime') return toDateTimeInputString(val);
     if (type === 'date') return toDateInputString(val);
-    return (val as string) ?? '';
+    if (typeof val === 'number' || typeof val === 'string') {
+      return val;
+    }
+    return '';
   };
 
   const minValue =
@@ -316,13 +319,17 @@ function DebouncedRangeFilter({
     minMax?.[1] !== undefined ? formatValue(minMax[1]) : placeholderPrefix;
 
   const currentMin =
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     (columnFilterValue as [any, any])?.[0] !== undefined
-      ? formatValue((columnFilterValue as [any, any])?.[0])
+      ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        formatValue((columnFilterValue as [any, any])?.[0])
       : '';
 
   const currentMax =
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     (columnFilterValue as [any, any])?.[1] !== undefined
-      ? formatValue((columnFilterValue as [any, any])?.[1])
+      ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        formatValue((columnFilterValue as [any, any])?.[1])
       : '';
 
   return (
