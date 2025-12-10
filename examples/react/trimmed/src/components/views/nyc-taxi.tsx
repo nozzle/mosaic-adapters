@@ -168,7 +168,56 @@ export function NycTaxiView() {
         WHERE fare_amount > 0 AND trip_distance > 0`,
       ]);
 
-      // 2. Visualizations (Placeholder for now)
+      // 2. Visualizations
+      const mapAttributes = [
+        vg.width(350),
+        vg.height(550),
+        vg.margin(0),
+        vg.xAxis(null),
+        vg.yAxis(null),
+        vg.xDomain([975000, 1005000]),
+        vg.yDomain([190000, 240000]),
+        vg.colorScale('symlog'),
+      ];
+
+      const pickupMap = vg.plot(
+        vg.raster(vg.from(tableName, { filterBy: $chartContext }), {
+          x: 'px',
+          y: 'py',
+          bandwidth: 0,
+        }),
+        vg.intervalXY({ as: $brush }),
+        vg.text([{ label: 'Pickups' }], {
+          dx: 10,
+          dy: 10,
+          text: 'label',
+          fill: 'black',
+          fontSize: '1.2em',
+          frameAnchor: 'top-left',
+        }),
+        vg.colorScheme('blues'),
+        ...mapAttributes,
+      );
+
+      const dropoffMap = vg.plot(
+        vg.raster(vg.from(tableName, { filterBy: $chartContext }), {
+          x: 'dx',
+          y: 'dy',
+          bandwidth: 0,
+        }),
+        vg.intervalXY({ as: $brush }),
+        vg.text([{ label: 'Dropoffs' }], {
+          dx: 10,
+          dy: 10,
+          text: 'label',
+          fill: 'black',
+          fontSize: '1.2em',
+          frameAnchor: 'top-left',
+        }),
+        vg.colorScheme('oranges'),
+        ...mapAttributes,
+      );
+
       const vendorMenu = vg.menu({
         label: 'Vendor',
         as: $vendorFilter,
@@ -176,7 +225,11 @@ export function NycTaxiView() {
         column: 'vendor_id',
       });
 
-      const layout = vg.vconcat(vendorMenu, vg.vspace(10));
+      const layout = vg.vconcat(
+        vendorMenu,
+        vg.vspace(10),
+        vg.hconcat(pickupMap, vg.hspace(10), dropoffMap),
+      );
 
       chartDivRef.current?.replaceChildren(layout);
       setIsPending(false);
@@ -188,7 +241,7 @@ export function NycTaxiView() {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6">
       <div>
-        <h4 className="text-lg mb-2 font-medium">NYC Taxi Controls</h4>
+        <h4 className="text-lg mb-2 font-medium">NYC Taxi Map</h4>
         <div ref={chartDivRef} />
       </div>
 
