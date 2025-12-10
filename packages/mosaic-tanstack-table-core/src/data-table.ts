@@ -129,7 +129,8 @@ export class MosaicDataTable<
     const resolvedCoordinator =
       options.coordinator || this.coordinator || defaultCoordinator();
 
-    if (!(resolvedCoordinator as Coordinator | undefined)) {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (!resolvedCoordinator) {
       logger.warn(
         'Core',
         'MosaicDataTable initialized without a valid Coordinator. Queries will fail.',
