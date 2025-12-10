@@ -76,7 +76,9 @@ export class MosaicDataTable<
   schema: Array<FieldInfo> = [];
   tableFilterSelection!: Selection;
 
-  #store!: Store<MosaicDataTableStore<TData, TValue>>;
+  // Changed from definite assignment (!) to optional | undefined to satisfy linter
+  // regarding "always truthy" checks in updateOptions.
+  #store: Store<MosaicDataTableStore<TData, TValue>> | undefined;
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
 
@@ -119,15 +121,25 @@ export class MosaicDataTable<
       this.tableFilterSelection = new Selection();
     }
 
-    // Ensure we have a coordinator assigned
-    if (!this.coordinator) {
-      const coordinatorInstance = options.coordinator ?? defaultCoordinator();
-      this.coordinator = coordinatorInstance;
+    // Robustly resolve the coordinator.
+    // 1. Try options.coordinator
+    // 2. Try existing this.coordinator
+    // 3. Fallback to defaultCoordinator()
+    // Cast to undefined to allow the check to pass linting if TS thinks it's always defined
+    const resolvedCoordinator =
+      options.coordinator || this.coordinator || defaultCoordinator();
+
+    if (!(resolvedCoordinator as Coordinator | undefined)) {
+      logger.warn(
+        'Core',
+        'MosaicDataTable initialized without a valid Coordinator. Queries will fail.',
+      );
     }
+    this.coordinator = resolvedCoordinator;
 
     type ResolvedStore = MosaicDataTableStore<TData, TValue>;
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    // Now this check is valid because #store is typed as | undefined
     if (!this.#store) {
       this.#store = new Store({
         tableState: seedInitialTableState<TData>(
@@ -174,7 +186,8 @@ export class MosaicDataTable<
 
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
     const source = this.resolveSource(primaryFilter);
-    const tableState = this.#store.state.tableState;
+    // Force unwrap here since we guarantee initialization in updateOptions/constructor
+    const tableState = this.#store!.state.tableState;
 
     // 1. Delegate Query Building
     // The QueryBuilder handles Columns, Pagination, Sorting, and Internal Filters
@@ -220,7 +233,7 @@ export class MosaicDataTable<
   public getCascadingFilters(options: {
     excludeColumnId: string;
   }): Array<mSql.FilterExpr> {
-    const tableState = this.#store.state.tableState;
+    const tableState = this.#store!.state.tableState;
 
     // Filter the state before passing to helper.
     const filteredState = {
@@ -264,7 +277,7 @@ export class MosaicDataTable<
       }
 
       batch(() => {
-        this.#store.setState((prev) => {
+        this.#store!.setState((prev) => {
           return {
             ...prev,
             rows,
@@ -300,7 +313,7 @@ export class MosaicDataTable<
     // Setup the primary selection change listener to reset pagination
     const selectionCb = (_: Array<SelectionClause> | undefined) => {
       batch(() => {
-        this.#store.setState((prev) => ({
+        this.#store!.setState((prev) => ({
           ...prev,
           tableState: {
             ...prev.tableState,
@@ -354,7 +367,7 @@ export class MosaicDataTable<
       onResult: (values) => {
         this.#facetValues.set(columnId, values);
         batch(() => {
-          this.#store.setState((prev) => ({
+          this.#store!.setState((prev) => ({
             ...prev,
             _facetsUpdateCount: prev._facetsUpdateCount + 1,
           }));
@@ -394,7 +407,7 @@ export class MosaicDataTable<
       onResult: (min, max) => {
         this.#facetValues.set(columnId, [min, max]);
         batch(() => {
-          this.#store.setState((prev) => ({
+          this.#store!.setState((prev) => ({
             ...prev,
             _facetsUpdateCount: prev._facetsUpdateCount + 1,
           }));
@@ -447,13 +460,13 @@ export class MosaicDataTable<
       getFacetedMinMaxValues: this.getFacetedMinMaxValues(),
       state: state.tableState,
       onStateChange: (updater) => {
-        const hashedOldState = JSON.stringify(this.#store.state.tableState);
+        const hashedOldState = JSON.stringify(this.#store!.state.tableState);
         const tableState = functionalUpdate(
           updater,
-          this.#store.state.tableState,
+          this.#store!.state.tableState,
         );
 
-        this.#store.setState((prev) => ({
+        this.#store!.setState((prev) => ({
           ...prev,
           tableState,
         }));
@@ -518,7 +531,9 @@ export class MosaicDataTable<
   }
 
   get store(): Store<MosaicDataTableStore<TData, TValue>> {
-    return this.#store;
+    // We can confidently assert non-null here because the store is initialized
+    // in the constructor (via updateOptions).
+    return this.#store!;
   }
 
   getFacets(): Map<string, any> {
@@ -547,10 +562,16 @@ export class UniqueColumnValuesClient extends MosaicClient {
   constructor(options: FacetClientConfig<Array<unknown>>) {
     super(options.filterBy);
 
-    if (options.coordinator) {
-      this.coordinator = options.coordinator;
-    } else {
-      this.coordinator = defaultCoordinator();
+    // Use || instead of checks to handle null/undefined robustly
+    this.coordinator = options.coordinator || defaultCoordinator();
+
+    // Explicitly cast to prevent "always falsy" lint error if TS types suggest it's always defined,
+    // while protecting against actual runtime failures.
+    if (!(this.coordinator as Coordinator | undefined)) {
+      logger.error(
+        'Core',
+        '[UniqueColumnValuesClient] No coordinator available. Queries will fail.',
+      );
     }
 
     this.source = options.source;
@@ -570,6 +591,16 @@ export class UniqueColumnValuesClient extends MosaicClient {
   requestUpdate() {
     // Custom wrapper if needed, else super
     super.requestUpdate();
+  }
+
+  // Override requestQuery to safeguard against disconnected clients
+  // occurring during throttled updates.
+  // Updated return type to Promise<any> | null to match base class signature
+  override requestQuery(query?: any): Promise<any> | null {
+    if (!this.coordinator) {
+      return Promise.resolve();
+    }
+    return super.requestQuery(query);
   }
 
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
@@ -632,7 +663,19 @@ export class MinMaxColumnValuesClient extends MosaicClient {
 
   constructor(options: FacetClientConfig<[number, number]>) {
     super(options.filterBy);
-    this.coordinator = options.coordinator ?? defaultCoordinator();
+
+    // Use || to ensure we fallback if options.coordinator is null OR undefined
+    this.coordinator = options.coordinator || defaultCoordinator();
+
+    // Explicitly cast to prevent "always falsy" lint error if TS types suggest it's always defined,
+    // while protecting against actual runtime failures.
+    if (!(this.coordinator as Coordinator | undefined)) {
+      logger.error(
+        'Core',
+        '[MinMaxColumnValuesClient] No coordinator available. Queries will fail.',
+      );
+    }
+
     this.source = options.source;
     this.column = options.column;
     this.getFilterExpressions = options.getFilterExpressions;
@@ -649,6 +692,16 @@ export class MinMaxColumnValuesClient extends MosaicClient {
 
   requestUpdate() {
     super.requestUpdate();
+  }
+
+  // Override requestQuery to safeguard against disconnected clients
+  // occurring during throttled updates.
+  // Updated return type to Promise<any> | null to match base class signature
+  override requestQuery(query?: any): Promise<any> | null {
+    if (!this.coordinator) {
+      return Promise.resolve();
+    }
+    return super.requestQuery(query);
   }
 
   override query(primaryFilter?: FilterExpr | null): SelectQuery {
