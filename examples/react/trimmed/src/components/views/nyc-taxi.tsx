@@ -4,10 +4,8 @@ import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
-import type {
-  MosaicDataTableOptions,
-  MosaicDataTableSqlFilterType,
-} from '@nozzleio/mosaic-tanstack-react-table';
+import type { ColumnDef } from '@tanstack/react-table';
+import type { MosaicDataTableOptions } from '@nozzleio/mosaic-tanstack-react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
@@ -272,55 +270,56 @@ function TripsDetailTable() {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
   const columns = useMemo(
-    () => [
-      {
-        id: 'datetime',
-        accessorKey: 'datetime',
-        header: ({ column }) => (
-          <RenderTableHeader column={column} title="Time" view={view} />
-        ),
-        cell: (props) => props.getValue()?.toLocaleString(),
-        enableColumnFilter: true,
-        meta: {
-          filterVariant: 'range',
-          rangeFilterType: 'datetime', // Changed from 'date' to 'datetime'
-          mosaicDataTable: {
-            sqlColumn: 'datetime',
-            sqlFilterType: 'RANGE' as MosaicDataTableSqlFilterType,
+    () =>
+      [
+        {
+          id: 'datetime',
+          accessorKey: 'datetime',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Time" view={view} />
+          ),
+          cell: (props) => props.getValue()?.toLocaleString(),
+          enableColumnFilter: true,
+          meta: {
+            filterVariant: 'range',
+            rangeFilterType: 'datetime', // Changed from 'date' to 'datetime'
+            mosaicDataTable: {
+              sqlColumn: 'datetime',
+              sqlFilterType: 'RANGE',
+            },
           },
         },
-      },
-      {
-        id: 'vendor_id',
-        accessorKey: 'vendor_id',
-        header: ({ column }) => (
-          <RenderTableHeader column={column} title="Vendor" view={view} />
-        ),
-        enableColumnFilter: true,
-        meta: {
-          filterVariant: 'select',
-          mosaicDataTable: {
-            sqlColumn: 'vendor_id',
-            sqlFilterType: 'EQUALS' as MosaicDataTableSqlFilterType,
+        {
+          id: 'vendor_id',
+          accessorKey: 'vendor_id',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Vendor" view={view} />
+          ),
+          enableColumnFilter: true,
+          meta: {
+            filterVariant: 'select',
+            mosaicDataTable: {
+              sqlColumn: 'vendor_id',
+              sqlFilterType: 'EQUALS',
+            },
           },
         },
-      },
-      {
-        id: 'fare_amount',
-        accessorKey: 'fare_amount',
-        header: ({ column }) => (
-          <RenderTableHeader column={column} title="Fare" view={view} />
-        ),
-        enableColumnFilter: true,
-        meta: {
-          filterVariant: 'range',
-          mosaicDataTable: {
-            sqlColumn: 'fare_amount',
-            sqlFilterType: 'RANGE' as MosaicDataTableSqlFilterType,
+        {
+          id: 'fare_amount',
+          accessorKey: 'fare_amount',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Fare" view={view} />
+          ),
+          enableColumnFilter: true,
+          meta: {
+            filterVariant: 'range',
+            mosaicDataTable: {
+              sqlColumn: 'fare_amount',
+              sqlFilterType: 'RANGE',
+            },
           },
         },
-      },
-    ],
+      ] satisfies Array<ColumnDef<TripRowData, any>>,
     [view],
   );
 
@@ -358,67 +357,68 @@ function TripsSummaryTable() {
 
   // Columns for the AGGREGATED data
   const columns = useMemo(
-    () => [
-      {
-        id: 'zone_x',
-        accessorKey: 'zone_x',
-        header: ({ column }) => (
-          <RenderTableHeader column={column} title="Zone X" view={view} />
-        ),
-        enableColumnFilter: true,
-        meta: {
-          mosaicDataTable: {
-            sqlColumn: 'zone_x',
-            sqlFilterType: 'EQUALS' as MosaicDataTableSqlFilterType,
+    () =>
+      [
+        {
+          id: 'zone_x',
+          accessorKey: 'zone_x',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Zone X" view={view} />
+          ),
+          enableColumnFilter: true,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'zone_x',
+              sqlFilterType: 'EQUALS',
+            },
+            filterVariant: 'text',
           },
-          filterVariant: 'text',
         },
-      },
-      {
-        id: 'zone_y',
-        accessorKey: 'zone_y',
-        header: ({ column }) => (
-          <RenderTableHeader column={column} title="Zone Y" view={view} />
-        ),
-        enableColumnFilter: true,
-        meta: {
-          mosaicDataTable: {
-            sqlColumn: 'zone_y',
-            sqlFilterType: 'EQUALS' as MosaicDataTableSqlFilterType,
+        {
+          id: 'zone_y',
+          accessorKey: 'zone_y',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Zone Y" view={view} />
+          ),
+          enableColumnFilter: true,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'zone_y',
+              sqlFilterType: 'EQUALS',
+            },
+            filterVariant: 'text',
           },
-          filterVariant: 'text',
         },
-      },
-      {
-        id: 'trip_count',
-        accessorKey: 'trip_count',
-        header: ({ column }) => (
-          <RenderTableHeader column={column} title="Count" view={view} />
-        ),
-        meta: {
-          mosaicDataTable: {
-            sqlColumn: 'trip_count',
-            sqlFilterType: 'RANGE' as MosaicDataTableSqlFilterType,
+        {
+          id: 'trip_count',
+          accessorKey: 'trip_count',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Count" view={view} />
+          ),
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'trip_count',
+              sqlFilterType: 'RANGE',
+            },
+            filterVariant: 'range',
           },
-          filterVariant: 'range',
         },
-      },
-      {
-        id: 'avg_fare',
-        accessorKey: 'avg_fare',
-        header: ({ column }) => (
-          <RenderTableHeader column={column} title="Avg Fare" view={view} />
-        ),
-        cell: (p) => (p.getValue() as number)?.toFixed(2),
-        meta: {
-          mosaicDataTable: {
-            sqlColumn: 'avg_fare',
-            sqlFilterType: 'RANGE' as MosaicDataTableSqlFilterType,
+        {
+          id: 'avg_fare',
+          accessorKey: 'avg_fare',
+          header: ({ column }) => (
+            <RenderTableHeader column={column} title="Avg Fare" view={view} />
+          ),
+          cell: (p) => p.getValue().toFixed(2),
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'avg_fare',
+              sqlFilterType: 'RANGE',
+            },
+            filterVariant: 'range',
           },
-          filterVariant: 'range',
         },
-      },
-    ],
+      ] satisfies Array<ColumnDef<SummaryRowData, any>>,
     [view],
   );
 
