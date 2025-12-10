@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { flexRender } from '@tanstack/react-table';
 import type { Column, ColumnDef, RowData, Table } from '@tanstack/react-table';
+import { toDateInputString, toDateTimeInputString } from '@/lib/utils';
 
 export function BareTable<TData extends RowData, TValue>(props: {
   table: Table<TData>;
@@ -291,39 +292,67 @@ function DebouncedRangeFilter({
   placeholderPrefix = '',
 }: {
   column: any;
-  type?: 'number' | 'date';
+  type?: 'number' | 'date' | 'datetime';
   placeholderPrefix?: string;
 }) {
   const columnFilterValue = column.getFilterValue();
   const minMax = column.getFacetedMinMaxValues();
 
+  // Determine the HTML Input type
+  let inputType = 'number';
+  if (type === 'date') inputType = 'date';
+  if (type === 'datetime') inputType = 'datetime-local';
+
+  // Determine how to format the value for the input
+  const formatValue = (val: unknown) => {
+    if (type === 'datetime') return toDateTimeInputString(val);
+    if (type === 'date') return toDateInputString(val);
+    if (typeof val === 'number' || typeof val === 'string') {
+      return val;
+    }
+    return '';
+  };
+
+  const minValue =
+    minMax?.[0] !== undefined ? formatValue(minMax[0]) : placeholderPrefix;
+  const maxValue =
+    minMax?.[1] !== undefined ? formatValue(minMax[1]) : placeholderPrefix;
+
+  const currentMin =
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    (columnFilterValue as [any, any])?.[0] !== undefined
+      ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        formatValue((columnFilterValue as [any, any])?.[0])
+      : '';
+
+  const currentMax =
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    (columnFilterValue as [any, any])?.[1] !== undefined
+      ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        formatValue((columnFilterValue as [any, any])?.[1])
+      : '';
+
   return (
     <div className="flex gap-1 mt-1">
       <DebouncedInput
-        type={type}
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        value={(columnFilterValue as [any, any])?.[0] ?? ''}
+        type={inputType}
+        value={currentMin}
         onChange={(value) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           column.setFilterValue((old: [any, any]) => [value, old?.[1]])
         }
-        placeholder={`Min ${
-          minMax?.[0] !== undefined ? `(${minMax[0]})` : placeholderPrefix
-        }`}
+        placeholder={`Min ${minValue ? `(${minValue})` : ''}`}
         className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
         onClick={(e) => e.stopPropagation()}
       />
       <DebouncedInput
-        type={type}
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        value={(columnFilterValue as [any, any])?.[1] ?? ''}
+        type={inputType}
+        value={currentMax}
         onChange={(value) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           column.setFilterValue((old: [any, any]) => [old?.[0], value])
         }
-        placeholder={`Max ${
-          minMax?.[1] !== undefined ? `(${minMax[1]})` : placeholderPrefix
-        }`}
+        placeholder={`Max ${maxValue ? `(${maxValue})` : ''}`}
         className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
         onClick={(e) => e.stopPropagation()}
       />

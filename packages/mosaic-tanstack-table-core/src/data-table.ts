@@ -1,3 +1,8 @@
+/**
+ * The core Orchestrator for the Mosaic <-> TanStack Table integration.
+ * Manages state, schema mapping, query generation, and facet sidecars.
+ */
+
 import {
   MosaicClient,
   Selection,
@@ -22,7 +27,6 @@ import type {
   Coordinator,
   FieldInfo,
   FieldInfoRequest,
-  Param,
   SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
@@ -32,7 +36,11 @@ import type {
   Table,
   TableOptions,
 } from '@tanstack/table-core';
-import type { MosaicDataTableOptions, MosaicDataTableStore } from './types';
+import type {
+  MosaicDataTableOptions,
+  MosaicDataTableStore,
+  MosaicTableSource,
+} from './types';
 
 /**
  * This is a factory function to create a MosaicDataTable client.
@@ -58,19 +66,16 @@ interface ActiveFacetClient extends MosaicClient {
 /**
  * A Mosaic Client that does the glue work to drive TanStack Table, using it's
  * TableOptions for configuration.
- *
- * REFACTOR NOTE: This class now acts as an Orchestrator. The heavy lifting of
- * Schema Mapping and Query Generation has been moved to `query/ColumnMapper`
- * and `query/QueryBuilder`.
  */
 export class MosaicDataTable<
   TData extends RowData,
   TValue = unknown,
 > extends MosaicClient {
-  from: Param<string> | string;
+  source: MosaicTableSource;
   schema: Array<FieldInfo> = [];
   tableFilterSelection!: Selection;
 
+  // DO NOT remove the `!` here. We guarantee initialization in updateOptions which is also called by the constructor.
   #store!: Store<MosaicDataTableStore<TData, TValue>>;
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
@@ -85,11 +90,7 @@ export class MosaicDataTable<
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
 
-    this.from = options.table;
-
-    if (!this.sourceTable()) {
-      throw new Error('[MosaicDataTable] A table name must be provided.');
-    }
+    this.source = options.table;
 
     this.updateOptions(options);
   }
@@ -101,13 +102,15 @@ export class MosaicDataTable<
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
     logger.debug('Core', 'updateOptions received', {
-      newTable: options.table,
+      source: typeof options.table === 'string' ? options.table : 'function',
       columnsCount: options.columns?.length,
     });
 
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
     }
+
+    this.source = options.table;
 
     if (options.tableFilterSelection) {
       this.tableFilterSelection = options.tableFilterSelection;
@@ -116,11 +119,22 @@ export class MosaicDataTable<
       this.tableFilterSelection = new Selection();
     }
 
-    // Ensure we have a coordinator assigned
-    if (!this.coordinator) {
-      const coordinatorInstance = options.coordinator ?? defaultCoordinator();
-      this.coordinator = coordinatorInstance;
+    // Robustly resolve the coordinator.
+    // 1. Try options.coordinator
+    // 2. Try existing this.coordinator
+    // 3. Fallback to defaultCoordinator()
+    // Cast to undefined to allow the check to pass linting if TS thinks it's always defined
+    const resolvedCoordinator =
+      options.coordinator || this.coordinator || defaultCoordinator();
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (!resolvedCoordinator) {
+      logger.warn(
+        'Core',
+        'MosaicDataTable initialized without a valid Coordinator. Queries will fail.',
+      );
     }
+    this.coordinator = resolvedCoordinator;
 
     type ResolvedStore = MosaicDataTableStore<TData, TValue>;
 
@@ -152,21 +166,41 @@ export class MosaicDataTable<
     }
   }
 
+  /**
+   * Normalizes the polymorphic `table` option into a concrete source string or query object.
+   * Handles raw table names, Mosaic Params, and Query Factory functions.
+   *
+   * @param filter - The primary filter expression to apply (for Factory functions)
+   */
+  resolveSource(filter?: FilterExpr | null): string | SelectQuery {
+    if (typeof this.source === 'function') {
+      return this.source(filter);
+    }
+    // Unwrap Mosaic Params
+    if (isParam(this.source)) {
+      return this.source.value as string;
+    }
+    return this.source as string;
+  }
+
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
-    const tableName = this.sourceTable();
+    const source = this.resolveSource(primaryFilter);
+    // Force unwrap here since we guarantee initialization in updateOptions/constructor
     const tableState = this.#store.state.tableState;
 
     // 1. Delegate Query Building
     // The QueryBuilder handles Columns, Pagination, Sorting, and Internal Filters
     const statement = buildTableQuery({
-      tableName,
+      source,
       tableState,
       mapper: this.#columnMapper,
       totalRowsColumnName: this.#sql_total_rows,
     });
 
     // 2. Apply Primary Filter (Global/External Context)
-    if (primaryFilter) {
+    // If source is a string, we apply the filter here.
+    // If source is a Query object, the Factory likely already applied it, or we append it.
+    if (primaryFilter && typeof this.source === 'string') {
       statement.where(primaryFilter);
     }
 
@@ -258,9 +292,13 @@ export class MosaicDataTable<
   }
 
   override async prepare(): Promise<void> {
-    // Now fields() uses the mapper
-    const schema = await queryFieldInfo(this.coordinator!, this.fields());
-    this.schema = schema;
+    // Only infer schema if source is a direct table name
+    const source = this.resolveSource();
+    if (typeof source === 'string') {
+      // Now fields() uses the mapper
+      const schema = await queryFieldInfo(this.coordinator!, this.fields());
+      this.schema = schema;
+    }
     return Promise.resolve();
   }
 
@@ -317,7 +355,7 @@ export class MosaicDataTable<
     }
 
     const facetClient = new UniqueColumnValuesClient({
-      table: this.sourceTable(),
+      source: this.source,
       column: sqlColumn,
       filterBy: this.filterBy,
       coordinator: this.coordinator,
@@ -357,7 +395,7 @@ export class MosaicDataTable<
     }
 
     const facetClient = new MinMaxColumnValuesClient({
-      table: this.sourceTable(),
+      source: this.source,
       column: sqlColumn,
       filterBy: this.filterBy,
       coordinator: this.coordinator,
@@ -382,19 +420,16 @@ export class MosaicDataTable<
   }
 
   /**
-   * Resolve the table name.
-   */
-  sourceTable(): string {
-    return (isParam(this.from) ? this.from.value : this.from) as string;
-  }
-
-  /**
    * Map TanStack Table's ColumnDefs to Mosaic FieldInfoRequests.
    */
   fields(): Array<FieldInfoRequest> {
-    const table = this.sourceTable();
+    const source = this.resolveSource();
+    if (typeof source !== 'string') {
+      // Cannot infer fields from subquery object easily without running it
+      return [];
+    }
     // Use the Mapper logic
-    return this.#columnMapper.getMosaicFieldRequests(table);
+    return this.#columnMapper.getMosaicFieldRequests(source);
   }
 
   /**
@@ -495,6 +530,8 @@ export class MosaicDataTable<
   }
 
   get store(): Store<MosaicDataTableStore<TData, TValue>> {
+    // We can confidently assert non-null here because the store is initialized
+    // in the constructor (via updateOptions).
     return this.#store;
   }
 
@@ -506,7 +543,7 @@ export class MosaicDataTable<
 type FacetClientConfig<TResult extends Array<any>> = {
   filterBy?: Selection;
   coordinator?: Coordinator | null;
-  table: string;
+  source: MosaicTableSource;
   column: string;
   getFilterExpressions?: () => Array<mSql.FilterExpr>;
   onResult: (...values: TResult) => void;
@@ -516,7 +553,7 @@ type FacetClientConfig<TResult extends Array<any>> = {
  * This is a helper Mosaic Client to query unique values for a given column.
  */
 export class UniqueColumnValuesClient extends MosaicClient {
-  from: string;
+  source: MosaicTableSource;
   column: string;
   getFilterExpressions?: () => Array<mSql.FilterExpr>;
   onResult: (values: Array<unknown>) => void;
@@ -524,13 +561,19 @@ export class UniqueColumnValuesClient extends MosaicClient {
   constructor(options: FacetClientConfig<Array<unknown>>) {
     super(options.filterBy);
 
-    if (options.coordinator) {
-      this.coordinator = options.coordinator;
-    } else {
-      this.coordinator = defaultCoordinator();
+    // Use || instead of checks to handle null/undefined robustly
+    this.coordinator = options.coordinator || defaultCoordinator();
+
+    // Explicitly cast to prevent "always falsy" lint error if TS types suggest it's always defined,
+    // while protecting against actual runtime failures.
+    if (!(this.coordinator as Coordinator | undefined)) {
+      logger.error(
+        'Core',
+        '[UniqueColumnValuesClient] No coordinator available. Queries will fail.',
+      );
     }
 
-    this.from = options.table;
+    this.source = options.source;
     this.column = options.column;
     this.getFilterExpressions = options.getFilterExpressions;
     this.onResult = options.onResult;
@@ -544,11 +587,31 @@ export class UniqueColumnValuesClient extends MosaicClient {
     this.coordinator?.disconnect(this);
   }
 
+  // Override requestQuery to safeguard against disconnected clients
+  // occurring during throttled updates.
+  // Updated return type to Promise<any> | null to match base class signature
+  override requestQuery(query?: any): Promise<any> | null {
+    if (!this.coordinator) {
+      return Promise.resolve();
+    }
+    return super.requestQuery(query);
+  }
+
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
-    const statement = mSql.Query.from(this.from).select(this.column);
+    let src: string | SelectQuery;
+    if (typeof this.source === 'function') {
+      src = this.source(primaryFilter);
+    } else {
+      // Unwrap if Param
+      src = isParam(this.source)
+        ? (this.source.value as string)
+        : (this.source as string);
+    }
+
+    const statement = mSql.Query.from(src).select(this.column);
     const whereClauses: Array<mSql.FilterExpr> = [];
 
-    if (primaryFilter) {
+    if (primaryFilter && typeof this.source === 'string') {
       whereClauses.push(primaryFilter);
     }
 
@@ -587,15 +650,27 @@ export class UniqueColumnValuesClient extends MosaicClient {
  * A helper Mosaic Client to query Min and Max values for a given column.
  */
 export class MinMaxColumnValuesClient extends MosaicClient {
-  private from: string;
+  private source: MosaicTableSource;
   private column: string;
   private getFilterExpressions?: () => Array<mSql.FilterExpr>;
   private onResult: (min: number, max: number) => void;
 
   constructor(options: FacetClientConfig<[number, number]>) {
     super(options.filterBy);
-    this.coordinator = options.coordinator ?? defaultCoordinator();
-    this.from = options.table;
+
+    // Use || to ensure we fallback if options.coordinator is null OR undefined
+    this.coordinator = options.coordinator || defaultCoordinator();
+
+    // Explicitly cast to prevent "always falsy" lint error if TS types suggest it's always defined,
+    // while protecting against actual runtime failures.
+    if (!(this.coordinator as Coordinator | undefined)) {
+      logger.error(
+        'Core',
+        '[MinMaxColumnValuesClient] No coordinator available. Queries will fail.',
+      );
+    }
+
+    this.source = options.source;
     this.column = options.column;
     this.getFilterExpressions = options.getFilterExpressions;
     this.onResult = options.onResult;
@@ -609,16 +684,36 @@ export class MinMaxColumnValuesClient extends MosaicClient {
     this.coordinator?.disconnect(this);
   }
 
+  // Override requestQuery to safeguard against disconnected clients
+  // occurring during throttled updates.
+  // Updated return type to Promise<any> | null to match base class signature
+  override requestQuery(query?: any): Promise<any> | null {
+    if (!this.coordinator) {
+      return Promise.resolve();
+    }
+    return super.requestQuery(query);
+  }
+
   override query(primaryFilter?: FilterExpr | null): SelectQuery {
+    let src: string | SelectQuery;
+    if (typeof this.source === 'function') {
+      src = this.source(primaryFilter);
+    } else {
+      // Unwrap if Param
+      src = isParam(this.source)
+        ? (this.source.value as string)
+        : (this.source as string);
+    }
+
     const col = mSql.column(this.column);
-    const statement = mSql.Query.from(this.from).select({
+    const statement = mSql.Query.from(src).select({
       min: mSql.min(col),
       max: mSql.max(col),
     });
 
     const whereClauses: Array<mSql.FilterExpr> = [];
 
-    if (primaryFilter) {
+    if (primaryFilter && typeof this.source === 'string') {
       whereClauses.push(primaryFilter);
     }
 
@@ -632,10 +727,6 @@ export class MinMaxColumnValuesClient extends MosaicClient {
     if (whereClauses.length > 0) {
       statement.where(mSql.and(...whereClauses));
     }
-
-    logger.debug('Core', `[MinMax] Generated Query for ${this.column}`, {
-      sql: statement.toString(),
-    });
 
     return statement;
   }

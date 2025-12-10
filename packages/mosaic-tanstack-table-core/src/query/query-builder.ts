@@ -6,7 +6,7 @@ import type { RowData, TableState } from '@tanstack/table-core';
 import type { ColumnMapper } from './column-mapper';
 
 export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
-  tableName: string;
+  source: string | SelectQuery;
   tableState: TableState;
   mapper: ColumnMapper<TData, TValue>;
   totalRowsColumnName: string;
@@ -16,13 +16,8 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
 export function buildTableQuery<TData extends RowData, TValue>(
   options: QueryBuilderOptions<TData, TValue>,
 ): SelectQuery {
-  const {
-    tableName,
-    tableState,
-    mapper,
-    totalRowsColumnName,
-    excludeColumnId,
-  } = options;
+  const { source, tableState, mapper, totalRowsColumnName, excludeColumnId } =
+    options;
 
   const { pagination, sorting, columnFilters } = tableState;
 
@@ -32,7 +27,8 @@ export function buildTableQuery<TData extends RowData, TValue>(
     .map((col) => mSql.column(col));
 
   // Initialize statement with Total Rows Window Function
-  const statement = mSql.Query.from(tableName).select(...selectColumns, {
+  // mSql.Query.from() handles both strings (table names) and SelectQuery objects (subqueries)
+  const statement = mSql.Query.from(source).select(...selectColumns, {
     [totalRowsColumnName]: mSql.sql`COUNT(*) OVER()`,
   });
 
