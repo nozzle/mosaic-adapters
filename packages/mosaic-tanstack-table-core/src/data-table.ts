@@ -8,6 +8,7 @@ import {
   Selection,
   coordinator as defaultCoordinator,
   isArrowTable,
+  isParam,
   queryFieldInfo,
 } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
@@ -18,8 +19,7 @@ import {
   seedInitialTableState,
   toSafeSqlColumnName,
 } from './utils';
-import { logger } from './logger';
-import { formatters } from './log-formatter';
+import { formatters, logger } from './logger';
 import { ColumnMapper } from './query/column-mapper';
 import { buildTableQuery, extractInternalFilters } from './query/query-builder';
 
@@ -160,11 +160,21 @@ export class MosaicDataTable<
     }
   }
 
+  /**
+   * Normalizes the polymorphic `table` option into a concrete source string or query object.
+   * Handles raw table names, Mosaic Params, and Query Factory functions.
+   *
+   * @param filter - The primary filter expression to apply (for Factory functions)
+   */
   resolveSource(filter?: FilterExpr | null): string | SelectQuery {
     if (typeof this.source === 'function') {
       return this.source(filter);
     }
-    return this.source;
+    // Unwrap Mosaic Params
+    if (isParam(this.source)) {
+      return this.source.value as string;
+    }
+    return this.source as string;
   }
 
   /**
@@ -611,7 +621,10 @@ export class UniqueColumnValuesClient extends MosaicClient {
     if (typeof this.source === 'function') {
       src = this.source(primaryFilter);
     } else {
-      src = this.source;
+      // Unwrap if Param
+      src = isParam(this.source)
+        ? (this.source.value as string)
+        : (this.source as string);
     }
 
     const statement = mSql.Query.from(src).select(this.column);
@@ -703,7 +716,10 @@ export class MinMaxColumnValuesClient extends MosaicClient {
     if (typeof this.source === 'function') {
       src = this.source(primaryFilter);
     } else {
-      src = this.source;
+      // Unwrap if Param
+      src = isParam(this.source)
+        ? (this.source.value as string)
+        : (this.source as string);
     }
 
     const col = mSql.column(this.column);

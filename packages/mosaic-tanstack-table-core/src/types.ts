@@ -1,4 +1,4 @@
-import type { Coordinator, Selection } from '@uwdata/mosaic-core';
+import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
@@ -49,11 +49,13 @@ export type SubsetTableOptions<TData extends RowData> = Omit<
 /**
  * Defines the source of data for the table.
  * - `string`: A raw table name. Defaults to `SELECT * FROM {string}`.
+ * - `Param<string>`: A reactive Mosaic parameter holding the table name.
  * - `(filter?: FilterExpr) => SelectQuery`: A factory function that returns a Mosaic Query Builder object.
  *   The function receives the primary filter (from `filterBy`) and should apply it internally.
  */
 export type MosaicTableSource =
   | string
+  | Param<string>
   | ((filter?: FilterExpr | null) => SelectQuery);
 
 export interface MosaicDataTableOptions<
@@ -123,7 +125,11 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   _facetsUpdateCount: number;
   /**
    * Stores the filter state signature from the last successful query.
-   * Used to determine if we can skip the expensive COUNT(*) OVER() operation.
+   *
+   * This is an optimization mechanism. When the filter signature (external + internal filters)
+   * matches the last successful query, we can safely assume the Total Row Count has not changed.
+   * This allows the Query Builder to skip the expensive `COUNT(*) OVER()` window function
+   * during operations like pagination or sorting.
    */
   _lastFilterSignature?: string;
 };
