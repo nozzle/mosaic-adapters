@@ -76,9 +76,8 @@ export class MosaicDataTable<
   schema: Array<FieldInfo> = [];
   tableFilterSelection!: Selection;
 
-  // Changed from definite assignment (!) to optional | undefined to satisfy linter
-  // regarding "always truthy" checks in updateOptions.
-  #store: Store<MosaicDataTableStore<TData, TValue>> | undefined;
+  // DO NOT remove the `!` here. We guarantee initialization in updateOptions which is also called by the constructor.
+  #store!: Store<MosaicDataTableStore<TData, TValue>>;
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
 
@@ -140,7 +139,7 @@ export class MosaicDataTable<
 
     type ResolvedStore = MosaicDataTableStore<TData, TValue>;
 
-    // Now this check is valid because #store is typed as | undefined
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (!this.#store) {
       this.#store = new Store({
         tableState: seedInitialTableState<TData>(
@@ -188,7 +187,7 @@ export class MosaicDataTable<
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
     const source = this.resolveSource(primaryFilter);
     // Force unwrap here since we guarantee initialization in updateOptions/constructor
-    const tableState = this.#store!.state.tableState;
+    const tableState = this.#store.state.tableState;
 
     // 1. Delegate Query Building
     // The QueryBuilder handles Columns, Pagination, Sorting, and Internal Filters
@@ -234,7 +233,7 @@ export class MosaicDataTable<
   public getCascadingFilters(options: {
     excludeColumnId: string;
   }): Array<mSql.FilterExpr> {
-    const tableState = this.#store!.state.tableState;
+    const tableState = this.#store.state.tableState;
 
     // Filter the state before passing to helper.
     const filteredState = {
@@ -278,7 +277,7 @@ export class MosaicDataTable<
       }
 
       batch(() => {
-        this.#store!.setState((prev) => {
+        this.#store.setState((prev) => {
           return {
             ...prev,
             rows,
@@ -314,7 +313,7 @@ export class MosaicDataTable<
     // Setup the primary selection change listener to reset pagination
     const selectionCb = (_: Array<SelectionClause> | undefined) => {
       batch(() => {
-        this.#store!.setState((prev) => ({
+        this.#store.setState((prev) => ({
           ...prev,
           tableState: {
             ...prev.tableState,
@@ -368,7 +367,7 @@ export class MosaicDataTable<
       onResult: (values) => {
         this.#facetValues.set(columnId, values);
         batch(() => {
-          this.#store!.setState((prev) => ({
+          this.#store.setState((prev) => ({
             ...prev,
             _facetsUpdateCount: prev._facetsUpdateCount + 1,
           }));
@@ -408,7 +407,7 @@ export class MosaicDataTable<
       onResult: (min, max) => {
         this.#facetValues.set(columnId, [min, max]);
         batch(() => {
-          this.#store!.setState((prev) => ({
+          this.#store.setState((prev) => ({
             ...prev,
             _facetsUpdateCount: prev._facetsUpdateCount + 1,
           }));
@@ -461,13 +460,13 @@ export class MosaicDataTable<
       getFacetedMinMaxValues: this.getFacetedMinMaxValues(),
       state: state.tableState,
       onStateChange: (updater) => {
-        const hashedOldState = JSON.stringify(this.#store!.state.tableState);
+        const hashedOldState = JSON.stringify(this.#store.state.tableState);
         const tableState = functionalUpdate(
           updater,
-          this.#store!.state.tableState,
+          this.#store.state.tableState,
         );
 
-        this.#store!.setState((prev) => ({
+        this.#store.setState((prev) => ({
           ...prev,
           tableState,
         }));
@@ -534,7 +533,7 @@ export class MosaicDataTable<
   get store(): Store<MosaicDataTableStore<TData, TValue>> {
     // We can confidently assert non-null here because the store is initialized
     // in the constructor (via updateOptions).
-    return this.#store!;
+    return this.#store;
   }
 
   getFacets(): Map<string, any> {
