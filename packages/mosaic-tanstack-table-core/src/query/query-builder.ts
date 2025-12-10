@@ -16,13 +16,8 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
 export function buildTableQuery<TData extends RowData, TValue>(
   options: QueryBuilderOptions<TData, TValue>,
 ): SelectQuery {
-  const {
-    source,
-    tableState,
-    mapper,
-    totalRowsColumnName,
-    excludeColumnId,
-  } = options;
+  const { source, tableState, mapper, totalRowsColumnName, excludeColumnId } =
+    options;
 
   const { pagination, sorting, columnFilters } = tableState;
 

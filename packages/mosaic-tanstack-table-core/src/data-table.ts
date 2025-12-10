@@ -178,13 +178,8 @@ export class MosaicDataTable<
 
     // 1. Delegate Query Building
     // The QueryBuilder handles Columns, Pagination, Sorting, and Internal Filters
-    // Note: buildTableQuery signature will be updated in the next commit to accept `source`
-    // For now we pass it as any or expect the builder to be updated shortly.
     const statement = buildTableQuery({
-      // @ts-expect-error - source will be supported in next commit
       source,
-      // @ts-expect-error - tableName is being deprecated in next commit
-      tableName: typeof source === 'string' ? source : 'SUBQUERY',
       tableState,
       mapper: this.#columnMapper,
       totalRowsColumnName: this.#sql_total_rows,
