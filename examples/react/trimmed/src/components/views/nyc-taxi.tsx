@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
+import * as mSql from '@uwdata/mosaic-sql';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
 import type {
   MosaicDataTableOptions,
@@ -18,6 +19,7 @@ const tableName = 'trips';
 // --- Reactive Topology ---
 const $brush = vg.Selection.intersect(); // Brush on Maps
 const $detailFilter = vg.Selection.intersect(); // Filter Detail Table
+const $summaryFilter = vg.Selection.intersect(); // Filter Summary Table
 const $vendorFilter = vg.Selection.intersect(); // Dropdown Filter for Vendor
 
 // Detail table needs to react to Map Brush AND Vendor
@@ -25,10 +27,22 @@ const $detailContext = vg.Selection.intersect({
   include: [$brush, $vendorFilter],
 });
 
+// Summary table needs to react to Map Brush, Detail Table Filters, AND Vendor
+const $summaryContext = vg.Selection.intersect({
+  include: [$brush, $detailFilter, $vendorFilter],
+});
+
 interface TripRowData {
   datetime: string;
   fare_amount: number;
   vendor_id: string;
+}
+
+interface SummaryRowData {
+  zone_x: number;
+  zone_y: number;
+  trip_count: number;
+  avg_fare: number;
 }
 
 export function NycTaxiView() {
@@ -68,7 +82,6 @@ export function NycTaxiView() {
       ]);
 
       // 2. Visualizations (Placeholder for now)
-      // We will add the maps in a later commit.
       const vendorMenu = vg.menu({
         label: 'Vendor',
         as: $vendorFilter,
@@ -101,7 +114,12 @@ export function NycTaxiView() {
               <h4 className="text-lg mb-2 font-medium">Trip Details (Raw)</h4>
               <TripsDetailTable />
             </div>
-            {/* Summary Table will be added here later */}
+            <div>
+              <h4 className="text-lg mb-2 font-medium">
+                Zone Summary (Aggregated)
+              </h4>
+              <TripsSummaryTable />
+            </div>
           </>
         )}
       </div>
@@ -125,7 +143,7 @@ function TripsDetailTable() {
         enableColumnFilter: true,
         meta: {
           filterVariant: 'range',
-          rangeFilterType: 'datetime', // Uses the new datetime support
+          rangeFilterType: 'datetime',
           mosaicDataTable: {
             sqlColumn: 'datetime',
             sqlFilterType: 'RANGE' as MosaicDataTableSqlFilterType,
@@ -184,6 +202,130 @@ function TripsDetailTable() {
     client.loadColumnMinMax('fare_amount');
     client.loadColumnMinMax('datetime');
     client.loadColumnFacet('vendor_id');
+  }, [client]);
+
+  const table = useReactTable(tableOptions);
+  return (
+    <div className="max-h-[400px] overflow-auto border rounded">
+      <RenderTable table={table} columns={columns} />
+    </div>
+  );
+}
+
+// --- Table 2: Aggregated Summary ---
+function TripsSummaryTable() {
+  const [view] = useURLSearchParam('table-view', 'shadcn-1');
+
+  // Columns for the AGGREGATED data
+  const columns = useMemo(
+    () => [
+      {
+        id: 'zone_x',
+        accessorKey: 'zone_x',
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Zone X" view={view} />
+        ),
+        enableColumnFilter: true,
+        meta: {
+          mosaicDataTable: {
+            sqlColumn: 'zone_x',
+            sqlFilterType: 'EQUALS' as MosaicDataTableSqlFilterType,
+          },
+          filterVariant: 'text',
+        },
+      },
+      {
+        id: 'zone_y',
+        accessorKey: 'zone_y',
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Zone Y" view={view} />
+        ),
+        enableColumnFilter: true,
+        meta: {
+          mosaicDataTable: {
+            sqlColumn: 'zone_y',
+            sqlFilterType: 'EQUALS' as MosaicDataTableSqlFilterType,
+          },
+          filterVariant: 'text',
+        },
+      },
+      {
+        id: 'trip_count',
+        accessorKey: 'trip_count',
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Count" view={view} />
+        ),
+        meta: {
+          mosaicDataTable: {
+            sqlColumn: 'trip_count',
+            sqlFilterType: 'RANGE' as MosaicDataTableSqlFilterType,
+          },
+          filterVariant: 'range',
+        },
+      },
+      {
+        id: 'avg_fare',
+        accessorKey: 'avg_fare',
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Avg Fare" view={view} />
+        ),
+        cell: (p) => (p.getValue() as number)?.toFixed(2),
+        meta: {
+          mosaicDataTable: {
+            sqlColumn: 'avg_fare',
+            sqlFilterType: 'RANGE' as MosaicDataTableSqlFilterType,
+          },
+          filterVariant: 'range',
+        },
+      },
+    ],
+    [view],
+  );
+
+  // Define the Aggregation Query Factory
+  const queryFactory = useMemo(() => {
+    return (filter: mSql.FilterExpr | null | undefined) => {
+      const ZONE_SIZE = 1000;
+
+      // Note: We use the passed `filter` argument from MosaicDataTable
+      // This allows the table adapter to control WHEN the filter is applied.
+      const query = mSql.Query.from(tableName)
+        .select({
+          zone_x: mSql.sql`round(dx / ${ZONE_SIZE})`,
+          zone_y: mSql.sql`round(dy / ${ZONE_SIZE})`,
+          trip_count: mSql.count(),
+          avg_fare: mSql.avg('fare_amount'),
+        })
+        .groupby('zone_x', 'zone_y');
+
+      if (filter) {
+        query.where(filter);
+      }
+
+      return query;
+    };
+  }, []);
+
+  const mosaicOptions: MosaicDataTableOptions<SummaryRowData> = useMemo(
+    () => ({
+      table: queryFactory,
+      filterBy: $summaryContext,
+      tableFilterSelection: $summaryFilter,
+      columns,
+      tableOptions: {
+        enableColumnFilters: true,
+        initialState: { sorting: [{ id: 'trip_count', desc: true }] },
+      },
+    }),
+    [columns, queryFactory],
+  );
+
+  const { tableOptions, client } = useMosaicReactTable(mosaicOptions);
+
+  // Sidecar facets for aggregated columns
+  useEffect(() => {
+    client.loadColumnMinMax('trip_count');
+    client.loadColumnMinMax('avg_fare');
   }, [client]);
 
   const table = useReactTable(tableOptions);
