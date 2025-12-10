@@ -23,7 +23,6 @@
   "dependencies": {
     "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@tanstack/react-store": "catalog:",
-    "@tanstack/store": "catalog:",
     "@tanstack/table-core": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
