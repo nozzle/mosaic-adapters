@@ -61,7 +61,6 @@ export function createMosaicDataTableClient<
 
 interface ActiveFacetClient extends MosaicClient {
   disconnect: () => void;
-  requestUpdate: () => void;
 }
 
 /**
@@ -588,11 +587,6 @@ export class UniqueColumnValuesClient extends MosaicClient {
     this.coordinator?.disconnect(this);
   }
 
-  requestUpdate() {
-    // Custom wrapper if needed, else super
-    super.requestUpdate();
-  }
-
   // Override requestQuery to safeguard against disconnected clients
   // occurring during throttled updates.
   // Updated return type to Promise<any> | null to match base class signature
@@ -688,10 +682,6 @@ export class MinMaxColumnValuesClient extends MosaicClient {
 
   disconnect(): void {
     this.coordinator?.disconnect(this);
-  }
-
-  requestUpdate() {
-    super.requestUpdate();
   }
 
   // Override requestQuery to safeguard against disconnected clients
