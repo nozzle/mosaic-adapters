@@ -12,12 +12,11 @@
     "preinstall": "node -e \"if(process.env.CI == 'true') {console.info('Skipping preinstall...')} else {process.exit(1)}\" || npx -y only-allow pnpm",
     "test:format": "prettier . --check",
     "test:types": "nx run-many --target=test:types",
-    "test:build": "pnpm run build:all",
+    "test:build": "nx run-many --target=test:build",
     "test:lint": "nx affected --target=test:lint",
     "test:pr": "nx affected --targets=test:lint,test:types,test:build",
     "build": "pnpm run build:packages",
     "build:packages": "nx affected --target=build --exclude=examples/**",
-    "build:all": "nx run-many --target=build",
     "watch": "pnpm run build:packages && nx watch --all -- pnpm run build:packages",
     "format": "prettier . --write",
     "dev": "pnpm run watch"

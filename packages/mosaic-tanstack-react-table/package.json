@@ -17,8 +17,11 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "vite build",
-    "#test:types": "tsc --noEmit",
-    "test:build": "vite build"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ./src",
+    "test:types": "pnpm run typecheck",
+    "test:build": "pnpm run build",
+    "test:lint": "pnpm run lint"
   },
   "dependencies": {
     "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
