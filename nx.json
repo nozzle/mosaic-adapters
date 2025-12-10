@@ -23,7 +23,7 @@
   "targetDefaults": {
     "test:lint": {
       "cache": true,
-      "dependsOn": ["^build"],
+      "dependsOn": ["^test:build"],
       "inputs": [
         "default",
         "^production",
@@ -33,19 +33,12 @@
     },
     "test:build": {
       "cache": true,
-      "dependsOn": ["build"],
       "inputs": ["production"]
     },
     "test:types": {
       "cache": true,
-      "dependsOn": ["^build"],
+      "dependsOn": ["^test:build"],
       "inputs": ["default", "^production"]
-    },
-    "build": {
-      "cache": true,
-      "dependsOn": ["^build"],
-      "inputs": ["production", "^production"],
-      "outputs": ["{projectRoot}/build", "{projectRoot}/dist"]
     }
   }
 }
