@@ -7,8 +7,12 @@
     "clean": "rimraf dist",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint ./src",
     "build": "pnpm run typecheck && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:build": "pnpm run build",
+    "test:lint": "pnpm run lint",
+    "test:types": "pnpm run typecheck"
   },
   "dependencies": {
     "@nozzleio/mosaic-tanstack-react-table": "workspace:*",
