@@ -1,3 +1,4 @@
+import * as mSql from '@uwdata/mosaic-sql';
 import type { RowData, TableOptions, TableState } from '@tanstack/table-core';
 
 /**
@@ -139,4 +140,29 @@ export function toRangeValue(value: unknown): number | Date | null {
   // Fallback for other types
   const num = Number(value);
   return isFinite(num) ? num : null;
+}
+
+/**
+ * Constructs a Mosaic SQL expression for a struct column access.
+ * Handles dot notation (e.g. "a.b") by generating "a"."b".
+ *
+ * @param columnPath - The dotted column path (e.g., "related_phrase.phrase")
+ * @returns A Mosaic SQL expression
+ */
+export function createStructAccess(columnPath: string): any {
+  if (!columnPath.includes('.')) {
+    return mSql.column(columnPath);
+  }
+
+  const parts = columnPath.split('.');
+  return parts.reduce((acc, part, index) => {
+    if (index === 0) {
+      return mSql.column(part);
+    }
+
+    // We use a specific casting here to satisfy the `sql` tag signature
+    // which expects a TemplateStringsArray.
+    const templateStrings = [part] as unknown as TemplateStringsArray;
+    return mSql.sql`${acc}.${mSql.sql(templateStrings)}`;
+  }, null as any);
 }
