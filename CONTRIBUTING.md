@@ -24,6 +24,8 @@ If you have been assigned to fix an issue or develop a new feature, please follo
 - Git stage your required changes and commit (see below commit guidelines).
 - Submit PR for review.
 
+This project is friendly towards contributors using AI tools to assist in code generation and improvements. If you are using AI assisted tooling, please point it to the [AGENTS.md](./AGENTS.md) file for guidelines on code style, testing, and overall development workflow.
+
 ### Commit Guidelines
 
 This project uses conventional commits. See https://www.conventionalcommits.org/ for more details.
