@@ -11,7 +11,9 @@ export function useURLSearchParam(
 ) {
   // Initialise from URL or default
   const [paramValue, setParamValue] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return defaultValue;
+    if (typeof window === 'undefined') {
+      return defaultValue;
+    }
     const params = new URLSearchParams(window.location.search);
     return params.get(key) ?? defaultValue;
   });

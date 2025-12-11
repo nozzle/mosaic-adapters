@@ -9,6 +9,7 @@ export default defineConfig([
     rules: {
       '@typescript-eslint/no-unsafe-function-type': 'off',
       'no-shadow': 'off',
+      curly: ['error', 'all'],
     },
   },
   {
