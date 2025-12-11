@@ -1,5 +1,6 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
+import { createStructAccess } from '../utils';
 import { createFilterClause } from './filter-factory';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
 import type { RowData, TableState } from '@tanstack/table-core';
@@ -22,22 +23,13 @@ export function buildTableQuery<TData extends RowData, TValue>(
   const { pagination, sorting, columnFilters } = tableState;
 
   // 1. Select Columns
-  // FIX: Handle struct columns (e.g. "related_phrase.phrase")
   // We iterate the mapped columns and construct the SELECT clause.
   // If a column has a dot, we treat it as a struct access `parent.child`
   // and ALIAS it to the original key so TanStack Table can find it flatly.
   const selectColumns = mapper.getSelectColumns().map((col) => {
     if (col.includes('.')) {
-      // Split "a.b" -> column("a"), column("b")
-      // Reduce to sql`${col("a")}.${col("b")}` -> "a".b (unquoted field)
-      const parts = col.split('.');
-      const structExpr = parts.reduce((acc, part, index) => {
-        if (index === 0) return mSql.column(part); // The actual column "related_phrase" gets quoted
-        // The struct fields .phrase should NOT be quoted by DuckDB binder as "phrase", but as field access
-        // TS Workaround: Pass string array as any to simulate TemplateStringsArray for raw fragment generation
-        return mSql.sql`${acc}.${mSql.sql([part] as any)}`;
-      }, null as any);
-
+      // Use helper to generate "a"."b" struct access
+      const structExpr = createStructAccess(col);
       return { [col]: structExpr };
     }
     // Standard column
@@ -89,19 +81,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
   sorting.forEach((sort) => {
     const sqlColumn = mapper.getSqlColumn(sort.id);
     if (sqlColumn) {
-      let colExpr;
-      if (sqlColumn.includes('.')) {
-        // Handle struct columns for sorting
-        const parts = sqlColumn.split('.');
-        colExpr = parts.reduce((acc, part, index) => {
-          if (index === 0) return mSql.column(part);
-          // TS Workaround: Pass string array as any to simulate TemplateStringsArray for raw fragment generation
-          return mSql.sql`${acc}.${mSql.sql([part] as any)}`;
-        }, null as any);
-      } else {
-        colExpr = mSql.column(sqlColumn);
-      }
-
+      const colExpr = createStructAccess(sqlColumn);
       orderingCriteria.push(sort.desc ? mSql.desc(colExpr) : mSql.asc(colExpr));
     }
   });

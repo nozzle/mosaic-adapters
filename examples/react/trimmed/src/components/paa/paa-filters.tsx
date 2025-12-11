@@ -4,7 +4,11 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
-import { UniqueColumnValuesClient } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  UniqueColumnValuesClient,
+  type FacetClientConfig,
+  createStructAccess,
+} from '@nozzleio/mosaic-tanstack-react-table';
 import {
   Select,
   SelectTrigger,
@@ -23,39 +27,57 @@ interface FilterProps {
 }
 
 /**
- * COMPONENT: SelectFilter
- * A Dropdown that:
- * 1. Fetches unique values from DuckDB for the given column.
- * 2. Updates the passed Mosaic Selection on change.
+ * HOOK: useUniqueColumnValues
+ * Wrapper around UniqueColumnValuesClient to simplify usage in React components.
  */
-export function SelectFilter({ label, table, column, selection }: FilterProps) {
+function useUniqueColumnValues(
+  config: Omit<
+    FacetClientConfig<Array<unknown>>,
+    'onResult' | 'coordinator' | 'getFilterExpressions'
+  > & {
+    coordinator?: FacetClientConfig<Array<unknown>>['coordinator'];
+  },
+) {
   const [options, setOptions] = useState<any[]>([]);
 
   useEffect(() => {
-    // ARCHITECTURE NOTE:
-    // We instantiate a transient Mosaic Client just to populate this dropdown.
+    // Instantiate a transient Mosaic Client.
     // This client connects to the coordinator, runs a `SELECT DISTINCT column...` query,
     // and disconnects on unmount.
     const client = new UniqueColumnValuesClient({
-      source: table,
-      column: column,
-      coordinator: vg.coordinator(),
-      // In a real app, you might pass `filterBy` here if you want this dropdown
-      // to react to OTHER dropdowns (cascading filters).
+      source: config.source,
+      column: config.column,
+      coordinator: config.coordinator || vg.coordinator(),
       onResult: (values) => setOptions(values.filter((v) => v != null)),
-
-      // OPTIMIZATION:
-      // Sort by frequency (Count DESC) and limit to top 50.
-      // This prevents rendering performance issues and ensures relevant data is seen first.
-      sort: 'count',
-      limit: 50,
+      sort: config.sort,
+      limit: config.limit,
     });
 
     client.connect();
     client.requestUpdate();
 
     return () => client.disconnect();
-  }, [table, column]);
+  }, [config.source, config.column, config.sort, config.limit]);
+
+  return options;
+}
+
+/**
+ * COMPONENT: SelectFilter
+ * A Dropdown that:
+ * 1. Fetches unique values from DuckDB for the given column.
+ * 2. Updates the passed Mosaic Selection on change.
+ */
+export function SelectFilter({ label, table, column, selection }: FilterProps) {
+  const options = useUniqueColumnValues({
+    source: table,
+    column: column,
+    // OPTIMIZATION:
+    // Sort by frequency (Count DESC) and limit to top 50.
+    // This prevents rendering performance issues and ensures relevant data is seen first.
+    sort: 'count',
+    limit: 50,
+  });
 
   const handleChange = (val: string) => {
     // If 'ALL', we send null to remove the WHERE clause for this column
@@ -110,19 +132,8 @@ export function TextFilter({ label, column, selection }: FilterProps) {
 
       // ARCHITECTURE NOTE:
       // Handle Struct Columns (dot notation) e.g. "related_phrase.phrase"
-      // If we used mSql.column("related_phrase.phrase"), it would produce "related_phrase.phrase" (quoted identifier),
-      // which DuckDB treats as a column with a dot in the name, NOT a struct access.
-      // We need to construct "related_phrase".phrase (quoted struct, raw field).
-      let colExpr;
-      if (column.includes('.')) {
-        const [col, field] = column.split('.');
-        // Use mSql.sql tagged template.
-        // We cast [field] to any to pass it as the TemplateStringsArray to the sql tag function.
-        // This generates: "col".field
-        colExpr = mSql.sql`${mSql.column(col)}.${mSql.sql([field] as any)}`;
-      } else {
-        colExpr = mSql.column(column);
-      }
+      // We use the shared util to generate "col".field
+      const colExpr = createStructAccess(column);
 
       // Construct the ILIKE predicate
       const predicate = mSql.sql`${colExpr} ILIKE ${mSql.literal('%' + val + '%')}`;

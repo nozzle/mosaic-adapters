@@ -630,6 +630,8 @@ export class UniqueColumnValuesClient extends MosaicClient {
     // Sort Logic
     if (this.sort === 'count') {
       // ORDER BY count(*) DESC
+      // We descend because when filtering by frequency, the most frequent items (highest count)
+      // are typically the most relevant to the user.
       statement.orderby(mSql.desc(mSql.count()));
     } else {
       // ORDER BY column ASC (default)
