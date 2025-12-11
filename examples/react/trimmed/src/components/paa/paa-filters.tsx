@@ -43,6 +43,12 @@ export function SelectFilter({ label, table, column, selection }: FilterProps) {
       // In a real app, you might pass `filterBy` here if you want this dropdown
       // to react to OTHER dropdowns (cascading filters).
       onResult: (values) => setOptions(values.filter((v) => v != null)),
+
+      // OPTIMIZATION:
+      // Sort by frequency (Count DESC) and limit to top 50.
+      // This prevents rendering performance issues and ensures relevant data is seen first.
+      sort: 'count',
+      limit: 50,
     });
 
     client.connect();
@@ -93,15 +99,33 @@ export function TextFilter({ label, column, selection }: FilterProps) {
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      const predicate =
-        val.trim() === ''
-          ? null
-          : // ARCHITECTURE NOTE:
-            // We use mSql.sql tagged template for ILIKE to handle the pattern syntax safely.
-            // We handle dot-notation columns (structs) by checking includes('.').
-            column.includes('.')
-            ? mSql.sql`${mSql.sql(column)} ILIKE ${mSql.literal('%' + val + '%')}`
-            : mSql.sql`${mSql.column(column)} ILIKE ${mSql.literal('%' + val + '%')}`;
+      // Clear filter if input is empty
+      if (val.trim() === '') {
+        selection.update({
+          source: `filter-${column}`,
+          predicate: null,
+        });
+        return;
+      }
+
+      // ARCHITECTURE NOTE:
+      // Handle Struct Columns (dot notation) e.g. "related_phrase.phrase"
+      // If we used mSql.column("related_phrase.phrase"), it would produce "related_phrase.phrase" (quoted identifier),
+      // which DuckDB treats as a column with a dot in the name, NOT a struct access.
+      // We need to construct "related_phrase".phrase (quoted struct, raw field).
+      let colExpr;
+      if (column.includes('.')) {
+        const [col, field] = column.split('.');
+        // Use mSql.sql tagged template.
+        // We cast [field] to any to pass it as the TemplateStringsArray to the sql tag function.
+        // This generates: "col".field
+        colExpr = mSql.sql`${mSql.column(col)}.${mSql.sql([field] as any)}`;
+      } else {
+        colExpr = mSql.column(column);
+      }
+
+      // Construct the ILIKE predicate
+      const predicate = mSql.sql`${colExpr} ILIKE ${mSql.literal('%' + val + '%')}`;
 
       selection.update({
         source: `filter-${column}`,

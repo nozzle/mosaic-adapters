@@ -31,9 +31,11 @@ export function NozzlePaaView() {
       // instead of trying to read from the local virtual filesystem.
       const parquetUrl = new URL(PARQUET_PATH, window.location.origin).href;
 
-      await vg.coordinator().exec([
-        `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
-      ]);
+      await vg
+        .coordinator()
+        .exec([
+          `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
+        ]);
       setIsReady(true);
     }
     init();
