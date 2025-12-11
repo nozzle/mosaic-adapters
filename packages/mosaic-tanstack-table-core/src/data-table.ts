@@ -37,6 +37,8 @@ import type {
   TableOptions,
 } from '@tanstack/table-core';
 import type {
+  FacetClientConfig,
+  FacetSortMode,
   MosaicDataTableOptions,
   MosaicDataTableStore,
   MosaicTableSource,
@@ -349,6 +351,10 @@ export class MosaicDataTable<
       return;
     }
 
+    // Get the sort mode from the column definition meta
+    const colDef = this.#columnMapper.getColumnDef(sqlColumn);
+    const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
+
     const clientKey = `${columnId}:unique`;
     if (this.#facetClients.has(clientKey)) {
       return;
@@ -372,6 +378,8 @@ export class MosaicDataTable<
           }));
         });
       },
+      // Pass the configured sort mode
+      sortMode: sortMode,
     });
 
     this.#facetClients.set(clientKey, facetClient);
@@ -540,23 +548,16 @@ export class MosaicDataTable<
   }
 }
 
-type FacetClientConfig<TResult extends Array<any>> = {
-  filterBy?: Selection;
-  coordinator?: Coordinator | null;
-  source: MosaicTableSource;
-  column: string;
-  getFilterExpressions?: () => Array<mSql.FilterExpr>;
-  onResult: (...values: TResult) => void;
-};
-
 /**
  * This is a helper Mosaic Client to query unique values for a given column.
  */
 export class UniqueColumnValuesClient extends MosaicClient {
   source: MosaicTableSource;
   column: string;
-  getFilterExpressions?: () => Array<mSql.FilterExpr>;
+  getFilterExpressions?: () => Array<FilterExpr>;
   onResult: (values: Array<unknown>) => void;
+  limit?: number;
+  sortMode: FacetSortMode;
 
   constructor(options: FacetClientConfig<Array<unknown>>) {
     super(options.filterBy);
@@ -577,6 +578,8 @@ export class UniqueColumnValuesClient extends MosaicClient {
     this.column = options.column;
     this.getFilterExpressions = options.getFilterExpressions;
     this.onResult = options.onResult;
+    this.limit = options.limit;
+    this.sortMode = options.sortMode || 'alpha';
   }
 
   connect(): void {
@@ -627,7 +630,22 @@ export class UniqueColumnValuesClient extends MosaicClient {
     }
 
     statement.groupby(this.column);
-    statement.orderby(mSql.asc(mSql.column(this.column)));
+
+    // Sort Logic
+    if (this.sortMode === 'count') {
+      // ORDER BY count(*) DESC
+      // We descend because when filtering by frequency, the most frequent items (highest count)
+      // are typically the most relevant to the user.
+      statement.orderby(mSql.desc(mSql.count()));
+    } else {
+      // ORDER BY column ASC (default)
+      statement.orderby(mSql.asc(mSql.column(this.column)));
+    }
+
+    // Limit Logic
+    if (this.limit !== undefined) {
+      statement.limit(this.limit);
+    }
 
     return statement;
   }
@@ -652,7 +670,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
 export class MinMaxColumnValuesClient extends MosaicClient {
   private source: MosaicTableSource;
   private column: string;
-  private getFilterExpressions?: () => Array<mSql.FilterExpr>;
+  private getFilterExpressions?: () => Array<FilterExpr>;
   private onResult: (min: number, max: number) => void;
 
   constructor(options: FacetClientConfig<[number, number]>) {
