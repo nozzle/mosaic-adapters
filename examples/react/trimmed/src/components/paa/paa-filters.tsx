@@ -7,7 +7,6 @@ import * as mSql from '@uwdata/mosaic-sql';
 import {
   UniqueColumnValuesClient,
   type FacetClientConfig,
-  createStructAccess,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import {
   Select,
@@ -24,6 +23,21 @@ interface FilterProps {
   table: string;
   column: string;
   selection: Selection; // The global filter to update
+}
+
+// Local helper to avoid importing from core package which can cause build issues in example
+function createStructAccess(columnPath: string): any {
+  if (!columnPath.includes('.')) {
+    return mSql.column(columnPath);
+  }
+
+  const parts = columnPath.split('.');
+  return parts.reduce((acc, part, index) => {
+    if (index === 0) return mSql.column(part);
+    // Cast to unknown then TemplateStringsArray to satisfy the signature
+    const templateStrings = [part] as unknown as TemplateStringsArray;
+    return mSql.sql`${acc}.${mSql.sql(templateStrings)}`;
+  }, null as any);
 }
 
 /**
