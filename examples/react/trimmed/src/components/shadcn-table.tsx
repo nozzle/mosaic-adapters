@@ -383,13 +383,21 @@ function DebouncedRangeFilter({
 
   // Determine the HTML Input type
   let inputType = 'number';
-  if (type === 'date') inputType = 'date';
-  if (type === 'datetime') inputType = 'datetime-local';
+  if (type === 'date') {
+    inputType = 'date';
+  }
+  if (type === 'datetime') {
+    inputType = 'datetime-local';
+  }
 
   // Determine how to format the value for the input
   const formatValue = (val: unknown) => {
-    if (type === 'datetime') return toDateTimeInputString(val);
-    if (type === 'date') return toDateInputString(val);
+    if (type === 'datetime') {
+      return toDateTimeInputString(val);
+    }
+    if (type === 'date') {
+      return toDateInputString(val);
+    }
     if (typeof val === 'number' || typeof val === 'string') {
       return val;
     }

@@ -135,7 +135,9 @@ export function NycTaxiView() {
   }, []);
 
   useEffect(() => {
-    if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) return;
+    if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {
+      return;
+    }
 
     async function setup() {
       setIsPending(true);

@@ -17,9 +17,13 @@ export const simpleDateFormatter = new Intl.DateTimeFormat('en-US', {
  * Format: "YYYY-MM-DDTHH:mm" (seconds optional)
  */
 export function toDateTimeInputString(value: unknown): string {
-  if (!value) return '';
+  if (!value) {
+    return '';
+  }
   const date = value instanceof Date ? value : new Date(String(value));
-  if (isNaN(date.getTime())) return '';
+  if (isNaN(date.getTime())) {
+    return '';
+  }
 
   // Get local ISO string parts
   // We manually construct to avoid timezone shifting issues with toISOString() (which is UTC)
@@ -38,9 +42,13 @@ export function toDateTimeInputString(value: unknown): string {
  * Format: "YYYY-MM-DD"
  */
 export function toDateInputString(value: unknown): string {
-  if (!value) return '';
+  if (!value) {
+    return '';
+  }
   const date = value instanceof Date ? value : new Date(String(value));
-  if (isNaN(date.getTime())) return '';
+  if (isNaN(date.getTime())) {
+    return '';
+  }
 
   const pad = (n: number) => n.toString().padStart(2, '0');
   const yyyy = date.getFullYear();
