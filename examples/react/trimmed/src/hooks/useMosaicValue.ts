@@ -1,8 +1,9 @@
 // A hook to fetch single scalar values from Mosaic queries, primarily used for KPI cards.
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { isArrowTable } from '@uwdata/mosaic-core';
 import * as vg from '@uwdata/vgplot';
-import { isArrowTable, type Selection } from '@uwdata/mosaic-core';
+import type { Selection } from '@uwdata/mosaic-core';
 
 /**
  * HOOK: useMosaicValue

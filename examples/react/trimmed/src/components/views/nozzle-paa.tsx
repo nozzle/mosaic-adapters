@@ -232,8 +232,12 @@ function SummaryTable({
         })
         .groupby(groupKey);
 
-      if (filter) q.where(filter);
-      if (where) q.where(where);
+      if (filter) {
+        q.where(filter);
+      }
+      if (where) {
+        q.where(where);
+      }
 
       return q;
     },

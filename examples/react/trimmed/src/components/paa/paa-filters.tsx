@@ -1,22 +1,21 @@
 // Standalone filter components that directly interact with Mosaic Selections and DuckDB.
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
-import * as vg from '@uwdata/vgplot';
+import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
-import {
-  UniqueColumnValuesClient,
-  type FacetClientConfig,
-} from '@nozzleio/mosaic-tanstack-react-table';
+import * as vg from '@uwdata/vgplot';
+import { UniqueColumnValuesClient } from '@nozzleio/mosaic-tanstack-react-table';
+import type { FacetClientConfig } from '@nozzleio/mosaic-tanstack-react-table';
+import type { Selection } from '@uwdata/mosaic-core';
+
+import { Input } from '@/components/ui/input';
 import {
   Select,
-  SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import type { Selection } from '@uwdata/mosaic-core';
 
 interface FilterProps {
   label: string;
@@ -33,7 +32,9 @@ function createStructAccess(columnPath: string): any {
 
   const parts = columnPath.split('.');
   return parts.reduce((acc, part, index) => {
-    if (index === 0) return mSql.column(part);
+    if (index === 0) {
+      return mSql.column(part);
+    }
     // Cast to unknown then TemplateStringsArray to satisfy the signature
     const templateStrings = [part] as unknown as TemplateStringsArray;
     return mSql.sql`${acc}.${mSql.sql(templateStrings)}`;
@@ -52,7 +53,7 @@ function useUniqueColumnValues(
     coordinator?: FacetClientConfig<Array<unknown>>['coordinator'];
   },
 ) {
-  const [options, setOptions] = useState<any[]>([]);
+  const [options, setOptions] = useState<Array<any>>([]);
 
   useEffect(() => {
     // Instantiate a transient Mosaic Client.
@@ -62,7 +63,10 @@ function useUniqueColumnValues(
       source: config.source,
       column: config.column,
       coordinator: config.coordinator || vg.coordinator(),
-      onResult: (values) => setOptions(values.filter((v) => v != null)),
+      // FIX: Cast values to any[] because the generic inference from FacetClientConfig
+      // incorrectly infers the spread argument as `unknown` instead of `unknown[]`.
+      onResult: (values: any) =>
+        setOptions((values as Array<any>).filter((v) => v != null)),
       sort: config.sort,
       limit: config.limit,
     });
@@ -93,13 +97,18 @@ export function SelectFilter({ label, table, column, selection }: FilterProps) {
     limit: 50,
   });
 
+  // FIX: Create a stable object reference for the selection source.
+  // Mosaic requires `source` to be an object (not a string) to track identity.
+  const filterSource = useMemo(() => ({ id: `filter-${column}` }), [column]);
+
   const handleChange = (val: string) => {
     // If 'ALL', we send null to remove the WHERE clause for this column
     const predicate =
       val === 'ALL' ? null : mSql.eq(mSql.column(column), mSql.literal(val));
 
     selection.update({
-      source: `filter-${column}`, // Unique ID for this filter source
+      source: filterSource,
+      value: val === 'ALL' ? null : val, // FIX: Added required 'value' property
       predicate,
     });
   };
@@ -133,12 +142,16 @@ export function SelectFilter({ label, table, column, selection }: FilterProps) {
 export function TextFilter({ label, column, selection }: FilterProps) {
   const [val, setVal] = useState('');
 
+  // FIX: Create a stable object reference for the selection source.
+  const filterSource = useMemo(() => ({ id: `filter-${column}` }), [column]);
+
   useEffect(() => {
     const handler = setTimeout(() => {
       // Clear filter if input is empty
       if (val.trim() === '') {
         selection.update({
-          source: `filter-${column}`,
+          source: filterSource,
+          value: null, // FIX: Added required 'value' property
           predicate: null,
         });
         return;
@@ -153,13 +166,14 @@ export function TextFilter({ label, column, selection }: FilterProps) {
       const predicate = mSql.sql`${colExpr} ILIKE ${mSql.literal('%' + val + '%')}`;
 
       selection.update({
-        source: `filter-${column}`,
+        source: filterSource,
+        value: val, // FIX: Added required 'value' property
         predicate,
       });
     }, 300); // 300ms debounce
 
     return () => clearTimeout(handler);
-  }, [val, column, selection]);
+  }, [val, column, selection, filterSource]);
 
   return (
     <div className="flex flex-col gap-1 w-[180px]">

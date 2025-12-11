@@ -156,7 +156,9 @@ export function createStructAccess(columnPath: string): any {
 
   const parts = columnPath.split('.');
   return parts.reduce((acc, part, index) => {
-    if (index === 0) return mSql.column(part);
+    if (index === 0) {
+      return mSql.column(part);
+    }
 
     // We use a specific casting here to satisfy the `sql` tag signature
     // which expects a TemplateStringsArray.
