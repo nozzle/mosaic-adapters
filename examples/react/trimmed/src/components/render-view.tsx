@@ -3,6 +3,7 @@ import * as vg from '@uwdata/vgplot';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
 import { NycTaxiView } from '@/components/views/nyc-taxi';
+import { NozzlePaaView } from '@/components/views/nozzle-paa';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 
 const wasmConnector = vg.wasmConnector({ log: false });
@@ -21,6 +22,13 @@ const views = new Map([
     {
       title: 'NYC Taxi Dashboard',
       Component: NycTaxiView,
+    },
+  ],
+  [
+    'nozzle-paa',
+    {
+      title: 'Nozzle PAA Report',
+      Component: NozzlePaaView,
     },
   ],
   [

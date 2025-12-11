@@ -22,9 +22,27 @@ export function buildTableQuery<TData extends RowData, TValue>(
   const { pagination, sorting, columnFilters } = tableState;
 
   // 1. Select Columns
-  const selectColumns = mapper
-    .getSelectColumns()
-    .map((col) => mSql.column(col));
+  // FIX: Handle struct columns (e.g. "related_phrase.phrase")
+  // We iterate the mapped columns and construct the SELECT clause.
+  // If a column has a dot, we treat it as a struct access `parent.child`
+  // and ALIAS it to the original key so TanStack Table can find it flatly.
+  const selectColumns = mapper.getSelectColumns().map((col) => {
+    if (col.includes('.')) {
+      // Split "a.b" -> column("a"), column("b")
+      // Reduce to sql`${col("a")}.${col("b")}` -> "a".b (unquoted field)
+      const parts = col.split('.');
+      const structExpr = parts.reduce((acc, part, index) => {
+        if (index === 0) return mSql.column(part); // The actual column "related_phrase" gets quoted
+        // The struct fields .phrase should NOT be quoted by DuckDB binder as "phrase", but as field access
+        // TS Workaround: Pass string array as any to simulate TemplateStringsArray for raw fragment generation
+        return mSql.sql`${acc}.${mSql.sql([part] as any)}`;
+      }, null as any);
+
+      return { [col]: structExpr };
+    }
+    // Standard column
+    return mSql.column(col);
+  });
 
   // Initialize statement with Total Rows Window Function
   // mSql.Query.from() handles both strings (table names) and SelectQuery objects (subqueries)
@@ -71,11 +89,20 @@ export function buildTableQuery<TData extends RowData, TValue>(
   sorting.forEach((sort) => {
     const sqlColumn = mapper.getSqlColumn(sort.id);
     if (sqlColumn) {
-      orderingCriteria.push(
-        sort.desc
-          ? mSql.desc(mSql.column(sqlColumn))
-          : mSql.asc(mSql.column(sqlColumn)),
-      );
+      let colExpr;
+      if (sqlColumn.includes('.')) {
+        // Handle struct columns for sorting
+        const parts = sqlColumn.split('.');
+        colExpr = parts.reduce((acc, part, index) => {
+          if (index === 0) return mSql.column(part);
+          // TS Workaround: Pass string array as any to simulate TemplateStringsArray for raw fragment generation
+          return mSql.sql`${acc}.${mSql.sql([part] as any)}`;
+        }, null as any);
+      } else {
+        colExpr = mSql.column(sqlColumn);
+      }
+
+      orderingCriteria.push(sort.desc ? mSql.desc(colExpr) : mSql.asc(colExpr));
     }
   });
 
