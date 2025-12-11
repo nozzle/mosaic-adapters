@@ -67,7 +67,7 @@ function useUniqueColumnValues(
       // incorrectly infers the spread argument as `unknown` instead of `unknown[]`.
       onResult: (values: any) =>
         setOptions((values as Array<any>).filter((v) => v != null)),
-      sort: config.sort,
+      sortMode: config.sortMode,
       limit: config.limit,
     });
 
@@ -75,7 +75,7 @@ function useUniqueColumnValues(
     client.requestUpdate();
 
     return () => client.disconnect();
-  }, [config.source, config.column, config.sort, config.limit]);
+  }, [config.source, config.column, config.sortMode, config.limit]);
 
   return options;
 }
@@ -93,7 +93,7 @@ export function SelectFilter({ label, table, column, selection }: FilterProps) {
     // OPTIMIZATION:
     // Sort by frequency (Count DESC) and limit to top 50.
     // This prevents rendering performance issues and ensures relevant data is seen first.
-    sort: 'count',
+    sortMode: 'count',
     limit: 50,
   });
 

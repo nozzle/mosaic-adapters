@@ -142,27 +142,40 @@ export function toRangeValue(value: unknown): number | Date | null {
   return isFinite(num) ? num : null;
 }
 
+// Define the expected return type based on the actual library output.
+// mSql.sql and mSql.column return objects compatible with SQLNode/Expression.
+// We use ReturnType to infer the exact shape from the library without private imports.
+type MosaicSQLExpression =
+  | ReturnType<typeof mSql.sql>
+  | ReturnType<typeof mSql.column>;
+
 /**
  * Constructs a Mosaic SQL expression for a struct column access.
  * Handles dot notation (e.g. "a.b") by generating "a"."b".
  *
  * @param columnPath - The dotted column path (e.g., "related_phrase.phrase")
- * @returns A Mosaic SQL expression
+ * @returns A Mosaic SQL expression node
  */
-export function createStructAccess(columnPath: string): any {
+export function createStructAccess(columnPath: string): MosaicSQLExpression {
   if (!columnPath.includes('.')) {
     return mSql.column(columnPath);
   }
 
   const parts = columnPath.split('.');
-  return parts.reduce((acc, part, index) => {
-    if (index === 0) {
-      return mSql.column(part);
-    }
+  // The reduce accumulator starts as a Column Node (from index 0 check)
+  return parts.reduce(
+    (acc, part, index) => {
+      if (index === 0) {
+        return mSql.column(part);
+      }
 
-    // We use a specific casting here to satisfy the `sql` tag signature
-    // which expects a TemplateStringsArray.
-    const templateStrings = [part] as unknown as TemplateStringsArray;
-    return mSql.sql`${acc}.${mSql.sql(templateStrings)}`;
-  }, null as any);
+      // We use a specific casting here to satisfy the `sql` tag signature
+      // which expects a TemplateStringsArray.
+      const templateStrings = [part] as unknown as TemplateStringsArray;
+
+      // Explicitly return the result of the sql tag
+      return mSql.sql`${acc}.${mSql.sql(templateStrings)}`;
+    },
+    null as unknown as MosaicSQLExpression,
+  );
 }

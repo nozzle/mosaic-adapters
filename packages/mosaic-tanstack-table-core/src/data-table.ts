@@ -38,6 +38,7 @@ import type {
 } from '@tanstack/table-core';
 import type {
   FacetClientConfig,
+  FacetSortMode,
   MosaicDataTableOptions,
   MosaicDataTableStore,
   MosaicTableSource,
@@ -350,6 +351,10 @@ export class MosaicDataTable<
       return;
     }
 
+    // Get the sort mode from the column definition meta
+    const colDef = this.#columnMapper.getColumnDef(sqlColumn);
+    const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
+
     const clientKey = `${columnId}:unique`;
     if (this.#facetClients.has(clientKey)) {
       return;
@@ -373,9 +378,8 @@ export class MosaicDataTable<
           }));
         });
       },
-      // Default behavior for internal table facets is alpha sort, no limit (for now)
-      // Users can override this by implementing manual sidecars if they need high-cardinality protection
-      sort: 'alpha',
+      // Pass the configured sort mode
+      sortMode: sortMode,
     });
 
     this.#facetClients.set(clientKey, facetClient);
@@ -553,7 +557,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
   getFilterExpressions?: () => Array<FilterExpr>;
   onResult: (values: Array<unknown>) => void;
   limit?: number;
-  sort: 'alpha' | 'count';
+  sortMode: FacetSortMode;
 
   constructor(options: FacetClientConfig<Array<unknown>>) {
     super(options.filterBy);
@@ -575,7 +579,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
     this.getFilterExpressions = options.getFilterExpressions;
     this.onResult = options.onResult;
     this.limit = options.limit;
-    this.sort = options.sort || 'alpha';
+    this.sortMode = options.sortMode || 'alpha';
   }
 
   connect(): void {
@@ -628,7 +632,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
     statement.groupby(this.column);
 
     // Sort Logic
-    if (this.sort === 'count') {
+    if (this.sortMode === 'count') {
       // ORDER BY count(*) DESC
       // We descend because when filtering by frequency, the most frequent items (highest count)
       // are typically the most relevant to the user.

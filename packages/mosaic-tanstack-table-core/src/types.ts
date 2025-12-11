@@ -20,6 +20,8 @@ export type MosaicDataTableSqlFilterType =
   | 'PARTIAL_ILIKE'
   | 'RANGE';
 
+export type FacetSortMode = 'alpha' | 'count';
+
 /**
  * This will be merged into the TanStack Table ColumnDef type
  * to provide Mosaic-specific metadata options.
@@ -55,6 +57,13 @@ export type MosaicDataTableColumnDefMetaOptions = {
      * generating Mosaic queries.
      */
     sqlFilterType?: MosaicDataTableSqlFilterType;
+    /**
+     * Determines how unique values for facets (dropdowns) are sorted.
+     * - 'alpha': Alphabetical (A-Z)
+     * - 'count': Frequency (Most common first)
+     * @default 'alpha'
+     */
+    facetSortMode?: FacetSortMode;
   };
 };
 
@@ -169,5 +178,5 @@ export type FacetClientConfig<TResult extends Array<any>> = {
    * - 'count': Frequency (Most common first)
    * @default 'alpha'
    */
-  sort?: 'alpha' | 'count';
+  sortMode?: FacetSortMode;
 };
