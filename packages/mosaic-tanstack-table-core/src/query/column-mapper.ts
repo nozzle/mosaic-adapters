@@ -93,14 +93,20 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
       }
 
       // 3. Validate ID
-      if (!def.id) {
+      // Infer ID from accessorKey if not provided explicitly, matching TanStack Table behavior.
+      let id = def.id;
+      if (!id && 'accessorKey' in def && typeof def.accessorKey === 'string') {
+        id = def.accessorKey;
+      }
+
+      if (!id) {
         const message = `[ColumnMapper] Column definition is missing an \`id\` property and could not be inferred. Please provide an explicit \`id\` or use \`accessorKey\`.`;
         logger.error('Core', message, { def });
         throw new Error(message);
       }
 
       // Store mappings
-      this.idToSqlMap.set(def.id, columnAccessor);
+      this.idToSqlMap.set(id, columnAccessor);
       this.sqlToDefMap.set(columnAccessor, def);
     });
 

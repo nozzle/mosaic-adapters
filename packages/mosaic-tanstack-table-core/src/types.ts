@@ -150,3 +150,24 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
    */
   _facetsUpdateCount: number;
 };
+
+export type FacetClientConfig<TResult extends Array<any>> = {
+  filterBy?: Selection;
+  coordinator?: Coordinator | null;
+  source: MosaicTableSource;
+  column: string;
+  getFilterExpressions?: () => Array<FilterExpr>;
+  onResult: (...values: TResult) => void;
+  /**
+   * Limit the number of unique values returned.
+   * Essential for high-cardinality columns.
+   */
+  limit?: number;
+  /**
+   * How to sort the unique values.
+   * - 'alpha': Alphabetical (A-Z)
+   * - 'count': Frequency (Most common first)
+   * @default 'alpha'
+   */
+  sort?: 'alpha' | 'count';
+};
