@@ -15,6 +15,7 @@ import {
 import type {
   Column,
   ColumnDef,
+  Row,
   RowData,
   Table as TanStackTable,
 } from '@tanstack/react-table';
@@ -52,8 +53,9 @@ import {
 export function ShadcnTable<TData extends RowData, TValue>(props: {
   table: TanStackTable<TData>;
   columns: Array<ColumnDef<TData, TValue>>;
+  onRowClick?: (row: Row<TData>) => void;
 }) {
-  const { table, columns } = props;
+  const { table, columns, onRowClick } = props;
 
   return (
     <div className="grid gap-2">
@@ -92,21 +94,38 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && 'selected'}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                // Robust check for highlighting status.
+                // DuckDB/Arrow often returns BigInt (0n) for integers, so strict '=== 0' fails.
+                // We coerce to Number to be safe. Undefined means "not participating in highlight", so treat as 1 (visible).
+                // @ts-expect-error __is_highlighted is dynamically injected
+                const rawHighlight = row.original.__is_highlighted;
+                const isDimmed =
+                  rawHighlight !== undefined && Number(rawHighlight) === 0;
+
+                return (
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && 'selected'}
+                    onClick={() => onRowClick?.(row)}
+                    className={cn(
+                      // Interactive cursor if clickable
+                      onRowClick && 'cursor-pointer transition-opacity',
+                      // Dim if not highlighted
+                      isDimmed && 'opacity-30 grayscale',
+                    )}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell

@@ -13,13 +13,24 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   mapper: ColumnMapper<TData, TValue>;
   totalRowsColumnName: string;
   excludeColumnId?: string; // For cascading facets
+  /**
+   * The predicate to use for highlighting rows.
+   * If provided, a computed column `__is_highlighted` (1 or 0) will be added.
+   */
+  highlightPredicate?: mSql.FilterExpr | null;
 }
 
 export function buildTableQuery<TData extends RowData, TValue>(
   options: QueryBuilderOptions<TData, TValue>,
 ): SelectQuery {
-  const { source, tableState, mapper, totalRowsColumnName, excludeColumnId } =
-    options;
+  const {
+    source,
+    tableState,
+    mapper,
+    totalRowsColumnName,
+    excludeColumnId,
+    highlightPredicate,
+  } = options;
 
   const { pagination, sorting, columnFilters } = tableState;
 
@@ -37,10 +48,35 @@ export function buildTableQuery<TData extends RowData, TValue>(
     return mSql.column(col);
   });
 
-  // Initialize statement with Total Rows Window Function
+  // Calculate Highlight Column
+  // Robust check: Ensure predicate exists AND is not an empty array
+  let highlightCol;
+  const isHighlightActive =
+    highlightPredicate &&
+    (!Array.isArray(highlightPredicate) || highlightPredicate.length > 0);
+
+  if (isHighlightActive) {
+    // Ensure the predicate is a valid SQL Node for interpolation.
+    // If highlightPredicate is an array (implicit AND), wrap it.
+    const safePredicate = Array.isArray(highlightPredicate)
+      ? mSql.and(...highlightPredicate)
+      : highlightPredicate;
+
+    // SQL: MAX(CASE WHEN predicate THEN 1 ELSE 0 END)
+    // We use MAX() to ensure safety with GROUP BY queries (if the source is aggregated).
+    // If *any* record in the group matches the filter, the group is highlighted.
+    const caseExpr = mSql.sql`CASE WHEN ${safePredicate} THEN 1 ELSE 0 END`;
+    highlightCol = mSql.max(caseExpr);
+  } else {
+    // If no filter exists (or it's empty), everything is highlighted (default state)
+    highlightCol = mSql.literal(1);
+  }
+
+  // Initialize statement with Total Rows Window Function and Highlight Flag
   // mSql.Query.from() handles both strings (table names) and SelectQuery objects (subqueries)
   const statement = mSql.Query.from(source).select(...selectColumns, {
     [totalRowsColumnName]: mSql.sql`COUNT(*) OVER()`,
+    __is_highlighted: highlightCol,
   });
 
   // 2. Generate WHERE Clauses (Internal Table Filters)
@@ -106,6 +142,8 @@ export function buildTableQuery<TData extends RowData, TValue>(
         pagination,
         sorting,
         filtersCount: whereClauses.length,
+        hasHighlight: isHighlightActive,
+        highlightPredicateRaw: highlightPredicate,
       },
     },
   );

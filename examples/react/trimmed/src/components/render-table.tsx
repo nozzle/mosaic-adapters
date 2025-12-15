@@ -1,6 +1,6 @@
 import { BareTable } from './bare-table';
 import { ShadcnTable } from './shadcn-table';
-import type { ColumnDef, RowData, Table } from '@tanstack/react-table';
+import type { ColumnDef, Row, RowData, Table } from '@tanstack/react-table';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 import { Button } from '@/components/ui/button';
 
@@ -12,6 +12,7 @@ const items = [
 export function RenderTable<TData extends RowData, TValue>(props: {
   table: Table<TData>;
   columns: Array<ColumnDef<TData, TValue>>;
+  onRowClick?: (row: Row<TData>) => void;
 }) {
   const [view, setView] = useURLSearchParam('table-view', 'shadcn-1');
 
@@ -31,7 +32,12 @@ export function RenderTable<TData extends RowData, TValue>(props: {
       </div>
       {items.map(({ id, Component }) =>
         view === id ? (
-          <Component key={id} table={props.table} columns={props.columns} />
+          <Component
+            key={id}
+            table={props.table}
+            columns={props.columns}
+            onRowClick={props.onRowClick}
+          />
         ) : null,
       )}
     </>

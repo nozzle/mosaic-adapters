@@ -16,7 +16,7 @@ const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 // --- 1. Global State Definition ---
 // This selection is the "Brain" of the dashboard. All inputs write to it.
 // All tables read from it.
-const $globalFilter = vg.Selection.intersect();
+const $globalFilter = vg.Selection.crossfilter();
 
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
@@ -28,7 +28,6 @@ export function NozzlePaaView() {
       vg.coordinator().databaseConnector(connector);
 
       // FIX: Convert relative proxy path to absolute URL so DuckDB uses HTTPFS
-      // instead of trying to read from the local virtual filesystem.
       const parquetUrl = new URL(PARQUET_PATH, window.location.origin).href;
 
       await vg
@@ -97,7 +96,6 @@ export function NozzlePaaView() {
           metricLabel="Search Vol"
           aggFn={mSql.max}
         />
-        {/* Note: 'related_phrase.phrase' is a struct field access in DuckDB */}
         <SummaryTable
           title="PAA Questions"
           groupBy="related_phrase.phrase"
@@ -141,13 +139,11 @@ export function NozzlePaaView() {
 // --- Sub-Components ---
 
 function HeaderSection() {
-  // Define KPI Queries using the hook
   const qPhrases = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
       .select({ value: mSql.count('phrase').distinct() })
       .where(filter);
 
-  // Note: Escaping struct field for SQL
   const qQuestions = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
       .select({
@@ -197,6 +193,20 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function useSelectionValue(selection: vg.Selection, client: any) {
+  const [value, setValue] = useState(selection.valueFor(client));
+
+  useEffect(() => {
+    const handler = () => {
+      setValue(selection.valueFor(client));
+    };
+    selection.addEventListener('value', handler);
+    return () => selection.removeEventListener('value', handler);
+  }, [selection, client]);
+
+  return value;
+}
+
 function SummaryTable({
   title,
   groupBy,
@@ -206,20 +216,14 @@ function SummaryTable({
   where,
 }: any) {
   // Create a safe identifier for the alias/accessor.
-  // e.g. "related_phrase.phrase" -> "related_phrase_phrase"
-  // This prevents the Mosaic Adapter from interpreting the result column as a struct drill-down on a subquery.
   const safeId = groupBy.replace(/\./g, '_');
 
   // 1. Define the Query Factory
   const queryFactory = useMemo(
     () => (filter: any) => {
-      // Handle nested struct keys if present (simple dot check)
       let groupKey;
       if (groupBy.includes('.')) {
-        // Assume simple 2-level struct for now: col.field
         const [col, field] = groupBy.split('.');
-        // "related_phrase".phrase -> Quote the column, not the field
-        // TS Workaround: Pass string array as any to simulate TemplateStringsArray
         groupKey = mSql.sql`${mSql.column(col)}.${mSql.sql([field] as any)}`;
       } else {
         groupKey = mSql.column(groupBy);
@@ -227,7 +231,7 @@ function SummaryTable({
 
       const q = mSql.Query.from(TABLE_NAME)
         .select({
-          [safeId]: groupKey, // Use safeId as alias
+          [safeId]: groupKey,
           metric: metric === '*' ? aggFn() : aggFn(metric),
         })
         .groupby(groupKey);
@@ -244,12 +248,62 @@ function SummaryTable({
     [groupBy, metric, aggFn, where, safeId],
   );
 
-  // 2. Define Table Columns
+  // Memoize options to prevent infinite render loops
+  const baseTableOptions = useMemo(
+    () => ({
+      initialState: {
+        sorting: [{ id: 'metric', desc: true }],
+        pagination: { pageSize: 10 },
+      },
+    }),
+    [],
+  );
+
+  const mosaicOptions = useMemo(
+    () => ({
+      table: queryFactory,
+      highlightBy: $globalFilter,
+      columns: [], // We provide columns via updateOptions
+      tableOptions: baseTableOptions,
+    }),
+    [queryFactory, baseTableOptions],
+  );
+
+  // 3. Connect Adapter
+  const { tableOptions, client } = useMosaicReactTable(mosaicOptions);
+
+  // 4. Reactive Selection State for UI
+  const selectedValue = useSelectionValue($globalFilter, client);
+
+  // 2. Define Table Columns (Dynamic based on selectedValue)
   const columns = useMemo(
     () => [
       {
-        id: groupBy,
-        accessorKey: safeId, // Accessor matches the safe alias
+        id: 'select',
+        header: '',
+        size: 30,
+        enableSorting: false,
+        enableColumnFilter: false,
+        enableHiding: false,
+        cell: ({ row }: any) => {
+          // FIX: Use groupBy (Column ID) not safeId (Accessor)
+          // safeId is the SQL alias, groupBy is the Column Definition ID.
+          // TanStack Table's row.getValue expects Column ID.
+          const rowVal = row.getValue(groupBy);
+          const isChecked = selectedValue === rowVal;
+          return (
+            <input
+              type="checkbox"
+              checked={isChecked}
+              readOnly
+              className="cursor-pointer size-4"
+            />
+          );
+        },
+      },
+      {
+        id: groupBy, // This ID must match what we pass to getValue above
+        accessorKey: safeId,
         header: title,
         enableColumnFilter: false,
       },
@@ -261,21 +315,18 @@ function SummaryTable({
         enableColumnFilter: false,
       },
     ],
-    [groupBy, title, metricLabel, safeId],
+    [groupBy, title, metricLabel, safeId, selectedValue],
   );
 
-  // 3. Connect Adapter
-  const { tableOptions } = useMosaicReactTable({
-    table: queryFactory,
-    filterBy: $globalFilter,
-    columns,
-    tableOptions: {
-      initialState: {
-        sorting: [{ id: 'metric', desc: true }],
-        pagination: { pageSize: 10 },
-      },
-    },
-  });
+  // Update client columns when they change (due to selection state)
+  useEffect(() => {
+    client.updateOptions({
+      columns,
+      table: queryFactory,
+      highlightBy: $globalFilter,
+      tableOptions: baseTableOptions,
+    });
+  }, [columns, client, queryFactory, baseTableOptions]);
 
   const table = useReactTable(tableOptions);
 
@@ -285,7 +336,36 @@ function SummaryTable({
         {title}
       </div>
       <div className="flex-1 overflow-auto p-2">
-        <RenderTable table={table} columns={columns} />
+        <RenderTable
+          table={table}
+          columns={columns}
+          onRowClick={(row) => {
+            // FIX: Use groupBy (Column ID) here too
+            const value = row.getValue(groupBy);
+            const column = groupBy;
+
+            if (selectedValue === value) {
+              $globalFilter.update({
+                source: client,
+                value: null,
+                predicate: null,
+              });
+            } else {
+              const predicate = mSql.eq(
+                groupBy.includes('.')
+                  ? mSql.sql`${mSql.column(groupBy.split('.')[0])}.${mSql.sql([groupBy.split('.')[1]] as any)}`
+                  : mSql.column(column),
+                mSql.literal(value),
+              );
+
+              $globalFilter.update({
+                source: client,
+                value: value,
+                predicate,
+              });
+            }
+          }}
+        />
       </div>
     </div>
   );
@@ -295,7 +375,7 @@ function DetailTable() {
   const columns = useMemo(
     () => [
       {
-        id: 'domain', // Explicit ID added
+        id: 'domain',
         accessorKey: 'domain',
         header: 'Domain',
         size: 150,
@@ -312,13 +392,13 @@ function DetailTable() {
         },
       },
       {
-        id: 'title', // Explicit ID added
+        id: 'title',
         accessorKey: 'title',
         header: 'Answer Title',
         size: 300,
       },
       {
-        id: 'description', // Explicit ID added
+        id: 'description',
         accessorKey: 'description',
         header: 'Answer Description',
         size: 400,
@@ -327,17 +407,27 @@ function DetailTable() {
     [],
   );
 
-  const { tableOptions } = useMosaicReactTable({
-    table: TABLE_NAME,
-    filterBy: $globalFilter,
-    columns,
-    totalRowsColumnName: '__total_rows',
-    tableOptions: {
+  const baseTableOptions = useMemo(
+    () => ({
       initialState: {
         pagination: { pageSize: 20 },
       },
-    },
-  });
+    }),
+    [],
+  );
+
+  const mosaicOptions = useMemo(
+    () => ({
+      table: TABLE_NAME,
+      filterBy: $globalFilter,
+      columns,
+      totalRowsColumnName: '__total_rows',
+      tableOptions: baseTableOptions,
+    }),
+    [columns, baseTableOptions],
+  );
+
+  const { tableOptions } = useMosaicReactTable(mosaicOptions);
 
   const table = useReactTable(tableOptions);
 

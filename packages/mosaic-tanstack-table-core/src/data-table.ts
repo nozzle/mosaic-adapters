@@ -27,7 +27,6 @@ import type {
   Coordinator,
   FieldInfo,
   FieldInfoRequest,
-  SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
@@ -76,6 +75,8 @@ export class MosaicDataTable<
   source: MosaicTableSource;
   schema: Array<FieldInfo> = [];
   tableFilterSelection!: Selection;
+  // Hold options to access highlightBy later
+  options: MosaicDataTableOptions<TData, TValue>;
 
   // DO NOT remove the `!` here. We guarantee initialization in updateOptions which is also called by the constructor.
   #store!: Store<MosaicDataTableStore<TData, TValue>>;
@@ -91,7 +92,7 @@ export class MosaicDataTable<
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
-
+    this.options = options;
     this.source = options.table;
 
     this.updateOptions(options);
@@ -108,6 +109,8 @@ export class MosaicDataTable<
       columnsCount: options.columns?.length,
     });
 
+    this.options = options;
+
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
     }
@@ -119,6 +122,16 @@ export class MosaicDataTable<
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     } else if (!this.tableFilterSelection) {
       this.tableFilterSelection = new Selection();
+    }
+
+    // NOTE: filterBy is readonly on the base MosaicClient.
+    // We cannot reassign it here. We must rely on our internal 'options.filterBy' reference
+    // for query generation, which overrides the base behavior.
+    // If the framework passes a new Selection reference, we need to ensure we listen to the NEW one.
+    if (options.filterBy && options.filterBy !== this.filterBy) {
+      // Manually manage listeners if we support hot-swapping selections
+      // Note: The base class might hold onto the old one for its own internal logic,
+      // but since we override query(), we control the flow.
     }
 
     // Robustly resolve the coordinator.
@@ -186,7 +199,39 @@ export class MosaicDataTable<
   }
 
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
-    const source = this.resolveSource(primaryFilter);
+    // 1. Resolve Hard Filters (filterBy)
+    // These ALWAYS remove rows (e.g. global date picker)
+    const hardFilter = primaryFilter;
+
+    // 2. Resolve Highlight Filters (highlightBy)
+    // These are used for Annotation + Cross-filtering logic
+    let highlightPredicate: FilterExpr | null = null;
+    let crossFilterPredicate: FilterExpr | null = null;
+
+    if (this.options.highlightBy) {
+      // CROSS-FILTERING (WHERE clause):
+      // We pass 'this' to predicate(). If the selection is a CrossFilter and 'this'
+      // is the source, it returns null (exclude self).
+      // If we didn't trigger it, we get the predicate.
+      // Coalesce undefined to null to match FilterExpr type
+      crossFilterPredicate = this.options.highlightBy.predicate(this) ?? null;
+
+      // HIGHLIGHTING (CASE WHEN clause):
+      // We pass 'null' to predicate(). This returns the "Global Truth" including our own selection.
+      // This tells us what *should* be highlighted in the UI.
+      // Coalesce undefined to null to match FilterExpr type
+      highlightPredicate = this.options.highlightBy.predicate(null) ?? null;
+    }
+
+    // Combine Hard Filters + Cross-Filter Predicates for the WHERE clause
+    let effectiveFilter = hardFilter;
+    if (crossFilterPredicate) {
+      effectiveFilter = effectiveFilter
+        ? mSql.and(effectiveFilter, crossFilterPredicate)
+        : crossFilterPredicate;
+    }
+
+    const source = this.resolveSource(effectiveFilter);
     // Force unwrap here since we guarantee initialization in updateOptions/constructor
     const tableState = this.#store.state.tableState;
 
@@ -197,13 +242,13 @@ export class MosaicDataTable<
       tableState,
       mapper: this.#columnMapper,
       totalRowsColumnName: this.#sql_total_rows,
+      highlightPredicate: highlightPredicate,
     });
 
-    // 2. Apply Primary Filter (Global/External Context)
-    // If source is a string, we apply the filter here.
-    // If source is a Query object, the Factory likely already applied it, or we append it.
-    if (primaryFilter && typeof this.source === 'string') {
-      statement.where(primaryFilter);
+    // 2. Apply Primary Filter (Global/External Context) if source is a string
+    // If source is a Query object, the Factory likely already applied effectiveFilter.
+    if (effectiveFilter && typeof this.source === 'string') {
+      statement.where(effectiveFilter);
     }
 
     // 3. Side Effect: Update Internal Filter Selection
@@ -312,7 +357,17 @@ export class MosaicDataTable<
     const destroy = this.destroy.bind(this);
 
     // Setup the primary selection change listener to reset pagination
-    const selectionCb = (_: Array<SelectionClause> | undefined) => {
+    const selectionCb = () => {
+      // Check if the active update came from US (cross-filtering).
+      // If so, the dataset size for this table hasn't changed (because we exclude ourselves),
+      // so we should preserve the current page index.
+      const activeClause =
+        this.filterBy?.active || this.options.highlightBy?.active;
+
+      if (activeClause && activeClause.source === this) {
+        return;
+      }
+
       batch(() => {
         this.#store.setState((prev) => ({
           ...prev,
@@ -327,9 +382,12 @@ export class MosaicDataTable<
       });
     };
     this.filterBy?.addEventListener('value', selectionCb);
+    // Also listen to highlightBy changes to trigger updates
+    this.options.highlightBy?.addEventListener('value', selectionCb);
 
     return () => {
       this.filterBy?.removeEventListener('value', selectionCb);
+      this.options.highlightBy?.removeEventListener('value', selectionCb);
       destroy();
     };
   }
