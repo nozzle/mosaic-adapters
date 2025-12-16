@@ -118,6 +118,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
   sorting.forEach((sort) => {
     const sqlColumn = mapper.getSqlColumn(sort.id);
     if (sqlColumn) {
+      // Use createStructAccess for sorting nested columns too
       const colExpr = createStructAccess(sqlColumn);
       orderingCriteria.push(sort.desc ? mSql.desc(colExpr) : mSql.asc(colExpr));
     }

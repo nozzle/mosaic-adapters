@@ -1,10 +1,12 @@
-// Added try-catch block to init()
+// examples/react/trimmed/src/components/views/nozzle-paa.tsx
+
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import type { ColumnDef } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { useMosaicValue } from '@/hooks/useMosaicValue';
 import {
@@ -17,10 +19,38 @@ import {
 const TABLE_NAME = 'nozzle_paa';
 const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 
-// --- 1. Global State Definition ---
-// This selection is the "Brain" of the dashboard. All inputs write to it.
-// All tables read from it.
-const $globalFilter = vg.Selection.crossfilter();
+// --- 1. Global State Topology ---
+
+// A. Input Filter: Top-Bar Inputs (Hard Filters)
+const $inputFilter = vg.Selection.intersect();
+
+// B. Detail Filter: Bottom Table In-Column Filters
+const $detailFilter = vg.Selection.intersect();
+
+// C. Cross Filter: Summary Table Row Clicks (Peers)
+const $crossFilter = vg.Selection.crossfilter();
+
+// --- Derived Contexts ---
+
+// For Summary Tables:
+// They must respect Inputs AND Detail Table Filters.
+// They use $crossFilter for Highlighting (Peers filter, Self highlights).
+const $summaryContext = vg.Selection.intersect({
+  include: [$inputFilter, $detailFilter],
+});
+
+// For Detail Table:
+// It must respect Inputs AND Summary Table Clicks.
+// It generates $detailFilter.
+const $detailContext = vg.Selection.intersect({
+  include: [$inputFilter, $crossFilter],
+});
+
+// For KPIs:
+// They represent the "Total State" - Intersection of everything.
+const $globalContext = vg.Selection.intersect({
+  include: [$inputFilter, $detailFilter, $crossFilter],
+});
 
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
@@ -29,7 +59,6 @@ export function NozzlePaaView() {
   useEffect(() => {
     async function init() {
       try {
-        // FIX: Convert relative proxy path to absolute URL so DuckDB uses HTTPFS
         const parquetUrl = new URL(PARQUET_PATH, window.location.origin).href;
 
         await vg
@@ -58,7 +87,7 @@ export function NozzlePaaView() {
       {/* Header Section */}
       <HeaderSection />
 
-      {/* Filter Controls */}
+      {/* Filter Controls: Update $inputFilter */}
       <div className="px-6 -mt-8 relative z-10">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">
           <div className="text-sm font-bold text-slate-700 mr-2">
@@ -69,55 +98,49 @@ export function NozzlePaaView() {
             label="Domain"
             table={TABLE_NAME}
             column="domain"
-            selection={$globalFilter}
+            selection={$inputFilter}
           />
           <TextFilter
             label="Phrase"
             table={TABLE_NAME}
             column="phrase"
-            selection={$globalFilter}
+            selection={$inputFilter}
           />
-
-          {/* NEW: Keyword Groups (Array) */}
           <ArraySelectFilter
             label="Keyword Group"
             table={TABLE_NAME}
             column="keyword_groups"
-            selection={$globalFilter}
+            selection={$inputFilter}
           />
-
-          {/* NEW: Answer Contains (Description) */}
           <TextFilter
             label="Answer Contains"
             table={TABLE_NAME}
             column="description"
-            selection={$globalFilter}
+            selection={$inputFilter}
           />
-
-          {/* NEW: Date Range */}
           <DateRangeFilter
             label="Requested Date"
-            table={TABLE_NAME} // Prop needed for TS, though unused in DateRangeFilter logic
+            table={TABLE_NAME}
             column="requested"
-            selection={$globalFilter}
+            selection={$inputFilter}
           />
-
           <SelectFilter
             label="Device"
             table={TABLE_NAME}
             column="device"
-            selection={$globalFilter}
+            selection={$inputFilter}
           />
           <TextFilter
             label="Question Contains"
             table={TABLE_NAME}
             column="related_phrase.phrase"
-            selection={$globalFilter}
+            selection={$inputFilter}
           />
         </div>
       </div>
 
       {/* Summary Grids */}
+      {/* Topology: Filter By $summaryContext, Highlight By $crossFilter */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 px-6">
         <SummaryTable
           title="Keyword Phrase"
@@ -152,6 +175,7 @@ export function NozzlePaaView() {
       </div>
 
       {/* Detail Table */}
+      {/* Topology: Filter By $detailContext, Output To $detailFilter */}
       <div className="flex-1 px-6 min-h-[500px]">
         <div className="bg-white border rounded-lg shadow-sm h-full flex flex-col overflow-hidden">
           <div className="p-4 border-b bg-slate-50/50 font-semibold text-slate-800">
@@ -186,9 +210,10 @@ function HeaderSection() {
       .select({ value: mSql.count('requested').distinct() })
       .where(filter);
 
-  const valPhrases = useMosaicValue(qPhrases, $globalFilter);
-  const valQuestions = useMosaicValue(qQuestions, $globalFilter);
-  const valDays = useMosaicValue(qDays, $globalFilter);
+  // KPIs use $globalContext to reflect ALL current filters
+  const valPhrases = useMosaicValue(qPhrases, $globalContext);
+  const valQuestions = useMosaicValue(qQuestions, $globalContext);
+  const valDays = useMosaicValue(qDays, $globalContext);
 
   return (
     <div className="bg-[#0e7490] text-white pt-8 pb-12 px-6">
@@ -245,10 +270,8 @@ function SummaryTable({
   aggFn,
   where,
 }: any) {
-  // Create a safe identifier for the alias/accessor.
   const safeId = groupBy.replace(/\./g, '_');
 
-  // 1. Define the Query Factory
   const queryFactory = useMemo(
     () => (filter: any) => {
       let groupKey;
@@ -278,7 +301,6 @@ function SummaryTable({
     [groupBy, metric, aggFn, where, safeId],
   );
 
-  // Memoize options to prevent infinite render loops
   const baseTableOptions = useMemo(
     () => ({
       initialState: {
@@ -292,20 +314,19 @@ function SummaryTable({
   const mosaicOptions = useMemo(
     () => ({
       table: queryFactory,
-      highlightBy: $globalFilter,
-      columns: [], // We provide columns via updateOptions
+      // FILTER BY Inputs AND Detail Table
+      filterBy: $summaryContext,
+      // HIGHLIGHT BY Peers (Cross-filtering)
+      highlightBy: $crossFilter,
+      columns: [],
       tableOptions: baseTableOptions,
     }),
     [queryFactory, baseTableOptions],
   );
 
-  // 3. Connect Adapter
   const { tableOptions, client } = useMosaicReactTable(mosaicOptions);
+  const selectedValue = useSelectionValue($crossFilter, client);
 
-  // 4. Reactive Selection State for UI
-  const selectedValue = useSelectionValue($globalFilter, client);
-
-  // 2. Define Table Columns (Dynamic based on selectedValue)
   const columns = useMemo(
     () => [
       {
@@ -316,9 +337,6 @@ function SummaryTable({
         enableColumnFilter: false,
         enableHiding: false,
         cell: ({ row }: any) => {
-          // FIX: Use groupBy (Column ID) not safeId (Accessor)
-          // safeId is the SQL alias, groupBy is the Column Definition ID.
-          // TanStack Table's row.getValue expects Column ID.
           const rowVal = row.getValue(groupBy);
           const isChecked = selectedValue === rowVal;
           return (
@@ -332,7 +350,7 @@ function SummaryTable({
         },
       },
       {
-        id: groupBy, // This ID must match what we pass to getValue above
+        id: groupBy,
         accessorKey: safeId,
         header: title,
         enableColumnFilter: false,
@@ -348,12 +366,12 @@ function SummaryTable({
     [groupBy, title, metricLabel, safeId, selectedValue],
   );
 
-  // Update client columns when they change (due to selection state)
   useEffect(() => {
     client.updateOptions({
       columns,
       table: queryFactory,
-      highlightBy: $globalFilter,
+      filterBy: $summaryContext,
+      highlightBy: $crossFilter,
       tableOptions: baseTableOptions,
     });
   }, [columns, client, queryFactory, baseTableOptions]);
@@ -370,12 +388,11 @@ function SummaryTable({
           table={table}
           columns={columns}
           onRowClick={(row) => {
-            // FIX: Use groupBy (Column ID) here too
             const value = row.getValue(groupBy);
             const column = groupBy;
 
             if (selectedValue === value) {
-              $globalFilter.update({
+              $crossFilter.update({
                 source: client,
                 value: null,
                 predicate: null,
@@ -388,7 +405,7 @@ function SummaryTable({
                 mSql.literal(value),
               );
 
-              $globalFilter.update({
+              $crossFilter.update({
                 source: client,
                 value: value,
                 predicate,
@@ -403,38 +420,54 @@ function SummaryTable({
 
 function DetailTable() {
   const columns = useMemo(
-    () => [
-      {
-        id: 'domain',
-        accessorKey: 'domain',
-        header: 'Domain',
-        size: 150,
-      },
-      {
-        id: 'paa_question',
-        // FIX: Use the flattened key syntax because query-builder aliases struct fields to strings like "related_phrase.phrase"
-        accessorFn: (row: any) => row['related_phrase.phrase'],
-        header: 'PAA Question',
-        size: 350,
-        meta: {
-          mosaicDataTable: {
-            sqlColumn: 'related_phrase.phrase',
+    () =>
+      [
+        {
+          id: 'domain',
+          accessorKey: 'domain',
+          header: 'Domain',
+          size: 150,
+          meta: {
+            mosaicDataTable: {
+              sqlFilterType: 'PARTIAL_ILIKE' as const,
+            },
           },
         },
-      },
-      {
-        id: 'title',
-        accessorKey: 'title',
-        header: 'Answer Title',
-        size: 300,
-      },
-      {
-        id: 'description',
-        accessorKey: 'description',
-        header: 'Answer Description',
-        size: 400,
-      },
-    ],
+        {
+          id: 'paa_question',
+          accessorFn: (row: any) => row['related_phrase.phrase'],
+          header: 'PAA Question',
+          size: 350,
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'related_phrase.phrase',
+              sqlFilterType: 'PARTIAL_ILIKE' as const,
+            },
+          },
+        },
+        {
+          id: 'title',
+          accessorKey: 'title',
+          header: 'Answer Title',
+          size: 300,
+          meta: {
+            mosaicDataTable: {
+              sqlFilterType: 'PARTIAL_ILIKE' as const,
+            },
+          },
+        },
+        {
+          id: 'description',
+          accessorKey: 'description',
+          header: 'Answer Description',
+          size: 400,
+          meta: {
+            mosaicDataTable: {
+              sqlFilterType: 'PARTIAL_ILIKE' as const,
+            },
+          },
+        },
+      ] satisfies Array<ColumnDef<any, any>>,
     [],
   );
 
@@ -450,10 +483,16 @@ function DetailTable() {
   const mosaicOptions = useMemo(
     () => ({
       table: TABLE_NAME,
-      filterBy: $globalFilter,
+      // FILTER BY Inputs AND Cross-Filter Clicks
+      filterBy: $detailContext,
+      // PUBLISH TO $detailFilter (So summary tables update)
+      tableFilterSelection: $detailFilter,
       columns,
       totalRowsColumnName: '__total_rows',
-      tableOptions: baseTableOptions,
+      tableOptions: {
+        ...baseTableOptions,
+        enableColumnFilters: true,
+      },
     }),
     [columns, baseTableOptions],
   );

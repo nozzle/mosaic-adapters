@@ -1,5 +1,5 @@
 // Updated to initialize in 'connecting' state to prevent initial load race conditions
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
 import { socketConnector, wasmConnector } from '@uwdata/mosaic-core';
 
@@ -16,7 +16,9 @@ const ConnectorContext = createContext<ConnectorContextType | null>(null);
 export function ConnectorProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<ConnectorMode>('wasm');
   // Initialize as 'connecting' so the UI waits for the useEffect to configure the coordinator
-  const [status, setStatus] = useState<'connected' | 'connecting'>('connecting');
+  const [status, setStatus] = useState<'connected' | 'connecting'>(
+    'connecting',
+  );
 
   // Wrapper to set status to 'connecting' immediately when mode changes.
   const setMode = (newMode: ConnectorMode) => {

@@ -19,6 +19,42 @@ interface LogEntry {
   meta?: Record<string, any>;
 }
 
+/**
+ * Truncates and sanitizes objects for console display to prevent
+ * polluting the console with thousands of array items.
+ */
+function sanitizeForConsole(obj: any, depth = 0): any {
+  if (depth > 2) {
+    return '...';
+  }
+  if (Array.isArray(obj)) {
+    if (obj.length > 5) {
+      return [
+        ...obj.slice(0, 5).map((o) => sanitizeForConsole(o, depth + 1)),
+        `... (${obj.length - 5} more items)`,
+      ];
+    }
+    return obj.map((o) => sanitizeForConsole(o, depth + 1));
+  }
+  if (typeof obj === 'object' && obj !== null) {
+    const res: any = {};
+    for (const k in obj) {
+      // Heuristic: truncate likely large data arrays
+      if (
+        (k === 'rows' || k === 'data') &&
+        Array.isArray(obj[k]) &&
+        obj[k].length > 10
+      ) {
+        res[k] = `Array(${obj[k].length})`;
+      } else {
+        res[k] = sanitizeForConsole(obj[k], depth + 1);
+      }
+    }
+    return res;
+  }
+  return obj;
+}
+
 class LogManager {
   private logs: Array<LogEntry> = [];
   private maxLogs = 2000;
@@ -43,20 +79,43 @@ class LogManager {
   ) {
     const numericLevel = this.levelMap[level];
 
+    // 0. Heuristic Check for Common SQL Errors (Struct Access)
+    if (
+      (level === 'error' || level === 'warn' || category === 'SQL') &&
+      meta &&
+      (typeof meta.error?.message === 'string' || typeof meta.sql === 'string')
+    ) {
+      const textToCheck = meta.error?.message || meta.sql;
+      // Look for "something.something" pattern which indicates incorrect quoting
+      // Regex: double quote, one or more non-quote chars, dot, one or more non-quote chars, double quote
+      const structErrorRegex = /"[^"]+\.[^"]+"/;
+      const match = textToCheck.match(structErrorRegex);
+
+      if (match) {
+        // Log a high-visibility warning to help developers immediately
+        console.warn(
+          `%c[Mosaic-Fix-Hint] Potential Struct Syntax Error detected: ${match[0]}`,
+          'background: #ffcc00; color: black; padding: 2px; border-radius: 2px;',
+          '\nDuckDB requires nested columns to be quoted separately like "table"."column", not "table.column".\nCheck your createStructAccess utility.',
+        );
+      }
+    }
+
     // 1. Handle Console Output (The "Quiet" Channel)
     if (numericLevel >= this.consoleLevel) {
       const badge = `[${category}]`;
       const style = this.getConsoleStyle(category);
+      const sanitizedMeta = meta ? sanitizeForConsole(meta) : undefined;
 
       if (level === 'error') {
-        console.error(`%c${badge} ${message}`, style, meta || '');
+        console.error(`%c${badge} ${message}`, style, sanitizedMeta || '');
       } else if (level === 'warn') {
-        console.warn(`%c${badge} ${message}`, style, meta || '');
+        console.warn(`%c${badge} ${message}`, style, sanitizedMeta || '');
       } else {
         // For Info/Debug in console, use collapsed groups if meta exists to keep it tidy
-        if (meta) {
+        if (sanitizedMeta) {
           console.groupCollapsed(`%c${badge} ${message}`, style);
-          console.log(meta);
+          console.log(sanitizedMeta);
           console.groupEnd();
         } else {
           console.log(`%c${badge} ${message}`, style);

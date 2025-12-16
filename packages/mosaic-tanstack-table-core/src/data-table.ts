@@ -359,28 +359,38 @@ export class MosaicDataTable<
     // Setup the primary selection change listener to reset pagination
     const selectionCb = () => {
       // Check if the active update came from US (cross-filtering).
-      // If so, the dataset size for this table hasn't changed (because we exclude ourselves),
-      // so we should preserve the current page index.
       const activeClause =
         this.filterBy?.active || this.options.highlightBy?.active;
 
-      if (activeClause && activeClause.source === this) {
-        return;
+      const isSelfUpdate = activeClause?.source === this;
+
+      // 1. Reset Pagination ONLY if the update is external.
+      // If we are cross-filtering (self update), the dataset size hasn't changed
+      // (because we exclude ourselves), so preserving the page index is the better UX.
+      // If the update came from outside, the dataset likely changed size/shape.
+      if (!isSelfUpdate) {
+        batch(() => {
+          this.#store.setState((prev) => ({
+            ...prev,
+            tableState: {
+              ...prev.tableState,
+              pagination: {
+                ...prev.tableState.pagination,
+                pageIndex: 0,
+              },
+            },
+          }));
+        });
       }
 
-      batch(() => {
-        this.#store.setState((prev) => ({
-          ...prev,
-          tableState: {
-            ...prev.tableState,
-            pagination: {
-              ...prev.tableState.pagination,
-              pageIndex: 0,
-            },
-          },
-        }));
-      });
+      // 2. Trigger Re-Query
+      // We must always re-query.
+      // - If external update: Rows change -> Need new data.
+      // - If self (highlight) update: Rows stay same, but `__is_highlighted` column changes
+      //   (for visual dimming).
+      this.requestUpdate();
     };
+
     this.filterBy?.addEventListener('value', selectionCb);
     // Also listen to highlightBy changes to trigger updates
     this.options.highlightBy?.addEventListener('value', selectionCb);
