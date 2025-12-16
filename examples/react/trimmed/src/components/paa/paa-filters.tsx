@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
+import { isArrowTable } from '@uwdata/mosaic-core';
 import { UniqueColumnValuesClient } from '@nozzleio/mosaic-tanstack-react-table';
 import type { FacetClientConfig } from '@nozzleio/mosaic-tanstack-react-table';
 import type { Selection } from '@uwdata/mosaic-core';
@@ -186,6 +187,162 @@ export function TextFilter({ label, column, selection }: FilterProps) {
         className="h-9 bg-white border-slate-200"
         placeholder="Search..."
       />
+    </div>
+  );
+}
+
+/**
+ * COMPONENT: ArraySelectFilter
+ * Designed for VARCHAR[] columns (e.g. keyword_groups).
+ * 1. Uses UNNEST() to find unique tags for the dropdown.
+ * 2. Uses list_contains() for the filter predicate.
+ */
+export function ArraySelectFilter({
+  label,
+  table,
+  column,
+  selection,
+}: FilterProps) {
+  const [options, setOptions] = useState<string[]>([]);
+  const filterSource = useMemo(
+    () => ({ id: `filter-${column}-array` }),
+    [column],
+  );
+
+  // 1. Fetch Unique Tags (UNNEST)
+  useEffect(() => {
+    async function loadTags() {
+      // We manually construct this query because the generic clients don't support UNNEST well yet
+      const sql = `
+        SELECT DISTINCT UNNEST(${column}) as tag 
+        FROM ${table} 
+        WHERE ${column} IS NOT NULL 
+        ORDER BY tag ASC 
+        LIMIT 100
+      `;
+
+      const result = await vg.coordinator().query(sql);
+
+      // Parse Arrow result
+      if (isArrowTable(result)) {
+        const rows = result.toArray();
+        const tags = rows
+          .map((r: any) => r.tag)
+          .filter((t: any) => t != null)
+          .map(String);
+        setOptions(tags);
+      }
+    }
+    loadTags();
+  }, [table, column]);
+
+  const handleChange = (val: string) => {
+    // If 'ALL', remove filter
+    if (val === 'ALL') {
+      selection.update({
+        source: filterSource,
+        value: null,
+        predicate: null,
+      });
+      return;
+    }
+
+    // Predicate: list_contains(keyword_groups, 'Tag')
+    const predicate = mSql.listContains(
+      mSql.column(column),
+      mSql.literal(val),
+    );
+
+    selection.update({
+      source: filterSource,
+      value: val,
+      predicate,
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-1 w-[180px]">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </label>
+      <Select onValueChange={handleChange}>
+        <SelectTrigger className="h-9 bg-white border-slate-200">
+          <SelectValue placeholder="All" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">All</SelectItem>
+          {options.map((opt) => (
+            <SelectItem key={opt} value={opt}>
+              {opt}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+/**
+ * COMPONENT: DateRangeFilter
+ * Native Date inputs for TIMESTAMP columns.
+ */
+export function DateRangeFilter({ label, column, selection }: FilterProps) {
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+
+  const filterSource = useMemo(
+    () => ({ id: `filter-${column}-date` }),
+    [column],
+  );
+
+  useEffect(() => {
+    // 1. Build Predicate based on Start/End presence
+    const colRef = mSql.column(column);
+    let predicate = null;
+    let valueDisplay = null;
+
+    if (start && end) {
+      predicate = mSql.isBetween(colRef, [
+        mSql.literal(new Date(start)),
+        mSql.literal(new Date(end)),
+      ]);
+      valueDisplay = `${start} to ${end}`;
+    } else if (start) {
+      predicate = mSql.gte(colRef, mSql.literal(new Date(start)));
+      valueDisplay = `>= ${start}`;
+    } else if (end) {
+      predicate = mSql.lte(colRef, mSql.literal(new Date(end)));
+      valueDisplay = `<= ${end}`;
+    }
+
+    // 2. Update Selection
+    selection.update({
+      source: filterSource,
+      value: valueDisplay,
+      predicate,
+    });
+  }, [start, end, column, selection, filterSource]);
+
+  return (
+    <div className="flex flex-col gap-1 w-[260px]">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          type="date"
+          className="h-9 w-full px-2 text-sm border border-slate-200 rounded bg-white outline-none focus:border-blue-500"
+          value={start}
+          onChange={(e) => setStart(e.target.value)}
+        />
+        <span className="text-slate-400">-</span>
+        <input
+          type="date"
+          className="h-9 w-full px-2 text-sm border border-slate-200 rounded bg-white outline-none focus:border-blue-500"
+          value={end}
+          onChange={(e) => setEnd(e.target.value)}
+        />
+      </div>
     </div>
   );
 }

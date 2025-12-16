@@ -8,7 +8,12 @@ import { useReactTable } from '@tanstack/react-table';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
 import { RenderTable } from '@/components/render-table';
 import { useMosaicValue } from '@/hooks/useMosaicValue';
-import { SelectFilter, TextFilter } from '@/components/paa/paa-filters';
+import {
+  ArraySelectFilter,
+  DateRangeFilter,
+  SelectFilter,
+  TextFilter,
+} from '@/components/paa/paa-filters';
 
 const TABLE_NAME = 'nozzle_paa';
 const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
@@ -72,6 +77,31 @@ export function NozzlePaaView() {
             column="phrase"
             selection={$globalFilter}
           />
+
+          {/* NEW: Keyword Groups (Array) */}
+          <ArraySelectFilter
+            label="Keyword Group"
+            table={TABLE_NAME}
+            column="keyword_groups"
+            selection={$globalFilter}
+          />
+
+          {/* NEW: Answer Contains (Description) */}
+          <TextFilter
+            label="Answer Contains"
+            table={TABLE_NAME}
+            column="description"
+            selection={$globalFilter}
+          />
+
+          {/* NEW: Date Range */}
+          <DateRangeFilter
+            label="Requested Date"
+            table={TABLE_NAME} // Prop needed for TS, though unused in DateRangeFilter logic
+            column="requested"
+            selection={$globalFilter}
+          />
+
           <SelectFilter
             label="Device"
             table={TABLE_NAME}
@@ -382,7 +412,8 @@ function DetailTable() {
       },
       {
         id: 'paa_question',
-        accessorFn: (row: any) => row.related_phrase?.phrase,
+        // FIX: Use the flattened key syntax because query-builder aliases struct fields to strings like "related_phrase.phrase"
+        accessorFn: (row: any) => row['related_phrase.phrase'],
         header: 'PAA Question',
         size: 350,
         meta: {
