@@ -1,5 +1,4 @@
-// The main PAA Report view containing KPIs, Filters, Summary Tables, and Detail Table.
-
+// Added try-catch block to init()
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
@@ -29,18 +28,19 @@ export function NozzlePaaView() {
   // --- 2. Data Initialization ---
   useEffect(() => {
     async function init() {
-      const connector = vg.wasmConnector({ log: false });
-      vg.coordinator().databaseConnector(connector);
+      try {
+        // FIX: Convert relative proxy path to absolute URL so DuckDB uses HTTPFS
+        const parquetUrl = new URL(PARQUET_PATH, window.location.origin).href;
 
-      // FIX: Convert relative proxy path to absolute URL so DuckDB uses HTTPFS
-      const parquetUrl = new URL(PARQUET_PATH, window.location.origin).href;
-
-      await vg
-        .coordinator()
-        .exec([
-          `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
-        ]);
-      setIsReady(true);
+        await vg
+          .coordinator()
+          .exec([
+            `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
+          ]);
+        setIsReady(true);
+      } catch (err) {
+        console.warn('NozzlePaaView init interrupted or failed:', err);
+      }
     }
     init();
   }, []);

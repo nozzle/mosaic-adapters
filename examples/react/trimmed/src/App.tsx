@@ -1,10 +1,14 @@
+// Refactored layout to include a footer for debug buttons, preventing overlap
 import { logger } from '@nozzleio/mosaic-tanstack-react-table';
 import { RenderView } from '@/components/render-view';
 
 function App() {
   return (
-    <main className="m-4 p-4 border border-slate-500 border-dashed relative">
-      <div className="absolute top-2 right-2 flex gap-2">
+    <div className="flex flex-col min-h-screen p-4 gap-2">
+      <main className="flex-1 p-4 border border-slate-500 border-dashed relative">
+        <RenderView />
+      </main>
+      <div className="flex justify-end gap-2 px-1">
         <button
           onClick={() =>
             logger.info('Framework', 'User triggered manual log marker')
@@ -20,8 +24,7 @@ function App() {
           Download Full Debug Logs
         </button>
       </div>
-      <RenderView />
-    </main>
+    </div>
   );
 }
 

@@ -1,3 +1,4 @@
+// Re-exporting NycTaxiView to fix build error. Added try-catch block to setup().
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
@@ -140,24 +141,25 @@ export function NycTaxiView() {
     }
 
     async function setup() {
-      setIsPending(true);
+      try {
+        setIsPending(true);
 
-      // 1. Data Init
-      await vg.coordinator().exec([
-        vg.loadExtension('spatial'),
-        vg.loadParquet('rides', fileURL, {
-          select: [
-            'pickup_datetime::TIMESTAMP AS datetime',
-            "ST_Transform(ST_Point(pickup_latitude, pickup_longitude), 'EPSG:4326', 'ESRI:102718') AS pick",
-            "ST_Transform(ST_Point(dropoff_latitude, dropoff_longitude), 'EPSG:4326', 'ESRI:102718') AS drop",
-            'trip_distance',
-            'fare_amount',
-            'tip_amount',
-            'total_amount',
-            'vendor_id',
-          ],
-        }),
-        `CREATE OR REPLACE TABLE ${tableName} AS SELECT
+        // 1. Data Init
+        await vg.coordinator().exec([
+          vg.loadExtension('spatial'),
+          vg.loadParquet('rides', fileURL, {
+            select: [
+              'pickup_datetime::TIMESTAMP AS datetime',
+              "ST_Transform(ST_Point(pickup_latitude, pickup_longitude), 'EPSG:4326', 'ESRI:102718') AS pick",
+              "ST_Transform(ST_Point(dropoff_latitude, dropoff_longitude), 'EPSG:4326', 'ESRI:102718') AS drop",
+              'trip_distance',
+              'fare_amount',
+              'tip_amount',
+              'total_amount',
+              'vendor_id',
+            ],
+          }),
+          `CREATE OR REPLACE TABLE ${tableName} AS SELECT
           (HOUR(datetime) + MINUTE(datetime)/60) AS time,
           MONTH(datetime) AS month,
           datetime,
@@ -166,73 +168,76 @@ export function NycTaxiView() {
           trip_distance, fare_amount, tip_amount, total_amount, vendor_id
         FROM rides
         WHERE fare_amount > 0 AND trip_distance > 0`,
-      ]);
+        ]);
 
-      // 2. Visualizations
-      const mapAttributes = [
-        vg.width(350),
-        vg.height(550),
-        vg.margin(0),
-        vg.xAxis(null),
-        vg.yAxis(null),
-        vg.xDomain([975000, 1005000]),
-        vg.yDomain([190000, 240000]),
-        vg.colorScale('symlog'),
-      ];
+        // 2. Visualizations
+        const mapAttributes = [
+          vg.width(350),
+          vg.height(550),
+          vg.margin(0),
+          vg.xAxis(null),
+          vg.yAxis(null),
+          vg.xDomain([975000, 1005000]),
+          vg.yDomain([190000, 240000]),
+          vg.colorScale('symlog'),
+        ];
 
-      const pickupMap = vg.plot(
-        vg.raster(vg.from(tableName, { filterBy: $chartContext }), {
-          x: 'px',
-          y: 'py',
-          bandwidth: 0,
-        }),
-        vg.intervalXY({ as: $brush }),
-        vg.text([{ label: 'Pickups' }], {
-          dx: 10,
-          dy: 10,
-          text: 'label',
-          fill: 'black',
-          fontSize: '1.2em',
-          frameAnchor: 'top-left',
-        }),
-        vg.colorScheme('blues'),
-        ...mapAttributes,
-      );
+        const pickupMap = vg.plot(
+          vg.raster(vg.from(tableName, { filterBy: $chartContext }), {
+            x: 'px',
+            y: 'py',
+            bandwidth: 0,
+          }),
+          vg.intervalXY({ as: $brush }),
+          vg.text([{ label: 'Pickups' }], {
+            dx: 10,
+            dy: 10,
+            text: 'label',
+            fill: 'black',
+            fontSize: '1.2em',
+            frameAnchor: 'top-left',
+          }),
+          vg.colorScheme('blues'),
+          ...mapAttributes,
+        );
 
-      const dropoffMap = vg.plot(
-        vg.raster(vg.from(tableName, { filterBy: $chartContext }), {
-          x: 'dx',
-          y: 'dy',
-          bandwidth: 0,
-        }),
-        vg.intervalXY({ as: $brush }),
-        vg.text([{ label: 'Dropoffs' }], {
-          dx: 10,
-          dy: 10,
-          text: 'label',
-          fill: 'black',
-          fontSize: '1.2em',
-          frameAnchor: 'top-left',
-        }),
-        vg.colorScheme('oranges'),
-        ...mapAttributes,
-      );
+        const dropoffMap = vg.plot(
+          vg.raster(vg.from(tableName, { filterBy: $chartContext }), {
+            x: 'dx',
+            y: 'dy',
+            bandwidth: 0,
+          }),
+          vg.intervalXY({ as: $brush }),
+          vg.text([{ label: 'Dropoffs' }], {
+            dx: 10,
+            dy: 10,
+            text: 'label',
+            fill: 'black',
+            fontSize: '1.2em',
+            frameAnchor: 'top-left',
+          }),
+          vg.colorScheme('oranges'),
+          ...mapAttributes,
+        );
 
-      const vendorMenu = vg.menu({
-        label: 'Vendor',
-        as: $vendorFilter,
-        from: tableName,
-        column: 'vendor_id',
-      });
+        const vendorMenu = vg.menu({
+          label: 'Vendor',
+          as: $vendorFilter,
+          from: tableName,
+          column: 'vendor_id',
+        });
 
-      const layout = vg.vconcat(
-        vendorMenu,
-        vg.vspace(10),
-        vg.hconcat(pickupMap, vg.hspace(10), dropoffMap),
-      );
+        const layout = vg.vconcat(
+          vendorMenu,
+          vg.vspace(10),
+          vg.hconcat(pickupMap, vg.hspace(10), dropoffMap),
+        );
 
-      chartDivRef.current?.replaceChildren(layout);
-      setIsPending(false);
+        chartDivRef.current?.replaceChildren(layout);
+        setIsPending(false);
+      } catch (err) {
+        console.warn('NycTaxiView setup interrupted or failed:', err);
+      }
     }
 
     setup();
