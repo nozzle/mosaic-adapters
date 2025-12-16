@@ -70,6 +70,7 @@ function useUniqueColumnValues(
         setOptions((values as Array<any>).filter((v) => v != null)),
       sortMode: config.sortMode,
       limit: config.limit,
+      __debugName: `useUniqueColumnValues(Facet):${config.column}`,
     });
 
     client.connect();

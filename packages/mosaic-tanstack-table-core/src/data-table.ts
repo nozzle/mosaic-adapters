@@ -461,6 +461,7 @@ export class MosaicDataTable<
       },
       // Pass the configured sort mode
       sortMode: sortMode,
+      __debugName: this.debugPrefix + 'UniqueFacet:' + columnId,
     });
 
     this.#facetClients.set(clientKey, facetClient);
@@ -501,6 +502,7 @@ export class MosaicDataTable<
           }));
         });
       },
+      __debugName: this.debugPrefix + 'MinMaxFacet:' + columnId,
     });
 
     this.#facetClients.set(clientKey, facetClient);
@@ -635,6 +637,7 @@ export class MosaicDataTable<
 export class UniqueColumnValuesClient extends MosaicClient {
   source: MosaicTableSource;
   column: string;
+  debugName?: string;
   getFilterExpressions?: () => Array<FilterExpr>;
   onResult: (values: Array<unknown>) => void;
   limit?: number;
@@ -661,6 +664,8 @@ export class UniqueColumnValuesClient extends MosaicClient {
     this.onResult = options.onResult;
     this.limit = options.limit;
     this.sortMode = options.sortMode || 'alpha';
+
+    this.debugName = options.__debugName;
   }
 
   connect(): void {
@@ -743,6 +748,15 @@ export class UniqueColumnValuesClient extends MosaicClient {
     }
     return this;
   }
+
+  override queryError(error: Error): this {
+    logger.error('Core', `${this.debugPrefix}Query Error`, { error });
+    return this;
+  }
+
+  get debugPrefix(): string {
+    return this.debugName ? `${this.debugName}:` : '';
+  }
 }
 
 /**
@@ -751,6 +765,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
 export class MinMaxColumnValuesClient extends MosaicClient {
   private source: MosaicTableSource;
   private column: string;
+  debugName?: string;
   private getFilterExpressions?: () => Array<FilterExpr>;
   private onResult: (min: number, max: number) => void;
 
@@ -773,6 +788,8 @@ export class MinMaxColumnValuesClient extends MosaicClient {
     this.column = options.column;
     this.getFilterExpressions = options.getFilterExpressions;
     this.onResult = options.onResult;
+
+    this.debugName = options.__debugName;
   }
 
   connect(): void {
@@ -839,5 +856,14 @@ export class MinMaxColumnValuesClient extends MosaicClient {
       }
     }
     return this;
+  }
+
+  override queryError(error: Error): this {
+    logger.error('Core', `${this.debugPrefix}Query Error`, { error });
+    return this;
+  }
+
+  get debugPrefix(): string {
+    return this.debugName ? `${this.debugName}:` : '';
   }
 }

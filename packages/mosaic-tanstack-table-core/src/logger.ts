@@ -94,7 +94,7 @@ class LogManager {
       if (match) {
         // Log a high-visibility warning to help developers immediately
         console.warn(
-          `%c[Mosaic-Fix-Hint] Potential Struct Syntax Error detected: ${match[0]}`,
+          `%c[Mosaic-Fix-Hint] Potential Struct Syntax Error detected: ${JSON.stringify(match[0])}`,
           'background: #ffcc00; color: black; padding: 2px; border-radius: 2px;',
           '\nDuckDB requires nested columns to be quoted separately like "table"."column", not "table.column".\nCheck your createStructAccess utility.',
         );

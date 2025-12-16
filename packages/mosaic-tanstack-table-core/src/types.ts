@@ -187,4 +187,5 @@ export type FacetClientConfig<TResult extends Array<any>> = {
    * @default 'alpha'
    */
   sortMode?: FacetSortMode;
+  __debugName?: string;
 };
