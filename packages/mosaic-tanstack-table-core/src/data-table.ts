@@ -90,6 +90,8 @@ export class MosaicDataTable<
   #facetClients: Map<string, ActiveFacetClient> = new Map();
   #facetValues: Map<string, any> = new Map();
 
+  #QueryStore: any;
+
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
     this.options = options;
@@ -104,10 +106,10 @@ export class MosaicDataTable<
    * @param options The updated options from framework-land.
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    logger.debug('Core', 'updateOptions received', {
-      source: typeof options.table === 'string' ? options.table : 'function',
-      columnsCount: options.columns?.length,
-    });
+    // logger.debug('Core', 'updateOptions received', {
+    //   source: typeof options.table === 'string' ? options.table : 'function',
+    //   columnsCount: options.columns?.length,
+    // });
 
     this.options = options;
 
@@ -268,6 +270,8 @@ export class MosaicDataTable<
       predicate: predicate,
     });
 
+    this.#QueryStore = statement;
+
     return statement;
   }
 
@@ -299,8 +303,17 @@ export class MosaicDataTable<
     return this;
   }
 
+  get debugPrefix(): string {
+    return this.options.debugName ? `${this.options.debugName}:` : '';
+  }
+
   override queryError(error: Error): this {
-    logger.error('Core', 'Query Error', { error });
+    logger.error('Core', `${this.debugPrefix}Query Error`, { error });
+    logger.error(
+      'Core',
+      `${this.debugPrefix}Offending Query:`,
+      this.#QueryStore?.toString() ?? '',
+    );
     return this;
   }
 

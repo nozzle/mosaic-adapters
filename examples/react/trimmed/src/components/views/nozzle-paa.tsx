@@ -373,6 +373,7 @@ function SummaryTable({
       filterBy: $summaryContext,
       highlightBy: $crossFilter,
       tableOptions: baseTableOptions,
+      debugName: `${title}SummaryTable`,
     });
   }, [columns, client, queryFactory, baseTableOptions]);
 
@@ -429,13 +430,13 @@ function DetailTable() {
           size: 150,
           meta: {
             mosaicDataTable: {
-              sqlFilterType: 'PARTIAL_ILIKE' as const,
+              sqlFilterType: 'PARTIAL_ILIKE',
             },
           },
         },
         {
           id: 'paa_question',
-          accessorFn: (row: any) => row['related_phrase.phrase'],
+          accessorFn: (row) => row['related_phrase.phrase'],
           header: 'PAA Question',
           size: 350,
           meta: {
@@ -493,6 +494,7 @@ function DetailTable() {
         ...baseTableOptions,
         enableColumnFilters: true,
       },
+      debugName: 'DetailTable',
     }),
     [columns, baseTableOptions],
   );

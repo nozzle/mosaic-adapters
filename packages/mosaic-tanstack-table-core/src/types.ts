@@ -151,6 +151,7 @@ export interface MosaicDataTableOptions<
    * @default 'requestUpdate'
    */
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
+  debugName?: string;
 }
 
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
