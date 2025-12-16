@@ -203,7 +203,7 @@ export function ArraySelectFilter({
   column,
   selection,
 }: FilterProps) {
-  const [options, setOptions] = useState<string[]>([]);
+  const [options, setOptions] = useState<Array<string>>([]);
   const filterSource = useMemo(
     () => ({ id: `filter-${column}-array` }),
     [column],
@@ -237,25 +237,15 @@ export function ArraySelectFilter({
   }, [table, column]);
 
   const handleChange = (val: string) => {
-    // If 'ALL', remove filter
-    if (val === 'ALL') {
-      selection.update({
-        source: filterSource,
-        value: null,
-        predicate: null,
-      });
-      return;
-    }
-
-    // Predicate: list_contains(keyword_groups, 'Tag')
-    const predicate = mSql.listContains(
-      mSql.column(column),
-      mSql.literal(val),
-    );
+    // If 'ALL', we send null to remove the WHERE clause for this column
+    const predicate =
+      val === 'ALL'
+        ? null
+        : mSql.listContains(mSql.column(column), mSql.literal(val));
 
     selection.update({
       source: filterSource,
-      value: val,
+      value: val === 'ALL' ? null : val,
       predicate,
     });
   };
