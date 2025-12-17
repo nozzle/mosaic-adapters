@@ -1,4 +1,3 @@
-// Added try-catch block to setup() to safely handle potential promise rejections
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
