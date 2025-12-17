@@ -1,0 +1,461 @@
+// examples/react/trimmed/src/components/paa/paa-filters.tsx
+
+import * as React from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import * as mSql from '@uwdata/mosaic-sql';
+import { Check, ChevronDown } from 'lucide-react';
+import { useMosaicFacetMenu } from '@nozzleio/mosaic-tanstack-react-table';
+import type { Selection } from '@uwdata/mosaic-core';
+
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+// Local helper to avoid importing from core package which can cause build issues in example
+function createStructAccess(columnPath: string): any {
+  if (!columnPath.includes('.')) {
+    return mSql.column(columnPath);
+  }
+
+  const parts = columnPath.split('.');
+  return parts.reduce((acc, part, index) => {
+    if (index === 0) {
+      return mSql.column(part);
+    }
+    return mSql.sql`${acc}.${mSql.column(part)}`;
+  }, null as any);
+}
+
+function useSelectionValue(selection: Selection, client: any) {
+  const [value, setValue] = useState(selection.valueFor(client));
+
+  useEffect(() => {
+    const handler = () => {
+      setValue(selection.valueFor(client));
+    };
+    selection.addEventListener('value', handler);
+    return () => selection.removeEventListener('value', handler);
+  }, [selection, client]);
+
+  return value;
+}
+
+interface FilterProps {
+  label: string;
+  table: string;
+  column: string;
+  selection: Selection;
+  filterBy?: Selection;
+  externalContext?: Selection;
+}
+
+/**
+ * Helper component for dropdown items that shouldn't steal focus.
+ */
+function PassiveMenuItem({
+  children,
+  isSelected,
+  onClick,
+}: {
+  children: React.ReactNode;
+  isSelected?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className={cn(
+        'relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      )}
+    >
+      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+        {isSelected && <Check className="h-4 w-4" />}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * COMPONENT: SearchableSelectFilter
+ * Refactored to use useMosaicFacetMenu (Core Class Architecture).
+ */
+export function SearchableSelectFilter({
+  label,
+  table,
+  column,
+  selection,
+  filterBy,
+  externalContext,
+}: FilterProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
+
+  // Use the new hook which manages the core class instance
+  const { options, setSearchTerm, select, client } = useMosaicFacetMenu({
+    table,
+    column,
+    selection,
+    filterBy,
+    additionalContext: externalContext,
+    limit: 50,
+    sortMode: 'count',
+    debugName: `Facet:${label}`,
+  });
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchValue);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchValue, setSearchTerm]);
+
+  // Read current value using the client instance as identity
+  const selectedValue = useSelectionValue(selection, client);
+
+  const handleSelect = (val: string | null) => {
+    select(val);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-1 w-[200px]">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </label>
+
+      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            className="w-full justify-between bg-white font-normal h-9 border-slate-200"
+          >
+            <span className="truncate">
+              {selectedValue ? String(selectedValue) : 'All'}
+            </span>
+            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent className="w-[200px] p-0" align="start">
+          <div className="flex items-center border-b px-3">
+            <input
+              className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="Search..."
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+
+          <div className="max-h-[300px] overflow-y-auto p-1">
+            <PassiveMenuItem
+              isSelected={!selectedValue}
+              onClick={() => handleSelect(null)}
+            >
+              All
+            </PassiveMenuItem>
+
+            {options.map((opt) => (
+              <PassiveMenuItem
+                key={String(opt)}
+                isSelected={selectedValue === String(opt)}
+                onClick={() => handleSelect(String(opt))}
+              >
+                {String(opt)}
+              </PassiveMenuItem>
+            ))}
+
+            {options.length === 0 && (
+              <div className="py-6 text-center text-sm text-slate-500">
+                No results found.
+              </div>
+            )}
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/**
+ * COMPONENT: SelectFilter
+ * Refactored to use useMosaicFacetMenu.
+ */
+export function SelectFilter({
+  label,
+  table,
+  column,
+  selection,
+  filterBy,
+  externalContext,
+}: FilterProps) {
+  const { options, select, client } = useMosaicFacetMenu({
+    table,
+    column,
+    selection,
+    filterBy,
+    additionalContext: externalContext,
+    limit: 50,
+    sortMode: 'count',
+  });
+
+  const selectedValue = useSelectionValue(selection, client);
+
+  const handleChange = (val: string) => {
+    select(val === 'ALL' ? null : val);
+  };
+
+  const valueForSelect = selectedValue ? String(selectedValue) : 'ALL';
+
+  return (
+    <div className="flex flex-col gap-1 w-[180px]">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </label>
+      <Select onValueChange={handleChange} value={valueForSelect}>
+        <SelectTrigger className="h-9 bg-white border-slate-200">
+          <SelectValue placeholder="All" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">All</SelectItem>
+          {options.map((opt) => (
+            <SelectItem key={String(opt)} value={String(opt)}>
+              {String(opt)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+/**
+ * COMPONENT: ArraySelectFilter
+ * Refactored to use useMosaicFacetMenu with isArrayColumn=true.
+ */
+export function ArraySelectFilter({
+  label,
+  table,
+  column,
+  selection,
+  filterBy,
+  externalContext,
+}: FilterProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
+
+  const { options, setSearchTerm, select, client } = useMosaicFacetMenu({
+    table,
+    column,
+    selection,
+    filterBy,
+    additionalContext: externalContext,
+    limit: 100,
+    sortMode: 'alpha', // Tags usually better alpha
+    isArrayColumn: true, // Enable UNNEST logic
+    debugName: `FacetArray:${label}`,
+  });
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchValue);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchValue, setSearchTerm]);
+
+  const selectedValue = useSelectionValue(selection, client);
+
+  const handleSelect = (val: string | null) => {
+    select(val);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-1 w-[180px]">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </label>
+
+      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            className="w-full justify-between bg-white font-normal h-9 border-slate-200"
+          >
+            <span className="truncate">
+              {selectedValue ? String(selectedValue) : 'All'}
+            </span>
+            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent className="w-[180px] p-0" align="start">
+          <div className="flex items-center border-b px-3">
+            <input
+              className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="Search..."
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+
+          <div className="max-h-[300px] overflow-y-auto p-1">
+            <PassiveMenuItem
+              isSelected={!selectedValue}
+              onClick={() => handleSelect(null)}
+            >
+              All
+            </PassiveMenuItem>
+
+            {options.map((opt) => (
+              <PassiveMenuItem
+                key={opt}
+                isSelected={selectedValue === opt}
+                onClick={() => handleSelect(opt)}
+              >
+                {opt}
+              </PassiveMenuItem>
+            ))}
+
+            {options.length === 0 && (
+              <div className="py-6 text-center text-sm text-slate-500">
+                No results found.
+              </div>
+            )}
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/**
+ * COMPONENT: TextFilter
+ * Remains mostly the same, but uses a stable memoized source object for identity.
+ */
+export function TextFilter({ label, column, selection }: FilterProps) {
+  const [val, setVal] = useState('');
+
+  // Stable Source
+  const filterSource = useMemo(() => ({ id: `filter-${column}` }), [column]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (val.trim() === '') {
+        selection.update({
+          source: filterSource,
+          value: null,
+          predicate: null,
+        });
+        return;
+      }
+
+      const colExpr = createStructAccess(column);
+      const predicate = mSql.sql`${colExpr} ILIKE ${mSql.literal('%' + val + '%')}`;
+
+      selection.update({
+        source: filterSource,
+        value: val,
+        predicate,
+      });
+    }, 300);
+
+    return () => clearTimeout(handler);
+  }, [val, column, selection, filterSource]);
+
+  return (
+    <div className="flex flex-col gap-1 w-[180px]">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </label>
+      <Input
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        className="h-9 bg-white border-slate-200"
+        placeholder="Search..."
+      />
+    </div>
+  );
+}
+
+/**
+ * COMPONENT: DateRangeFilter
+ * Remains mostly the same.
+ */
+export function DateRangeFilter({ label, column, selection }: FilterProps) {
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+
+  const filterSource = useMemo(
+    () => ({ id: `filter-${column}-date` }),
+    [column],
+  );
+
+  useEffect(() => {
+    const colRef = createStructAccess(column);
+    let predicate = null;
+    let valueDisplay = null;
+
+    if (start && end) {
+      predicate = mSql.isBetween(colRef, [
+        mSql.literal(new Date(start)),
+        mSql.literal(new Date(end)),
+      ]);
+      valueDisplay = `${start} to ${end}`;
+    } else if (start) {
+      predicate = mSql.gte(colRef, mSql.literal(new Date(start)));
+      valueDisplay = `>= ${start}`;
+    } else if (end) {
+      predicate = mSql.lte(colRef, mSql.literal(new Date(end)));
+      valueDisplay = `<= ${end}`;
+    }
+
+    selection.update({
+      source: filterSource,
+      value: valueDisplay,
+      predicate,
+    });
+  }, [start, end, column, selection, filterSource]);
+
+  return (
+    <div className="flex flex-col gap-1 w-[260px]">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          type="date"
+          className="h-9 w-full px-2 text-sm border border-slate-200 rounded bg-white outline-none focus:border-blue-500"
+          value={start}
+          onChange={(e) => setStart(e.target.value)}
+        />
+        <span className="text-slate-400">-</span>
+        <input
+          type="date"
+          className="h-9 w-full px-2 text-sm border border-slate-200 rounded bg-white outline-none focus:border-blue-500"
+          value={end}
+          onChange={(e) => setEnd(e.target.value)}
+        />
+      </div>
+    </div>
+  );
+}
