@@ -1,5 +1,6 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
+import { createStructAccess } from '../utils';
 import { createFilterClause } from './filter-factory';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
 import type { RowData, TableState } from '@tanstack/table-core';
@@ -22,9 +23,18 @@ export function buildTableQuery<TData extends RowData, TValue>(
   const { pagination, sorting, columnFilters } = tableState;
 
   // 1. Select Columns
-  const selectColumns = mapper
-    .getSelectColumns()
-    .map((col) => mSql.column(col));
+  // We iterate the mapped columns and construct the SELECT clause.
+  // If a column has a dot, we treat it as a struct access `parent.child`
+  // and ALIAS it to the original key so TanStack Table can find it flatly.
+  const selectColumns = mapper.getSelectColumns().map((col) => {
+    if (col.includes('.')) {
+      // Use helper to generate "a"."b" struct access
+      const structExpr = createStructAccess(col);
+      return { [col]: structExpr };
+    }
+    // Standard column
+    return mSql.column(col);
+  });
 
   // Initialize statement with Total Rows Window Function
   // mSql.Query.from() handles both strings (table names) and SelectQuery objects (subqueries)
@@ -71,11 +81,9 @@ export function buildTableQuery<TData extends RowData, TValue>(
   sorting.forEach((sort) => {
     const sqlColumn = mapper.getSqlColumn(sort.id);
     if (sqlColumn) {
-      orderingCriteria.push(
-        sort.desc
-          ? mSql.desc(mSql.column(sqlColumn))
-          : mSql.asc(mSql.column(sqlColumn)),
-      );
+      // Use createStructAccess for sorting nested columns too
+      const colExpr = createStructAccess(sqlColumn);
+      orderingCriteria.push(sort.desc ? mSql.desc(colExpr) : mSql.asc(colExpr));
     }
   });
 

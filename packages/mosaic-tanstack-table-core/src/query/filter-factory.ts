@@ -1,5 +1,9 @@
 import * as mSql from '@uwdata/mosaic-sql';
-import { escapeSqlLikePattern, toRangeValue } from '../utils';
+import {
+  createStructAccess,
+  escapeSqlLikePattern,
+  toRangeValue,
+} from '../utils';
 import { logger } from '../logger';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { MosaicDataTableSqlFilterType } from '../types';
@@ -33,19 +37,19 @@ const strategies: Record<MosaicDataTableSqlFilterType, FilterStrategy> = {
 
     let clause: FilterExpr | undefined = undefined;
 
+    // Use createStructAccess for struct columns in Range filters
+    const colExpr = createStructAccess(columnAccessor);
+
     // Build SQL clauses using Mosaic literals to handle type safety
     if (max === null) {
       // GREATER THAN OR EQUAL TO min
-      clause = mSql.gte(mSql.column(columnAccessor), mSql.literal(min));
+      clause = mSql.gte(colExpr, mSql.literal(min));
     } else if (min === null) {
       // LESS THAN OR EQUAL TO max
-      clause = mSql.lte(mSql.column(columnAccessor), mSql.literal(max));
+      clause = mSql.lte(colExpr, mSql.literal(max));
     } else {
       // BETWEEN min AND max
-      clause = mSql.isBetween(mSql.column(columnAccessor), [
-        mSql.literal(min),
-        mSql.literal(max),
-      ]);
+      clause = mSql.isBetween(colExpr, [mSql.literal(min), mSql.literal(max)]);
     }
 
     return clause;
@@ -97,7 +101,12 @@ const strategies: Record<MosaicDataTableSqlFilterType, FilterStrategy> = {
       );
       return undefined;
     }
-    const clause = mSql.eq(mSql.column(columnAccessor), mSql.literal(value));
+
+    // Use createStructAccess for struct columns in Equals filters
+    const clause = mSql.eq(
+      createStructAccess(columnAccessor),
+      mSql.literal(value),
+    );
 
     return clause;
   },
@@ -127,8 +136,11 @@ function handleLike(options: {
     pattern = options.value;
   }
 
+  // Use createStructAccess for struct columns in Like filters
+  const colExpr = createStructAccess(options.columnAccessor);
+
   // mSql.literal handles SQL Injection safety (quote escaping)
-  const clause = mSql.sql`${mSql.column(options.columnAccessor)} ${options.operator} ${mSql.literal(pattern)}`;
+  const clause = mSql.sql`${colExpr} ${options.operator} ${mSql.literal(pattern)}`;
 
   return clause;
 }
