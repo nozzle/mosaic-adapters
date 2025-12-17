@@ -1,3 +1,5 @@
+// packages/mosaic-tanstack-table-core/src/logger.ts
+
 // A structured logging utility that separates console output from stored logs.
 // It allows for quiet console output while retaining detailed metadata
 // (state snapshots, SQL queries) in a downloadable JSON format for debugging.
@@ -81,7 +83,7 @@ class LogManager {
 
     // 0. Heuristic Check for Common SQL Errors (Struct Access)
     if (
-      (level === 'error' || level === 'warn' || category === 'SQL') &&
+      (level === 'error' || level === 'warn') &&
       meta &&
       (typeof meta.error?.message === 'string' || typeof meta.sql === 'string')
     ) {
