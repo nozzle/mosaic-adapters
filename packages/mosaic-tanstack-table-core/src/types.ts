@@ -111,6 +111,20 @@ export interface MosaicDataTableOptions<
    */
   filterBy?: Selection | undefined;
   /**
+   * A selection used for Highlighting/Cross-filtering.
+   * If provided:
+   * 1. The query will use cross-filtering logic (excluding itself from the WHERE clause).
+   * 2. The query will add a `__is_highlighted` column (1 or 0) based on the global selection state.
+   */
+  highlightBy?: Selection | undefined;
+  /**
+   * If true, the `__is_highlighted` column will NOT be automatically generated/added to the query.
+   * Use this if you are calculating `__is_highlighted` manually in a subquery/view to avoid
+   * scope issues with aggregated data.
+   * @default false
+   */
+  manualHighlight?: boolean;
+  /**
    * The selection that the table writes its own internal filter state to.
    * This allows other Mosaic clients (like charts) to react to table filters.
    * @default undefined

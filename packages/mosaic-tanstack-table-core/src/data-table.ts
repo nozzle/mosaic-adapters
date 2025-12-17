@@ -203,7 +203,50 @@ export class MosaicDataTable<
   }
 
   override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
-    const source = this.resolveSource(primaryFilter);
+    // 1. Resolve Hard Filters (filterBy)
+    // These ALWAYS remove rows (e.g. global date picker)
+    const hardFilter = primaryFilter;
+
+    // 2. Resolve Highlight Filters (highlightBy)
+    // These are used for Annotation + Cross-filtering logic
+    let highlightPredicate: FilterExpr | null = null;
+    let crossFilterPredicate: FilterExpr | null = null;
+
+    if (this.options.highlightBy) {
+      // CROSS-FILTERING (WHERE clause):
+      // We pass 'this' to predicate(). If the selection is a CrossFilter and 'this'
+      // is the source, it returns null (exclude self).
+      // If we didn't trigger it, we get the predicate.
+      // Coalesce undefined to null to match FilterExpr type
+      crossFilterPredicate = this.options.highlightBy.predicate(this) ?? null;
+
+      // HIGHLIGHTING (CASE WHEN clause):
+      // We pass 'null' to predicate(). This returns the "Global Truth" including our own selection.
+      // This tells us what *should* be highlighted in the UI.
+      // Coalesce undefined to null to match FilterExpr type
+      highlightPredicate = this.options.highlightBy.predicate(null) ?? null;
+    }
+
+    // Combine Hard Filters + Cross-Filter Predicates for the WHERE clause
+    let effectiveFilter = hardFilter;
+    if (crossFilterPredicate) {
+      effectiveFilter = effectiveFilter
+        ? mSql.and(effectiveFilter, crossFilterPredicate)
+        : crossFilterPredicate;
+    }
+
+    // Smart Highlight Logic
+    // If a Cross-Filter predicate exists, the table is already filtered to show
+    // only selected rows (e.g. clicking "US" in a map filters this table to "US").
+    // In this state, everything is "highlighted".
+    // We force highlightPredicate to null (which defaults to 1) to avoid
+    // referencing columns that might not exist in the aggregated subquery logic.
+    // This prevents the "Referenced table not found" crash in Cross-Filtered aggregations.
+    const safeHighlightPredicate = crossFilterPredicate
+      ? null
+      : highlightPredicate;
+
+    const source = this.resolveSource(effectiveFilter);
     // Force unwrap here since we guarantee initialization in updateOptions/constructor
     const tableState = this.#store.state.tableState;
 
@@ -214,13 +257,14 @@ export class MosaicDataTable<
       tableState,
       mapper: this.#columnMapper,
       totalRowsColumnName: this.#sql_total_rows,
+      highlightPredicate: safeHighlightPredicate,
+      manualHighlight: this.options.manualHighlight,
     });
 
-    // 2. Apply Primary Filter (Global/External Context)
-    // If source is a string, we apply the filter here.
-    // If source is a Query object, the Factory likely already applied it, or we append it.
-    if (primaryFilter && typeof this.source === 'string') {
-      statement.where(primaryFilter);
+    // 2. Apply Primary Filter (Global/External Context) if source is a string
+    // If source is a Query object, the Factory likely already applied effectiveFilter.
+    if (effectiveFilter && typeof this.source === 'string') {
+      statement.where(effectiveFilter);
     }
 
     // 3. Side Effect: Update Internal Filter Selection
@@ -340,24 +384,47 @@ export class MosaicDataTable<
     const destroy = this.destroy.bind(this);
 
     // Setup the primary selection change listener to reset pagination
-    const selectionCb = (_: Array<SelectionClause> | undefined) => {
-      batch(() => {
-        this.#store.setState((prev) => ({
-          ...prev,
-          tableState: {
-            ...prev.tableState,
-            pagination: {
-              ...prev.tableState.pagination,
-              pageIndex: 0,
+    const selectionCb = () => {
+      // Check if the active update came from US (cross-filtering).
+      const activeClause =
+        this.filterBy?.active || this.options.highlightBy?.active;
+
+      const isSelfUpdate = activeClause?.source === this;
+
+      // 1. Reset Pagination ONLY if the update is external.
+      // If we are cross-filtering (self update), the dataset size hasn't changed
+      // (because we exclude ourselves), so preserving the page index is the better UX.
+      // If the update came from outside, the dataset likely changed size/shape.
+      if (!isSelfUpdate) {
+        batch(() => {
+          this.#store.setState((prev) => ({
+            ...prev,
+            tableState: {
+              ...prev.tableState,
+              pagination: {
+                ...prev.tableState.pagination,
+                pageIndex: 0,
+              },
             },
-          },
-        }));
-      });
+          }));
+        });
+      }
+
+      // 2. Trigger Re-Query
+      // We must always re-query.
+      // - If external update: Rows change -> Need new data.
+      // - If self (highlight) update: Rows stay same, but `__is_highlighted` column changes
+      //   (for visual dimming).
+      this.requestUpdate();
     };
+
     this.filterBy?.addEventListener('value', selectionCb);
+    // Also listen to highlightBy changes to trigger updates
+    this.options.highlightBy?.addEventListener('value', selectionCb);
 
     return () => {
       this.filterBy?.removeEventListener('value', selectionCb);
+      this.options.highlightBy?.removeEventListener('value', selectionCb);
       destroy();
     };
   }

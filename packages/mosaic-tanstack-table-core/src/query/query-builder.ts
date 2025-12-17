@@ -1,6 +1,7 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
 import { createStructAccess } from '../utils';
+
 import { createFilterClause } from './filter-factory';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
 import type { RowData, TableState } from '@tanstack/table-core';
@@ -12,13 +13,30 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   mapper: ColumnMapper<TData, TValue>;
   totalRowsColumnName: string;
   excludeColumnId?: string; // For cascading facets
+  /**
+   * The predicate to use for highlighting rows.
+   * If provided, a computed column `__is_highlighted` (1 or 0) will be added.
+   */
+  highlightPredicate?: mSql.FilterExpr | null;
+  /**
+   * If true, skip adding the `__is_highlighted` column to the SELECT list.
+   * Use this when the source (subquery) already calculates it.
+   */
+  manualHighlight?: boolean;
 }
 
 export function buildTableQuery<TData extends RowData, TValue>(
   options: QueryBuilderOptions<TData, TValue>,
 ): SelectQuery {
-  const { source, tableState, mapper, totalRowsColumnName, excludeColumnId } =
-    options;
+  const {
+    source,
+    tableState,
+    mapper,
+    totalRowsColumnName,
+    excludeColumnId,
+    highlightPredicate,
+    manualHighlight,
+  } = options;
 
   const { pagination, sorting, columnFilters } = tableState;
 
@@ -36,11 +54,42 @@ export function buildTableQuery<TData extends RowData, TValue>(
     return mSql.column(col);
   });
 
-  // Initialize statement with Total Rows Window Function
-  // mSql.Query.from() handles both strings (table names) and SelectQuery objects (subqueries)
-  const statement = mSql.Query.from(source).select(...selectColumns, {
+  const extraSelects: Record<string, any> = {
     [totalRowsColumnName]: mSql.sql`COUNT(*) OVER()`,
-  });
+  };
+
+  // Calculate Highlight Column if not in manual mode
+  if (!manualHighlight) {
+    let highlightCol;
+    const isHighlightActive =
+      highlightPredicate &&
+      (!Array.isArray(highlightPredicate) || highlightPredicate.length > 0);
+
+    if (isHighlightActive) {
+      // Ensure the predicate is a valid SQL Node for interpolation.
+      // If highlightPredicate is an array (implicit AND), wrap it.
+      const safePredicate = Array.isArray(highlightPredicate)
+        ? mSql.and(...highlightPredicate)
+        : highlightPredicate;
+
+      // SQL: MAX(CASE WHEN predicate THEN 1 ELSE 0 END)
+      // We use MAX() to ensure safety with GROUP BY queries (if the source is aggregated).
+      // If *any* record in the group matches the filter, the group is highlighted.
+      const caseExpr = mSql.sql`CASE WHEN ${safePredicate} THEN 1 ELSE 0 END`;
+      highlightCol = mSql.max(caseExpr);
+    } else {
+      // If no filter exists (or it's empty), everything is highlighted (default state)
+      highlightCol = mSql.literal(1);
+    }
+    extraSelects['__is_highlighted'] = highlightCol;
+  }
+
+  // Initialize statement with Total Rows Window Function and Highlight Flag
+  // mSql.Query.from() handles both strings (table names) and SelectQuery objects (subqueries)
+  const statement = mSql.Query.from(source).select(
+    ...selectColumns,
+    extraSelects,
+  );
 
   // 2. Generate WHERE Clauses (Internal Table Filters)
   const whereClauses: Array<mSql.FilterExpr> = [];
@@ -94,10 +143,11 @@ export function buildTableQuery<TData extends RowData, TValue>(
     .limit(pagination.pageSize)
     .offset(pagination.pageIndex * pagination.pageSize);
 
+  // INFO: Downgraded to 'debug' to reduce console noise while keeping full logs available
   logger.debounce(
     'sql-query-builder',
     300,
-    'info',
+    'debug',
     'SQL',
     'Generated Table Query',
     {
@@ -106,6 +156,8 @@ export function buildTableQuery<TData extends RowData, TValue>(
         pagination,
         sorting,
         filtersCount: whereClauses.length,
+        hasHighlight: !manualHighlight,
+        highlightPredicateRaw: highlightPredicate,
       },
     },
   );
