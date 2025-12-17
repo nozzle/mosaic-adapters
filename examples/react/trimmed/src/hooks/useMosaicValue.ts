@@ -20,7 +20,7 @@ export function useMosaicValue(
   const [value, setValue] = useState<number | string>('-');
 
   useEffect(() => {
-    const update = async () => {
+    const setup = async () => {
       // 1. Resolve the current filter state from the Selection
       const predicate = selection.predicate(null);
 
@@ -42,11 +42,11 @@ export function useMosaicValue(
     };
 
     // Initial fetch
-    update();
+    setup();
 
     // 5. Subscribe to Selection changes to trigger re-fetches
-    selection.addEventListener('value', update);
-    return () => selection.removeEventListener('value', update);
+    selection.addEventListener('value', setup);
+    return () => selection.removeEventListener('value', setup);
   }, [queryFactory, selection]);
 
   return value;
