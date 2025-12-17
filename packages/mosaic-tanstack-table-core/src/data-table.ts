@@ -15,6 +15,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { getCoreRowModel, getFacetedRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
+  createStructAccess,
   functionalUpdate,
   seedInitialTableState,
   toSafeSqlColumnName,
@@ -37,6 +38,8 @@ import type {
   TableOptions,
 } from '@tanstack/table-core';
 import type {
+  FacetClientConfig,
+  FacetSortMode,
   MosaicDataTableOptions,
   MosaicDataTableStore,
   MosaicTableSource,
@@ -74,6 +77,8 @@ export class MosaicDataTable<
   source: MosaicTableSource;
   schema: Array<FieldInfo> = [];
   tableFilterSelection!: Selection;
+  // Hold options to access highlightBy later
+  options: MosaicDataTableOptions<TData, TValue>;
 
   // DO NOT remove the `!` here. We guarantee initialization in updateOptions which is also called by the constructor.
   #store!: Store<MosaicDataTableStore<TData, TValue>>;
@@ -87,9 +92,11 @@ export class MosaicDataTable<
   #facetClients: Map<string, ActiveFacetClient> = new Map();
   #facetValues: Map<string, any> = new Map();
 
+  #QueryStore: any;
+
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
-
+    this.options = options;
     this.source = options.table;
 
     this.updateOptions(options);
@@ -101,10 +108,12 @@ export class MosaicDataTable<
    * @param options The updated options from framework-land.
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    logger.debug('Core', 'updateOptions received', {
-      source: typeof options.table === 'string' ? options.table : 'function',
-      columnsCount: options.columns?.length,
-    });
+    // logger.debug('Core', 'updateOptions received', {
+    //   source: typeof options.table === 'string' ? options.table : 'function',
+    //   columnsCount: options.columns?.length,
+    // });
+
+    this.options = options;
 
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
@@ -117,6 +126,16 @@ export class MosaicDataTable<
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     } else if (!this.tableFilterSelection) {
       this.tableFilterSelection = new Selection();
+    }
+
+    // NOTE: filterBy is readonly on the base MosaicClient.
+    // We cannot reassign it here. We must rely on our internal 'options.filterBy' reference
+    // for query generation, which overrides the base behavior.
+    // If the framework passes a new Selection reference, we need to ensure we listen to the NEW one.
+    if (options.filterBy && options.filterBy !== this.filterBy) {
+      // Manually manage listeners if we support hot-swapping selections
+      // Note: The base class might hold onto the old one for its own internal logic,
+      // but since we override query(), we control the flow.
     }
 
     // Robustly resolve the coordinator.
@@ -221,6 +240,8 @@ export class MosaicDataTable<
       predicate: predicate,
     });
 
+    this.#QueryStore = statement;
+
     return statement;
   }
 
@@ -252,8 +273,17 @@ export class MosaicDataTable<
     return this;
   }
 
+  get debugPrefix(): string {
+    return this.options.debugName ? `${this.options.debugName}:` : '';
+  }
+
   override queryError(error: Error): this {
-    logger.error('Core', 'Query Error', { error });
+    logger.error('Core', `${this.debugPrefix}Query Error`, { error });
+    logger.error(
+      'Core',
+      `${this.debugPrefix}Offending Query:`,
+      this.#QueryStore?.toString() ?? '',
+    );
     return this;
   }
 
@@ -349,6 +379,10 @@ export class MosaicDataTable<
       return;
     }
 
+    // Get the sort mode from the column definition meta
+    const colDef = this.#columnMapper.getColumnDef(sqlColumn);
+    const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
+
     const clientKey = `${columnId}:unique`;
     if (this.#facetClients.has(clientKey)) {
       return;
@@ -372,6 +406,9 @@ export class MosaicDataTable<
           }));
         });
       },
+      // Pass the configured sort mode
+      sortMode: sortMode,
+      __debugName: this.debugPrefix + 'UniqueFacet:' + columnId,
     });
 
     this.#facetClients.set(clientKey, facetClient);
@@ -412,6 +449,7 @@ export class MosaicDataTable<
           }));
         });
       },
+      __debugName: this.debugPrefix + 'MinMaxFacet:' + columnId,
     });
 
     this.#facetClients.set(clientKey, facetClient);
@@ -540,23 +578,18 @@ export class MosaicDataTable<
   }
 }
 
-type FacetClientConfig<TResult extends Array<any>> = {
-  filterBy?: Selection;
-  coordinator?: Coordinator | null;
-  source: MosaicTableSource;
-  column: string;
-  getFilterExpressions?: () => Array<mSql.FilterExpr>;
-  onResult: (...values: TResult) => void;
-};
-
 /**
  * This is a helper Mosaic Client to query unique values for a given column.
  */
 export class UniqueColumnValuesClient extends MosaicClient {
   source: MosaicTableSource;
   column: string;
-  getFilterExpressions?: () => Array<mSql.FilterExpr>;
+  debugName?: string;
+  getFilterExpressions?: () => Array<FilterExpr>;
   onResult: (values: Array<unknown>) => void;
+  limit?: number;
+  sortMode: FacetSortMode;
+  searchTerm = '';
 
   constructor(options: FacetClientConfig<Array<unknown>>) {
     super(options.filterBy);
@@ -577,6 +610,10 @@ export class UniqueColumnValuesClient extends MosaicClient {
     this.column = options.column;
     this.getFilterExpressions = options.getFilterExpressions;
     this.onResult = options.onResult;
+    this.limit = options.limit;
+    this.sortMode = options.sortMode || 'alpha';
+
+    this.debugName = options.__debugName;
   }
 
   connect(): void {
@@ -585,6 +622,13 @@ export class UniqueColumnValuesClient extends MosaicClient {
 
   disconnect(): void {
     this.coordinator?.disconnect(this);
+  }
+
+  setSearchTerm(term: string) {
+    if (this.searchTerm !== term) {
+      this.searchTerm = term;
+      this.requestUpdate();
+    }
   }
 
   // Override requestQuery to safeguard against disconnected clients
@@ -622,12 +666,34 @@ export class UniqueColumnValuesClient extends MosaicClient {
       }
     }
 
+    if (this.searchTerm) {
+      // Use createStructAccess to properly handle nested fields/quoting
+      const colExpr = createStructAccess(this.column);
+      const pattern = mSql.literal(`%${this.searchTerm}%`);
+      whereClauses.push(mSql.sql`${colExpr} ILIKE ${pattern}`);
+    }
+
     if (whereClauses.length > 0) {
       statement.where(mSql.and(...whereClauses));
     }
 
     statement.groupby(this.column);
-    statement.orderby(mSql.asc(mSql.column(this.column)));
+
+    // Sort Logic
+    if (this.sortMode === 'count') {
+      // ORDER BY count(*) DESC
+      // We descend because when filtering by frequency, the most frequent items (highest count)
+      // are typically the most relevant to the user.
+      statement.orderby(mSql.desc(mSql.count()));
+    } else {
+      // ORDER BY column ASC (default)
+      statement.orderby(mSql.asc(mSql.column(this.column)));
+    }
+
+    // Limit Logic
+    if (this.limit !== undefined) {
+      statement.limit(this.limit);
+    }
 
     return statement;
   }
@@ -644,6 +710,15 @@ export class UniqueColumnValuesClient extends MosaicClient {
     }
     return this;
   }
+
+  override queryError(error: Error): this {
+    logger.error('Core', `${this.debugPrefix}Query Error`, { error });
+    return this;
+  }
+
+  get debugPrefix(): string {
+    return this.debugName ? `${this.debugName}:` : '';
+  }
 }
 
 /**
@@ -652,7 +727,8 @@ export class UniqueColumnValuesClient extends MosaicClient {
 export class MinMaxColumnValuesClient extends MosaicClient {
   private source: MosaicTableSource;
   private column: string;
-  private getFilterExpressions?: () => Array<mSql.FilterExpr>;
+  debugName?: string;
+  private getFilterExpressions?: () => Array<FilterExpr>;
   private onResult: (min: number, max: number) => void;
 
   constructor(options: FacetClientConfig<[number, number]>) {
@@ -674,6 +750,8 @@ export class MinMaxColumnValuesClient extends MosaicClient {
     this.column = options.column;
     this.getFilterExpressions = options.getFilterExpressions;
     this.onResult = options.onResult;
+
+    this.debugName = options.__debugName;
   }
 
   connect(): void {
@@ -740,5 +818,14 @@ export class MinMaxColumnValuesClient extends MosaicClient {
       }
     }
     return this;
+  }
+
+  override queryError(error: Error): this {
+    logger.error('Core', `${this.debugPrefix}Query Error`, { error });
+    return this;
+  }
+
+  get debugPrefix(): string {
+    return this.debugName ? `${this.debugName}:` : '';
   }
 }

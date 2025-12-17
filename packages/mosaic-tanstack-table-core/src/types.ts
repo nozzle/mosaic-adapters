@@ -20,6 +20,8 @@ export type MosaicDataTableSqlFilterType =
   | 'PARTIAL_ILIKE'
   | 'RANGE';
 
+export type FacetSortMode = 'alpha' | 'count';
+
 /**
  * This will be merged into the TanStack Table ColumnDef type
  * to provide Mosaic-specific metadata options.
@@ -55,6 +57,13 @@ export type MosaicDataTableColumnDefMetaOptions = {
      * generating Mosaic queries.
      */
     sqlFilterType?: MosaicDataTableSqlFilterType;
+    /**
+     * Determines how unique values for facets (dropdowns) are sorted.
+     * - 'alpha': Alphabetical (A-Z)
+     * - 'count': Frequency (Most common first)
+     * @default 'alpha'
+     */
+    facetSortMode?: FacetSortMode;
   };
 };
 
@@ -135,6 +144,7 @@ export interface MosaicDataTableOptions<
    * @default 'requestUpdate'
    */
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
+  debugName?: string;
 }
 
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
@@ -149,4 +159,26 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
    * naturally trigger a Store update unless we touch a value in the store.
    */
   _facetsUpdateCount: number;
+};
+
+export type FacetClientConfig<TResult extends Array<any>> = {
+  filterBy?: Selection;
+  coordinator?: Coordinator | null;
+  source: MosaicTableSource;
+  column: string;
+  getFilterExpressions?: () => Array<FilterExpr>;
+  onResult: (...values: TResult) => void;
+  /**
+   * Limit the number of unique values returned.
+   * Essential for high-cardinality columns.
+   */
+  limit?: number;
+  /**
+   * How to sort the unique values.
+   * - 'alpha': Alphabetical (A-Z)
+   * - 'count': Frequency (Most common first)
+   * @default 'alpha'
+   */
+  sortMode?: FacetSortMode;
+  __debugName?: string;
 };
