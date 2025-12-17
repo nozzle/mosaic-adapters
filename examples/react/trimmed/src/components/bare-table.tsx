@@ -1,13 +1,20 @@
 import * as React from 'react';
 import { flexRender } from '@tanstack/react-table';
-import type { Column, ColumnDef, RowData, Table } from '@tanstack/react-table';
-import { toDateInputString, toDateTimeInputString } from '@/lib/utils';
+import type {
+  Column,
+  ColumnDef,
+  Row,
+  RowData,
+  Table,
+} from '@tanstack/react-table';
+import { cn, toDateInputString, toDateTimeInputString } from '@/lib/utils';
 
 export function BareTable<TData extends RowData, TValue>(props: {
   table: Table<TData>;
   columns: Array<ColumnDef<TData, TValue>>;
+  onRowClick?: (row: Row<TData>) => void;
 }) {
-  const { table } = props;
+  const { table, onRowClick } = props;
 
   return (
     <div className="grid gap-4 overflow-scroll">
@@ -39,15 +46,31 @@ export function BareTable<TData extends RowData, TValue>(props: {
           ))}
         </thead>
         <tbody>
-          {table.getRowModel().rows.map((row) => (
-            <tr key={row.id} className="py-1">
-              {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className="text-nowrap px-2">
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {table.getRowModel().rows.map((row) => {
+            // Robust check for highlighting
+            // @ts-expect-error __is_highlighted is injected dynamically
+            const rawHighlight = row.original.__is_highlighted;
+            const isDimmed =
+              rawHighlight !== undefined && Number(rawHighlight) === 0;
+
+            return (
+              <tr
+                key={row.id}
+                className={cn(
+                  'py-1',
+                  onRowClick && 'cursor-pointer hover:bg-slate-100',
+                  isDimmed && 'opacity-30 grayscale',
+                )}
+                onClick={() => onRowClick?.(row)}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id} className="text-nowrap px-2">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
         <tfoot>
           {table.getFooterGroups().map((footerGroup) => (
