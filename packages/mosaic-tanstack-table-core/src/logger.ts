@@ -200,10 +200,20 @@ class LogManager {
           : 'unknown',
       userAgent:
         typeof window !== 'undefined' ? window.navigator.userAgent : 'node',
-      logs: this.logs,
+      // Define the schema for the array tuples below
+      logSchema: ['timestamp', 'level', 'category', 'message', 'meta'],
+      // Transform objects to arrays to reduce key repetition overhead
+      logs: this.logs.map((l) => [
+        l.timestamp,
+        l.level,
+        l.category,
+        l.message,
+        l.meta,
+      ]),
     };
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
+    // Use default stringify (no indentation) for maximum compression
+    const blob = new Blob([JSON.stringify(data)], {
       type: 'application/json',
     });
     const url = URL.createObjectURL(blob);
