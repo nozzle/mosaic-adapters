@@ -1,4 +1,4 @@
-// Added try-catch block to setup() to safely handle potential promise rejections
+// View component for the Athletes dataset demonstrating basic table features, filtering, and regression plots
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';

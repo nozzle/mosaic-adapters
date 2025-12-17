@@ -107,11 +107,6 @@ export class MosaicDataTable<
    * @param options The updated options from framework-land.
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    // logger.debug('Core', 'updateOptions received', {
-    //   source: typeof options.table === 'string' ? options.table : 'function',
-    //   columnsCount: options.columns?.length,
-    // });
-
     this.options = options;
 
     if (options.onTableStateChange) {
@@ -125,16 +120,6 @@ export class MosaicDataTable<
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     } else if (!this.tableFilterSelection) {
       this.tableFilterSelection = new Selection();
-    }
-
-    // NOTE: filterBy is readonly on the base MosaicClient.
-    // We cannot reassign it here. We must rely on our internal 'options.filterBy' reference
-    // for query generation, which overrides the base behavior.
-    // If the framework passes a new Selection reference, we need to ensure we listen to the NEW one.
-    if (options.filterBy && options.filterBy !== this.filterBy) {
-      // Manually manage listeners if we support hot-swapping selections
-      // Note: The base class might hold onto the old one for its own internal logic,
-      // but since we override query(), we control the flow.
     }
 
     // Robustly resolve the coordinator.

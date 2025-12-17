@@ -1,4 +1,4 @@
-// Re-exporting NycTaxiView to fix build error. Added try-catch block to setup().
+// View component for the NYC Taxi dataset demonstrating geospatial features, aggregation, and cross-filtering
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';

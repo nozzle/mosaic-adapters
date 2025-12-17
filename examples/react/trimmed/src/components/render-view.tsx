@@ -1,4 +1,3 @@
-// Updated to respect connection status and unmount views during 'connecting' state
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
