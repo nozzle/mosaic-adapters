@@ -146,7 +146,7 @@ export function toRangeValue(value: unknown): number | Date | null {
   return isFinite(num) ? num : null;
 }
 
-type MosaicSQLExpression =
+export type MosaicSQLExpression =
   | ReturnType<typeof mSql.sql>
   | ReturnType<typeof mSql.column>;
 

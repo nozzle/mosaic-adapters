@@ -5,8 +5,12 @@ import { useEffect, useMemo, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
-import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  createStructAccess,
+  useMosaicReactTable,
+} from '@nozzleio/mosaic-tanstack-react-table';
 import type { ColumnDef } from '@tanstack/react-table';
+import type { MosaicClient } from '@uwdata/mosaic-core';
 import { RenderTable } from '@/components/render-table';
 import { useMosaicValue } from '@/hooks/useMosaicValue';
 import {
@@ -268,7 +272,7 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function useSelectionValue(selection: vg.Selection, client: any) {
+function useSelectionValue(selection: vg.Selection, client: MosaicClient) {
   const [value, setValue] = useState(selection.valueFor(client));
 
   useEffect(() => {
@@ -289,7 +293,14 @@ function SummaryTable({
   metricLabel,
   aggFn,
   where,
-}: any) {
+}: {
+  title: string;
+  groupBy: string;
+  metric: string;
+  metricLabel: string;
+  aggFn: any;
+  where?: any;
+}) {
   const safeId = groupBy.replace(/\./g, '_');
 
   const queryFactory = useMemo(
@@ -297,7 +308,7 @@ function SummaryTable({
       let groupKey;
       if (groupBy.includes('.')) {
         const [col, field] = groupBy.split('.');
-        groupKey = mSql.sql`${mSql.column(col)}.${mSql.sql([field] as any)}`;
+        groupKey = mSql.sql`${mSql.column(col!)}.${mSql.sql([field!] as any)}`;
       } else {
         groupKey = mSql.column(groupBy);
       }
@@ -446,8 +457,9 @@ function SummaryTable({
           columns={columns}
           onRowClick={(row) => {
             const value = row.getValue(groupBy);
-            const column = groupBy;
 
+            // Toggle logic: If the clicked value is already active, deselect it.
+            // This allows the user to turn off the filter by clicking the same row again.
             if (selectedValue === value) {
               $crossFilter.update({
                 source: client,
@@ -456,9 +468,7 @@ function SummaryTable({
               });
             } else {
               const predicate = mSql.eq(
-                groupBy.includes('.')
-                  ? mSql.sql`${mSql.column(groupBy.split('.')[0])}.${mSql.sql([groupBy.split('.')[1]] as any)}`
-                  : mSql.column(column),
+                createStructAccess(groupBy),
                 mSql.literal(value),
               );
 
@@ -473,6 +483,14 @@ function SummaryTable({
       </div>
     </div>
   );
+}
+
+// Defined interface to type the row data for the detail table
+interface PaaRowData {
+  domain: string;
+  'related_phrase.phrase': string;
+  title: string;
+  description: string;
 }
 
 function DetailTable() {
@@ -498,7 +516,7 @@ function DetailTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'related_phrase.phrase',
-              sqlFilterType: 'PARTIAL_ILIKE' as const,
+              sqlFilterType: 'PARTIAL_ILIKE',
             },
           },
         },
@@ -509,7 +527,7 @@ function DetailTable() {
           size: 300,
           meta: {
             mosaicDataTable: {
-              sqlFilterType: 'PARTIAL_ILIKE' as const,
+              sqlFilterType: 'PARTIAL_ILIKE',
             },
           },
         },
@@ -520,11 +538,11 @@ function DetailTable() {
           size: 400,
           meta: {
             mosaicDataTable: {
-              sqlFilterType: 'PARTIAL_ILIKE' as const,
+              sqlFilterType: 'PARTIAL_ILIKE',
             },
           },
         },
-      ] satisfies Array<ColumnDef<any, any>>,
+      ] satisfies Array<ColumnDef<PaaRowData, any>>,
     [],
   );
 

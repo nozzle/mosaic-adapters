@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import { Check, ChevronDown } from 'lucide-react';
 import { useMosaicFacetMenu } from '@nozzleio/mosaic-tanstack-react-table';
-import type { Selection } from '@uwdata/mosaic-core';
+import type { MosaicSQLExpression } from '@nozzleio/mosaic-tanstack-react-table';
+import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
 
 import { Input } from '@/components/ui/input';
 import {
@@ -24,21 +25,24 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 // Local helper to avoid importing from core package which can cause build issues in example
-function createStructAccess(columnPath: string): any {
+function createStructAccess(columnPath: string): MosaicSQLExpression {
   if (!columnPath.includes('.')) {
     return mSql.column(columnPath);
   }
 
-  const parts = columnPath.split('.');
-  return parts.reduce((acc, part, index) => {
-    if (index === 0) {
-      return mSql.column(part);
-    }
-    return mSql.sql`${acc}.${mSql.column(part)}`;
-  }, null as any);
+  const [head, ...tail] = columnPath.split('.');
+  if (!head) {
+    throw new Error(`Invalid column path: ${columnPath}`);
+  }
+
+  let expr: MosaicSQLExpression = mSql.column(head);
+  for (const part of tail) {
+    expr = mSql.sql`${expr}.${mSql.column(part)}`;
+  }
+  return expr;
 }
 
-function useSelectionValue(selection: Selection, client: any) {
+function useSelectionValue(selection: Selection, client: MosaicClient) {
   const [value, setValue] = useState(selection.valueFor(client));
 
   useEffect(() => {
