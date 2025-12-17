@@ -1,15 +1,10 @@
 // examples/react/trimmed/src/components/paa/paa-filters.tsx
 
-// Standalone filter components that directly interact with Mosaic Selections and DuckDB.
-
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
-import * as vg from '@uwdata/vgplot';
-import { MosaicClient, isArrowTable } from '@uwdata/mosaic-core';
-import { UniqueColumnValuesClient } from '@nozzleio/mosaic-tanstack-react-table';
 import { Check, ChevronDown } from 'lucide-react';
-import type { FacetClientConfig } from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicFacetMenu } from '@nozzleio/mosaic-tanstack-react-table';
 import type { Selection } from '@uwdata/mosaic-core';
 
 import { Input } from '@/components/ui/input';
@@ -23,18 +18,10 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-
-interface FilterProps {
-  label: string;
-  table: string;
-  column: string;
-  selection: Selection; // The output selection to write to
-  filterBy?: Selection; // The input selection to read from (for cascading)
-}
+import { cn } from '@/lib/utils';
 
 // Local helper to avoid importing from core package which can cause build issues in example
 function createStructAccess(columnPath: string): any {
@@ -47,7 +34,6 @@ function createStructAccess(columnPath: string): any {
     if (index === 0) {
       return mSql.column(part);
     }
-    // Correctly wrap child parts in column() to ensure quoting (e.g. "table"."col")
     return mSql.sql`${acc}.${mSql.column(part)}`;
   }, null as any);
 }
@@ -66,73 +52,44 @@ function useSelectionValue(selection: Selection, client: any) {
   return value;
 }
 
+interface FilterProps {
+  label: string;
+  table: string;
+  column: string;
+  selection: Selection;
+  filterBy?: Selection;
+}
+
 /**
- * HOOK: useUniqueColumnValues
- * Wrapper around UniqueColumnValuesClient to simplify usage in React components.
- * Now returns the client instance to allow using it as the update source.
+ * Helper component for dropdown items that shouldn't steal focus.
  */
-function useUniqueColumnValues(
-  config: Omit<
-    FacetClientConfig<Array<unknown>>,
-    'onResult' | 'coordinator' | 'getFilterExpressions'
-  > & {
-    coordinator?: FacetClientConfig<Array<unknown>>['coordinator'];
-  },
-) {
-  const [options, setOptions] = useState<Array<any>>([]);
-  const [clientInstance, setClientInstance] =
-    useState<UniqueColumnValuesClient | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-
-  useEffect(() => {
-    // Instantiate a Mosaic Client.
-    // This client connects to the coordinator, runs a `SELECT DISTINCT column...` query,
-    // and disconnects on unmount.
-    const client = new UniqueColumnValuesClient({
-      source: config.source,
-      column: config.column,
-      coordinator: config.coordinator || vg.coordinator(),
-      // Pass the context filter (cascading context)
-      filterBy: config.filterBy,
-      // FIX: Cast values to any[] because the generic inference from FacetClientConfig
-      // incorrectly infers the spread argument as `unknown` instead of `unknown[]`.
-      onResult: (values: any) =>
-        setOptions((values as Array<any>).filter((v) => v != null)),
-      sortMode: config.sortMode,
-      limit: config.limit,
-      __debugName: `useUniqueColumnValues(Facet):${config.column}`,
-    });
-
-    setClientInstance(client);
-    client.connect();
-    client.requestUpdate();
-
-    return () => client.disconnect();
-  }, [
-    config.source,
-    config.column,
-    config.sortMode,
-    config.limit,
-    config.filterBy, // Re-create if the context changes
-  ]);
-
-  // Propagate search term to client without re-creating logic
-  useEffect(() => {
-    if (clientInstance) {
-      clientInstance.setSearchTerm(searchTerm);
-    }
-  }, [clientInstance, searchTerm]);
-
-  return { options, client: clientInstance, setSearchTerm };
+function PassiveMenuItem({
+  children,
+  isSelected,
+  onClick,
+}: {
+  children: React.ReactNode;
+  isSelected?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className={cn(
+        'relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      )}
+    >
+      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+        {isSelected && <Check className="h-4 w-4" />}
+      </span>
+      {children}
+    </div>
+  );
 }
 
 /**
  * COMPONENT: SearchableSelectFilter
- * A Combobox (Input + Dropdown) that:
- * 1. Fetches unique values from DuckDB for the given column.
- * 2. Allows server-side searching via ILIKE.
- * 3. Updates the passed Mosaic Selection on change.
- * 4. Respects `filterBy` for cascading options.
+ * Refactored to use useMosaicFacetMenu (Core Class Architecture).
  */
 export function SearchableSelectFilter({
   label,
@@ -144,15 +101,18 @@ export function SearchableSelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  const { options, client, setSearchTerm } = useUniqueColumnValues({
-    source: table,
-    column: column,
-    filterBy: filterBy,
-    sortMode: 'count',
+  // Use the new hook which manages the core class instance
+  const { options, setSearchTerm, select, client } = useMosaicFacetMenu({
+    table,
+    column,
+    selection,
+    filterBy,
     limit: 50,
+    sortMode: 'count',
+    debugName: `Facet:${label}`,
   });
 
-  // Debounce search input to the Mosaic Client
+  // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setSearchTerm(searchValue);
@@ -160,25 +120,11 @@ export function SearchableSelectFilter({
     return () => clearTimeout(timer);
   }, [searchValue, setSearchTerm]);
 
-  // Read current value from selection for display
+  // Read current value using the client instance as identity
   const selectedValue = useSelectionValue(selection, client);
 
   const handleSelect = (val: string | null) => {
-    if (!client) {
-      return;
-    }
-
-    // FIX: Use createStructAccess to handle nested columns safely
-    const colExpr = createStructAccess(column);
-
-    // If null/All, we send null to remove the WHERE clause for this column
-    const predicate = val === null ? null : mSql.eq(colExpr, mSql.literal(val));
-
-    selection.update({
-      source: client,
-      value: val,
-      predicate,
-    });
+    select(val);
     setIsOpen(false);
   };
 
@@ -203,36 +149,33 @@ export function SearchableSelectFilter({
         </DropdownMenuTrigger>
 
         <DropdownMenuContent className="w-[200px] p-0" align="start">
-          {/* Search Input Area */}
           <div className="flex items-center border-b px-3">
             <input
               className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="Search..."
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
-              // Prevent auto-close on click
+              onKeyDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             />
           </div>
 
           <div className="max-h-[300px] overflow-y-auto p-1">
-            <DropdownMenuItem onSelect={() => handleSelect(null)}>
-              <Check
-                className={`mr-2 h-4 w-4 ${!selectedValue ? 'opacity-100' : 'opacity-0'}`}
-              />
+            <PassiveMenuItem
+              isSelected={!selectedValue}
+              onClick={() => handleSelect(null)}
+            >
               All
-            </DropdownMenuItem>
+            </PassiveMenuItem>
 
             {options.map((opt) => (
-              <DropdownMenuItem
+              <PassiveMenuItem
                 key={String(opt)}
-                onSelect={() => handleSelect(String(opt))}
+                isSelected={selectedValue === String(opt)}
+                onClick={() => handleSelect(String(opt))}
               >
-                <Check
-                  className={`mr-2 h-4 w-4 ${selectedValue === String(opt) ? 'opacity-100' : 'opacity-0'}`}
-                />
                 {String(opt)}
-              </DropdownMenuItem>
+              </PassiveMenuItem>
             ))}
 
             {options.length === 0 && (
@@ -249,7 +192,7 @@ export function SearchableSelectFilter({
 
 /**
  * COMPONENT: SelectFilter
- * Keeps basic select functionality but uses the useUniqueColumnValues hook.
+ * Refactored to use useMosaicFacetMenu.
  */
 export function SelectFilter({
   label,
@@ -258,36 +201,29 @@ export function SelectFilter({
   selection,
   filterBy,
 }: FilterProps) {
-  const { options, client } = useUniqueColumnValues({
-    source: table,
-    column: column,
-    filterBy: filterBy, // Pass cascading context
-    sortMode: 'count',
+  const { options, select, client } = useMosaicFacetMenu({
+    table,
+    column,
+    selection,
+    filterBy,
     limit: 50,
+    sortMode: 'count',
   });
 
+  const selectedValue = useSelectionValue(selection, client);
+
   const handleChange = (val: string) => {
-    if (!client) {
-      return;
-    }
-
-    const colExpr = createStructAccess(column);
-    const predicate =
-      val === 'ALL' ? null : mSql.eq(colExpr, mSql.literal(val));
-
-    selection.update({
-      source: client,
-      value: val === 'ALL' ? null : val,
-      predicate,
-    });
+    select(val === 'ALL' ? null : val);
   };
+
+  const valueForSelect = selectedValue ? String(selectedValue) : 'ALL';
 
   return (
     <div className="flex flex-col gap-1 w-[180px]">
       <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
         {label}
       </label>
-      <Select onValueChange={handleChange}>
+      <Select onValueChange={handleChange} value={valueForSelect}>
         <SelectTrigger className="h-9 bg-white border-slate-200">
           <SelectValue placeholder="All" />
         </SelectTrigger>
@@ -305,65 +241,8 @@ export function SelectFilter({
 }
 
 /**
- * COMPONENT: TextFilter
- * A Text Input that debounces typing and updates the Mosaic Selection with an ILIKE clause.
- */
-export function TextFilter({ label, column, selection }: FilterProps) {
-  const [val, setVal] = useState('');
-
-  // FIX: Create a stable object reference for the selection source.
-  const filterSource = useMemo(() => ({ id: `filter-${column}` }), [column]);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      // Clear filter if input is empty
-      if (val.trim() === '') {
-        selection.update({
-          source: filterSource,
-          value: null,
-          predicate: null,
-        });
-        return;
-      }
-
-      // Handle Struct Columns (dot notation)
-      const colExpr = createStructAccess(column);
-
-      // Construct the ILIKE predicate
-      const predicate = mSql.sql`${colExpr} ILIKE ${mSql.literal('%' + val + '%')}`;
-
-      selection.update({
-        source: filterSource,
-        value: val,
-        predicate,
-      });
-    }, 300); // 300ms debounce
-
-    return () => clearTimeout(handler);
-  }, [val, column, selection, filterSource]);
-
-  return (
-    <div className="flex flex-col gap-1 w-[180px]">
-      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-        {label}
-      </label>
-      <Input
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        className="h-9 bg-white border-slate-200"
-        placeholder="Search..."
-      />
-    </div>
-  );
-}
-
-/**
  * COMPONENT: ArraySelectFilter
- * Designed for VARCHAR[] columns (e.g. keyword_groups).
- * 1. Uses UNNEST() to find unique tags for the dropdown.
- * 2. Uses list_contains() for the filter predicate.
- * 3. Handles cascading updates via manual subscription.
- * 4. Supports Server-Side Search on unnested tags.
+ * Refactored to use useMosaicFacetMenu with isArrayColumn=true.
  */
 export function ArraySelectFilter({
   label,
@@ -372,108 +251,31 @@ export function ArraySelectFilter({
   selection,
   filterBy,
 }: FilterProps) {
-  const [options, setOptions] = useState<Array<string>>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
 
-  // FIX: Create a real MosaicClient instance for identity.
-  // This satisfies strict typing for `filterBy.predicate(client)`
-  // and allows correct cross-filtering behavior.
-  const client = useMemo(() => new MosaicClient(filterBy), [filterBy]);
+  const { options, setSearchTerm, select, client } = useMosaicFacetMenu({
+    table,
+    column,
+    selection,
+    filterBy,
+    limit: 100,
+    sortMode: 'alpha', // Tags usually better alpha
+    isArrayColumn: true, // Enable UNNEST logic
+    debugName: `FacetArray:${label}`,
+  });
 
-  // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setSearchTerm(searchValue);
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchValue]);
+  }, [searchValue, setSearchTerm]);
 
-  // 1. Fetch Unique Tags (UNNEST) - Reactively!
-  useEffect(() => {
-    let active = true;
-
-    async function loadTags() {
-      // Resolve the cascading filter predicate.
-      const rawPredicate = filterBy ? filterBy.predicate(client) : null;
-
-      const safePredicate = Array.isArray(rawPredicate)
-        ? mSql.and(...rawPredicate)
-        : rawPredicate;
-
-      const colExpr = createStructAccess(column);
-
-      // Base query: UNNEST -> DISTINCT -> ORDER
-      let query = mSql.Query.from(table)
-        .select({ tag: mSql.unnest(colExpr) })
-        .distinct()
-        .orderby(mSql.asc('tag'))
-        .limit(100);
-
-      // Apply Context Filters
-      if (safePredicate) {
-        query = query.where(safePredicate);
-      }
-
-      // Apply Search Filter (on the alias 'tag')
-      if (searchTerm) {
-        // We filter on the unnested alias 'tag'
-        query.where(
-          mSql.sql`tag ILIKE ${mSql.literal('%' + searchTerm + '%')}`,
-        );
-      }
-
-      try {
-        const result = await vg.coordinator().query(query.toString());
-
-        if (active && isArrowTable(result)) {
-          const rows = result.toArray();
-          const tags = rows
-            .map((r: any) => r.tag)
-            .filter((t: any) => t != null)
-            .map(String);
-          setOptions(tags);
-        }
-      } catch (err) {
-        console.error('ArraySelectFilter query error:', err);
-      }
-    }
-
-    // Load on mount, search change, or context change
-    loadTags();
-
-    // Subscribe to context changes (cascading)
-    const handler = () => {
-      loadTags();
-    };
-
-    if (filterBy) {
-      filterBy.addEventListener('value', handler);
-    }
-
-    return () => {
-      active = false;
-      if (filterBy) {
-        filterBy.removeEventListener('value', handler);
-      }
-    };
-  }, [table, column, filterBy, client, searchTerm]);
-
-  // Read current value from selection
   const selectedValue = useSelectionValue(selection, client);
 
   const handleSelect = (val: string | null) => {
-    const colExpr = createStructAccess(column);
-
-    const predicate =
-      val === null ? null : mSql.listContains(colExpr, mSql.literal(val));
-
-    selection.update({
-      source: client,
-      value: val,
-      predicate,
-    });
+    select(val);
     setIsOpen(false);
   };
 
@@ -498,32 +300,33 @@ export function ArraySelectFilter({
         </DropdownMenuTrigger>
 
         <DropdownMenuContent className="w-[180px] p-0" align="start">
-          {/* Search Input Area */}
           <div className="flex items-center border-b px-3">
             <input
               className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="Search..."
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             />
           </div>
 
           <div className="max-h-[300px] overflow-y-auto p-1">
-            <DropdownMenuItem onSelect={() => handleSelect(null)}>
-              <Check
-                className={`mr-2 h-4 w-4 ${!selectedValue ? 'opacity-100' : 'opacity-0'}`}
-              />
+            <PassiveMenuItem
+              isSelected={!selectedValue}
+              onClick={() => handleSelect(null)}
+            >
               All
-            </DropdownMenuItem>
+            </PassiveMenuItem>
 
             {options.map((opt) => (
-              <DropdownMenuItem key={opt} onSelect={() => handleSelect(opt)}>
-                <Check
-                  className={`mr-2 h-4 w-4 ${selectedValue === opt ? 'opacity-100' : 'opacity-0'}`}
-                />
+              <PassiveMenuItem
+                key={opt}
+                isSelected={selectedValue === opt}
+                onClick={() => handleSelect(opt)}
+              >
                 {opt}
-              </DropdownMenuItem>
+              </PassiveMenuItem>
             ))}
 
             {options.length === 0 && (
@@ -539,8 +342,57 @@ export function ArraySelectFilter({
 }
 
 /**
+ * COMPONENT: TextFilter
+ * Remains mostly the same, but uses a stable memoized source object for identity.
+ */
+export function TextFilter({ label, column, selection }: FilterProps) {
+  const [val, setVal] = useState('');
+
+  // Stable Source
+  const filterSource = useMemo(() => ({ id: `filter-${column}` }), [column]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (val.trim() === '') {
+        selection.update({
+          source: filterSource,
+          value: null,
+          predicate: null,
+        });
+        return;
+      }
+
+      const colExpr = createStructAccess(column);
+      const predicate = mSql.sql`${colExpr} ILIKE ${mSql.literal('%' + val + '%')}`;
+
+      selection.update({
+        source: filterSource,
+        value: val,
+        predicate,
+      });
+    }, 300);
+
+    return () => clearTimeout(handler);
+  }, [val, column, selection, filterSource]);
+
+  return (
+    <div className="flex flex-col gap-1 w-[180px]">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </label>
+      <Input
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        className="h-9 bg-white border-slate-200"
+        placeholder="Search..."
+      />
+    </div>
+  );
+}
+
+/**
  * COMPONENT: DateRangeFilter
- * Native Date inputs for TIMESTAMP columns.
+ * Remains mostly the same.
  */
 export function DateRangeFilter({ label, column, selection }: FilterProps) {
   const [start, setStart] = useState('');
@@ -552,8 +404,6 @@ export function DateRangeFilter({ label, column, selection }: FilterProps) {
   );
 
   useEffect(() => {
-    // 1. Build Predicate based on Start/End presence
-    // FIX: Use createStructAccess to handle nested columns safely
     const colRef = createStructAccess(column);
     let predicate = null;
     let valueDisplay = null;
@@ -572,7 +422,6 @@ export function DateRangeFilter({ label, column, selection }: FilterProps) {
       valueDisplay = `<= ${end}`;
     }
 
-    // 2. Update Selection
     selection.update({
       source: filterSource,
       value: valueDisplay,
