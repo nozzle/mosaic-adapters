@@ -15,6 +15,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { getCoreRowModel, getFacetedRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
+  createStructAccess,
   functionalUpdate,
   seedInitialTableState,
   toSafeSqlColumnName,
@@ -654,6 +655,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
   onResult: (values: Array<unknown>) => void;
   limit?: number;
   sortMode: FacetSortMode;
+  searchTerm = '';
 
   constructor(options: FacetClientConfig<Array<unknown>>) {
     super(options.filterBy);
@@ -686,6 +688,13 @@ export class UniqueColumnValuesClient extends MosaicClient {
 
   disconnect(): void {
     this.coordinator?.disconnect(this);
+  }
+
+  setSearchTerm(term: string) {
+    if (this.searchTerm !== term) {
+      this.searchTerm = term;
+      this.requestUpdate();
+    }
   }
 
   // Override requestQuery to safeguard against disconnected clients
@@ -721,6 +730,13 @@ export class UniqueColumnValuesClient extends MosaicClient {
       if (internalFilters.length > 0) {
         whereClauses.push(...internalFilters);
       }
+    }
+
+    if (this.searchTerm) {
+      // Use createStructAccess to properly handle nested fields/quoting
+      const colExpr = createStructAccess(this.column);
+      const pattern = mSql.literal(`%${this.searchTerm}%`);
+      whereClauses.push(mSql.sql`${colExpr} ILIKE ${pattern}`);
     }
 
     if (whereClauses.length > 0) {

@@ -12,7 +12,7 @@ import { useMosaicValue } from '@/hooks/useMosaicValue';
 import {
   ArraySelectFilter,
   DateRangeFilter,
-  SelectFilter,
+  SearchableSelectFilter,
   TextFilter,
 } from '@/components/paa/paa-filters';
 
@@ -115,7 +115,7 @@ export function NozzlePaaView() {
             FILTER BY:
           </div>
 
-          <SelectFilter
+          <SearchableSelectFilter
             label="Domain"
             table={TABLE_NAME}
             column="domain"
@@ -150,7 +150,7 @@ export function NozzlePaaView() {
             selection={$inputFilter}
             filterBy={$inputLayerContext}
           />
-          <SelectFilter
+          <SearchableSelectFilter
             label="Device"
             table={TABLE_NAME}
             column="device"
