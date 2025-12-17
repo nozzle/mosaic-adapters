@@ -233,6 +233,17 @@ export class MosaicDataTable<
         : crossFilterPredicate;
     }
 
+    // Smart Highlight Logic
+    // If a Cross-Filter predicate exists, the table is already filtered to show
+    // only selected rows (e.g. clicking "US" in a map filters this table to "US").
+    // In this state, everything is "highlighted".
+    // We force highlightPredicate to null (which defaults to 1) to avoid
+    // referencing columns that might not exist in the aggregated subquery logic.
+    // This prevents the "Referenced table not found" crash in Cross-Filtered aggregations.
+    const safeHighlightPredicate = crossFilterPredicate
+      ? null
+      : highlightPredicate;
+
     const source = this.resolveSource(effectiveFilter);
     // Force unwrap here since we guarantee initialization in updateOptions/constructor
     const tableState = this.#store.state.tableState;
@@ -244,7 +255,8 @@ export class MosaicDataTable<
       tableState,
       mapper: this.#columnMapper,
       totalRowsColumnName: this.#sql_total_rows,
-      highlightPredicate: highlightPredicate,
+      highlightPredicate: safeHighlightPredicate,
+      manualHighlight: this.options.manualHighlight,
     });
 
     // 2. Apply Primary Filter (Global/External Context) if source is a string

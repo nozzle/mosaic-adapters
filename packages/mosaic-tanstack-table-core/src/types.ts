@@ -118,6 +118,13 @@ export interface MosaicDataTableOptions<
    */
   highlightBy?: Selection | undefined;
   /**
+   * If true, the `__is_highlighted` column will NOT be automatically generated/added to the query.
+   * Use this if you are calculating `__is_highlighted` manually in a subquery/view to avoid
+   * scope issues with aggregated data.
+   * @default false
+   */
+  manualHighlight?: boolean;
+  /**
    * The selection that the table writes its own internal filter state to.
    * This allows other Mosaic clients (like charts) to react to table filters.
    * @default undefined

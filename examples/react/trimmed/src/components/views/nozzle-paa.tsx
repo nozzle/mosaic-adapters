@@ -282,10 +282,43 @@ function SummaryTable({
         groupKey = mSql.column(groupBy);
       }
 
+      // MANUAL HIGHLIGHT LOGIC:
+      // We calculate highlight status INSIDE the subquery where we have access
+      // to all columns (like "related_phrase"."phrase").
+      // This bypasses the "Column not found" error in the outer query.
+
+      // Get the highlight predicate (Global Truth)
+      const highlightPred = $crossFilter.predicate(null);
+
+      // If we have a predicate, calculate MAX(CASE WHEN...).
+      // If not, default to 1 (all highlighted).
+      let highlightCol;
+
+      // Robust check: Ensure predicate exists AND is not an empty array
+      const hasPred =
+        highlightPred &&
+        (!Array.isArray(highlightPred) || highlightPred.length > 0);
+
+      if (hasPred) {
+        // Ensure the predicate is a valid SQL Node for interpolation.
+        // If highlightPredicate is an array (implicit AND), wrap it.
+        const safePredicate = Array.isArray(highlightPred)
+          ? mSql.and(...highlightPred)
+          : highlightPred;
+
+        highlightCol = mSql.max(
+          mSql.sql`CASE WHEN ${safePredicate} THEN 1 ELSE 0 END`,
+        );
+      } else {
+        highlightCol = mSql.literal(1);
+      }
+
       const q = mSql.Query.from(TABLE_NAME)
         .select({
           [safeId]: groupKey,
           metric: metric === '*' ? aggFn() : aggFn(metric),
+          // Export computed highlight column
+          __is_highlighted: highlightCol,
         })
         .groupby(groupKey);
 
@@ -318,6 +351,8 @@ function SummaryTable({
       filterBy: $summaryContext,
       // HIGHLIGHT BY Peers (Cross-filtering)
       highlightBy: $crossFilter,
+      // NEW: Tell Core we handled it manually
+      manualHighlight: true,
       columns: [],
       tableOptions: baseTableOptions,
     }),
@@ -372,10 +407,11 @@ function SummaryTable({
       table: queryFactory,
       filterBy: $summaryContext,
       highlightBy: $crossFilter,
+      manualHighlight: true, // Also updated here
       tableOptions: baseTableOptions,
       debugName: `${title}SummaryTable`,
     });
-  }, [columns, client, queryFactory, baseTableOptions]);
+  }, [columns, client, queryFactory, baseTableOptions, title]);
 
   const table = useReactTable(tableOptions);
 

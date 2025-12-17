@@ -36,9 +36,8 @@ function createStructAccess(columnPath: string): any {
     if (index === 0) {
       return mSql.column(part);
     }
-    // Cast to unknown then TemplateStringsArray to satisfy the signature
-    const templateStrings = [part] as unknown as TemplateStringsArray;
-    return mSql.sql`${acc}.${mSql.sql(templateStrings)}`;
+    // Correctly wrap child parts in column() to ensure quoting (e.g. "table"."col")
+    return mSql.sql`${acc}.${mSql.column(part)}`;
   }, null as any);
 }
 
@@ -104,9 +103,12 @@ export function SelectFilter({ label, table, column, selection }: FilterProps) {
   const filterSource = useMemo(() => ({ id: `filter-${column}` }), [column]);
 
   const handleChange = (val: string) => {
+    // FIX: Use createStructAccess to handle nested columns safely
+    const colExpr = createStructAccess(column);
+
     // If 'ALL', we send null to remove the WHERE clause for this column
     const predicate =
-      val === 'ALL' ? null : mSql.eq(mSql.column(column), mSql.literal(val));
+      val === 'ALL' ? null : mSql.eq(colExpr, mSql.literal(val));
 
     selection.update({
       source: filterSource,
@@ -214,6 +216,8 @@ export function ArraySelectFilter({
   useEffect(() => {
     async function loadTags() {
       // We manually construct this query because the generic clients don't support UNNEST well yet
+      // Note: We interpolate ${column} directly here as a string.
+      // If column contains a dot, it works in DuckDB SQL as struct access.
       const sql = `
         SELECT DISTINCT UNNEST(${column}) as tag 
         FROM ${table} 
@@ -238,11 +242,12 @@ export function ArraySelectFilter({
   }, [table, column]);
 
   const handleChange = (val: string) => {
+    // FIX: Use createStructAccess to handle nested columns safely
+    const colExpr = createStructAccess(column);
+
     // If 'ALL', we send null to remove the WHERE clause for this column
     const predicate =
-      val === 'ALL'
-        ? null
-        : mSql.listContains(mSql.column(column), mSql.literal(val));
+      val === 'ALL' ? null : mSql.listContains(colExpr, mSql.literal(val));
 
     selection.update({
       source: filterSource,
@@ -288,7 +293,8 @@ export function DateRangeFilter({ label, column, selection }: FilterProps) {
 
   useEffect(() => {
     // 1. Build Predicate based on Start/End presence
-    const colRef = mSql.column(column);
+    // FIX: Use createStructAccess to handle nested columns safely
+    const colRef = createStructAccess(column);
     let predicate = null;
     let valueDisplay = null;
 
