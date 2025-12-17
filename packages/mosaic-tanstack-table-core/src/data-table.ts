@@ -28,7 +28,6 @@ import type {
   Coordinator,
   FieldInfo,
   FieldInfoRequest,
-  SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
