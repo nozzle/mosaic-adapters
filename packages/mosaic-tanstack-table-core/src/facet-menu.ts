@@ -16,6 +16,7 @@ export interface MosaicFacetMenuOptions {
   column: string;
   selection: Selection;
   filterBy?: Selection;
+  additionalContext?: Selection;
   coordinator?: Coordinator;
   sortMode?: 'alpha' | 'count';
   limit?: number;
@@ -29,15 +30,19 @@ export interface MosaicFacetMenuState {
   searchTerm: string;
 }
 
+let instanceCounter = 0;
+
 export class MosaicFacetMenu extends MosaicClient {
-  readonly options: MosaicFacetMenuOptions;
+  public options: MosaicFacetMenuOptions;
   readonly store: Store<MosaicFacetMenuState>;
+  readonly id: number;
 
   private _searchTerm = '';
 
   constructor(options: MosaicFacetMenuOptions) {
     super(options.filterBy);
     this.options = options;
+    this.id = ++instanceCounter;
 
     this.coordinator = options.coordinator || defaultCoordinator();
 
@@ -53,7 +58,61 @@ export class MosaicFacetMenu extends MosaicClient {
       loading: false,
       searchTerm: '',
     });
+
+    logger.debug(
+      'Core',
+      `[MosaicFacetMenu] Created Instance #${this.id} (${this.debugName})`,
+    );
   }
+
+  /**
+   * Updates options and handles re-connection/listener updates if needed.
+   * This allows the React hook to keep a stable client instance.
+   */
+  updateOptions(newOptions: MosaicFacetMenuOptions) {
+    const oldOptions = this.options;
+    this.options = newOptions;
+
+    // If filterBy changed, the base MosaicClient needs to know (though it's technically readonly there)
+    // In MosaicClient, 'filterBy' is just a property getter/setter usually, but the coordinator reads it.
+    // We update our local reference. If the instance changed, we might need to reconnect to the coordinator
+    // to refresh the filter group, but Mosaic Core doesn't expose a clean way to "move" groups.
+    // For now, we assume filterBy identity is stable in most React lifecycles.
+
+    // Handle additionalContext listeners
+    if (oldOptions.additionalContext !== newOptions.additionalContext) {
+      if (oldOptions.additionalContext) {
+        oldOptions.additionalContext.removeEventListener(
+          'value',
+          this._additionalContextListener,
+        );
+      }
+      if (newOptions.additionalContext) {
+        newOptions.additionalContext.addEventListener(
+          'value',
+          this._additionalContextListener,
+        );
+      }
+      // Trigger update because context changed
+      this.requestUpdate();
+    }
+
+    // If table/column changed, we definitely need an update
+    if (
+      oldOptions.table !== newOptions.table ||
+      oldOptions.column !== newOptions.column
+    ) {
+      this.requestUpdate();
+    }
+  }
+
+  private _additionalContextListener = () => {
+    logger.debug(
+      'Core',
+      `[MosaicFacetMenu] ${this.debugName} (#${this.id}) additionalContext updated`,
+    );
+    this.requestUpdate();
+  };
 
   get debugName() {
     return this.options.debugName || `Facet:${this.options.column}`;
@@ -62,23 +121,53 @@ export class MosaicFacetMenu extends MosaicClient {
   connect(): () => void {
     // REPAIR LOGIC: If coordinator was lost (e.g. via base disconnect), restore it.
     if (!this.coordinator) {
-      logger.warn('Core', `[MosaicFacetMenu] ${this.debugName} connect() called but coordinator is missing. Repairing...`);
+      logger.warn(
+        'Core',
+        `[MosaicFacetMenu] ${this.debugName} connect() called but coordinator is missing. Repairing...`,
+      );
       this.coordinator = this.options.coordinator || defaultCoordinator();
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (this.coordinator) {
-      logger.debug('Core', `[MosaicFacetMenu] ${this.debugName} Connecting...`);
+      logger.debug(
+        'Core',
+        `[MosaicFacetMenu] ${this.debugName} (#${this.id}) Connecting...`,
+      );
       this.coordinator.connect(this);
-      
-      logger.debug('Core', `[MosaicFacetMenu] ${this.debugName} triggering initial requestUpdate`);
+
+      logger.debug(
+        'Core',
+        `[MosaicFacetMenu] ${this.debugName} triggering initial requestUpdate`,
+      );
       this.requestUpdate();
     } else {
-      logger.error('Core', `[MosaicFacetMenu] ${this.debugName} connect() failed: Coordinator could not be resolved.`);
+      logger.error(
+        'Core',
+        `[MosaicFacetMenu] ${this.debugName} connect() failed: Coordinator could not be resolved.`,
+      );
+    }
+
+    if (this.options.additionalContext) {
+      this.options.additionalContext.addEventListener(
+        'value',
+        this._additionalContextListener,
+      );
     }
 
     return () => {
-      logger.debug('Core', `[MosaicFacetMenu] ${this.debugName} Disconnecting`);
+      logger.debug(
+        'Core',
+        `[MosaicFacetMenu] ${this.debugName} (#${this.id}) Disconnecting`,
+      );
       this.coordinator?.disconnect(this);
+
+      if (this.options.additionalContext) {
+        this.options.additionalContext.removeEventListener(
+          'value',
+          this._additionalContextListener,
+        );
+      }
     };
   }
 
@@ -103,8 +192,15 @@ export class MosaicFacetMenu extends MosaicClient {
       }
     }
 
+    logger.info(
+      'Mosaic',
+      `[MosaicFacetMenu] ${this.debugName} (#${this.id}) updating selection`,
+      { value, predicate: predicate?.toString() },
+    );
+
     selection.update({
       source: this,
+      clients: new Set([this]), // Explicitly exclude this client from its own filter
       value: value,
       predicate: predicate,
     });
@@ -113,42 +209,89 @@ export class MosaicFacetMenu extends MosaicClient {
   // --- LIFECYCLE DIAGNOSTICS ---
 
   override requestUpdate(): void {
-    logger.debug('Core', `[MosaicFacetMenu] ${this.debugName} requestUpdate called`);
+    logger.debug(
+      'Core',
+      `[MosaicFacetMenu] ${this.debugName} requestUpdate called`,
+    );
     super.requestUpdate();
   }
 
   override requestQuery(query?: any): Promise<any> | null {
-    logger.debug('Core', `[MosaicFacetMenu] ${this.debugName} requestQuery called`);
-    
+    logger.debug(
+      'Core',
+      `[MosaicFacetMenu] ${this.debugName} requestQuery called`,
+    );
+
     if (!this.coordinator) {
-      logger.warn('Core', `[MosaicFacetMenu] ${this.debugName} aborted requestQuery: No Coordinator`);
+      logger.warn(
+        'Core',
+        `[MosaicFacetMenu] ${this.debugName} aborted requestQuery: No Coordinator`,
+      );
       return Promise.resolve();
     }
     return super.requestQuery(query);
   }
 
-  fieldInfo(info: any[]): this {
-    logger.debug('Core', `[MosaicFacetMenu] ${this.debugName} received fieldInfo`, info);
+  fieldInfo(info: Array<any>): this {
+    logger.debug(
+      'Core',
+      `[MosaicFacetMenu] ${this.debugName} received fieldInfo`,
+      info,
+    );
     return this;
   }
 
-  fields(): any[] {
+  fields(): Array<any> {
     return [];
   }
 
   // --- QUERY LOGIC ---
 
   override query(filter?: FilterExpr): SelectQuery {
-    logger.debug('SQL', `[MosaicFacetMenu] ${this.debugName} generating query...`);
-
     const {
       table,
       column,
       limit = 50,
       sortMode = 'count',
       isArrayColumn,
+      additionalContext,
     } = this.options;
+
+    // DIAGNOSTIC LOGGING
+    if (filter) {
+      logger.debug(
+        'SQL',
+        `[MosaicFacetMenu] ${this.debugName} (#${this.id}) received Primary Filter`,
+        { filter: filter.toString() },
+      );
+    } else {
+      logger.debug(
+        'SQL',
+        `[MosaicFacetMenu] ${this.debugName} (#${this.id}) received Empty Primary Filter (Self-Excluded)`,
+      );
+    }
+
     const colExpr = createStructAccess(column);
+
+    // 1. Resolve Primary Filter (Automatic via filterBy -> arguments)
+    let effectiveFilter = filter;
+
+    // 2. Resolve Additional Context (Manual)
+    if (additionalContext) {
+      // We pass 'this' to ensure we don't accidentally include ourselves if the context is also a crossfilter
+      const extraFilter = additionalContext.predicate(this);
+      if (extraFilter) {
+        logger.debug(
+          'SQL',
+          `[MosaicFacetMenu] ${this.debugName} (#${this.id}) merging Additional Context`,
+          { extra: extraFilter.toString() },
+        );
+        // Combine Primary + Additional
+        effectiveFilter = effectiveFilter
+          ? mSql.and(effectiveFilter, extraFilter)
+          : extraFilter;
+      }
+    }
 
     let query: SelectQuery;
 
@@ -157,7 +300,9 @@ export class MosaicFacetMenu extends MosaicClient {
         tag: mSql.unnest(colExpr),
       });
 
-      if (filter) innerQuery.where(filter);
+      if (effectiveFilter) {
+        innerQuery.where(effectiveFilter);
+      }
 
       query = mSql.Query.from(innerQuery).select('tag').distinct();
 
@@ -171,13 +316,13 @@ export class MosaicFacetMenu extends MosaicClient {
       query.orderby(mSql.asc('tag'));
     } else {
       // Explicitly alias to ensure flat result keys
-      const selection = column.includes('.') 
-        ? { [column]: colExpr } 
-        : column;
+      const selection = column.includes('.') ? { [column]: colExpr } : column;
 
       query = mSql.Query.from(table).select(selection);
 
-      if (filter) query.where(filter);
+      if (effectiveFilter) {
+        query.where(effectiveFilter);
+      }
 
       if (this._searchTerm) {
         query.where(
@@ -196,7 +341,10 @@ export class MosaicFacetMenu extends MosaicClient {
 
     query.limit(limit);
 
-    logger.debug('SQL', `[MosaicFacetMenu] ${this.debugName} generated: ${query.toString()}`);
+    logger.debug(
+      'SQL',
+      `[MosaicFacetMenu] ${this.debugName} generated: ${query.toString()}`,
+    );
     return query;
   }
 
@@ -212,13 +360,16 @@ export class MosaicFacetMenu extends MosaicClient {
 
     if (data && typeof data.toArray === 'function') {
       const rows = data.toArray();
-      
-      logger.info('Mosaic', `[MosaicFacetMenu] ${this.debugName} received ${rows.length} rows`);
+
+      logger.info(
+        'Mosaic',
+        `[MosaicFacetMenu] ${this.debugName} received ${rows.length} rows`,
+      );
 
       for (const row of rows) {
         let val = row[key];
         if (val === undefined && key.includes('.')) {
-           val = key.split('.').reduce((obj: any, k: string) => obj?.[k], row);
+          val = key.split('.').reduce((obj: any, k: string) => obj?.[k], row);
         }
 
         if (val !== null && val !== undefined) {
@@ -226,7 +377,11 @@ export class MosaicFacetMenu extends MosaicClient {
         }
       }
     } else {
-      logger.warn('Core', `[MosaicFacetMenu] ${this.debugName} received invalid data`, data);
+      logger.warn(
+        'Core',
+        `[MosaicFacetMenu] ${this.debugName} received invalid data`,
+        data,
+      );
     }
 
     this.store.setState((s) => ({
@@ -238,11 +393,9 @@ export class MosaicFacetMenu extends MosaicClient {
   }
 
   override queryError(error: Error) {
-    logger.error(
-      'Core',
-      `[MosaicFacetMenu] Query Error: ${this.debugName}`,
-      { error },
-    );
+    logger.error('Core', `[MosaicFacetMenu] Query Error: ${this.debugName}`, {
+      error,
+    });
     this.store.setState((s) => ({ ...s, loading: false }));
     return this;
   }

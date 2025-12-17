@@ -41,17 +41,6 @@ const $externalContext = vg.Selection.intersect({
   include: [$detailFilter, $crossFilter],
 });
 
-// NEW: Input Layer Context
-// This is what the Dropdowns "See".
-// It is the intersection of "The Rest of the World" AND the "Input Cross Filter".
-// When a specific Input Component queries this:
-// 1. It gets all external filters (e.g. from the table).
-// 2. It gets all *other* input filters (e.g. Domain gets Filtered by Device).
-// 3. It does NOT get its own filter (Domain does NOT filter Domain options).
-const $inputLayerContext = vg.Selection.intersect({
-  include: [$externalContext, $inputFilter],
-});
-
 // For Summary Tables:
 // They must respect Inputs AND Detail Table Filters.
 // They use $crossFilter for Highlighting (Peers filter, Self highlights).
@@ -120,49 +109,52 @@ export function NozzlePaaView() {
             table={TABLE_NAME}
             column="domain"
             selection={$inputFilter}
-            filterBy={$inputLayerContext}
+            filterBy={$inputFilter}
+            externalContext={$externalContext}
           />
           <TextFilter
             label="Phrase"
             table={TABLE_NAME}
             column="phrase"
             selection={$inputFilter}
-            filterBy={$inputLayerContext}
+            filterBy={$inputFilter}
           />
           <ArraySelectFilter
             label="Keyword Group"
             table={TABLE_NAME}
             column="keyword_groups"
             selection={$inputFilter}
-            filterBy={$inputLayerContext}
+            filterBy={$inputFilter}
+            externalContext={$externalContext}
           />
           <TextFilter
             label="Answer Contains"
             table={TABLE_NAME}
             column="description"
             selection={$inputFilter}
-            filterBy={$inputLayerContext}
+            filterBy={$inputFilter}
           />
           <DateRangeFilter
             label="Requested Date"
             table={TABLE_NAME}
             column="requested"
             selection={$inputFilter}
-            filterBy={$inputLayerContext}
+            filterBy={$inputFilter}
           />
           <SearchableSelectFilter
             label="Device"
             table={TABLE_NAME}
             column="device"
             selection={$inputFilter}
-            filterBy={$inputLayerContext}
+            filterBy={$inputFilter}
+            externalContext={$externalContext}
           />
           <TextFilter
             label="Question Contains"
             table={TABLE_NAME}
             column="related_phrase.phrase"
             selection={$inputFilter}
-            filterBy={$inputLayerContext}
+            filterBy={$inputFilter}
           />
         </div>
       </div>

@@ -58,6 +58,7 @@ interface FilterProps {
   column: string;
   selection: Selection;
   filterBy?: Selection;
+  externalContext?: Selection;
 }
 
 /**
@@ -97,6 +98,7 @@ export function SearchableSelectFilter({
   column,
   selection,
   filterBy,
+  externalContext,
 }: FilterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
@@ -107,6 +109,7 @@ export function SearchableSelectFilter({
     column,
     selection,
     filterBy,
+    additionalContext: externalContext,
     limit: 50,
     sortMode: 'count',
     debugName: `Facet:${label}`,
@@ -200,12 +203,14 @@ export function SelectFilter({
   column,
   selection,
   filterBy,
+  externalContext,
 }: FilterProps) {
   const { options, select, client } = useMosaicFacetMenu({
     table,
     column,
     selection,
     filterBy,
+    additionalContext: externalContext,
     limit: 50,
     sortMode: 'count',
   });
@@ -250,6 +255,7 @@ export function ArraySelectFilter({
   column,
   selection,
   filterBy,
+  externalContext,
 }: FilterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
@@ -259,6 +265,7 @@ export function ArraySelectFilter({
     column,
     selection,
     filterBy,
+    additionalContext: externalContext,
     limit: 100,
     sortMode: 'alpha', // Tags usually better alpha
     isArrayColumn: true, // Enable UNNEST logic

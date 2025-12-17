@@ -6,49 +6,21 @@ import { useStore } from '@tanstack/react-store';
 import type { MosaicFacetMenuOptions } from '@nozzleio/mosaic-tanstack-table-core';
 
 export function useMosaicFacetMenu(options: MosaicFacetMenuOptions) {
-  // Destructure options to allow exhaustive dependencies in useMemo
-  const {
-    table,
-    column,
-    selection,
-    filterBy,
-    coordinator,
-    sortMode,
-    limit,
-    debugName,
-    isArrayColumn,
-  } = options;
-
   // 1. Instantiate the stable client once
-  // We use a memo pattern to recreate the client if key props change.
-  const client = React.useMemo(() => {
-    return new MosaicFacetMenu({
-      table,
-      column,
-      selection,
-      filterBy,
-      coordinator,
-      sortMode,
-      limit,
-      debugName,
-      isArrayColumn,
-    });
-  }, [
-    table,
-    column,
-    selection,
-    filterBy,
-    coordinator,
-    sortMode,
-    limit,
-    debugName,
-    isArrayColumn,
-  ]);
+  // We use useState lazy initialization to ensure the client is created exactly once per component lifecycle.
+  // This prevents the "Identity Mismatch" issue where a new client (Source B) tries to clear a filter created by Source A.
+  const [client] = React.useState(() => new MosaicFacetMenu(options));
 
-  // 2. Subscribe to the store
+  // 2. Sync options updates to the stable client
+  // This allows us to react to prop changes (like externalContext changing) without destroying the client.
+  React.useEffect(() => {
+    client.updateOptions(options);
+  }, [client, options]);
+
+  // 3. Subscribe to the store
   const state = useStore(client.store);
 
-  // 3. Connect/Disconnect lifecycle
+  // 4. Connect/Disconnect lifecycle
   React.useEffect(() => {
     const cleanup = client.connect();
     return () => cleanup();
