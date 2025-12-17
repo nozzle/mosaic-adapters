@@ -143,10 +143,11 @@ export function buildTableQuery<TData extends RowData, TValue>(
     .limit(pagination.pageSize)
     .offset(pagination.pageIndex * pagination.pageSize);
 
+  // INFO: Downgraded to 'debug' to reduce console noise while keeping full logs available
   logger.debounce(
     'sql-query-builder',
     300,
-    'info',
+    'debug',
     'SQL',
     'Generated Table Query',
     {
@@ -155,7 +156,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
         pagination,
         sorting,
         filtersCount: whereClauses.length,
-        hasHighlight: !manualHighlight, // Updated log to reflect status
+        hasHighlight: !manualHighlight,
         highlightPredicateRaw: highlightPredicate,
       },
     },

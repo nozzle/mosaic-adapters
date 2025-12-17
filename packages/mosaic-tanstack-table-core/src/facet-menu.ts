@@ -121,8 +121,6 @@ export class MosaicFacetMenu extends MosaicClient {
   connect(): () => void {
     // REPAIR LOGIC: If coordinator was lost (e.g. via base disconnect), restore it.
     if (!this.coordinator) {
-      // INFO: Downgraded from warn to debug as this is a successful self-healing operation
-      // that occurs frequently during React strict-mode double invocation or initial load.
       logger.debug(
         'Core',
         `[MosaicFacetMenu] ${this.debugName} connect() called but coordinator is missing. Repairing...`,
@@ -194,7 +192,8 @@ export class MosaicFacetMenu extends MosaicClient {
       }
     }
 
-    logger.info(
+    // INFO: Downgraded to 'debug' to reduce console noise
+    logger.debug(
       'Mosaic',
       `[MosaicFacetMenu] ${this.debugName} (#${this.id}) updating selection`,
       { value, predicate: predicate?.toString() },
@@ -363,7 +362,8 @@ export class MosaicFacetMenu extends MosaicClient {
     if (data && typeof data.toArray === 'function') {
       const rows = data.toArray();
 
-      logger.info(
+      // INFO: Downgraded to 'debug' to reduce console noise
+      logger.debug(
         'Mosaic',
         `[MosaicFacetMenu] ${this.debugName} received ${rows.length} rows`,
       );
