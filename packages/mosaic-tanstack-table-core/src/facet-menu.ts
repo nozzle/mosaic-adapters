@@ -121,7 +121,9 @@ export class MosaicFacetMenu extends MosaicClient {
   connect(): () => void {
     // REPAIR LOGIC: If coordinator was lost (e.g. via base disconnect), restore it.
     if (!this.coordinator) {
-      logger.warn(
+      // INFO: Downgraded from warn to debug as this is a successful self-healing operation
+      // that occurs frequently during React strict-mode double invocation or initial load.
+      logger.debug(
         'Core',
         `[MosaicFacetMenu] ${this.debugName} connect() called but coordinator is missing. Repairing...`,
       );
