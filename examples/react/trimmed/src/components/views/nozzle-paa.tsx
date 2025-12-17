@@ -21,8 +21,11 @@ const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 
 // --- 1. Global State Topology ---
 
-// A. Input Filter: Top-Bar Inputs (Hard Filters)
-const $inputFilter = vg.Selection.intersect();
+// A. Input Filter: Top-Bar Inputs
+// CHANGED: Now a Cross-Filter.
+// This allows inputs to filter *each other* while preserving the user's ability
+// to change a selection (by seeing all options for the active dropdown).
+const $inputFilter = vg.Selection.crossfilter();
 
 // B. Detail Filter: Bottom Table In-Column Filters
 const $detailFilter = vg.Selection.intersect();
@@ -31,6 +34,23 @@ const $detailFilter = vg.Selection.intersect();
 const $crossFilter = vg.Selection.crossfilter();
 
 // --- Derived Contexts ---
+
+// NEW: External Context
+// The "Rest of the World" from the perspective of the Input Layer.
+const $externalContext = vg.Selection.intersect({
+  include: [$detailFilter, $crossFilter],
+});
+
+// NEW: Input Layer Context
+// This is what the Dropdowns "See".
+// It is the intersection of "The Rest of the World" AND the "Input Cross Filter".
+// When a specific Input Component queries this:
+// 1. It gets all external filters (e.g. from the table).
+// 2. It gets all *other* input filters (e.g. Domain gets Filtered by Device).
+// 3. It does NOT get its own filter (Domain does NOT filter Domain options).
+const $inputLayerContext = vg.Selection.intersect({
+  include: [$externalContext, $inputFilter],
+});
 
 // For Summary Tables:
 // They must respect Inputs AND Detail Table Filters.
@@ -88,6 +108,7 @@ export function NozzlePaaView() {
       <HeaderSection />
 
       {/* Filter Controls: Update $inputFilter */}
+      {/* We pass 'selection' (Output) and 'filterBy' (Input/Context) */}
       <div className="px-6 -mt-8 relative z-10">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">
           <div className="text-sm font-bold text-slate-700 mr-2">
@@ -99,42 +120,49 @@ export function NozzlePaaView() {
             table={TABLE_NAME}
             column="domain"
             selection={$inputFilter}
+            filterBy={$inputLayerContext}
           />
           <TextFilter
             label="Phrase"
             table={TABLE_NAME}
             column="phrase"
             selection={$inputFilter}
+            filterBy={$inputLayerContext}
           />
           <ArraySelectFilter
             label="Keyword Group"
             table={TABLE_NAME}
             column="keyword_groups"
             selection={$inputFilter}
+            filterBy={$inputLayerContext}
           />
           <TextFilter
             label="Answer Contains"
             table={TABLE_NAME}
             column="description"
             selection={$inputFilter}
+            filterBy={$inputLayerContext}
           />
           <DateRangeFilter
             label="Requested Date"
             table={TABLE_NAME}
             column="requested"
             selection={$inputFilter}
+            filterBy={$inputLayerContext}
           />
           <SelectFilter
             label="Device"
             table={TABLE_NAME}
             column="device"
             selection={$inputFilter}
+            filterBy={$inputLayerContext}
           />
           <TextFilter
             label="Question Contains"
             table={TABLE_NAME}
             column="related_phrase.phrase"
             selection={$inputFilter}
+            filterBy={$inputLayerContext}
           />
         </div>
       </div>

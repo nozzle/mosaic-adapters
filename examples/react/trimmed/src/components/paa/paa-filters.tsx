@@ -1,10 +1,12 @@
+// examples/react/trimmed/src/components/paa/paa-filters.tsx
+
 // Standalone filter components that directly interact with Mosaic Selections and DuckDB.
 
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
-import { isArrowTable } from '@uwdata/mosaic-core';
+import { MosaicClient, isArrowTable } from '@uwdata/mosaic-core';
 import { UniqueColumnValuesClient } from '@nozzleio/mosaic-tanstack-react-table';
 import type { FacetClientConfig } from '@nozzleio/mosaic-tanstack-react-table';
 import type { Selection } from '@uwdata/mosaic-core';
@@ -22,7 +24,8 @@ interface FilterProps {
   label: string;
   table: string;
   column: string;
-  selection: Selection; // The global filter to update
+  selection: Selection; // The output selection to write to
+  filterBy?: Selection; // The input selection to read from (for cascading)
 }
 
 // Local helper to avoid importing from core package which can cause build issues in example
@@ -44,6 +47,7 @@ function createStructAccess(columnPath: string): any {
 /**
  * HOOK: useUniqueColumnValues
  * Wrapper around UniqueColumnValuesClient to simplify usage in React components.
+ * Now returns the client instance to allow using it as the update source.
  */
 function useUniqueColumnValues(
   config: Omit<
@@ -54,15 +58,19 @@ function useUniqueColumnValues(
   },
 ) {
   const [options, setOptions] = useState<Array<any>>([]);
+  const [clientInstance, setClientInstance] =
+    useState<UniqueColumnValuesClient | null>(null);
 
   useEffect(() => {
-    // Instantiate a transient Mosaic Client.
+    // Instantiate a Mosaic Client.
     // This client connects to the coordinator, runs a `SELECT DISTINCT column...` query,
     // and disconnects on unmount.
     const client = new UniqueColumnValuesClient({
       source: config.source,
       column: config.column,
       coordinator: config.coordinator || vg.coordinator(),
+      // Pass the context filter (cascading context)
+      filterBy: config.filterBy,
       // FIX: Cast values to any[] because the generic inference from FacetClientConfig
       // incorrectly infers the spread argument as `unknown` instead of `unknown[]`.
       onResult: (values: any) =>
@@ -72,13 +80,20 @@ function useUniqueColumnValues(
       __debugName: `useUniqueColumnValues(Facet):${config.column}`,
     });
 
+    setClientInstance(client);
     client.connect();
     client.requestUpdate();
 
     return () => client.disconnect();
-  }, [config.source, config.column, config.sortMode, config.limit]);
+  }, [
+    config.source,
+    config.column,
+    config.sortMode,
+    config.limit,
+    config.filterBy, // Re-create if the context changes
+  ]);
 
-  return options;
+  return { options, client: clientInstance };
 }
 
 /**
@@ -86,23 +101,28 @@ function useUniqueColumnValues(
  * A Dropdown that:
  * 1. Fetches unique values from DuckDB for the given column.
  * 2. Updates the passed Mosaic Selection on change.
+ * 3. Respects `filterBy` for cascading options.
  */
-export function SelectFilter({ label, table, column, selection }: FilterProps) {
-  const options = useUniqueColumnValues({
+export function SelectFilter({
+  label,
+  table,
+  column,
+  selection,
+  filterBy,
+}: FilterProps) {
+  const { options, client } = useUniqueColumnValues({
     source: table,
     column: column,
-    // OPTIMIZATION:
-    // Sort by frequency (Count DESC) and limit to top 50.
-    // This prevents rendering performance issues and ensures relevant data is seen first.
+    filterBy: filterBy, // Pass cascading context
     sortMode: 'count',
     limit: 50,
   });
 
-  // FIX: Create a stable object reference for the selection source.
-  // Mosaic requires `source` to be an object (not a string) to track identity.
-  const filterSource = useMemo(() => ({ id: `filter-${column}` }), [column]);
-
   const handleChange = (val: string) => {
+    if (!client) {
+      return;
+    }
+
     // FIX: Use createStructAccess to handle nested columns safely
     const colExpr = createStructAccess(column);
 
@@ -111,8 +131,8 @@ export function SelectFilter({ label, table, column, selection }: FilterProps) {
       val === 'ALL' ? null : mSql.eq(colExpr, mSql.literal(val));
 
     selection.update({
-      source: filterSource,
-      value: val === 'ALL' ? null : val, // FIX: Added required 'value' property
+      source: client, // Use the client as the source to enable Cross-Filtering
+      value: val === 'ALL' ? null : val,
       predicate,
     });
   };
@@ -155,15 +175,13 @@ export function TextFilter({ label, column, selection }: FilterProps) {
       if (val.trim() === '') {
         selection.update({
           source: filterSource,
-          value: null, // FIX: Added required 'value' property
+          value: null,
           predicate: null,
         });
         return;
       }
 
-      // ARCHITECTURE NOTE:
-      // Handle Struct Columns (dot notation) e.g. "related_phrase.phrase"
-      // We use the shared util to generate "col".field
+      // Handle Struct Columns (dot notation)
       const colExpr = createStructAccess(column);
 
       // Construct the ILIKE predicate
@@ -171,7 +189,7 @@ export function TextFilter({ label, column, selection }: FilterProps) {
 
       selection.update({
         source: filterSource,
-        value: val, // FIX: Added required 'value' property
+        value: val,
         predicate,
       });
     }, 300); // 300ms debounce
@@ -199,47 +217,87 @@ export function TextFilter({ label, column, selection }: FilterProps) {
  * Designed for VARCHAR[] columns (e.g. keyword_groups).
  * 1. Uses UNNEST() to find unique tags for the dropdown.
  * 2. Uses list_contains() for the filter predicate.
+ * 3. Handles cascading updates via manual subscription.
  */
 export function ArraySelectFilter({
   label,
   table,
   column,
   selection,
+  filterBy,
 }: FilterProps) {
   const [options, setOptions] = useState<Array<string>>([]);
-  const filterSource = useMemo(
-    () => ({ id: `filter-${column}-array` }),
-    [column],
-  );
 
-  // 1. Fetch Unique Tags (UNNEST)
+  // FIX: Create a real MosaicClient instance for identity.
+  // This satisfies strict typing for `filterBy.predicate(client)`
+  // and allows correct cross-filtering behavior.
+  const client = useMemo(() => new MosaicClient(filterBy), [filterBy]);
+
+  // 1. Fetch Unique Tags (UNNEST) - Reactively!
   useEffect(() => {
+    let active = true;
+
     async function loadTags() {
-      // We manually construct this query because the generic clients don't support UNNEST well yet
-      // Note: We interpolate ${column} directly here as a string.
-      // If column contains a dot, it works in DuckDB SQL as struct access.
-      const sql = `
-        SELECT DISTINCT UNNEST(${column}) as tag 
-        FROM ${table} 
-        WHERE ${column} IS NOT NULL 
-        ORDER BY tag ASC 
-        LIMIT 100
-      `;
+      // Resolve the cascading filter predicate.
+      // If we are part of a cross-filter group, passing `client` ensures we exclude ourselves.
+      const rawPredicate = filterBy ? filterBy.predicate(client) : null;
 
-      const result = await vg.coordinator().query(sql);
+      // Ensure the predicate is a valid SQL Node for query builder.
+      // If predicate is an array (implicit AND), wrap it.
+      const safePredicate = Array.isArray(rawPredicate)
+        ? mSql.and(...rawPredicate)
+        : rawPredicate;
 
-      // Parse Arrow result
-      if (isArrowTable(result)) {
-        const rows = result.toArray();
-        const tags = rows
-          .map((r: any) => r.tag)
-          .filter((t: any) => t != null)
-          .map(String);
-        setOptions(tags);
+      // FIX: Use Mosaic Query Builder instead of manual string interpolation
+      // This prevents syntax errors like '... "table" 'WHERE ...' ORDER BY ...'
+      // where the WHERE clause was being treated as a string literal.
+      const colExpr = createStructAccess(column);
+
+      let query = mSql.Query.from(table)
+        .select({ tag: mSql.unnest(colExpr) })
+        .distinct()
+        .orderby(mSql.asc('tag'))
+        .limit(100);
+
+      if (safePredicate) {
+        query = query.where(safePredicate);
+      }
+
+      try {
+        const result = await vg.coordinator().query(query.toString());
+
+        if (active && isArrowTable(result)) {
+          const rows = result.toArray();
+          const tags = rows
+            .map((r: any) => r.tag)
+            .filter((t: any) => t != null)
+            .map(String);
+          setOptions(tags);
+        }
+      } catch (err) {
+        console.error('ArraySelectFilter query error:', err);
       }
     }
+
+    // Initial Load
     loadTags();
-  }, [table, column]);
+
+    // Subscribe to context changes (cascading)
+    const handler = () => {
+      loadTags();
+    };
+
+    if (filterBy) {
+      filterBy.addEventListener('value', handler);
+    }
+
+    return () => {
+      active = false;
+      if (filterBy) {
+        filterBy.removeEventListener('value', handler);
+      }
+    };
+  }, [table, column, filterBy, client]);
 
   const handleChange = (val: string) => {
     // FIX: Use createStructAccess to handle nested columns safely
@@ -250,7 +308,7 @@ export function ArraySelectFilter({
       val === 'ALL' ? null : mSql.listContains(colExpr, mSql.literal(val));
 
     selection.update({
-      source: filterSource,
+      source: client,
       value: val === 'ALL' ? null : val,
       predicate,
     });
