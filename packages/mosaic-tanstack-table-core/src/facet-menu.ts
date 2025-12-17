@@ -32,6 +32,17 @@ export interface MosaicFacetMenuState {
 
 let instanceCounter = 0;
 
+/**
+ * A "Sidecar" Client for fetching metadata (unique values) independent of the main table query.
+ *
+ * Why is this needed?
+ * 1. The main table query typically applies LIMIT/OFFSET for pagination. A dropdown menu needs
+ *    ALL unique values (or the top N by count) across the entire dataset, not just the current page.
+ * 2. Cascading Filters: This client allows us to apply a slightly different set of filters
+ *    than the main table. Specifically, for a column "A" dropdown, we want to filter by
+ *    Columns B and C, but *exclude* the filter on Column A itself (so the user can see
+ *    other options to switch to).
+ */
 export class MosaicFacetMenu extends MosaicClient {
   public options: MosaicFacetMenuOptions;
   readonly store: Store<MosaicFacetMenuState>;
@@ -49,7 +60,7 @@ export class MosaicFacetMenu extends MosaicClient {
     if (!(this.coordinator as Coordinator | undefined)) {
       logger.error(
         'Core',
-        `[MosaicFacetMenu] No coordinator available for ${this.debugName}. Queries will fail.`,
+        `${this.debugPrefix} No coordinator available. Queries will fail.`,
       );
     }
 
@@ -59,10 +70,7 @@ export class MosaicFacetMenu extends MosaicClient {
       searchTerm: '',
     });
 
-    logger.debug(
-      'Core',
-      `[MosaicFacetMenu] Created Instance #${this.id} (${this.debugName})`,
-    );
+    logger.debug('Core', `${this.debugPrefix} Created Instance #${this.id}`);
   }
 
   /**
@@ -109,13 +117,14 @@ export class MosaicFacetMenu extends MosaicClient {
   private _additionalContextListener = () => {
     logger.debug(
       'Core',
-      `[MosaicFacetMenu] ${this.debugName} (#${this.id}) additionalContext updated`,
+      `${this.debugPrefix} (#${this.id}) additionalContext updated`,
     );
     this.requestUpdate();
   };
 
-  get debugName() {
-    return this.options.debugName || `Facet:${this.options.column}`;
+  get debugPrefix() {
+    const name = this.options.debugName || `Facet:${this.options.column}`;
+    return `[MosaicFacetMenu] ${name}`;
   }
 
   connect(): () => void {
@@ -123,28 +132,25 @@ export class MosaicFacetMenu extends MosaicClient {
     if (!this.coordinator) {
       logger.debug(
         'Core',
-        `[MosaicFacetMenu] ${this.debugName} connect() called but coordinator is missing. Repairing...`,
+        `${this.debugPrefix} connect() called but coordinator is missing. Repairing...`,
       );
       this.coordinator = this.options.coordinator || defaultCoordinator();
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (this.coordinator) {
-      logger.debug(
-        'Core',
-        `[MosaicFacetMenu] ${this.debugName} (#${this.id}) Connecting...`,
-      );
+      logger.debug('Core', `${this.debugPrefix} (#${this.id}) Connecting...`);
       this.coordinator.connect(this);
 
       logger.debug(
         'Core',
-        `[MosaicFacetMenu] ${this.debugName} triggering initial requestUpdate`,
+        `${this.debugPrefix} triggering initial requestUpdate`,
       );
       this.requestUpdate();
     } else {
       logger.error(
         'Core',
-        `[MosaicFacetMenu] ${this.debugName} connect() failed: Coordinator could not be resolved.`,
+        `${this.debugPrefix} connect() failed: Coordinator could not be resolved.`,
       );
     }
 
@@ -156,10 +162,7 @@ export class MosaicFacetMenu extends MosaicClient {
     }
 
     return () => {
-      logger.debug(
-        'Core',
-        `[MosaicFacetMenu] ${this.debugName} (#${this.id}) Disconnecting`,
-      );
+      logger.debug('Core', `${this.debugPrefix} (#${this.id}) Disconnecting`);
       this.coordinator?.disconnect(this);
 
       if (this.options.additionalContext) {
@@ -195,7 +198,7 @@ export class MosaicFacetMenu extends MosaicClient {
     // INFO: Downgraded to 'debug' to reduce console noise
     logger.debug(
       'Mosaic',
-      `[MosaicFacetMenu] ${this.debugName} (#${this.id}) updating selection`,
+      `${this.debugPrefix} (#${this.id}) updating selection`,
       { value, predicate: predicate?.toString() },
     );
 
@@ -210,23 +213,17 @@ export class MosaicFacetMenu extends MosaicClient {
   // --- LIFECYCLE DIAGNOSTICS ---
 
   override requestUpdate(): void {
-    logger.debug(
-      'Core',
-      `[MosaicFacetMenu] ${this.debugName} requestUpdate called`,
-    );
+    logger.debug('Core', `${this.debugPrefix} requestUpdate called`);
     super.requestUpdate();
   }
 
   override requestQuery(query?: any): Promise<any> | null {
-    logger.debug(
-      'Core',
-      `[MosaicFacetMenu] ${this.debugName} requestQuery called`,
-    );
+    logger.debug('Core', `${this.debugPrefix} requestQuery called`);
 
     if (!this.coordinator) {
       logger.warn(
         'Core',
-        `[MosaicFacetMenu] ${this.debugName} aborted requestQuery: No Coordinator`,
+        `${this.debugPrefix} aborted requestQuery: No Coordinator`,
       );
       return Promise.resolve();
     }
@@ -234,11 +231,7 @@ export class MosaicFacetMenu extends MosaicClient {
   }
 
   fieldInfo(info: Array<any>): this {
-    logger.debug(
-      'Core',
-      `[MosaicFacetMenu] ${this.debugName} received fieldInfo`,
-      info,
-    );
+    logger.debug('Core', `${this.debugPrefix} received fieldInfo`, info);
     return this;
   }
 
@@ -262,13 +255,13 @@ export class MosaicFacetMenu extends MosaicClient {
     if (filter) {
       logger.debug(
         'SQL',
-        `[MosaicFacetMenu] ${this.debugName} (#${this.id}) received Primary Filter`,
+        `${this.debugPrefix} (#${this.id}) received Primary Filter`,
         { filter: filter.toString() },
       );
     } else {
       logger.debug(
         'SQL',
-        `[MosaicFacetMenu] ${this.debugName} (#${this.id}) received Empty Primary Filter (Self-Excluded)`,
+        `${this.debugPrefix} (#${this.id}) received Empty Primary Filter (Self-Excluded)`,
       );
     }
 
@@ -284,7 +277,7 @@ export class MosaicFacetMenu extends MosaicClient {
       if (extraFilter) {
         logger.debug(
           'SQL',
-          `[MosaicFacetMenu] ${this.debugName} (#${this.id}) merging Additional Context`,
+          `${this.debugPrefix} (#${this.id}) merging Additional Context`,
           { extra: extraFilter.toString() },
         );
         // Combine Primary + Additional
@@ -342,10 +335,7 @@ export class MosaicFacetMenu extends MosaicClient {
 
     query.limit(limit);
 
-    logger.debug(
-      'SQL',
-      `[MosaicFacetMenu] ${this.debugName} generated: ${query.toString()}`,
-    );
+    logger.debug('SQL', `${this.debugPrefix} generated: ${query.toString()}`);
     return query;
   }
 
@@ -365,7 +355,7 @@ export class MosaicFacetMenu extends MosaicClient {
       // INFO: Downgraded to 'debug' to reduce console noise
       logger.debug(
         'Mosaic',
-        `[MosaicFacetMenu] ${this.debugName} received ${rows.length} rows`,
+        `${this.debugPrefix} received ${rows.length} rows`,
       );
 
       for (const row of rows) {
@@ -379,11 +369,7 @@ export class MosaicFacetMenu extends MosaicClient {
         }
       }
     } else {
-      logger.warn(
-        'Core',
-        `[MosaicFacetMenu] ${this.debugName} received invalid data`,
-        data,
-      );
+      logger.warn('Core', `${this.debugPrefix} received invalid data`, data);
     }
 
     this.store.setState((s) => ({
@@ -395,7 +381,7 @@ export class MosaicFacetMenu extends MosaicClient {
   }
 
   override queryError(error: Error) {
-    logger.error('Core', `[MosaicFacetMenu] Query Error: ${this.debugName}`, {
+    logger.error('Core', `${this.debugPrefix} Query Error`, {
       error,
     });
     this.store.setState((s) => ({ ...s, loading: false }));

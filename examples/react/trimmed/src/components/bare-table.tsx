@@ -7,7 +7,12 @@ import type {
   RowData,
   Table,
 } from '@tanstack/react-table';
-import { cn, toDateInputString, toDateTimeInputString } from '@/lib/utils';
+import {
+  cn,
+  isRowHighlighted,
+  toDateInputString,
+  toDateTimeInputString,
+} from '@/lib/utils';
 
 export function BareTable<TData extends RowData, TValue>(props: {
   table: Table<TData>;
@@ -47,11 +52,7 @@ export function BareTable<TData extends RowData, TValue>(props: {
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => {
-            // Robust check for highlighting
-            // @ts-expect-error __is_highlighted is injected dynamically
-            const rawHighlight = row.original.__is_highlighted;
-            const isDimmed =
-              rawHighlight !== undefined && Number(rawHighlight) === 0;
+            const isDimmed = !isRowHighlighted(row);
 
             return (
               <tr

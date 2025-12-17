@@ -44,7 +44,12 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { cn, toDateInputString, toDateTimeInputString } from '@/lib/utils';
+import {
+  cn,
+  isRowHighlighted,
+  toDateInputString,
+  toDateTimeInputString,
+} from '@/lib/utils';
 import {
   NativeSelect,
   NativeSelectOption,
@@ -95,13 +100,7 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => {
-                // Robust check for highlighting status.
-                // DuckDB/Arrow often returns BigInt (0n) for integers, so strict '=== 0' fails.
-                // We coerce to Number to be safe. Undefined means "not participating in highlight", so treat as 1 (visible).
-                // @ts-expect-error __is_highlighted is dynamically injected
-                const rawHighlight = row.original.__is_highlighted;
-                const isDimmed =
-                  rawHighlight !== undefined && Number(rawHighlight) === 0;
+                const isDimmed = !isRowHighlighted(row);
 
                 return (
                   <TableRow
