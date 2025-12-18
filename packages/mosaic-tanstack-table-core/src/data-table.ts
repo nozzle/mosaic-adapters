@@ -23,6 +23,7 @@ import {
 import { logger } from './logger';
 import { ColumnMapper } from './query/column-mapper';
 import { buildTableQuery, extractInternalFilters } from './query/query-builder';
+import { MosaicSelectionManager } from './selection-manager';
 
 import type {
   Coordinator,
@@ -94,6 +95,9 @@ export class MosaicDataTable<
   #facetClients: Map<string, ActiveFacetClient> = new Map();
   #facetValues: Map<string, any> = new Map();
 
+  // Manager for row selection sync
+  #rowSelectionManager?: MosaicSelectionManager;
+
   #QueryStore: any;
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
@@ -123,6 +127,18 @@ export class MosaicDataTable<
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     } else if (!this.tableFilterSelection) {
       this.tableFilterSelection = new Selection();
+    }
+
+    // Initialize Row Selection Manager if config provided
+    if (options.rowSelection) {
+      this.#rowSelectionManager = new MosaicSelectionManager({
+        client: this,
+        column: options.rowSelection.column,
+        selection: options.rowSelection.selection,
+        isArrayColumn: options.rowSelection.isArrayColumn,
+      });
+    } else {
+      this.#rowSelectionManager = undefined;
     }
 
     // Robustly resolve the coordinator.
@@ -439,14 +455,55 @@ export class MosaicDataTable<
       this.requestUpdate();
     };
 
+    // Callback for when the Mosaic Selection changes externally (Mosaic -> Table sync)
+    const rowSelectionCb = () => {
+      if (!this.#rowSelectionManager) {
+        return;
+      }
+
+      // 1. Get values from Mosaic
+      const values = this.#rowSelectionManager.getCurrentValues();
+
+      // 2. Convert Array<Value> -> Record<RowId, boolean>
+      const newRowSelection: Record<string, boolean> = {};
+      values.forEach((v) => {
+        newRowSelection[String(v)] = true;
+      });
+
+      // 3. Update Store (batch to avoid double renders)
+      batch(() => {
+        this.#store.setState((prev) => ({
+          ...prev,
+          tableState: {
+            ...prev.tableState,
+            rowSelection: newRowSelection,
+          },
+        }));
+      });
+    };
+
     this.filterBy?.addEventListener('value', selectionCb);
     // Also listen to highlightBy changes to trigger updates
     this.options.highlightBy?.addEventListener('value', selectionCb);
+
+    // Listen for Row Selection changes
+    if (this.options.rowSelection?.selection) {
+      this.options.rowSelection.selection.addEventListener(
+        'value',
+        rowSelectionCb,
+      );
+      // Initialize state immediately
+      rowSelectionCb();
+    }
 
     return () => {
       this.enabled = false; // Prevents "Client already connected" race conditions
       this.filterBy?.removeEventListener('value', selectionCb);
       this.options.highlightBy?.removeEventListener('value', selectionCb);
+      this.options.rowSelection?.selection.removeEventListener(
+        'value',
+        rowSelectionCb,
+      );
       this.#facetClients.forEach((client) => client.disconnect());
       destroy();
     };
@@ -620,6 +677,26 @@ export class MosaicDataTable<
           }
 
           this[this.#onTableStateChange]();
+        }
+      },
+      // Intercept Row Selection changes to sync back to Mosaic (Table -> Mosaic)
+      onRowSelectionChange: (updaterOrValue) => {
+        // 1. Calculate new TanStack State
+        const oldState = this.#store.state.tableState.rowSelection;
+        const newState = functionalUpdate(updaterOrValue, oldState);
+
+        // 2. Update Internal Store
+        this.#store.setState((prev) => ({
+          ...prev,
+          tableState: { ...prev.tableState, rowSelection: newState },
+        }));
+
+        // 3. Sync to Mosaic
+        if (this.#rowSelectionManager) {
+          const selectedValues = Object.keys(newState);
+          // Convert empty object -> null (clear selection)
+          const valueToSend = selectedValues.length > 0 ? selectedValues : null;
+          this.#rowSelectionManager.select(valueToSend);
         }
       },
       manualPagination: true,

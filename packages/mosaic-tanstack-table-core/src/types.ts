@@ -131,6 +131,15 @@ export interface MosaicDataTableOptions<
    */
   manualHighlight?: boolean;
   /**
+   * If provided, links the table's Row Selection state to this Mosaic Selection.
+   * Requires that `getRowId` in tableOptions maps to the column values being filtered.
+   */
+  rowSelection?: {
+    selection: Selection;
+    column: string;
+    isArrayColumn?: boolean;
+  };
+  /**
    * The selection that the table writes its own internal filter state to.
    * This allows other Mosaic clients (like charts) to react to table filters.
    * @default undefined

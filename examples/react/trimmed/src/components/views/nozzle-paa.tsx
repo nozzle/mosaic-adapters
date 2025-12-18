@@ -6,13 +6,11 @@ import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
 import {
-  toggleMosaicSelection,
   useMosaicReactTable,
   useMosaicViewModel,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { PaaDashboardModel } from './paa-model';
-import type { ColumnDef, Row } from '@tanstack/react-table';
-import type { MosaicClient } from '@uwdata/mosaic-core';
+import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import { RenderTable } from '@/components/render-table';
 import { useMosaicValue } from '@/hooks/useMosaicValue';
@@ -249,20 +247,6 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function useSelectionValue(selection: vg.Selection, client: MosaicClient) {
-  const [value, setValue] = useState(selection.valueFor(client));
-
-  useEffect(() => {
-    const handler = () => {
-      setValue(selection.valueFor(client));
-    };
-    selection.addEventListener('value', handler);
-    return () => selection.removeEventListener('value', handler);
-  }, [selection, client]);
-
-  return value;
-}
-
 function SummaryTable({
   model,
   title,
@@ -338,8 +322,12 @@ function SummaryTable({
         sorting: [{ id: 'metric', desc: true }],
         pagination: { pageSize: 10 },
       },
+      // CRITICAL: Map Row ID to the value we are faceting on
+      getRowId: (row: any) => String(row[safeId]),
+      enableRowSelection: true,
+      enableMultiRowSelection: true,
     }),
-    [],
+    [safeId],
   );
 
   const { tableOptions, client } = useMosaicReactTable({
@@ -350,6 +338,11 @@ function SummaryTable({
     highlightBy: model.selections.cross,
     // NEW: Tell Core we handled it manually
     manualHighlight: true,
+    // NEW: Native Row Selection configuration
+    rowSelection: {
+      selection: model.selections.cross,
+      column: groupBy,
+    },
     columns: useMemo(
       () => [
         {
@@ -360,7 +353,17 @@ function SummaryTable({
           enableColumnFilter: false,
           enableHiding: false,
           cell: ({ row }: any) => {
-            return <SelectionCheckbox row={row} groupBy={groupBy} />;
+            return (
+              <div className="flex items-center justify-center">
+                <input
+                  type="checkbox"
+                  checked={row.getIsSelected()}
+                  onChange={row.getToggleSelectedHandler()}
+                  onClick={(e) => e.stopPropagation()}
+                  className="cursor-pointer size-4"
+                />
+              </div>
+            );
           },
         },
         {
@@ -383,23 +386,7 @@ function SummaryTable({
     debugName: `${title}SummaryTable`,
   });
 
-  const currentSelectionValue = useSelectionValue(
-    model.selections.cross as any,
-    client,
-  );
-
-  const finalTableOptions = useMemo(
-    () => ({
-      ...tableOptions,
-      meta: {
-        ...tableOptions.meta,
-        selectedValue: currentSelectionValue,
-      },
-    }),
-    [tableOptions, currentSelectionValue],
-  );
-
-  const table = useReactTable(finalTableOptions);
+  const table = useReactTable(tableOptions);
 
   return (
     <div className="bg-white border rounded-lg shadow-sm flex flex-col h-[350px] overflow-hidden">
@@ -411,50 +398,11 @@ function SummaryTable({
           table={table}
           columns={tableOptions.columns}
           onRowClick={(row) => {
-            const value = row.getValue(groupBy);
-            toggleMosaicSelection({
-              selection: model.selections.cross as any,
-              client,
-              column: groupBy,
-              value,
-            });
+            row.toggleSelected();
           }}
         />
       </div>
     </div>
-  );
-}
-
-function SelectionCheckbox<TData>({
-  row,
-  groupBy,
-}: {
-  row: Row<TData>;
-  groupBy: string;
-}) {
-  const cells = row.getAllCells();
-  if (!cells[0]) {
-    return null;
-  }
-
-  const meta = cells[0].getContext().table.options.meta;
-  const selectedValue = meta?.selectedValue;
-  const rowVal = row.getValue(groupBy);
-
-  let isChecked = false;
-  if (Array.isArray(selectedValue)) {
-    isChecked = selectedValue.includes(rowVal);
-  } else {
-    isChecked = selectedValue === rowVal;
-  }
-
-  return (
-    <input
-      type="checkbox"
-      checked={isChecked}
-      readOnly
-      className="cursor-pointer size-4"
-    />
   );
 }
 
