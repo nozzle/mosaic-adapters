@@ -12,7 +12,7 @@ declare module '@tanstack/react-table' {
   }
 
   // Extend TableMeta to support passing selection state down to cells
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   interface TableMeta<TData extends RowData> {
     selectedValue?: any;
   }

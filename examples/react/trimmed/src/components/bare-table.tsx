@@ -354,17 +354,13 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
     minMax?.[1] !== undefined ? formatValue(minMax[1]) : placeholderPrefix;
 
   const currentMin =
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     columnFilterValue?.[0] !== undefined
-      ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        formatValue(columnFilterValue[0])
+      ? formatValue(columnFilterValue[0])
       : '';
 
   const currentMax =
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     columnFilterValue?.[1] !== undefined
-      ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        formatValue(columnFilterValue[1])
+      ? formatValue(columnFilterValue[1])
       : '';
 
   return (
@@ -373,7 +369,6 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
         type={inputType}
         value={currentMin}
         onChange={(value) =>
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           column.setFilterValue((old: [any, any] | undefined) => [
             value,
             old?.[1],
@@ -387,7 +382,6 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
         type={inputType}
         value={currentMax}
         onChange={(value) =>
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           column.setFilterValue((old: [any, any] | undefined) => [
             old?.[0],
             value,

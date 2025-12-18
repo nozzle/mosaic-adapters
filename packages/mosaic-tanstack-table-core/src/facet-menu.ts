@@ -8,6 +8,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { Store } from '@tanstack/store';
 import { createStructAccess } from './utils';
 import { logger } from './logger';
+import { MosaicSelectionManager } from './selection-manager';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 
@@ -52,8 +53,7 @@ export class MosaicFacetMenu extends MosaicClient {
   readonly store: Store<MosaicFacetMenuState>;
   readonly id: number;
 
-  // Internal Set for O(1) toggle operations (Simulating TanStack Row Selection State)
-  private _selectionSet = new Set<FacetValue>();
+  private selectionManager: MosaicSelectionManager;
   private _searchTerm = '';
 
   constructor(options: MosaicFacetMenuOptions) {
@@ -75,6 +75,14 @@ export class MosaicFacetMenu extends MosaicClient {
       loading: false,
       searchTerm: '',
       selectedValues: [],
+    });
+
+    // Initialize Manager
+    this.selectionManager = new MosaicSelectionManager({
+      selection: options.selection,
+      client: this,
+      column: options.column,
+      isArrayColumn: options.isArrayColumn,
     });
 
     logger.debug('Core', `${this.debugPrefix} Created Instance #${this.id}`);
@@ -111,8 +119,16 @@ export class MosaicFacetMenu extends MosaicClient {
       oldOptions.table !== newOptions.table ||
       oldOptions.column !== newOptions.column
     ) {
-      this._selectionSet.clear(); // Clear local selection on column swap
-      this._syncSelection(); // Sync to clear external selection
+      // Update Manager configuration if column/selection changes
+      this.selectionManager = new MosaicSelectionManager({
+        selection: newOptions.selection,
+        client: this,
+        column: newOptions.column,
+        isArrayColumn: newOptions.isArrayColumn,
+      });
+
+      // Clear selection on the new manager (typically swapping columns means reset)
+      this.selectionManager.select(null);
       this.requestUpdate();
     }
   }
@@ -185,74 +201,24 @@ export class MosaicFacetMenu extends MosaicClient {
    * Replicates TanStack's `row.toggleSelected()` logic.
    */
   toggle(value: FacetValue) {
-    if (value === null) {
-      this._selectionSet.clear();
-    } else {
-      if (this._selectionSet.has(value)) {
-        this._selectionSet.delete(value);
-      } else {
-        this._selectionSet.add(value);
-      }
-    }
-
-    this._syncSelection();
+    this.selectionManager.toggle(value);
+    this._syncStoreFromManager();
   }
 
   /**
    * Clears the current selection (Select All/None).
    */
   clear() {
-    this._selectionSet.clear();
-    this._syncSelection();
+    this.selectionManager.select(null);
+    this._syncStoreFromManager();
   }
 
   /**
-   * Converts the internal Set state into a Mosaic Predicate and updates the Selection.
+   * Helper to keep the reactive store in sync with the Manager's state
    */
-  private _syncSelection() {
-    const { selection, column, isArrayColumn } = this.options;
-    const values = Array.from(this._selectionSet);
-
-    // Update Store
+  private _syncStoreFromManager() {
+    const values = this.selectionManager.getCurrentValues();
     this.store.setState((s) => ({ ...s, selectedValues: values }));
-
-    const colExpr = createStructAccess(column);
-    let predicate: FilterExpr | null = null;
-
-    if (values.length > 0) {
-      if (isArrayColumn) {
-        // For Arrays: list_has_any(col, ['val1', 'val2'])
-        // We wrap the entire array in mSql.literal so it becomes a DuckDB List Literal.
-        predicate = mSql.listHasAny(colExpr, mSql.literal(values));
-      } else {
-        if (values.length === 1) {
-          // Optimization: Single EQ
-          predicate = mSql.eq(colExpr, mSql.literal(values[0]));
-        } else {
-          // Multi-Select: IN clause
-          // We MUST wrap values in mSql.literal() or they are treated as Identifiers ("col")
-          predicate = mSql.isIn(
-            colExpr,
-            values.map((v) => mSql.literal(v)),
-          );
-        }
-      }
-    }
-
-    // INFO: Downgraded to 'debug' to reduce console noise
-    logger.debug(
-      'Mosaic',
-      `${this.debugPrefix} (#${this.id}) updating selection`,
-      { values, predicate: predicate?.toString() },
-    );
-
-    selection.update({
-      source: this,
-      clients: new Set([this]), // Explicitly exclude this client from its own filter
-      value: values.length > 0 ? values : null,
-      // Fixed: Cast predicate to any to resolve type mismatch between mosaic-sql FilterExpr and mosaic-core ExprNode
-      predicate: predicate as any,
-    });
   }
 
   // --- LIFECYCLE DIAGNOSTICS ---
