@@ -1,4 +1,4 @@
-// Filter components for the Nozzle PAA view, implementing multi-select logic and facet queries.
+// Filter components for the Nozzle PAA view, refactored to delegate logic to Core.
 
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -6,7 +6,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { Check, ChevronDown, X } from 'lucide-react';
 import { useMosaicFacetMenu } from '@nozzleio/mosaic-tanstack-react-table';
 import type { MosaicSQLExpression } from '@nozzleio/mosaic-tanstack-react-table';
-import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
+import type { Selection } from '@uwdata/mosaic-core';
 
 import { Input } from '@/components/ui/input';
 import {
@@ -24,38 +24,20 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-// Local helper to avoid importing from core package which can cause build issues in example
+// Local helper to avoid importing from core package in examples
 function createStructAccess(columnPath: string): MosaicSQLExpression {
   if (!columnPath.includes('.')) {
     return mSql.column(columnPath);
   }
-
   const [head, ...tail] = columnPath.split('.');
   if (!head) {
     throw new Error(`Invalid column path: ${columnPath}`);
   }
-
   let expr: MosaicSQLExpression = mSql.column(head);
   for (const part of tail) {
     expr = mSql.sql`${expr}.${mSql.column(part)}`;
   }
   return expr;
-}
-
-// NOTE: With multi-select enabled in the FacetMenu, this hook is strictly for external read-only display.
-// The FacetMenu manages its own state now.
-function useSelectionValue(selection: Selection, client: MosaicClient) {
-  const [value, setValue] = useState(selection.valueFor(client));
-
-  useEffect(() => {
-    const handler = () => {
-      setValue(selection.valueFor(client));
-    };
-    selection.addEventListener('value', handler);
-    return () => selection.removeEventListener('value', handler);
-  }, [selection, client]);
-
-  return value;
 }
 
 interface FilterProps {
@@ -67,9 +49,6 @@ interface FilterProps {
   externalContext?: Selection;
 }
 
-/**
- * Helper component for dropdown items that shouldn't steal focus.
- */
 function PassiveMenuItem({
   children,
   isSelected,
@@ -96,7 +75,7 @@ function PassiveMenuItem({
 
 /**
  * COMPONENT: SearchableSelectFilter
- * Updated to support Multi-Selection logic using `toggle`.
+ * Refactored: Logic moved to Core (Merging, Debouncing).
  */
 export function SearchableSelectFilter({
   label,
@@ -109,9 +88,9 @@ export function SearchableSelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  // Use the new hook which manages the core class instance
-  const { options, setSearchTerm, toggle, selectedValues } = useMosaicFacetMenu(
-    {
+  // Use the hook which now provides pre-merged `displayOptions` and handles debouncing
+  const { displayOptions, setSearchTerm, toggle, selectedValues } =
+    useMosaicFacetMenu({
       table,
       column,
       selection,
@@ -120,37 +99,18 @@ export function SearchableSelectFilter({
       limit: 50,
       sortMode: 'count',
       debugName: `Facet:${label}`,
-    },
-  );
+    });
 
-  // Merge selectedValues into options to ensure selected items never disappear
-  // regardless of external filtering.
-  const displayOptions = useMemo(() => {
-    // 1. Convert DB options to a set for fast lookup
-    const dbOptionsSet = new Set(options);
-
-    // 2. Find selected values that are NOT in the DB response
-    // (This happens when another filter excludes them)
-    const missingSelected = selectedValues.filter(
-      (val) => !dbOptionsSet.has(val),
-    );
-
-    // 3. Return Union: MissingSelected + DB Options
-    // We prepend missing items so they appear at the top, making it obvious they are selected.
-    return [...missingSelected, ...options];
-  }, [options, selectedValues]);
-
-  // Debounce search input
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchTerm(searchValue);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchValue, setSearchTerm]);
+  // Handle Search Input
+  // We keep local state for the input value (immediate UI feedback)
+  // but delegate the query trigger to the core's debounced method.
+  const handleSearchChange = (val: string) => {
+    setSearchValue(val);
+    setSearchTerm(val);
+  };
 
   const handleSelect = (val: string | null) => {
     toggle(val);
-    // We don't close isOpen automatically on multi-select to allow selecting multiple items
     if (val === null) {
       setIsOpen(false);
     }
@@ -190,7 +150,7 @@ export function SearchableSelectFilter({
               className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="Search..."
               value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             />
@@ -241,9 +201,7 @@ export function SearchableSelectFilter({
 
 /**
  * COMPONENT: SelectFilter
- * Refactored to use useMosaicFacetMenu.
- * NOTE: Select primitive doesn't support multi-select well visually,
- * so this remains single-select but uses the updated toggle API.
+ * Refactored: Logic moved to Core.
  */
 export function SelectFilter({
   label,
@@ -253,7 +211,9 @@ export function SelectFilter({
   filterBy,
   externalContext,
 }: FilterProps) {
-  const { options, toggle, selectedValues } = useMosaicFacetMenu({
+  // Use displayOptions here too, although for single select it's less critical,
+  // it ensures consistency.
+  const { displayOptions, toggle, selectedValues } = useMosaicFacetMenu({
     table,
     column,
     selection,
@@ -264,11 +224,7 @@ export function SelectFilter({
   });
 
   const handleChange = (val: string) => {
-    // If value is "ALL", we toggle null to clear.
-    // If value matches current, we toggle it (which removes it).
-    // But since this is a Single Select UI, we just want to SET the value.
-    // To Set via Toggle: Clear first, then Toggle.
-    toggle(null);
+    toggle(null); // Clear previous (Single Select behavior)
     if (val !== 'ALL') {
       toggle(val);
     }
@@ -288,7 +244,7 @@ export function SelectFilter({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="ALL">All</SelectItem>
-          {options.map((opt) => (
+          {displayOptions.map((opt) => (
             <SelectItem key={String(opt)} value={String(opt)}>
               {String(opt)}
             </SelectItem>
@@ -301,8 +257,7 @@ export function SelectFilter({
 
 /**
  * COMPONENT: ArraySelectFilter
- * Refactored to use useMosaicFacetMenu with isArrayColumn=true.
- * Updated for Multi-Select.
+ * Refactored: Logic moved to Core (Merging, Debouncing).
  */
 export function ArraySelectFilter({
   label,
@@ -315,38 +270,24 @@ export function ArraySelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  const { options, setSearchTerm, toggle, selectedValues } = useMosaicFacetMenu(
-    {
+  const { displayOptions, setSearchTerm, toggle, selectedValues } =
+    useMosaicFacetMenu({
       table,
       column,
       selection,
       filterBy,
       additionalContext: externalContext,
       limit: 100,
-      sortMode: 'alpha', // Tags usually better alpha
-      isArrayColumn: true, // Enable UNNEST logic
+      sortMode: 'alpha',
+      isArrayColumn: true,
       debugName: `FacetArray:${label}`,
-    },
-  );
+    });
 
-  // Merge selectedValues into options here as well
-  const displayOptions = useMemo(() => {
-    const dbOptionsSet = new Set(options);
-    const missingSelected = selectedValues.filter(
-      (val) => !dbOptionsSet.has(val),
-    );
-    // For alpha sort mode, we might want to resort, but prepending is safer for "Selected Visibility"
-    return [...missingSelected, ...options];
-  }, [options, selectedValues]);
+  const handleSearchChange = (val: string) => {
+    setSearchValue(val);
+    setSearchTerm(val);
+  };
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchTerm(searchValue);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchValue, setSearchTerm]);
-
-  // Updated to accept any FacetValue (matched against core definitions)
   const handleSelect = (val: any | null) => {
     toggle(val);
     if (val === null) {
@@ -388,7 +329,7 @@ export function ArraySelectFilter({
               className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="Search..."
               value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             />
@@ -416,7 +357,6 @@ export function ArraySelectFilter({
             </PassiveMenuItem>
 
             {displayOptions.map((opt) => {
-              // Fix: Convert non-primitive React children to string for display and key
               const strVal = String(opt);
               return (
                 <PassiveMenuItem
@@ -443,12 +383,11 @@ export function ArraySelectFilter({
 
 /**
  * COMPONENT: TextFilter
- * Remains mostly the same, but uses a stable memoized source object for identity.
+ * Remains mostly the same.
  */
 export function TextFilter({ label, column, selection }: FilterProps) {
   const [val, setVal] = useState('');
 
-  // Stable Source
   const filterSource = useMemo(() => ({ id: `filter-${column}` }), [column]);
 
   useEffect(() => {

@@ -7,12 +7,9 @@ import type { MosaicFacetMenuOptions } from '@nozzleio/mosaic-tanstack-table-cor
 
 export function useMosaicFacetMenu(options: MosaicFacetMenuOptions) {
   // 1. Instantiate the stable client once
-  // We use useState lazy initialization to ensure the client is created exactly once per component lifecycle.
-  // This prevents the "Identity Mismatch" issue where a new client (Source B) tries to clear a filter created by Source A.
   const [client] = React.useState(() => new MosaicFacetMenu(options));
 
   // 2. Sync options updates to the stable client
-  // This allows us to react to prop changes (like externalContext changing) without destroying the client.
   React.useEffect(() => {
     client.updateOptions(options);
   }, [client, options]);
@@ -27,16 +24,25 @@ export function useMosaicFacetMenu(options: MosaicFacetMenuOptions) {
   }, [client]);
 
   return {
+    /** Raw options from the database (respecting limit/filters) */
     options: state.options,
+    /**
+     * Merged options for UI display.
+     * Guaranteed to include currently selected values, even if they aren't in the raw options.
+     */
+    displayOptions: state.displayOptions,
     loading: state.loading,
     selectedValues: state.selectedValues,
+    /**
+     * Sets the search term. Debounced internally by the core client.
+     */
     setSearchTerm: (term: string) => client.setSearchTerm(term),
     /**
      * Toggles a value in the selection set.
      * Pass `null` to clear all selections.
      */
     toggle: (value: string | number | null) => client.toggle(value),
-    // Deprecated: Alias select to toggle for backward compatibility during refactor, or logic switch
+    // Deprecated alias
     select: (value: string | null) => client.toggle(value),
     client,
   };

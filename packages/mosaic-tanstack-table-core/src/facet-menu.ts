@@ -25,13 +25,25 @@ export interface MosaicFacetMenuOptions {
   limit?: number;
   debugName?: string;
   isArrayColumn?: boolean;
+  /**
+   * Debounce time in milliseconds for search term updates.
+   * @default 300
+   */
+  debounceTime?: number;
 }
 
 export interface MosaicFacetMenuState {
+  /** Raw options returned from the database query */
   options: Array<FacetValue>;
+  /**
+   * Smart list of options for UI display.
+   * Logic: Union(SelectedValues, DatabaseOptions).
+   * Ensures selected items remain visible even if excluded by other filters or pagination limits.
+   */
+  displayOptions: Array<FacetValue>;
   loading: boolean;
+  /** The active search term used for the last query */
   searchTerm: string;
-  // We mirror the selected values in the store for reactive UI updates
   selectedValues: Array<FacetValue>;
 }
 
@@ -40,13 +52,12 @@ let instanceCounter = 0;
 /**
  * A "Sidecar" Client for fetching metadata (unique values) independent of the main table query.
  *
- * Why is this needed?
- * 1. The main table query typically applies LIMIT/OFFSET for pagination. A dropdown menu needs
- *    ALL unique values (or the top N by count) across the entire dataset, not just the current page.
- * 2. Cascading Filters: This client allows us to apply a slightly different set of filters
- *    than the main table. Specifically, for a column "A" dropdown, we want to filter by
- *    Columns B and C, but *exclude* the filter on Column A itself (so the user can see
- *    other options to switch to).
+ * Features:
+ * - Fetches unique values from the database (Facet)
+ * - Manages selection state (Multi-select / Single-select support via Manager)
+ * - Handles cascading logic (excludes own column filters)
+ * - Merges selected values into display options (UX best practice)
+ * - Internal debouncing for search inputs
  */
 export class MosaicFacetMenu extends MosaicClient {
   public options: MosaicFacetMenuOptions;
@@ -55,6 +66,7 @@ export class MosaicFacetMenu extends MosaicClient {
 
   private selectionManager: MosaicSelectionManager;
   private _searchTerm = '';
+  private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: MosaicFacetMenuOptions) {
     super(options.filterBy);
@@ -72,6 +84,7 @@ export class MosaicFacetMenu extends MosaicClient {
 
     this.store = new Store<MosaicFacetMenuState>({
       options: [],
+      displayOptions: [],
       loading: false,
       searchTerm: '',
       selectedValues: [],
@@ -90,7 +103,7 @@ export class MosaicFacetMenu extends MosaicClient {
 
   /**
    * Override the base filterBy getter to ensure the Coordinator always sees
-   * the most current selection from options, not the one passed to super() in constructor.
+   * the most current selection from options.
    */
   override get filterBy() {
     return this.options.filterBy;
@@ -98,24 +111,19 @@ export class MosaicFacetMenu extends MosaicClient {
 
   /**
    * Updates options and handles re-connection/listener updates if needed.
-   * This allows the React hook to keep a stable client instance.
    */
   updateOptions(newOptions: MosaicFacetMenuOptions) {
     const oldOptions = this.options;
     this.options = newOptions;
 
     // 1. Handle Primary Filter (filterBy) changes
-    // If the filter selection reference changes, we must inform the Coordinator
-    // so it can move this client to the correct Filter Group.
     if (oldOptions.filterBy !== newOptions.filterBy) {
       logger.debug(
         'Core',
         `${this.debugPrefix} filterBy changed. Reconnecting to Coordinator.`,
       );
       if (this.coordinator) {
-        // Disconnect removes the client from the old filter group
         this.coordinator.disconnect(this);
-        // Connect adds the client to the new filter group (via the overridden filterBy getter)
         this.coordinator.connect(this);
       }
       this.requestUpdate();
@@ -135,18 +143,15 @@ export class MosaicFacetMenu extends MosaicClient {
           this._additionalContextListener,
         );
       }
-      // Trigger update because context changed
       this.requestUpdate();
     }
 
-    // 3. Handle Structural Changes (Table, Column, Selection Output)
-    // If the output selection changes, we must update the SelectionManager so clicks go to the right place.
+    // 3. Handle Structural Changes
     if (
       oldOptions.table !== newOptions.table ||
       oldOptions.column !== newOptions.column ||
       oldOptions.selection !== newOptions.selection
     ) {
-      // Update Manager configuration if column/selection changes
       this.selectionManager = new MosaicSelectionManager({
         selection: newOptions.selection,
         client: this,
@@ -154,17 +159,12 @@ export class MosaicFacetMenu extends MosaicClient {
         isArrayColumn: newOptions.isArrayColumn,
       });
 
-      // Clear selection on the new manager (typically swapping columns means reset)
-      // Only do this if column/table changed, if just selection object ref changed (but logic is same),
-      // we might strictly strictly speaking not want to clear, but usually a ref change in Mosaic
-      // implies a topology rebuild.
       if (
         oldOptions.table !== newOptions.table ||
         oldOptions.column !== newOptions.column
       ) {
         this.selectionManager.select(null);
       } else {
-        // If only selection changed (e.g. fresh object), sync the store to the new selection's current value
         this._syncStoreFromManager();
       }
 
@@ -187,23 +187,13 @@ export class MosaicFacetMenu extends MosaicClient {
 
   connect(): () => void {
     if (!this.coordinator) {
-      logger.debug(
-        'Core',
-        `${this.debugPrefix} connect() called but coordinator is missing. Repairing...`,
-      );
       this.coordinator = this.options.coordinator || defaultCoordinator();
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (this.coordinator) {
-      logger.debug('Core', `${this.debugPrefix} (#${this.id}) Connecting...`);
       this.coordinator.connect(this);
       this.requestUpdate();
-    } else {
-      logger.error(
-        'Core',
-        `${this.debugPrefix} connect() failed: Coordinator could not be resolved.`,
-      );
     }
 
     if (this.options.additionalContext) {
@@ -214,9 +204,7 @@ export class MosaicFacetMenu extends MosaicClient {
     }
 
     return () => {
-      logger.debug('Core', `${this.debugPrefix} (#${this.id}) Disconnecting`);
       this.coordinator?.disconnect(this);
-
       if (this.options.additionalContext) {
         this.options.additionalContext.removeEventListener(
           'value',
@@ -226,18 +214,33 @@ export class MosaicFacetMenu extends MosaicClient {
     };
   }
 
+  /**
+   * Sets the search term with built-in debouncing.
+   * @param term The new search string
+   */
   setSearchTerm(term: string) {
-    if (this._searchTerm !== term) {
-      this._searchTerm = term;
-      this.store.setState((s) => ({ ...s, searchTerm: term }));
-      this.requestUpdate();
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
     }
+
+    // Update the store immediately if needed for UI mirroring?
+    // Usually React inputs track their own state, so we only update the store when the query actually runs.
+    // However, fast typists might want to know if the search is "pending".
+    // For now, we wait for debounce to fire.
+
+    const delay = this.options.debounceTime ?? 300;
+
+    this._debounceTimer = setTimeout(() => {
+      if (this._searchTerm !== term) {
+        this._searchTerm = term;
+        this.store.setState((s) => ({ ...s, searchTerm: term }));
+        this.requestUpdate();
+      }
+    }, delay);
   }
 
   /**
    * Toggles the selection of a value.
-   * If value is null, it clears the selection (Select All / None).
-   * Replicates TanStack's `row.toggleSelected()` logic.
    */
   toggle(value: FacetValue) {
     this.selectionManager.toggle(value);
@@ -253,43 +256,43 @@ export class MosaicFacetMenu extends MosaicClient {
   }
 
   /**
-   * Helper to keep the reactive store in sync with the Manager's state
+   * Helper to keep the reactive store in sync with the Manager's state.
+   * Also re-calculates displayOptions to ensure selected items are visible.
    */
   private _syncStoreFromManager() {
     const values = this.selectionManager.getCurrentValues();
-    this.store.setState((s) => ({ ...s, selectedValues: values }));
+    const currentOptions = this.store.state.options;
+    const merged = this._mergeDisplayOptions(currentOptions, values);
+
+    this.store.setState((s) => ({
+      ...s,
+      selectedValues: values,
+      displayOptions: merged,
+    }));
   }
 
-  // --- LIFECYCLE DIAGNOSTICS ---
-
-  override requestUpdate(): void {
-    // logger.debug('Core', `${this.debugPrefix} requestUpdate called`);
-    super.requestUpdate();
+  /**
+   * Merges database options with selected values.
+   * Logic: Prepend any selected values that are NOT present in the database response.
+   * This handles cases where filters/limits hide the currently selected item.
+   */
+  private _mergeDisplayOptions(
+    dbOptions: Array<FacetValue>,
+    selected: Array<FacetValue>,
+  ): Array<FacetValue> {
+    const dbSet = new Set(dbOptions);
+    const missing = selected.filter((val) => !dbSet.has(val));
+    return [...missing, ...dbOptions];
   }
+
+  // --- QUERY LOGIC ---
 
   override requestQuery(query?: any): Promise<any> | null {
-    // logger.debug('Core', `${this.debugPrefix} requestQuery called`);
-
     if (!this.coordinator) {
-      logger.warn(
-        'Core',
-        `${this.debugPrefix} aborted requestQuery: No Coordinator`,
-      );
       return Promise.resolve();
     }
     return super.requestQuery(query);
   }
-
-  fieldInfo(info: Array<any>): this {
-    logger.debug('Core', `${this.debugPrefix} received fieldInfo`, info);
-    return this;
-  }
-
-  fields(): Array<any> {
-    return [];
-  }
-
-  // --- QUERY LOGIC ---
 
   override query(filter?: FilterExpr): SelectQuery {
     const {
@@ -304,21 +307,14 @@ export class MosaicFacetMenu extends MosaicClient {
 
     const colExpr = createStructAccess(column);
 
-    // 1. Resolve Primary Filter
-    // We ignore the `filter` argument passed by the Coordinator if we have a filterBy in options,
-    // to ensure we are using the freshest selection reference available.
-    // The Coordinator *should* pass the correct one if connected properly, but explicit resolution is safer.
     let effectiveFilter = filter;
     if (filterBy) {
       effectiveFilter = filterBy.predicate(this);
     }
 
-    // 2. Resolve Additional Context (Manual)
     if (additionalContext) {
-      // We pass 'this' to ensure we don't accidentally include ourselves if the context is also a crossfilter
       const extraFilter = additionalContext.predicate(this);
       if (extraFilter) {
-        // Combine Primary + Additional
         effectiveFilter = effectiveFilter
           ? mSql.and(effectiveFilter, extraFilter)
           : extraFilter;
@@ -347,9 +343,7 @@ export class MosaicFacetMenu extends MosaicClient {
       query.groupby('tag');
       query.orderby(mSql.asc('tag'));
     } else {
-      // Explicitly alias to ensure flat result keys
       const selection = column.includes('.') ? { [column]: colExpr } : column;
-
       query = mSql.Query.from(table).select(selection);
 
       if (effectiveFilter) {
@@ -373,7 +367,6 @@ export class MosaicFacetMenu extends MosaicClient {
 
     query.limit(limit);
 
-    // DEBUG LOGGING
     logger.debounce(
       `facet-query-${this.id}`,
       300,
@@ -401,38 +394,32 @@ export class MosaicFacetMenu extends MosaicClient {
 
     if (data && typeof data.toArray === 'function') {
       const rows = data.toArray();
-
-      logger.debug(
-        'Mosaic',
-        `${this.debugPrefix} received ${rows.length} rows`,
-      );
-
       for (const row of rows) {
         let val = row[key];
         if (val === undefined && key.includes('.')) {
           val = key.split('.').reduce((obj: any, k: string) => obj?.[k], row);
         }
-
         if (val !== null && val !== undefined) {
           values.push(val as FacetValue);
         }
       }
-    } else {
-      logger.warn('Core', `${this.debugPrefix} received invalid data`, data);
     }
+
+    // Update state with new options AND re-calculate displayOptions
+    const currentSelected = this.store.state.selectedValues;
+    const merged = this._mergeDisplayOptions(values, currentSelected);
 
     this.store.setState((s) => ({
       ...s,
       options: values,
+      displayOptions: merged,
       loading: false,
     }));
     return this;
   }
 
   override queryError(error: Error) {
-    logger.error('Core', `${this.debugPrefix} Query Error`, {
-      error,
-    });
+    logger.error('Core', `${this.debugPrefix} Query Error`, { error });
     this.store.setState((s) => ({ ...s, loading: false }));
     return this;
   }
