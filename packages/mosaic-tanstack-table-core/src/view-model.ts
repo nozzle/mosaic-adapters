@@ -6,14 +6,38 @@
 import type { Coordinator, MosaicClient, Selection } from '@uwdata/mosaic-core';
 import type { MosaicDataTableColumnDefMetaOptions } from './types';
 
-export abstract class MosaicViewModel {
+export interface MosaicViewModelOptions {
+  coordinator: Coordinator;
+  /**
+   * Callback to setup selection topology and listeners.
+   * Called when the model connects.
+   */
+  onConnect?: (model: MosaicViewModel) => void;
+  /**
+   * Metadata map for columns.
+   * Used to resolve `getColumnMeta` calls.
+   */
+  columnMeta?: Record<
+    string,
+    MosaicDataTableColumnDefMetaOptions['mosaicDataTable']
+  >;
+}
+
+export class MosaicViewModel {
   public coordinator: Coordinator;
+  private options: MosaicViewModelOptions;
 
   // Store unsubscribe functions for cleanup (listeners, bridges, etc)
   private _disposables: Array<() => void> = [];
 
-  constructor(coordinator: Coordinator) {
-    this.coordinator = coordinator;
+  constructor(optionsOrCoordinator: MosaicViewModelOptions | Coordinator) {
+    if ('coordinator' in optionsOrCoordinator) {
+      this.options = optionsOrCoordinator;
+      this.coordinator = optionsOrCoordinator.coordinator;
+    } else {
+      this.coordinator = optionsOrCoordinator;
+      this.options = { coordinator: optionsOrCoordinator };
+    }
   }
 
   /**
@@ -29,10 +53,15 @@ export abstract class MosaicViewModel {
    * Call this when the View mounts.
    */
   public connect(): () => void {
-    // 1. Setup Topology (Cross-selection logic)
+    // 1. Run Setup Logic
     this.setupTopology();
 
-    // 2. Return a cleanup function for React/Frameworks to call on unmount
+    // 2. Run Composition Callback (if provided)
+    if (this.options.onConnect) {
+      this.options.onConnect(this);
+    }
+
+    // 3. Return a cleanup function for React/Frameworks to call on unmount
     return () => this.disconnect();
   }
 
@@ -52,14 +81,14 @@ export abstract class MosaicViewModel {
    * Register a cleanup function to be called when the model disconnects.
    * Useful for Bridges, Timers, or custom subscriptions.
    */
-  protected register(cleanup: () => void) {
+  public register(cleanup: () => void) {
     this._disposables.push(cleanup);
   }
 
   /**
    * Helper to add listeners that are automatically cleaned up.
    */
-  protected listen(
+  public listen(
     selection: Selection,
     event: 'value' | 'active',
     handler: () => void,
@@ -72,7 +101,7 @@ export abstract class MosaicViewModel {
    * Helper: Connect a child MosaicClient (like a FacetMenu that exists only in logic)
    * and ensure it disconnects when the model dies.
    */
-  protected manageClient(
+  public manageClient(
     client: { connect: () => any; disconnect?: () => any } | MosaicClient,
   ) {
     // Duck-typing check because MosaicClient signatures vary slightly
@@ -93,16 +122,23 @@ export abstract class MosaicViewModel {
   }
 
   /**
-   * Abstract method where subclasses define their specific logic.
-   * e.g., "When Input Filter changes, clear Detail Filter".
+   * Setup topology. Can be overridden by subclasses or handled via `onConnect` callback.
    */
-  protected abstract setupTopology(): void;
+  protected setupTopology(): void {
+    // Default no-op
+  }
 
   /**
    * Returns column metadata (SQL mapping) independent of UI rendering.
    * Used to keep SQL logic out of View components.
+   * Looks up in `options.columnMeta` if available.
    */
-  public abstract getColumnMeta(
+  public getColumnMeta(
     columnId: string,
-  ): MosaicDataTableColumnDefMetaOptions['mosaicDataTable'];
+  ): MosaicDataTableColumnDefMetaOptions['mosaicDataTable'] {
+    if (this.options.columnMeta) {
+      return this.options.columnMeta[columnId];
+    }
+    return undefined;
+  }
 }

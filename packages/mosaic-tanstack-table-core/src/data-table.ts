@@ -99,6 +99,9 @@ export class MosaicDataTable<
   // Manager for row selection sync
   #rowSelectionManager?: MosaicSelectionManager;
 
+  // Track connection state locally to prevent "Client already connected" errors
+  #isConnected = false;
+
   #QueryStore: any;
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
@@ -406,8 +409,14 @@ export class MosaicDataTable<
   }
 
   connect(): () => void {
+    // Prevent double connection which causes Coordinator to throw
+    if (this.#isConnected) {
+      return () => {};
+    }
+
     // Connect to the coordinator
     this.coordinator?.connect(this);
+    this.#isConnected = true;
     this.enabled = true;
 
     // Connect active facet clients
@@ -506,7 +515,15 @@ export class MosaicDataTable<
         'value',
         rowSelectionCb,
       );
+
       this.#facetClients.forEach((client) => client.disconnect());
+
+      // CRITICAL: Explicitly disconnect from coordinator on unmount
+      if (this.coordinator) {
+        this.coordinator.disconnect(this);
+      }
+      this.#isConnected = false;
+
       destroy();
     };
   }

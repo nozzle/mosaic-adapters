@@ -3,12 +3,7 @@
  * Defines configuration options, store structures, and metadata extensions.
  */
 
-import type {
-  Coordinator,
-  MosaicClient,
-  Param,
-  Selection,
-} from '@uwdata/mosaic-core';
+import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
@@ -29,7 +24,12 @@ export type FacetSortMode = 'alpha' | 'count';
 
 export type ColumnType = 'scalar' | 'array';
 
-export type SelectionSource = MosaicClient | Record<string, unknown>;
+/**
+ * Represents the identity source for a selection update.
+ * In Mosaic, this is used for reference equality checks to prevent infinite loops (cross-filtering).
+ * It can be a MosaicClient, a ViewModel instance, or any stable object reference.
+ */
+export type SelectionSource = object;
 
 /**
  * This will be merged into the TanStack Table ColumnDef type
