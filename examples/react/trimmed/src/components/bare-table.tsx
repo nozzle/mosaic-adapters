@@ -1,3 +1,5 @@
+// examples/react/trimmed/src/components/bare-table.tsx
+
 import * as React from 'react';
 import { flexRender } from '@tanstack/react-table';
 import type {
@@ -310,16 +312,17 @@ function SelectFilter<TData extends RowData, TValue>({
   );
 }
 
-function DebouncedRangeFilter({
+function DebouncedRangeFilter<TData extends RowData, TValue>({
   column,
   type = 'number',
   placeholderPrefix = '',
 }: {
-  column: any;
+  column: Column<TData, TValue>;
   type?: 'number' | 'date' | 'datetime';
   placeholderPrefix?: string;
 }) {
-  const columnFilterValue = column.getFilterValue();
+  // Explicitly typing the filter value tuple to avoid 'any'
+  const columnFilterValue = column.getFilterValue() as [any, any] | undefined;
   const minMax = column.getFacetedMinMaxValues();
 
   // Determine the HTML Input type
@@ -352,16 +355,16 @@ function DebouncedRangeFilter({
 
   const currentMin =
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    (columnFilterValue as [any, any])?.[0] !== undefined
+    columnFilterValue?.[0] !== undefined
       ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        formatValue((columnFilterValue as [any, any])?.[0])
+        formatValue(columnFilterValue[0])
       : '';
 
   const currentMax =
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    (columnFilterValue as [any, any])?.[1] !== undefined
+    columnFilterValue?.[1] !== undefined
       ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        formatValue((columnFilterValue as [any, any])?.[1])
+        formatValue(columnFilterValue[1])
       : '';
 
   return (
@@ -371,7 +374,10 @@ function DebouncedRangeFilter({
         value={currentMin}
         onChange={(value) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          column.setFilterValue((old: [any, any]) => [value, old?.[1]])
+          column.setFilterValue((old: [any, any] | undefined) => [
+            value,
+            old?.[1],
+          ])
         }
         placeholder={`Min ${minValue ? `(${minValue})` : ''}`}
         className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
@@ -382,7 +388,10 @@ function DebouncedRangeFilter({
         value={currentMax}
         onChange={(value) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          column.setFilterValue((old: [any, any]) => [old?.[0], value])
+          column.setFilterValue((old: [any, any] | undefined) => [
+            old?.[0],
+            value,
+          ])
         }
         placeholder={`Max ${maxValue ? `(${maxValue})` : ''}`}
         className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"

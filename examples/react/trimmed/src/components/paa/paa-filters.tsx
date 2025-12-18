@@ -319,7 +319,8 @@ export function ArraySelectFilter({
     return () => clearTimeout(timer);
   }, [searchValue, setSearchTerm]);
 
-  const handleSelect = (val: string | null) => {
+  // Updated to accept any FacetValue (matched against core definitions)
+  const handleSelect = (val: any | null) => {
     toggle(val);
     if (val === null) {
       setIsOpen(false);
@@ -387,15 +388,19 @@ export function ArraySelectFilter({
               All
             </PassiveMenuItem>
 
-            {options.map((opt) => (
-              <PassiveMenuItem
-                key={opt}
-                isSelected={selectedValues.includes(opt)}
-                onClick={() => handleSelect(opt)}
-              >
-                {opt}
-              </PassiveMenuItem>
-            ))}
+            {options.map((opt) => {
+              // Fix: Convert non-primitive React children to string for display and key
+              const strVal = String(opt);
+              return (
+                <PassiveMenuItem
+                  key={strVal}
+                  isSelected={selectedValues.includes(opt)}
+                  onClick={() => handleSelect(opt)}
+                >
+                  {strVal}
+                </PassiveMenuItem>
+              );
+            })}
 
             {options.length === 0 && (
               <div className="py-6 text-center text-sm text-slate-500">

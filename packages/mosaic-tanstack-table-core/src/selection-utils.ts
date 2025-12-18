@@ -3,6 +3,7 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { createStructAccess } from './utils';
 import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
+import type { FilterExpr } from '@uwdata/mosaic-sql';
 
 export interface ToggleSelectionOptions {
   /**
@@ -87,7 +88,7 @@ export function toggleMosaicSelection({
     });
   } else {
     const colExpr = createStructAccess(column);
-    let predicate;
+    let predicate: FilterExpr;
 
     if (isArrayColumn) {
       // For Arrays: list_has_any(col, ['val1', 'val2'])
@@ -111,7 +112,7 @@ export function toggleMosaicSelection({
       source: client,
       clients: new Set([client]),
       value: newValues,
-      predicate: predicate as any, // Cast to any to satisfy Mosaic type strictness if needed
+      predicate: predicate,
     });
   }
 }

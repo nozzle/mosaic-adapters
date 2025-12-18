@@ -11,6 +11,8 @@ import { logger } from './logger';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 
+export type FacetValue = string | number | boolean | Date | null;
+
 export interface MosaicFacetMenuOptions {
   table: string;
   column: string;
@@ -25,11 +27,11 @@ export interface MosaicFacetMenuOptions {
 }
 
 export interface MosaicFacetMenuState {
-  options: Array<any>;
+  options: Array<FacetValue>;
   loading: boolean;
   searchTerm: string;
   // We mirror the selected values in the store for reactive UI updates
-  selectedValues: Array<any>;
+  selectedValues: Array<FacetValue>;
 }
 
 let instanceCounter = 0;
@@ -51,7 +53,7 @@ export class MosaicFacetMenu extends MosaicClient {
   readonly id: number;
 
   // Internal Set for O(1) toggle operations (Simulating TanStack Row Selection State)
-  private _selectionSet = new Set<any>();
+  private _selectionSet = new Set<FacetValue>();
   private _searchTerm = '';
 
   constructor(options: MosaicFacetMenuOptions) {
@@ -182,7 +184,7 @@ export class MosaicFacetMenu extends MosaicClient {
    * If value is null, it clears the selection (Select All / None).
    * Replicates TanStack's `row.toggleSelected()` logic.
    */
-  toggle(value: string | number | null) {
+  toggle(value: FacetValue) {
     if (value === null) {
       this._selectionSet.clear();
     } else {
@@ -369,7 +371,7 @@ export class MosaicFacetMenu extends MosaicClient {
 
   override queryResult(data: any) {
     const { column, isArrayColumn } = this.options;
-    const values: Array<any> = [];
+    const values: Array<FacetValue> = [];
     const key = isArrayColumn ? 'tag' : column;
 
     if (data && typeof data.toArray === 'function') {
@@ -387,7 +389,7 @@ export class MosaicFacetMenu extends MosaicClient {
         }
 
         if (val !== null && val !== undefined) {
-          values.push(val);
+          values.push(val as FacetValue);
         }
       }
     } else {

@@ -9,8 +9,9 @@ import {
   toggleMosaicSelection,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, Row } from '@tanstack/react-table';
 import type { MosaicClient } from '@uwdata/mosaic-core';
+import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import { RenderTable } from '@/components/render-table';
 import { useMosaicValue } from '@/hooks/useMosaicValue';
 import {
@@ -298,13 +299,13 @@ function SummaryTable({
   groupBy: string;
   metric: string;
   metricLabel: string;
-  aggFn: any;
-  where?: any;
+  aggFn: (expression?: any) => AggregateNode;
+  where?: FilterExpr;
 }) {
   const safeId = groupBy.replace(/\./g, '_');
 
   const queryFactory = useMemo(
-    () => (filter: any) => {
+    () => (filter: FilterExpr | null | undefined) => {
       let groupKey;
       if (groupBy.includes('.')) {
         const [col, field] = groupBy.split('.');
@@ -461,8 +462,19 @@ function SummaryTable({
 }
 
 // Extracted Component to break the Client -> Columns -> Client circular dependency
-function SelectionCheckbox({ row, groupBy }: { row: any; groupBy: string }) {
-  const meta = row.getAllCells()[0].getContext().table.options.meta;
+function SelectionCheckbox<TData>({
+  row,
+  groupBy,
+}: {
+  row: Row<TData>;
+  groupBy: string;
+}) {
+  const cells = row.getAllCells();
+  if (!cells[0]) {
+    return null;
+  }
+
+  const meta = cells[0].getContext().table.options.meta;
   const selectedValue = meta?.selectedValue;
   const rowVal = row.getValue(groupBy);
 

@@ -65,6 +65,8 @@ interface ActiveFacetClient extends MosaicClient {
   disconnect: () => void;
 }
 
+type MinMaxResult = { min: number; max: number };
+
 /**
  * A Mosaic Client that does the glue work to drive TanStack Table, using it's
  * TableOptions for configuration.
@@ -864,7 +866,7 @@ export class MinMaxColumnValuesClient extends MosaicClient {
     if (isArrowTable(table)) {
       const rows = table.toArray();
       if (rows.length > 0) {
-        const row = rows[0] as any;
+        const row = rows[0] as MinMaxResult;
         this.onResult(row.min, row.max);
       }
     }
