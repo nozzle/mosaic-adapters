@@ -62,6 +62,7 @@ export function createMosaicDataTableClient<
 }
 
 interface ActiveFacetClient extends MosaicClient {
+  connect: () => void;
   disconnect: () => void;
 }
 
@@ -168,7 +169,31 @@ export class MosaicDataTable<
     // If columns are provided, update the mapper.
     if (options.columns) {
       this.#columnMapper = new ColumnMapper(options.columns);
+      this.#initializeAutoFacets(options.columns);
     }
+  }
+
+  /**
+   * Scans column definitions for facet configuration and initializes sidecar clients.
+   */
+  #initializeAutoFacets(columns: Array<ColumnDef<TData, TValue>>) {
+    columns.forEach((col) => {
+      const facetType = col.meta?.mosaicDataTable?.facet;
+      const colId = col.id;
+
+      if (!facetType || !colId) {
+        return;
+      }
+
+      switch (facetType) {
+        case 'unique':
+          this.loadColumnFacet(colId);
+          break;
+        case 'minmax':
+          this.loadColumnMinMax(colId);
+          break;
+      }
+    });
   }
 
   /**
@@ -367,6 +392,16 @@ export class MosaicDataTable<
     this.coordinator?.connect(this);
     this.enabled = true;
 
+    // Connect active facet clients
+    this.#facetClients.forEach((client) => {
+      // Ensure facet clients have the latest coordinator
+      if (this.coordinator) {
+        client.coordinator = this.coordinator;
+      }
+      client.connect();
+      client.requestUpdate();
+    });
+
     const destroy = this.destroy.bind(this);
 
     // Setup the primary selection change listener to reset pagination
@@ -409,8 +444,10 @@ export class MosaicDataTable<
     this.options.highlightBy?.addEventListener('value', selectionCb);
 
     return () => {
+      this.enabled = false; // Prevents "Client already connected" race conditions
       this.filterBy?.removeEventListener('value', selectionCb);
       this.options.highlightBy?.removeEventListener('value', selectionCb);
+      this.#facetClients.forEach((client) => client.disconnect());
       destroy();
     };
   }
@@ -418,6 +455,10 @@ export class MosaicDataTable<
   destroy(): void {
     super.destroy();
     this.#facetClients.forEach((client) => client.disconnect());
+    // Do NOT clear #facetClients here if we want them to persist across re-connects,
+    // but typically destroy() means we are tearing down.
+    // For auto-facets, we might want to clear them so they are re-created if columns change.
+    // However, #facetClients is map by KEY (columnId:type).
     this.#facetClients.clear();
   }
 
@@ -465,8 +506,11 @@ export class MosaicDataTable<
     });
 
     this.#facetClients.set(clientKey, facetClient);
-    facetClient.connect();
-    facetClient.requestUpdate();
+    // If the table is already enabled/connected, connect the new facet client immediately
+    if (this.enabled) {
+      facetClient.connect();
+      facetClient.requestUpdate();
+    }
   }
 
   /**
@@ -506,8 +550,11 @@ export class MosaicDataTable<
     });
 
     this.#facetClients.set(clientKey, facetClient);
-    facetClient.connect();
-    facetClient.requestUpdate();
+    // If the table is already enabled/connected, connect the new facet client immediately
+    if (this.enabled) {
+      facetClient.connect();
+      facetClient.requestUpdate();
+    }
   }
 
   /**
@@ -643,6 +690,7 @@ export class UniqueColumnValuesClient extends MosaicClient {
   limit?: number;
   sortMode: FacetSortMode;
   searchTerm = '';
+  private _isConnected = false;
 
   constructor(options: FacetClientConfig<Array<unknown>>) {
     super(options.filterBy);
@@ -670,11 +718,16 @@ export class UniqueColumnValuesClient extends MosaicClient {
   }
 
   connect(): void {
+    if (this._isConnected) {
+      return;
+    }
     this.coordinator?.connect(this);
+    this._isConnected = true;
   }
 
   disconnect(): void {
     this.coordinator?.disconnect(this);
+    this._isConnected = false;
   }
 
   setSearchTerm(term: string) {
@@ -783,6 +836,7 @@ export class MinMaxColumnValuesClient extends MosaicClient {
   debugName?: string;
   private getFilterExpressions?: () => Array<FilterExpr>;
   private onResult: (min: number, max: number) => void;
+  private _isConnected = false;
 
   constructor(options: FacetClientConfig<[number, number]>) {
     super(options.filterBy);
@@ -808,11 +862,16 @@ export class MinMaxColumnValuesClient extends MosaicClient {
   }
 
   connect(): void {
+    if (this._isConnected) {
+      return;
+    }
     this.coordinator?.connect(this);
+    this._isConnected = true;
   }
 
   disconnect(): void {
     this.coordinator?.disconnect(this);
+    this._isConnected = false;
   }
 
   // Override requestQuery to safeguard against disconnected clients

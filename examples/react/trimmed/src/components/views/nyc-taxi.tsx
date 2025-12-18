@@ -4,7 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
-import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  AggregationBridge,
+  useMosaicReactTable,
+} from '@nozzleio/mosaic-tanstack-react-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { MosaicDataTableOptions } from '@nozzleio/mosaic-tanstack-react-table';
 import { RenderTable } from '@/components/render-table';
@@ -63,76 +66,47 @@ export function NycTaxiView() {
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
   // --- Zone Filter Bridge ---
-  // This effect listens to the Summary Table Filters (Count > X) and the Context (Map Brush + Vendor).
-  // It generates a SQL Subquery that finds valid Zones matching the criteria,
-  // and updates $zoneFilter with an IN clause.
+  // Replaced complex manual useEffect with AggregationBridge class usage.
+  // The bridge manages the listeners and update loop automatically.
   useEffect(() => {
-    const updateZoneFilter = () => {
-      // Get the filter predicate from the Summary Table (e.g. trip_count > 500)
-      const summaryPred = $summaryFilter.predicate(null);
+    const bridge = new AggregationBridge({
+      source: BRIDGE_SOURCE,
+      inputSelection: $summaryFilter,
+      contextSelection: $summaryContext,
+      outputSelection: $zoneFilter,
+      resolve: (summaryPred, contextPred) => {
+        const ZONE_SIZE = 1000;
 
-      // If no summary filters are active, clear the zone filter to avoid performance hit
-      if (!summaryPred || summaryPred.toString() === 'true') {
-        // Only update if it's not already empty to avoid loops/noise
-        if ($zoneFilter.value !== null) {
-          $zoneFilter.update({
-            source: BRIDGE_SOURCE,
-            value: null,
-            predicate: null,
-          });
+        // 1. Build the Aggregation Subquery
+        const subquery = mSql.Query.from(tableName)
+          .select({
+            zone_x: mSql.sql`round(dx / ${ZONE_SIZE})`,
+            zone_y: mSql.sql`round(dy / ${ZONE_SIZE})`,
+            trip_count: mSql.count(),
+            avg_fare: mSql.avg('fare_amount'),
+          })
+          .groupby('zone_x', 'zone_y');
+
+        if (contextPred) {
+          subquery.where(contextPred);
         }
-        return;
-      }
 
-      // Get the context predicate (Map Brush + Time Filters + Vendor)
-      // The aggregation must respect these to be accurate.
-      const contextPred = $summaryContext.predicate(null);
+        // 2. Wrap it to apply the "Having" clause (The Summary Filters)
+        // Using the summaryPred derived by the Bridge from inputSelection
+        const validZonesQuery = mSql.Query.from(subquery)
+          .select('zone_x', 'zone_y')
+          .where(summaryPred!); // Assertion safe because bridge skips if null/empty
 
-      const ZONE_SIZE = 1000;
+        // 3. Construct the IN clause for the Raw Table
+        const rawZoneKey = mSql.sql`(round(dx / ${ZONE_SIZE}), round(dy / ${ZONE_SIZE}))`;
+        const filterPredicate = mSql.sql`${rawZoneKey} IN (${validZonesQuery})`;
 
-      // 1. Build the Aggregation Subquery
-      // This duplicates the logic in the Summary Table Query Factory, ensuring consistency.
-      const subquery = mSql.Query.from(tableName)
-        .select({
-          zone_x: mSql.sql`round(dx / ${ZONE_SIZE})`,
-          zone_y: mSql.sql`round(dy / ${ZONE_SIZE})`,
-          trip_count: mSql.count(),
-          avg_fare: mSql.avg('fare_amount'),
-        })
-        .groupby('zone_x', 'zone_y');
+        return filterPredicate;
+      },
+    });
 
-      if (contextPred) {
-        subquery.where(contextPred);
-      }
-
-      // 2. Wrap it to apply the "Having" clause (The Summary Filters)
-      const validZonesQuery = mSql.Query.from(subquery)
-        .select('zone_x', 'zone_y')
-        .where(summaryPred);
-
-      // 3. Construct the IN clause for the Raw Table
-      // WHERE (round(dx/1000), round(dy/1000)) IN (SELECT zone_x, zone_y FROM ...)
-      const rawZoneKey = mSql.sql`(round(dx / ${ZONE_SIZE}), round(dy / ${ZONE_SIZE}))`;
-      const filterPredicate = mSql.sql`${rawZoneKey} IN (${validZonesQuery})`;
-
-      // 4. Update the Selection
-      $zoneFilter.update({
-        source: BRIDGE_SOURCE,
-        value: 'custom', // Arbitrary value, we only care about the predicate
-        predicate: filterPredicate,
-      });
-    };
-
-    // Listen to inputs.
-    // If the Context changes (Map Brush, Vendor), the valid zones might change (counts shift).
-    // If the Filter changes (Min Count), the valid zones definitely change.
-    $summaryFilter.addEventListener('value', updateZoneFilter);
-    $summaryContext.addEventListener('value', updateZoneFilter);
-
-    return () => {
-      $summaryFilter.removeEventListener('value', updateZoneFilter);
-      $summaryContext.removeEventListener('value', updateZoneFilter);
-    };
+    const cleanup = bridge.connect();
+    return () => cleanup();
   }, []);
 
   useEffect(() => {
@@ -289,10 +263,11 @@ function TripsDetailTable() {
           enableColumnFilter: true,
           meta: {
             filterVariant: 'range',
-            rangeFilterType: 'datetime', // Changed from 'date' to 'datetime'
+            rangeFilterType: 'datetime',
             mosaicDataTable: {
               sqlColumn: 'datetime',
               sqlFilterType: 'RANGE',
+              facet: 'minmax', // Auto-load bounds
             },
           },
         },
@@ -308,6 +283,7 @@ function TripsDetailTable() {
             mosaicDataTable: {
               sqlColumn: 'vendor_id',
               sqlFilterType: 'EQUALS',
+              facet: 'unique', // Auto-load facets
             },
           },
         },
@@ -323,6 +299,7 @@ function TripsDetailTable() {
             mosaicDataTable: {
               sqlColumn: 'fare_amount',
               sqlFilterType: 'RANGE',
+              facet: 'minmax', // Auto-load bounds
             },
           },
         },
@@ -341,14 +318,9 @@ function TripsDetailTable() {
     [columns],
   );
 
-  const { tableOptions, client } = useMosaicReactTable(mosaicOptions);
+  const { tableOptions } = useMosaicReactTable(mosaicOptions);
 
-  // Load facets
-  useEffect(() => {
-    client.loadColumnMinMax('fare_amount');
-    client.loadColumnMinMax('datetime');
-    client.loadColumnFacet('vendor_id');
-  }, [client]);
+  // Removed manual facet loading useEffect
 
   const table = useReactTable(tableOptions);
   return (
@@ -406,6 +378,7 @@ function TripsSummaryTable() {
             mosaicDataTable: {
               sqlColumn: 'trip_count',
               sqlFilterType: 'RANGE',
+              facet: 'minmax', // Auto-load bounds
             },
             filterVariant: 'range',
           },
@@ -421,6 +394,7 @@ function TripsSummaryTable() {
             mosaicDataTable: {
               sqlColumn: 'avg_fare',
               sqlFilterType: 'RANGE',
+              facet: 'minmax', // Auto-load bounds
             },
             filterVariant: 'range',
           },
@@ -467,13 +441,9 @@ function TripsSummaryTable() {
     [columns, queryFactory],
   );
 
-  const { tableOptions, client } = useMosaicReactTable(mosaicOptions);
+  const { tableOptions } = useMosaicReactTable(mosaicOptions);
 
-  // Sidecar facets for aggregated columns
-  useEffect(() => {
-    client.loadColumnMinMax('trip_count');
-    client.loadColumnMinMax('avg_fare');
-  }, [client]);
+  // Removed manual facet loading useEffect
 
   const table = useReactTable(tableOptions);
   return (

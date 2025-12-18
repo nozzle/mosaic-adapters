@@ -64,6 +64,12 @@ export type MosaicDataTableColumnDefMetaOptions = {
      * @default 'alpha'
      */
     facetSortMode?: FacetSortMode;
+    /**
+     * Automatically load sidecar facet data for this column.
+     * - 'unique': Loads distinct values (for Select/MultiSelect).
+     * - 'minmax': Loads min/max bounds (for Range sliders).
+     */
+    facet?: 'unique' | 'minmax';
   };
 };
 

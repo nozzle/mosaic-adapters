@@ -172,6 +172,7 @@ function AthletesTable() {
             mosaicDataTable: {
               sqlColumn: 'nationality',
               sqlFilterType: 'EQUALS', // 'equals' for drop-down exact match
+              facet: 'unique', // Auto-load facets
             },
             filterVariant: 'select',
           },
@@ -187,6 +188,7 @@ function AthletesTable() {
             mosaicDataTable: {
               sqlColumn: 'sex',
               sqlFilterType: 'EQUALS',
+              facet: 'unique', // Auto-load facets
             },
             filterVariant: 'select',
           },
@@ -233,6 +235,7 @@ function AthletesTable() {
             mosaicDataTable: {
               sqlColumn: 'height',
               sqlFilterType: 'RANGE',
+              facet: 'minmax', // Auto-load bounds
             },
           },
           enableColumnFilter: true,
@@ -255,6 +258,7 @@ function AthletesTable() {
             mosaicDataTable: {
               sqlColumn: 'weight',
               sqlFilterType: 'RANGE',
+              facet: 'minmax', // Auto-load bounds
             },
             filterVariant: 'range',
           },
@@ -271,6 +275,7 @@ function AthletesTable() {
               sqlColumn: 'sport',
               // Using PARTIAL_ILIKE so 'gym' finds 'Gymnastics'
               sqlFilterType: 'PARTIAL_ILIKE',
+              facet: 'unique', // Auto-load facets
             },
             filterVariant: 'select',
           },
@@ -335,7 +340,7 @@ function AthletesTable() {
     [view],
   );
 
-  const { tableOptions, client } = useMosaicReactTable<AthleteRowData>({
+  const { tableOptions } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
     filterBy: $query,
     tableFilterSelection: $tableFilter,
@@ -349,20 +354,8 @@ function AthletesTable() {
     onTableStateChange: 'requestUpdate',
   });
 
-  // Trigger Server-Side Facet Loading
-  useEffect(() => {
-    // TODO: Explore having these auto-load based config used in the column meta.
-
-    // Load range bounds for Height and Weight
-    client.loadColumnMinMax('Height');
-    client.loadColumnMinMax('Weight');
-
-    // Load unique values for Gender and Nationality
-    // Removed Sport facet loading as it's now a text search
-    client.loadColumnFacet('Gender');
-    client.loadColumnFacet('nationality');
-    client.loadColumnFacet('Sport');
-  }, [client]);
+  // Removed manual useEffect for client.loadColumnFacet() calls!
+  // The MosaicDataTable core now handles this based on the column meta defined above.
 
   const table = useReactTable(tableOptions);
 
