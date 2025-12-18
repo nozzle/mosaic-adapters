@@ -393,22 +393,6 @@ function SummaryTable({
           enableColumnFilter: false,
           enableHiding: false,
           cell: ({ row }: any) => {
-            // Need the client to access selectedValue in the closure if we want to move columns up,
-            // but client comes from useMosaicReactTable.
-            // However, useMosaicReactTable accepts columns.
-            // We can break the circular dependency by using row data or external state selection if needed,
-            // but for now, we define columns inline in the hook options or pass them via useMemo.
-            // NOTE: To fix the anti-pattern, we define columns assuming we don't need `client` inside definition
-            // OR we use a secondary hook for selection value.
-            // Since we need `selectedValue` for the checkbox, we'll use a component inside the cell or move columns def.
-            // Actually, we can define columns using a closure that relies on `selectedValue` if `selectedValue` is fetched
-            // before `useMosaicReactTable`, BUT `selectedValue` needs `client`.
-            // Solution: We can't hoist `columns` completely if it depends on `client`.
-            // BUT, `useSelectionValue` depends on `client` which comes from the hook.
-            // The standard pattern is to use table meta or context for cell rendering,
-            // OR since this is a refactor to remove the useEffect, we pass the columns definition directly.
-            // The cell renderer can use a hook? No, hooks in callbacks are bad.
-            // We will defer `selectedValue` usage to a custom Cell Component to break the cycle.
             return <SelectionCheckbox row={row} groupBy={groupBy} />;
           },
         },
@@ -432,7 +416,25 @@ function SummaryTable({
     debugName: `${title}SummaryTable`,
   });
 
-  const table = useReactTable(tableOptions);
+  // REACTIVE UI FEEDBACK:
+  // Listen to the selection for THIS client to show checkmarks.
+  // We cannot easily do this inside the Cell Component because context is lost.
+  // So we fetch it here and pass it down via table meta.
+  const currentSelectionValue = useSelectionValue($crossFilter, client);
+
+  // Merge the selection value into table options meta so cells can access it
+  const finalTableOptions = useMemo(
+    () => ({
+      ...tableOptions,
+      meta: {
+        ...tableOptions.meta,
+        selectedValue: currentSelectionValue, // Pass the array (or single value) here
+      },
+    }),
+    [tableOptions, currentSelectionValue],
+  );
+
+  const table = useReactTable(finalTableOptions);
 
   return (
     <div className="bg-white border rounded-lg shadow-sm flex flex-col h-[350px] overflow-hidden">
@@ -445,24 +447,50 @@ function SummaryTable({
           columns={tableOptions.columns}
           onRowClick={(row) => {
             const value = row.getValue(groupBy);
-            // Access current selection value from the client instance directly or via selection param
-            const currentSelection = $crossFilter.valueFor(client);
 
-            if (currentSelection === value) {
+            // Get current selection (might be null, single value, or array)
+            const current = $crossFilter.valueFor(client);
+            let newValues: Array<any> = [];
+
+            if (Array.isArray(current)) {
+              newValues = [...current];
+            } else if (current !== null && current !== undefined) {
+              newValues = [current];
+            }
+
+            // Toggle Logic
+            if (newValues.includes(value)) {
+              newValues = newValues.filter((v) => v !== value);
+            } else {
+              newValues.push(value);
+            }
+
+            // Update Selection
+            if (newValues.length === 0) {
               $crossFilter.update({
                 source: client,
+                clients: new Set([client]),
                 value: null,
                 predicate: null,
               });
             } else {
-              const predicate = mSql.eq(
-                createStructAccess(groupBy),
-                mSql.literal(value),
-              );
+              const colExpr = createStructAccess(groupBy);
+              let predicate;
+
+              if (newValues.length === 1) {
+                predicate = mSql.eq(colExpr, mSql.literal(newValues[0]));
+              } else {
+                // IMPORTANT: Map strings to literals for DuckDB safety
+                predicate = mSql.isIn(
+                  colExpr,
+                  newValues.map((v) => mSql.literal(v)),
+                );
+              }
 
               $crossFilter.update({
                 source: client,
-                value: value,
+                clients: new Set([client]),
+                value: newValues,
                 predicate,
               });
             }
@@ -475,45 +503,16 @@ function SummaryTable({
 
 // Extracted Component to break the Client -> Columns -> Client circular dependency
 function SelectionCheckbox({ row, groupBy }: { row: any; groupBy: string }) {
-  // We need to know which client this row belongs to to check selection.
-  // However, $crossFilter is global.
-  // We need to check if $crossFilter has a value for *this specific table source*.
-  // This is hard without the `client` instance.
-  // BUT: The parent SummaryTable component has the `client`.
-  // We can pass `selectedValue` down if we restructure, but `columns` is static-ish.
-  // BETTER: The Checkbox just needs to know if "Global Selection Value for this Source" == "Row Value".
-  // Since we don't have the client instance easily in a static column def without context,
-  // we will use a hook that finds the client from the Table Context? No, TanStack table context doesn't hold MosaicClient.
-  //
-  // ALTERNATIVE: Re-introduce `client` dependency by keeping `columns` inside the component but AFTER `client` creation?
-  // No, `useMosaicReactTable` needs `columns`.
-  //
-  // CORRECT APPROACH: The `columns` def stays in `useMemo`. We pass it to `useMosaicReactTable`.
-  // `useMosaicReactTable` creates the client.
-  // The `SelectionCheckbox` needs access to the `client` to call `valueFor`.
-  // We can pass the `client` via `table.options.meta`!
-  //
-  // 1. Pass `client` into table meta in `useMosaicReactTable` (if not already supported).
-  // 2. Or, simpler: Just use the global $crossFilter and match the value.
-  //    Wait, $crossFilter holds multiple clauses. We need the one from *this* source.
-  //    Without `client` instance, we can't identify *this* source.
-  //
-  // PRAGMATIC FIX for this Refactor:
-  // We can't perfectly hoist columns if they depend on `client` identity.
-  // However, we CAN hoist `columns` if we pass `selectedValue` via `tableOptions.meta`.
-  // Let's update the hook to allow passing meta, or update the options after.
-  //
-  // Actually, let's look at `SelectionCheckbox` again.
-  // If we can't easily get the client, we can't implement the exact logic "isSelected".
-  //
-  // LET'S STICK TO THE PLAN: Pass columns directly.
-  // To solve the checkbox, we will use `table.options.meta` to pass the `selectedValue`.
-  // We need to update `useMosaicReactTable` logic or just pass it in `tableOptions`.
-
   const meta = row.getAllCells()[0].getContext().table.options.meta;
   const selectedValue = meta?.selectedValue;
   const rowVal = row.getValue(groupBy);
-  const isChecked = selectedValue === rowVal;
+
+  let isChecked = false;
+  if (Array.isArray(selectedValue)) {
+    isChecked = selectedValue.includes(rowVal);
+  } else {
+    isChecked = selectedValue === rowVal;
+  }
 
   return (
     <input

@@ -29,8 +29,15 @@ export function useMosaicFacetMenu(options: MosaicFacetMenuOptions) {
   return {
     options: state.options,
     loading: state.loading,
+    selectedValues: state.selectedValues,
     setSearchTerm: (term: string) => client.setSearchTerm(term),
-    select: (value: string | null) => client.select(value),
+    /**
+     * Toggles a value in the selection set.
+     * Pass `null` to clear all selections.
+     */
+    toggle: (value: string | number | null) => client.toggle(value),
+    // Deprecated: Alias select to toggle for backward compatibility during refactor, or logic switch
+    select: (value: string | null) => client.toggle(value),
     client,
   };
 }

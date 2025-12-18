@@ -28,6 +28,8 @@ export interface MosaicFacetMenuState {
   options: Array<any>;
   loading: boolean;
   searchTerm: string;
+  // We mirror the selected values in the store for reactive UI updates
+  selectedValues: Array<any>;
 }
 
 let instanceCounter = 0;
@@ -48,6 +50,8 @@ export class MosaicFacetMenu extends MosaicClient {
   readonly store: Store<MosaicFacetMenuState>;
   readonly id: number;
 
+  // Internal Set for O(1) toggle operations (Simulating TanStack Row Selection State)
+  private _selectionSet = new Set<any>();
   private _searchTerm = '';
 
   constructor(options: MosaicFacetMenuOptions) {
@@ -68,6 +72,7 @@ export class MosaicFacetMenu extends MosaicClient {
       options: [],
       loading: false,
       searchTerm: '',
+      selectedValues: [],
     });
 
     logger.debug('Core', `${this.debugPrefix} Created Instance #${this.id}`);
@@ -80,12 +85,6 @@ export class MosaicFacetMenu extends MosaicClient {
   updateOptions(newOptions: MosaicFacetMenuOptions) {
     const oldOptions = this.options;
     this.options = newOptions;
-
-    // If filterBy changed, the base MosaicClient needs to know (though it's technically readonly there)
-    // In MosaicClient, 'filterBy' is just a property getter/setter usually, but the coordinator reads it.
-    // We update our local reference. If the instance changed, we might need to reconnect to the coordinator
-    // to refresh the filter group, but Mosaic Core doesn't expose a clean way to "move" groups.
-    // For now, we assume filterBy identity is stable in most React lifecycles.
 
     // Handle additionalContext listeners
     if (oldOptions.additionalContext !== newOptions.additionalContext) {
@@ -110,6 +109,8 @@ export class MosaicFacetMenu extends MosaicClient {
       oldOptions.table !== newOptions.table ||
       oldOptions.column !== newOptions.column
     ) {
+      this._selectionSet.clear(); // Clear local selection on column swap
+      this._syncSelection(); // Sync to clear external selection
       this.requestUpdate();
     }
   }
@@ -128,7 +129,6 @@ export class MosaicFacetMenu extends MosaicClient {
   }
 
   connect(): () => void {
-    // REPAIR LOGIC: If coordinator was lost (e.g. via base disconnect), restore it.
     if (!this.coordinator) {
       logger.debug(
         'Core',
@@ -141,11 +141,6 @@ export class MosaicFacetMenu extends MosaicClient {
     if (this.coordinator) {
       logger.debug('Core', `${this.debugPrefix} (#${this.id}) Connecting...`);
       this.coordinator.connect(this);
-
-      logger.debug(
-        'Core',
-        `${this.debugPrefix} triggering initial requestUpdate`,
-      );
       this.requestUpdate();
     } else {
       logger.error(
@@ -182,16 +177,63 @@ export class MosaicFacetMenu extends MosaicClient {
     }
   }
 
-  select(value: string | null) {
+  /**
+   * Toggles the selection of a value.
+   * If value is null, it clears the selection (Select All / None).
+   * Replicates TanStack's `row.toggleSelected()` logic.
+   */
+  toggle(value: string | number | null) {
+    if (value === null) {
+      this._selectionSet.clear();
+    } else {
+      if (this._selectionSet.has(value)) {
+        this._selectionSet.delete(value);
+      } else {
+        this._selectionSet.add(value);
+      }
+    }
+
+    this._syncSelection();
+  }
+
+  /**
+   * Clears the current selection (Select All/None).
+   */
+  clear() {
+    this._selectionSet.clear();
+    this._syncSelection();
+  }
+
+  /**
+   * Converts the internal Set state into a Mosaic Predicate and updates the Selection.
+   */
+  private _syncSelection() {
     const { selection, column, isArrayColumn } = this.options;
+    const values = Array.from(this._selectionSet);
+
+    // Update Store
+    this.store.setState((s) => ({ ...s, selectedValues: values }));
+
     const colExpr = createStructAccess(column);
     let predicate: FilterExpr | null = null;
 
-    if (value !== null) {
+    if (values.length > 0) {
       if (isArrayColumn) {
-        predicate = mSql.listContains(colExpr, mSql.literal(value));
+        // For Arrays: list_has_any(col, ['val1', 'val2'])
+        // We wrap the entire array in mSql.literal so it becomes a DuckDB List Literal.
+        predicate = mSql.listHasAny(colExpr, mSql.literal(values));
       } else {
-        predicate = mSql.eq(colExpr, mSql.literal(value));
+        if (values.length === 1) {
+          // Optimization: Single EQ
+          predicate = mSql.eq(colExpr, mSql.literal(values[0]));
+        } else {
+          // Multi-Select: IN clause
+          // We MUST wrap values in mSql.literal() or they are treated as Identifiers ("col")
+          predicate = mSql.isIn(
+            colExpr,
+            values.map((v) => mSql.literal(v)),
+          );
+        }
       }
     }
 
@@ -199,14 +241,15 @@ export class MosaicFacetMenu extends MosaicClient {
     logger.debug(
       'Mosaic',
       `${this.debugPrefix} (#${this.id}) updating selection`,
-      { value, predicate: predicate?.toString() },
+      { values, predicate: predicate?.toString() },
     );
 
     selection.update({
       source: this,
       clients: new Set([this]), // Explicitly exclude this client from its own filter
-      value: value,
-      predicate: predicate,
+      value: values.length > 0 ? values : null,
+      // Fixed: Cast predicate to any to resolve type mismatch between mosaic-sql FilterExpr and mosaic-core ExprNode
+      predicate: predicate as any,
     });
   }
 
@@ -251,20 +294,6 @@ export class MosaicFacetMenu extends MosaicClient {
       additionalContext,
     } = this.options;
 
-    // DIAGNOSTIC LOGGING
-    if (filter) {
-      logger.debug(
-        'SQL',
-        `${this.debugPrefix} (#${this.id}) received Primary Filter`,
-        { filter: filter.toString() },
-      );
-    } else {
-      logger.debug(
-        'SQL',
-        `${this.debugPrefix} (#${this.id}) received Empty Primary Filter (Self-Excluded)`,
-      );
-    }
-
     const colExpr = createStructAccess(column);
 
     // 1. Resolve Primary Filter (Automatic via filterBy -> arguments)
@@ -275,11 +304,6 @@ export class MosaicFacetMenu extends MosaicClient {
       // We pass 'this' to ensure we don't accidentally include ourselves if the context is also a crossfilter
       const extraFilter = additionalContext.predicate(this);
       if (extraFilter) {
-        logger.debug(
-          'SQL',
-          `${this.debugPrefix} (#${this.id}) merging Additional Context`,
-          { extra: extraFilter.toString() },
-        );
         // Combine Primary + Additional
         effectiveFilter = effectiveFilter
           ? mSql.and(effectiveFilter, extraFilter)
@@ -335,7 +359,6 @@ export class MosaicFacetMenu extends MosaicClient {
 
     query.limit(limit);
 
-    logger.debug('SQL', `${this.debugPrefix} generated: ${query.toString()}`);
     return query;
   }
 
@@ -352,7 +375,6 @@ export class MosaicFacetMenu extends MosaicClient {
     if (data && typeof data.toArray === 'function') {
       const rows = data.toArray();
 
-      // INFO: Downgraded to 'debug' to reduce console noise
       logger.debug(
         'Mosaic',
         `${this.debugPrefix} received ${rows.length} rows`,

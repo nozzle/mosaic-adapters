@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, X } from 'lucide-react';
 import { useMosaicFacetMenu } from '@nozzleio/mosaic-tanstack-react-table';
 import type { MosaicSQLExpression } from '@nozzleio/mosaic-tanstack-react-table';
 import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
@@ -42,6 +42,8 @@ function createStructAccess(columnPath: string): MosaicSQLExpression {
   return expr;
 }
 
+// NOTE: With multi-select enabled in the FacetMenu, this hook is strictly for external read-only display.
+// The FacetMenu manages its own state now.
 function useSelectionValue(selection: Selection, client: MosaicClient) {
   const [value, setValue] = useState(selection.valueFor(client));
 
@@ -94,7 +96,7 @@ function PassiveMenuItem({
 
 /**
  * COMPONENT: SearchableSelectFilter
- * Refactored to use useMosaicFacetMenu (Core Class Architecture).
+ * Updated to support Multi-Selection logic using `toggle`.
  */
 export function SearchableSelectFilter({
   label,
@@ -108,16 +110,18 @@ export function SearchableSelectFilter({
   const [searchValue, setSearchValue] = useState('');
 
   // Use the new hook which manages the core class instance
-  const { options, setSearchTerm, select, client } = useMosaicFacetMenu({
-    table,
-    column,
-    selection,
-    filterBy,
-    additionalContext: externalContext,
-    limit: 50,
-    sortMode: 'count',
-    debugName: `Facet:${label}`,
-  });
+  const { options, setSearchTerm, toggle, selectedValues } = useMosaicFacetMenu(
+    {
+      table,
+      column,
+      selection,
+      filterBy,
+      additionalContext: externalContext,
+      limit: 50,
+      sortMode: 'count',
+      debugName: `Facet:${label}`,
+    },
+  );
 
   // Debounce search input
   useEffect(() => {
@@ -127,12 +131,22 @@ export function SearchableSelectFilter({
     return () => clearTimeout(timer);
   }, [searchValue, setSearchTerm]);
 
-  // Read current value using the client instance as identity
-  const selectedValue = useSelectionValue(selection, client);
-
   const handleSelect = (val: string | null) => {
-    select(val);
-    setIsOpen(false);
+    toggle(val);
+    // We don't close isOpen automatically on multi-select to allow selecting multiple items
+    if (val === null) {
+      setIsOpen(false);
+    }
+  };
+
+  const renderTriggerLabel = () => {
+    if (selectedValues.length === 0) {
+      return 'All';
+    }
+    if (selectedValues.length === 1) {
+      return String(selectedValues[0]);
+    }
+    return `${selectedValues.length} selected`;
   };
 
   return (
@@ -148,9 +162,7 @@ export function SearchableSelectFilter({
             role="combobox"
             className="w-full justify-between bg-white font-normal h-9 border-slate-200"
           >
-            <span className="truncate">
-              {selectedValue ? String(selectedValue) : 'All'}
-            </span>
+            <span className="truncate">{renderTriggerLabel()}</span>
             <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </DropdownMenuTrigger>
@@ -165,11 +177,24 @@ export function SearchableSelectFilter({
               onKeyDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             />
+            {selectedValues.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggle(null);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
           <div className="max-h-[300px] overflow-y-auto p-1">
             <PassiveMenuItem
-              isSelected={!selectedValue}
+              isSelected={selectedValues.length === 0}
               onClick={() => handleSelect(null)}
             >
               All
@@ -178,7 +203,7 @@ export function SearchableSelectFilter({
             {options.map((opt) => (
               <PassiveMenuItem
                 key={String(opt)}
-                isSelected={selectedValue === String(opt)}
+                isSelected={selectedValues.includes(opt)}
                 onClick={() => handleSelect(String(opt))}
               >
                 {String(opt)}
@@ -200,6 +225,8 @@ export function SearchableSelectFilter({
 /**
  * COMPONENT: SelectFilter
  * Refactored to use useMosaicFacetMenu.
+ * NOTE: Select primitive doesn't support multi-select well visually,
+ * so this remains single-select but uses the updated toggle API.
  */
 export function SelectFilter({
   label,
@@ -209,7 +236,7 @@ export function SelectFilter({
   filterBy,
   externalContext,
 }: FilterProps) {
-  const { options, select, client } = useMosaicFacetMenu({
+  const { options, toggle, selectedValues } = useMosaicFacetMenu({
     table,
     column,
     selection,
@@ -219,13 +246,19 @@ export function SelectFilter({
     sortMode: 'count',
   });
 
-  const selectedValue = useSelectionValue(selection, client);
-
   const handleChange = (val: string) => {
-    select(val === 'ALL' ? null : val);
+    // If value is "ALL", we toggle null to clear.
+    // If value matches current, we toggle it (which removes it).
+    // But since this is a Single Select UI, we just want to SET the value.
+    // To Set via Toggle: Clear first, then Toggle.
+    toggle(null);
+    if (val !== 'ALL') {
+      toggle(val);
+    }
   };
 
-  const valueForSelect = selectedValue ? String(selectedValue) : 'ALL';
+  const valueForSelect =
+    selectedValues.length > 0 ? String(selectedValues[0]) : 'ALL';
 
   return (
     <div className="flex flex-col gap-1 w-[180px]">
@@ -252,6 +285,7 @@ export function SelectFilter({
 /**
  * COMPONENT: ArraySelectFilter
  * Refactored to use useMosaicFacetMenu with isArrayColumn=true.
+ * Updated for Multi-Select.
  */
 export function ArraySelectFilter({
   label,
@@ -264,17 +298,19 @@ export function ArraySelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  const { options, setSearchTerm, select, client } = useMosaicFacetMenu({
-    table,
-    column,
-    selection,
-    filterBy,
-    additionalContext: externalContext,
-    limit: 100,
-    sortMode: 'alpha', // Tags usually better alpha
-    isArrayColumn: true, // Enable UNNEST logic
-    debugName: `FacetArray:${label}`,
-  });
+  const { options, setSearchTerm, toggle, selectedValues } = useMosaicFacetMenu(
+    {
+      table,
+      column,
+      selection,
+      filterBy,
+      additionalContext: externalContext,
+      limit: 100,
+      sortMode: 'alpha', // Tags usually better alpha
+      isArrayColumn: true, // Enable UNNEST logic
+      debugName: `FacetArray:${label}`,
+    },
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -283,11 +319,21 @@ export function ArraySelectFilter({
     return () => clearTimeout(timer);
   }, [searchValue, setSearchTerm]);
 
-  const selectedValue = useSelectionValue(selection, client);
-
   const handleSelect = (val: string | null) => {
-    select(val);
-    setIsOpen(false);
+    toggle(val);
+    if (val === null) {
+      setIsOpen(false);
+    }
+  };
+
+  const renderTriggerLabel = () => {
+    if (selectedValues.length === 0) {
+      return 'All';
+    }
+    if (selectedValues.length === 1) {
+      return String(selectedValues[0]);
+    }
+    return `${selectedValues.length} selected`;
   };
 
   return (
@@ -303,9 +349,7 @@ export function ArraySelectFilter({
             role="combobox"
             className="w-full justify-between bg-white font-normal h-9 border-slate-200"
           >
-            <span className="truncate">
-              {selectedValue ? String(selectedValue) : 'All'}
-            </span>
+            <span className="truncate">{renderTriggerLabel()}</span>
             <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </DropdownMenuTrigger>
@@ -320,11 +364,24 @@ export function ArraySelectFilter({
               onKeyDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             />
+            {selectedValues.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggle(null);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
           <div className="max-h-[300px] overflow-y-auto p-1">
             <PassiveMenuItem
-              isSelected={!selectedValue}
+              isSelected={selectedValues.length === 0}
               onClick={() => handleSelect(null)}
             >
               All
@@ -333,7 +390,7 @@ export function ArraySelectFilter({
             {options.map((opt) => (
               <PassiveMenuItem
                 key={opt}
-                isSelected={selectedValue === opt}
+                isSelected={selectedValues.includes(opt)}
                 onClick={() => handleSelect(opt)}
               >
                 {opt}
