@@ -10,8 +10,8 @@ export abstract class MosaicViewModel {
   public coordinator: Coordinator;
   public abstract selections: Record<string, Selection>;
 
-  // Store unsubscribe functions for cleanup
-  private _listeners: Array<() => void> = [];
+  // Store unsubscribe functions for cleanup (listeners, bridges, etc)
+  private _disposables: Array<() => void> = [];
 
   constructor(coordinator: Coordinator) {
     this.coordinator = coordinator;
@@ -38,8 +38,23 @@ export abstract class MosaicViewModel {
   }
 
   public disconnect(): void {
-    this._listeners.forEach((unsub) => unsub());
-    this._listeners = [];
+    // Execute all cleanups in reverse order (LIFO)
+    // This is safer for dependent resources
+    for (let i = this._disposables.length - 1; i >= 0; i--) {
+      const dispose = this._disposables[i];
+      if (dispose) {
+        dispose();
+      }
+    }
+    this._disposables = [];
+  }
+
+  /**
+   * Register a cleanup function to be called when the model disconnects.
+   * Useful for Bridges, Timers, or custom subscriptions.
+   */
+  protected register(cleanup: () => void) {
+    this._disposables.push(cleanup);
   }
 
   /**
@@ -51,7 +66,7 @@ export abstract class MosaicViewModel {
     handler: () => void,
   ) {
     selection.addEventListener(event, handler);
-    this._listeners.push(() => selection.removeEventListener(event, handler));
+    this.register(() => selection.removeEventListener(event, handler));
   }
 
   /**
