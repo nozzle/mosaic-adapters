@@ -6,7 +6,7 @@ import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
 import {
-  createStructAccess,
+  toggleMosaicSelection,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -447,53 +447,12 @@ function SummaryTable({
           columns={tableOptions.columns}
           onRowClick={(row) => {
             const value = row.getValue(groupBy);
-
-            // Get current selection (might be null, single value, or array)
-            const current = $crossFilter.valueFor(client);
-            let newValues: Array<any> = [];
-
-            if (Array.isArray(current)) {
-              newValues = [...current];
-            } else if (current !== null && current !== undefined) {
-              newValues = [current];
-            }
-
-            // Toggle Logic
-            if (newValues.includes(value)) {
-              newValues = newValues.filter((v) => v !== value);
-            } else {
-              newValues.push(value);
-            }
-
-            // Update Selection
-            if (newValues.length === 0) {
-              $crossFilter.update({
-                source: client,
-                clients: new Set([client]),
-                value: null,
-                predicate: null,
-              });
-            } else {
-              const colExpr = createStructAccess(groupBy);
-              let predicate;
-
-              if (newValues.length === 1) {
-                predicate = mSql.eq(colExpr, mSql.literal(newValues[0]));
-              } else {
-                // IMPORTANT: Map strings to literals for DuckDB safety
-                predicate = mSql.isIn(
-                  colExpr,
-                  newValues.map((v) => mSql.literal(v)),
-                );
-              }
-
-              $crossFilter.update({
-                source: client,
-                clients: new Set([client]),
-                value: newValues,
-                predicate,
-              });
-            }
+            toggleMosaicSelection({
+              selection: $crossFilter,
+              client,
+              column: groupBy,
+              value,
+            });
           }}
         />
       </div>
