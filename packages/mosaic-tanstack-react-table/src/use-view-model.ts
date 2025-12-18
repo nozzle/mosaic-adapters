@@ -12,6 +12,7 @@ export function useMosaicViewModel<T extends MosaicViewModel>(
   coordinator: Coordinator,
 ): T {
   // 1. Lazy init the ViewModel (Singleton behavior)
+  // We use useState's lazy initializer to ensure 'factory' runs exactly once.
   const [model] = useState(() => factory(coordinator));
 
   // 2. Handle Lifecycle
@@ -24,7 +25,9 @@ export function useMosaicViewModel<T extends MosaicViewModel>(
     // Connect topology
     const cleanup = model.connect();
 
-    return () => cleanup();
+    return () => {
+      cleanup();
+    };
   }, [model, coordinator]);
 
   return model;

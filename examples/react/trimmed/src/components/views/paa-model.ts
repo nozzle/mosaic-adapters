@@ -58,7 +58,7 @@ export class PaaDashboardModel extends MosaicViewModel {
     };
   }
 
-  // 3. Define the Logic (Moved from useEffect)
+  // 3. Define the Logic
   protected setupTopology(): void {
     // Logic: When top-bar inputs change, clear specific row clicks
     // to prevent logical contradictions (e.g. Input="YouTube" AND Table="Reddit" => 0 Results).
@@ -75,7 +75,7 @@ export class PaaDashboardModel extends MosaicViewModel {
     });
   }
 
-  // 4. Define Schema Mapping (Moved from useMemo)
+  // 4. Define Schema Mapping
   public getColumnMeta(
     id: string,
   ): MosaicDataTableColumnDefMetaOptions['mosaicDataTable'] {

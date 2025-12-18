@@ -1,14 +1,13 @@
 /**
  * Base class for View Models that manage Mosaic selections, topology, and schema mapping
- * independent of the UI framework.
+ * independent of the UI framework. Provides lifecycle management for listeners and clients.
  */
 
-import type { Coordinator, Selection } from '@uwdata/mosaic-core';
+import type { Coordinator, MosaicClient, Selection } from '@uwdata/mosaic-core';
 import type { MosaicDataTableColumnDefMetaOptions } from './types';
 
 export abstract class MosaicViewModel {
   public coordinator: Coordinator;
-  public abstract selections: Record<string, Selection>;
 
   // Store unsubscribe functions for cleanup (listeners, bridges, etc)
   private _disposables: Array<() => void> = [];
@@ -70,6 +69,30 @@ export abstract class MosaicViewModel {
   }
 
   /**
+   * Helper: Connect a child MosaicClient (like a FacetMenu that exists only in logic)
+   * and ensure it disconnects when the model dies.
+   */
+  protected manageClient(
+    client: { connect: () => any; disconnect?: () => any } | MosaicClient,
+  ) {
+    // Duck-typing check because MosaicClient signatures vary slightly
+    if ('connect' in client && typeof client.connect === 'function') {
+      const cleanup = (client as any).connect();
+      // If connect returns a function (standard Mosaic), use it
+      if (typeof cleanup === 'function') {
+        this.register(cleanup);
+      }
+      // If connect returns nothing, look for explicit disconnect
+      else if (
+        'disconnect' in client &&
+        typeof client.disconnect === 'function'
+      ) {
+        this.register(() => (client as any).disconnect());
+      }
+    }
+  }
+
+  /**
    * Abstract method where subclasses define their specific logic.
    * e.g., "When Input Filter changes, clear Detail Filter".
    */
@@ -77,6 +100,7 @@ export abstract class MosaicViewModel {
 
   /**
    * Returns column metadata (SQL mapping) independent of UI rendering.
+   * Used to keep SQL logic out of View components.
    */
   public abstract getColumnMeta(
     columnId: string,
