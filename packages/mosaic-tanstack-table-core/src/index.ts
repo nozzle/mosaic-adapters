@@ -7,3 +7,4 @@ export type * from './types';
 export * from './logger';
 export * from './utils';
 export * from './selection-utils';
+export * from './view-model';

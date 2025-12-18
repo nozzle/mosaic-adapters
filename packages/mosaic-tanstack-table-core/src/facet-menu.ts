@@ -89,6 +89,14 @@ export class MosaicFacetMenu extends MosaicClient {
   }
 
   /**
+   * Override the base filterBy getter to ensure the Coordinator always sees
+   * the most current selection from options, not the one passed to super() in constructor.
+   */
+  override get filterBy() {
+    return this.options.filterBy;
+  }
+
+  /**
    * Updates options and handles re-connection/listener updates if needed.
    * This allows the React hook to keep a stable client instance.
    */
@@ -96,7 +104,24 @@ export class MosaicFacetMenu extends MosaicClient {
     const oldOptions = this.options;
     this.options = newOptions;
 
-    // Handle additionalContext listeners
+    // 1. Handle Primary Filter (filterBy) changes
+    // If the filter selection reference changes, we must inform the Coordinator
+    // so it can move this client to the correct Filter Group.
+    if (oldOptions.filterBy !== newOptions.filterBy) {
+      logger.debug(
+        'Core',
+        `${this.debugPrefix} filterBy changed. Reconnecting to Coordinator.`,
+      );
+      if (this.coordinator) {
+        // Disconnect removes the client from the old filter group
+        this.coordinator.disconnect(this);
+        // Connect adds the client to the new filter group (via the overridden filterBy getter)
+        this.coordinator.connect(this);
+      }
+      this.requestUpdate();
+    }
+
+    // 2. Handle additionalContext listeners
     if (oldOptions.additionalContext !== newOptions.additionalContext) {
       if (oldOptions.additionalContext) {
         oldOptions.additionalContext.removeEventListener(
@@ -114,10 +139,12 @@ export class MosaicFacetMenu extends MosaicClient {
       this.requestUpdate();
     }
 
-    // If table/column changed, we definitely need an update
+    // 3. Handle Structural Changes (Table, Column, Selection Output)
+    // If the output selection changes, we must update the SelectionManager so clicks go to the right place.
     if (
       oldOptions.table !== newOptions.table ||
-      oldOptions.column !== newOptions.column
+      oldOptions.column !== newOptions.column ||
+      oldOptions.selection !== newOptions.selection
     ) {
       // Update Manager configuration if column/selection changes
       this.selectionManager = new MosaicSelectionManager({
@@ -128,7 +155,19 @@ export class MosaicFacetMenu extends MosaicClient {
       });
 
       // Clear selection on the new manager (typically swapping columns means reset)
-      this.selectionManager.select(null);
+      // Only do this if column/table changed, if just selection object ref changed (but logic is same),
+      // we might strictly strictly speaking not want to clear, but usually a ref change in Mosaic
+      // implies a topology rebuild.
+      if (
+        oldOptions.table !== newOptions.table ||
+        oldOptions.column !== newOptions.column
+      ) {
+        this.selectionManager.select(null);
+      } else {
+        // If only selection changed (e.g. fresh object), sync the store to the new selection's current value
+        this._syncStoreFromManager();
+      }
+
       this.requestUpdate();
     }
   }
@@ -224,12 +263,12 @@ export class MosaicFacetMenu extends MosaicClient {
   // --- LIFECYCLE DIAGNOSTICS ---
 
   override requestUpdate(): void {
-    logger.debug('Core', `${this.debugPrefix} requestUpdate called`);
+    // logger.debug('Core', `${this.debugPrefix} requestUpdate called`);
     super.requestUpdate();
   }
 
   override requestQuery(query?: any): Promise<any> | null {
-    logger.debug('Core', `${this.debugPrefix} requestQuery called`);
+    // logger.debug('Core', `${this.debugPrefix} requestQuery called`);
 
     if (!this.coordinator) {
       logger.warn(
@@ -260,12 +299,19 @@ export class MosaicFacetMenu extends MosaicClient {
       sortMode = 'count',
       isArrayColumn,
       additionalContext,
+      filterBy,
     } = this.options;
 
     const colExpr = createStructAccess(column);
 
-    // 1. Resolve Primary Filter (Automatic via filterBy -> arguments)
+    // 1. Resolve Primary Filter
+    // We ignore the `filter` argument passed by the Coordinator if we have a filterBy in options,
+    // to ensure we are using the freshest selection reference available.
+    // The Coordinator *should* pass the correct one if connected properly, but explicit resolution is safer.
     let effectiveFilter = filter;
+    if (filterBy) {
+      effectiveFilter = filterBy.predicate(this);
+    }
 
     // 2. Resolve Additional Context (Manual)
     if (additionalContext) {
@@ -326,6 +372,19 @@ export class MosaicFacetMenu extends MosaicClient {
     }
 
     query.limit(limit);
+
+    // DEBUG LOGGING
+    logger.debounce(
+      `facet-query-${this.id}`,
+      300,
+      'debug',
+      'SQL',
+      `Facet Query (${this.options.debugName})`,
+      {
+        sql: query.toString(),
+        filters: effectiveFilter ? effectiveFilter.toString() : 'None',
+      },
+    );
 
     return query;
   }

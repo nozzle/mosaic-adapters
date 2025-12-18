@@ -8,7 +8,9 @@ import { useReactTable } from '@tanstack/react-table';
 import {
   toggleMosaicSelection,
   useMosaicReactTable,
+  useMosaicViewModel,
 } from '@nozzleio/mosaic-tanstack-react-table';
+import { PaaDashboardModel } from './paa-model';
 import type { ColumnDef, Row } from '@tanstack/react-table';
 import type { MosaicClient } from '@uwdata/mosaic-core';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
@@ -24,54 +26,17 @@ import {
 const TABLE_NAME = 'nozzle_paa';
 const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 
-// A stable object identity for the topology manager to use as a source.
-// This satisfies the ClauseSource type requirement (must be an object, not string).
-const TOPOLOGY_SOURCE = {};
-
-// --- 1. Global State Topology ---
-
-// A. Input Filter: Top-Bar Inputs
-// CHANGED: Now a Cross-Filter.
-// This allows inputs to filter *each other* while preserving the user's ability
-// to change a selection (by seeing all options for the active dropdown).
-const $inputFilter = vg.Selection.crossfilter();
-
-// B. Detail Filter: Bottom Table In-Column Filters
-const $detailFilter = vg.Selection.intersect();
-
-// C. Cross Filter: Summary Table Row Clicks (Peers)
-const $crossFilter = vg.Selection.crossfilter();
-
-// --- Derived Contexts ---
-
-// NEW: External Context
-// The "Rest of the World" from the perspective of the Input Layer.
-const $externalContext = vg.Selection.intersect({
-  include: [$detailFilter, $crossFilter],
-});
-
-// For Summary Tables:
-// They must respect Inputs AND Detail Table Filters.
-// They use $crossFilter for Highlighting (Peers filter, Self highlights).
-const $summaryContext = vg.Selection.intersect({
-  include: [$inputFilter, $detailFilter],
-});
-
-// For Detail Table:
-// It must respect Inputs AND Summary Table Clicks.
-// It generates $detailFilter.
-const $detailContext = vg.Selection.intersect({
-  include: [$inputFilter, $crossFilter],
-});
-
-// For KPIs:
-// They represent the "Total State" - Intersection of everything.
-const $globalContext = vg.Selection.intersect({
-  include: [$inputFilter, $detailFilter, $crossFilter],
-});
-
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
+
+  // --- 1. Instantiate Model ---
+  // The model encapsulates all Selections, Topology logic, and Schema mapping.
+  // We explicitly type the generic <PaaDashboardModel> to ensure TS infers the return type correctly,
+  // resolving the "missing property" and "Selection | undefined" errors.
+  const model = useMosaicViewModel<PaaDashboardModel>(
+    (c) => new PaaDashboardModel(c),
+    vg.coordinator(),
+  );
 
   // --- 2. Data Initialization ---
   useEffect(() => {
@@ -92,27 +57,6 @@ export function NozzlePaaView() {
     init();
   }, []);
 
-  // --- 3. Topology Management (Fix for Orphaned Selections) ---
-  // When the Top Bar Inputs ($inputFilter) change, we must clear the
-  // Specific Table Selections ($crossFilter) to prevent logical contradictions
-  // (e.g. Input="YouTube" AND Table="Reddit" => 0 Results).
-  useEffect(() => {
-    const resetDownstream = () => {
-      // Check if we actually have a cross-filter active before clearing
-      // to avoid unnecessary updates/flicker.
-      if ($crossFilter.value !== null) {
-        $crossFilter.update({
-          source: TOPOLOGY_SOURCE,
-          value: null,
-          predicate: null,
-        });
-      }
-    };
-
-    $inputFilter.addEventListener('value', resetDownstream);
-    return () => $inputFilter.removeEventListener('value', resetDownstream);
-  }, []);
-
   if (!isReady) {
     return (
       <div className="flex h-64 items-center justify-center text-slate-500 animate-pulse">
@@ -124,10 +68,9 @@ export function NozzlePaaView() {
   return (
     <div className="flex flex-col gap-6 bg-slate-50/50 min-h-screen pb-10">
       {/* Header Section */}
-      <HeaderSection />
+      <HeaderSection model={model} />
 
-      {/* Filter Controls: Update $inputFilter */}
-      {/* We pass 'selection' (Output) and 'filterBy' (Input/Context) */}
+      {/* Filter Controls: Update input filter */}
       <div className="px-6 -mt-8 relative z-10">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">
           <div className="text-sm font-bold text-slate-700 mr-2">
@@ -138,61 +81,61 @@ export function NozzlePaaView() {
             label="Domain"
             table={TABLE_NAME}
             column="domain"
-            selection={$inputFilter}
-            filterBy={$inputFilter}
-            externalContext={$externalContext}
+            selection={model.selections.input}
+            filterBy={model.selections.input}
+            externalContext={model.selections.externalContext}
           />
           <TextFilter
             label="Phrase"
             table={TABLE_NAME}
             column="phrase"
-            selection={$inputFilter}
-            filterBy={$inputFilter}
+            selection={model.selections.input}
+            filterBy={model.selections.input}
           />
           <ArraySelectFilter
             label="Keyword Group"
             table={TABLE_NAME}
             column="keyword_groups"
-            selection={$inputFilter}
-            filterBy={$inputFilter}
-            externalContext={$externalContext}
+            selection={model.selections.input}
+            filterBy={model.selections.input}
+            externalContext={model.selections.externalContext}
           />
           <TextFilter
             label="Answer Contains"
             table={TABLE_NAME}
             column="description"
-            selection={$inputFilter}
-            filterBy={$inputFilter}
+            selection={model.selections.input}
+            filterBy={model.selections.input}
           />
           <DateRangeFilter
             label="Requested Date"
             table={TABLE_NAME}
             column="requested"
-            selection={$inputFilter}
-            filterBy={$inputFilter}
+            selection={model.selections.input}
+            filterBy={model.selections.input}
           />
           <SearchableSelectFilter
             label="Device"
             table={TABLE_NAME}
             column="device"
-            selection={$inputFilter}
-            filterBy={$inputFilter}
-            externalContext={$externalContext}
+            selection={model.selections.input}
+            filterBy={model.selections.input}
+            externalContext={model.selections.externalContext}
           />
           <TextFilter
             label="Question Contains"
             table={TABLE_NAME}
             column="related_phrase.phrase"
-            selection={$inputFilter}
-            filterBy={$inputFilter}
+            selection={model.selections.input}
+            filterBy={model.selections.input}
           />
         </div>
       </div>
 
       {/* Summary Grids */}
-      {/* Topology: Filter By $summaryContext, Highlight By $crossFilter */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 px-6">
         <SummaryTable
+          model={model}
           title="Keyword Phrase"
           groupBy="phrase"
           metric="search_volume"
@@ -200,6 +143,7 @@ export function NozzlePaaView() {
           aggFn={mSql.max}
         />
         <SummaryTable
+          model={model}
           title="PAA Questions"
           groupBy="related_phrase.phrase"
           metric="*"
@@ -207,6 +151,7 @@ export function NozzlePaaView() {
           aggFn={mSql.count}
         />
         <SummaryTable
+          model={model}
           title="Domain"
           groupBy="domain"
           metric="*"
@@ -215,6 +160,7 @@ export function NozzlePaaView() {
           where={mSql.sql`domain IS NOT NULL`}
         />
         <SummaryTable
+          model={model}
           title="URL"
           groupBy="url"
           metric="*"
@@ -225,14 +171,13 @@ export function NozzlePaaView() {
       </div>
 
       {/* Detail Table */}
-      {/* Topology: Filter By $detailContext, Output To $detailFilter */}
       <div className="flex-1 px-6 min-h-[500px]">
         <div className="bg-white border rounded-lg shadow-sm h-full flex flex-col overflow-hidden">
           <div className="p-4 border-b bg-slate-50/50 font-semibold text-slate-800">
             Detailed Breakdown
           </div>
           <div className="flex-1 overflow-auto p-0">
-            <DetailTable />
+            <DetailTable model={model} />
           </div>
         </div>
       </div>
@@ -242,7 +187,7 @@ export function NozzlePaaView() {
 
 // --- Sub-Components ---
 
-function HeaderSection() {
+function HeaderSection({ model }: { model: PaaDashboardModel }) {
   const qPhrases = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
       .select({ value: mSql.count('phrase').distinct() })
@@ -260,10 +205,16 @@ function HeaderSection() {
       .select({ value: mSql.count('requested').distinct() })
       .where(filter);
 
-  // KPIs use $globalContext to reflect ALL current filters
-  const valPhrases = useMosaicValue(qPhrases, $globalContext);
-  const valQuestions = useMosaicValue(qQuestions, $globalContext);
-  const valDays = useMosaicValue(qDays, $globalContext);
+  // KPIs use globalContext to reflect ALL current filters
+  const valPhrases = useMosaicValue(
+    qPhrases,
+    model.selections.globalContext as any,
+  );
+  const valQuestions = useMosaicValue(
+    qQuestions,
+    model.selections.globalContext as any,
+  );
+  const valDays = useMosaicValue(qDays, model.selections.globalContext as any);
 
   return (
     <div className="bg-[#0e7490] text-white pt-8 pb-12 px-6">
@@ -313,6 +264,7 @@ function useSelectionValue(selection: vg.Selection, client: MosaicClient) {
 }
 
 function SummaryTable({
+  model,
   title,
   groupBy,
   metric,
@@ -320,6 +272,7 @@ function SummaryTable({
   aggFn,
   where,
 }: {
+  model: PaaDashboardModel;
   title: string;
   groupBy: string;
   metric: string;
@@ -340,25 +293,14 @@ function SummaryTable({
       }
 
       // MANUAL HIGHLIGHT LOGIC:
-      // We calculate highlight status INSIDE the subquery where we have access
-      // to all columns (like "related_phrase"."phrase").
-      // This bypasses the "Column not found" error in the outer query.
+      const highlightPred = model.selections.cross.predicate(null);
 
-      // Get the highlight predicate (Global Truth)
-      const highlightPred = $crossFilter.predicate(null);
-
-      // If we have a predicate, calculate MAX(CASE WHEN...).
-      // If not, default to 1 (all highlighted).
       let highlightCol;
-
-      // Robust check: Ensure predicate exists AND is not an empty array
       const hasPred =
         highlightPred &&
         (!Array.isArray(highlightPred) || highlightPred.length > 0);
 
       if (hasPred) {
-        // Ensure the predicate is a valid SQL Node for interpolation.
-        // If highlightPredicate is an array (implicit AND), wrap it.
         const safePredicate = Array.isArray(highlightPred)
           ? mSql.and(...highlightPred)
           : highlightPred;
@@ -374,7 +316,6 @@ function SummaryTable({
         .select({
           [safeId]: groupKey,
           metric: metric === '*' ? aggFn() : aggFn(metric),
-          // Export computed highlight column
           __is_highlighted: highlightCol,
         })
         .groupby(groupKey);
@@ -388,7 +329,7 @@ function SummaryTable({
 
       return q;
     },
-    [groupBy, metric, aggFn, where, safeId],
+    [groupBy, metric, aggFn, where, safeId, model.selections.cross],
   );
 
   const baseTableOptions = useMemo(
@@ -404,9 +345,9 @@ function SummaryTable({
   const { tableOptions, client } = useMosaicReactTable({
     table: queryFactory,
     // FILTER BY Inputs AND Detail Table
-    filterBy: $summaryContext,
+    filterBy: model.selections.summaryContext,
     // HIGHLIGHT BY Peers (Cross-filtering)
-    highlightBy: $crossFilter,
+    highlightBy: model.selections.cross,
     // NEW: Tell Core we handled it manually
     manualHighlight: true,
     columns: useMemo(
@@ -442,19 +383,17 @@ function SummaryTable({
     debugName: `${title}SummaryTable`,
   });
 
-  // REACTIVE UI FEEDBACK:
-  // Listen to the selection for THIS client to show checkmarks.
-  // We cannot easily do this inside the Cell Component because context is lost.
-  // So we fetch it here and pass it down via table meta.
-  const currentSelectionValue = useSelectionValue($crossFilter, client);
+  const currentSelectionValue = useSelectionValue(
+    model.selections.cross as any,
+    client,
+  );
 
-  // Merge the selection value into table options meta so cells can access it
   const finalTableOptions = useMemo(
     () => ({
       ...tableOptions,
       meta: {
         ...tableOptions.meta,
-        selectedValue: currentSelectionValue, // Pass the array (or single value) here
+        selectedValue: currentSelectionValue,
       },
     }),
     [tableOptions, currentSelectionValue],
@@ -474,7 +413,7 @@ function SummaryTable({
           onRowClick={(row) => {
             const value = row.getValue(groupBy);
             toggleMosaicSelection({
-              selection: $crossFilter,
+              selection: model.selections.cross as any,
               client,
               column: groupBy,
               value,
@@ -486,7 +425,6 @@ function SummaryTable({
   );
 }
 
-// Extracted Component to break the Client -> Columns -> Client circular dependency
 function SelectionCheckbox<TData>({
   row,
   groupBy,
@@ -520,7 +458,6 @@ function SelectionCheckbox<TData>({
   );
 }
 
-// Defined interface to type the row data for the detail table
 interface PaaRowData {
   domain: string;
   'related_phrase.phrase': string;
@@ -528,7 +465,7 @@ interface PaaRowData {
   description: string;
 }
 
-function DetailTable() {
+function DetailTable({ model }: { model: PaaDashboardModel }) {
   const columns = useMemo(
     () =>
       [
@@ -538,9 +475,7 @@ function DetailTable() {
           header: 'Domain',
           size: 150,
           meta: {
-            mosaicDataTable: {
-              sqlFilterType: 'PARTIAL_ILIKE',
-            },
+            mosaicDataTable: model.getColumnMeta('domain'),
           },
         },
         {
@@ -549,10 +484,7 @@ function DetailTable() {
           header: 'PAA Question',
           size: 350,
           meta: {
-            mosaicDataTable: {
-              sqlColumn: 'related_phrase.phrase',
-              sqlFilterType: 'PARTIAL_ILIKE',
-            },
+            mosaicDataTable: model.getColumnMeta('paa_question'),
           },
         },
         {
@@ -561,9 +493,7 @@ function DetailTable() {
           header: 'Answer Title',
           size: 300,
           meta: {
-            mosaicDataTable: {
-              sqlFilterType: 'PARTIAL_ILIKE',
-            },
+            mosaicDataTable: model.getColumnMeta('title'),
           },
         },
         {
@@ -572,13 +502,11 @@ function DetailTable() {
           header: 'Answer Description',
           size: 400,
           meta: {
-            mosaicDataTable: {
-              sqlFilterType: 'PARTIAL_ILIKE',
-            },
+            mosaicDataTable: model.getColumnMeta('description'),
           },
         },
       ] satisfies Array<ColumnDef<PaaRowData, any>>,
-    [],
+    [model],
   );
 
   const baseTableOptions = useMemo(
@@ -593,10 +521,8 @@ function DetailTable() {
   const mosaicOptions = useMemo(
     () => ({
       table: TABLE_NAME,
-      // FILTER BY Inputs AND Cross-Filter Clicks
-      filterBy: $detailContext,
-      // PUBLISH TO $detailFilter (So summary tables update)
-      tableFilterSelection: $detailFilter,
+      filterBy: model.selections.detailContext,
+      tableFilterSelection: model.selections.detail,
       columns,
       totalRowsColumnName: '__total_rows',
       tableOptions: {
@@ -605,7 +531,7 @@ function DetailTable() {
       },
       debugName: 'DetailTable',
     }),
-    [columns, baseTableOptions],
+    [columns, baseTableOptions, model],
   );
 
   const { tableOptions } = useMosaicReactTable(mosaicOptions);

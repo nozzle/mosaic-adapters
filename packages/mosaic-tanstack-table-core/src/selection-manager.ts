@@ -97,7 +97,15 @@ export class MosaicSelectionManager {
 
       if (this.isArrayColumn) {
         // list_has_any(col, ['val1', 'val2'])
-        predicate = mSql.listHasAny(colExpr, mSql.literal(values));
+        // Fix: mSql.literal(values) fails for arrays (stringifies to "a,b").
+        // Fix 2: mSql.sql`[${array}]` fails Typescript check (TemplateValue not Array).
+        // Solution: Manually construct the comma-separated list expression via reduce.
+        const listContent = values.slice(1).reduce((acc, v) => {
+          return mSql.sql`${acc}, ${mSql.literal(v)}`;
+        }, mSql.literal(values[0]));
+
+        const listLiteral = mSql.sql`[${listContent}]`;
+        predicate = mSql.listHasAny(colExpr, listLiteral);
       } else {
         if (values.length === 1) {
           // col = 'val'
