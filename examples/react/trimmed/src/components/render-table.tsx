@@ -14,22 +14,10 @@ export function RenderTable<TData extends RowData, TValue>(props: {
   columns: Array<ColumnDef<TData, TValue>>;
   onRowClick?: (row: Row<TData>) => void;
 }) {
-  const [view, setView] = useURLSearchParam('table-view', 'shadcn-1');
+  const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
   return (
     <>
-      <div className="mb-4 flex gap-2">
-        {items.map(({ id, name }) => (
-          <Button
-            key={id}
-            size="sm"
-            onClick={() => setView(id)}
-            disabled={view === id}
-          >
-            {name}
-          </Button>
-        ))}
-      </div>
       {items.map(({ id, Component }) =>
         view === id ? (
           <Component
@@ -41,5 +29,24 @@ export function RenderTable<TData extends RowData, TValue>(props: {
         ) : null,
       )}
     </>
+  );
+}
+
+export function TableStyleSwitcher() {
+  const [view, setView] = useURLSearchParam('table-view', 'shadcn-1');
+
+  return (
+    <div className="flex border bg-neutral-100 rounded-lg px-1.5 py-1">
+      {items.map(({ id, name }) => (
+        <Button
+          key={id}
+          size="sm"
+          variant={view === id ? 'outline' : 'ghost'}
+          onClick={() => setView(id)}
+        >
+          {name}
+        </Button>
+      ))}
+    </div>
   );
 }

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { TableStyleSwitcher } from './render-table';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
 import { NycTaxiView } from '@/components/views/nyc-taxi';
@@ -58,18 +59,21 @@ function RenderViewContent() {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex gap-2">
-          {Array.from(views.entries()).map(([id, { title }]) => (
-            <Button
-              key={`${id}-button`}
-              size="sm"
-              onClick={() => setView(id)}
-              disabled={view === id}
-            >
-              {title}
-            </Button>
-          ))}
+      <div className="flex justify-between items-start mb-4">
+        <div className="grid gap-2">
+          <div className="flex border bg-neutral-100 rounded-lg px-1.5 py-1">
+            {Array.from(views.entries()).map(([id, { title }]) => (
+              <Button
+                key={`${id}-button`}
+                size="sm"
+                variant={view === id ? 'outline' : 'ghost'}
+                onClick={() => setView(id)}
+              >
+                {title}
+              </Button>
+            ))}
+          </div>
+          <TableStyleSwitcher />
         </div>
 
         <ConnectorToggle />
