@@ -1,11 +1,12 @@
 // Filter components for the Nozzle PAA view, refactored to delegate logic to Core.
 
 import * as React from 'react';
-import { useEffect, useMemo, useState } from 'react';
-import * as mSql from '@uwdata/mosaic-sql';
+import { useState } from 'react';
 import { Check, ChevronDown, X } from 'lucide-react';
-import { useMosaicFacetMenu } from '@nozzleio/mosaic-tanstack-react-table';
-import type { MosaicSQLExpression } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  useMosaicFacetMenu,
+  useMosaicFilter,
+} from '@nozzleio/mosaic-tanstack-react-table';
 import type { Selection } from '@uwdata/mosaic-core';
 
 import { Input } from '@/components/ui/input';
@@ -23,22 +24,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-
-// Local helper to avoid importing from core package in examples
-function createStructAccess(columnPath: string): MosaicSQLExpression {
-  if (!columnPath.includes('.')) {
-    return mSql.column(columnPath);
-  }
-  const [head, ...tail] = columnPath.split('.');
-  if (!head) {
-    throw new Error(`Invalid column path: ${columnPath}`);
-  }
-  let expr: MosaicSQLExpression = mSql.column(head);
-  for (const part of tail) {
-    expr = mSql.sql`${expr}.${mSql.column(part)}`;
-  }
-  return expr;
-}
 
 interface FilterProps {
   label: string;
@@ -75,7 +60,6 @@ function PassiveMenuItem({
 
 /**
  * COMPONENT: SearchableSelectFilter
- * Refactored: Logic moved to Core (Merging, Debouncing).
  */
 export function SearchableSelectFilter({
   label,
@@ -88,7 +72,6 @@ export function SearchableSelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  // Use the hook which now provides pre-merged `displayOptions` and handles debouncing
   const { displayOptions, setSearchTerm, toggle, selectedValues } =
     useMosaicFacetMenu({
       table,
@@ -101,9 +84,6 @@ export function SearchableSelectFilter({
       debugName: `Facet:${label}`,
     });
 
-  // Handle Search Input
-  // We keep local state for the input value (immediate UI feedback)
-  // but delegate the query trigger to the core's debounced method.
   const handleSearchChange = (val: string) => {
     setSearchValue(val);
     setSearchTerm(val);
@@ -201,7 +181,6 @@ export function SearchableSelectFilter({
 
 /**
  * COMPONENT: SelectFilter
- * Refactored: Logic moved to Core.
  */
 export function SelectFilter({
   label,
@@ -211,8 +190,6 @@ export function SelectFilter({
   filterBy,
   externalContext,
 }: FilterProps) {
-  // Use displayOptions here too, although for single select it's less critical,
-  // it ensures consistency.
   const { displayOptions, toggle, selectedValues } = useMosaicFacetMenu({
     table,
     column,
@@ -257,7 +234,6 @@ export function SelectFilter({
 
 /**
  * COMPONENT: ArraySelectFilter
- * Refactored: Logic moved to Core (Merging, Debouncing).
  */
 export function ArraySelectFilter({
   label,
@@ -383,36 +359,23 @@ export function ArraySelectFilter({
 
 /**
  * COMPONENT: TextFilter
- * Remains mostly the same.
+ * Refactored: Uses useMosaicFilter hook
  */
 export function TextFilter({ label, column, selection }: FilterProps) {
+  const filter = useMosaicFilter({
+    selection,
+    column,
+    mode: 'TEXT',
+    debounceTime: 300,
+  });
+
   const [val, setVal] = useState('');
 
-  const filterSource = useMemo(() => ({ id: `filter-${column}` }), [column]);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      if (val.trim() === '') {
-        selection.update({
-          source: filterSource,
-          value: null,
-          predicate: null,
-        });
-        return;
-      }
-
-      const colExpr = createStructAccess(column);
-      const predicate = mSql.sql`${colExpr} ILIKE ${mSql.literal('%' + val + '%')}`;
-
-      selection.update({
-        source: filterSource,
-        value: val,
-        predicate,
-      });
-    }, 300);
-
-    return () => clearTimeout(handler);
-  }, [val, column, selection, filterSource]);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setVal(value);
+    filter.setValue(value);
+  };
 
   return (
     <div className="flex flex-col gap-1 w-[180px]">
@@ -421,7 +384,7 @@ export function TextFilter({ label, column, selection }: FilterProps) {
       </label>
       <Input
         value={val}
-        onChange={(e) => setVal(e.target.value)}
+        onChange={handleChange}
         className="h-9 bg-white border-slate-200"
         placeholder="Search..."
       />
@@ -431,42 +394,21 @@ export function TextFilter({ label, column, selection }: FilterProps) {
 
 /**
  * COMPONENT: DateRangeFilter
- * Remains mostly the same.
+ * Refactored: Uses useMosaicFilter hook
  */
 export function DateRangeFilter({ label, column, selection }: FilterProps) {
+  const filter = useMosaicFilter({
+    selection,
+    column,
+    mode: 'DATE_RANGE',
+  });
+
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
 
-  const filterSource = useMemo(
-    () => ({ id: `filter-${column}-date` }),
-    [column],
-  );
-
-  useEffect(() => {
-    const colRef = createStructAccess(column);
-    let predicate = null;
-    let valueDisplay = null;
-
-    if (start && end) {
-      predicate = mSql.isBetween(colRef, [
-        mSql.literal(new Date(start)),
-        mSql.literal(new Date(end)),
-      ]);
-      valueDisplay = `${start} to ${end}`;
-    } else if (start) {
-      predicate = mSql.gte(colRef, mSql.literal(new Date(start)));
-      valueDisplay = `>= ${start}`;
-    } else if (end) {
-      predicate = mSql.lte(colRef, mSql.literal(new Date(end)));
-      valueDisplay = `<= ${end}`;
-    }
-
-    selection.update({
-      source: filterSource,
-      value: valueDisplay,
-      predicate,
-    });
-  }, [start, end, column, selection, filterSource]);
+  React.useEffect(() => {
+    filter.setValue([start || null, end || null]);
+  }, [start, end, filter]);
 
   return (
     <div className="flex flex-col gap-1 w-[260px]">
