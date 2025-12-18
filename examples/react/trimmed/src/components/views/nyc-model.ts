@@ -58,7 +58,10 @@ export class NycTaxiModel extends MosaicViewModel {
     // 3. Register the Aggregation Bridge
     // This translates Summary Table filters (Count > N) into Detail Table filters (Zone IN (...))
     const bridge = new AggregationBridge({
-      source: this, // Using 'this' as the stable identity
+      // We explicitly cast 'this' to 'any' to satisfy the strict 'SelectionSource' type definition
+      // (which expects Record<string, unknown> or MosaicClient)
+      // For identity comparison in the Coordinator, 'this' (the class instance) works perfectly fine.
+      source: this as any,
       inputSelection: this.selections.summaryFilter,
       contextSelection: this.selections.summaryContext,
       outputSelection: this.selections.zoneFilter,

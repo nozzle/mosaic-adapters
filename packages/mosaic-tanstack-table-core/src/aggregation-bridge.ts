@@ -5,10 +5,15 @@
 
 import type { Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
+import type { SelectionSource } from './types';
+
+// Extract the exact Predicate type expected by Mosaic's Selection.update method
+// This works even if ExprNode is not exported by the package
+type MosaicSelectionPredicate = Parameters<Selection['update']>[0]['predicate'];
 
 export interface AggregationBridgeOptions {
   /** Identity source for cross-filtering */
-  source: object;
+  source: SelectionSource;
   /** The selection driving the change (e.g. Summary Table Filters like "Count > 500") */
   inputSelection: Selection;
   /** The global context to respect (e.g. Map Brush, Vendor) */
@@ -57,7 +62,7 @@ export class AggregationBridge {
       // Only clear if not already empty to avoid loops
       if (outputSelection.value !== null) {
         outputSelection.update({
-          source,
+          source: source as any,
           value: null,
           predicate: null,
         });
@@ -73,9 +78,10 @@ export class AggregationBridge {
 
     // 3. Update Output
     outputSelection.update({
-      source,
+      source: source as any,
       value: 'custom', // Arbitrary value, we rely on the predicate
-      predicate: resultPredicate as any,
+      // Cast to the derived Mosaic type to satisfy strict typing
+      predicate: resultPredicate as unknown as MosaicSelectionPredicate,
     });
   };
 

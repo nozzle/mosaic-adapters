@@ -4,6 +4,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { createStructAccess } from './utils';
 import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
+import type { ColumnType } from './types';
 
 export interface SelectionManagerOptions {
   /** The Mosaic Selection to manage */
@@ -12,8 +13,11 @@ export interface SelectionManagerOptions {
   client: MosaicClient;
   /** The SQL column name (or path) */
   column: string;
-  /** Whether this column stores array data */
-  isArrayColumn?: boolean;
+  /**
+   * The type of the column.
+   * @default 'scalar'
+   */
+  columnType?: ColumnType;
 }
 
 /**
@@ -24,13 +28,13 @@ export class MosaicSelectionManager {
   private selection: Selection;
   private client: MosaicClient;
   private column: string;
-  private isArrayColumn: boolean;
+  private columnType: ColumnType;
 
   constructor(options: SelectionManagerOptions) {
     this.selection = options.selection;
     this.client = options.client;
     this.column = options.column;
-    this.isArrayColumn = !!options.isArrayColumn;
+    this.columnType = options.columnType ?? 'scalar';
   }
 
   /**
@@ -95,7 +99,7 @@ export class MosaicSelectionManager {
     if (values && values.length > 0) {
       const colExpr = createStructAccess(this.column);
 
-      if (this.isArrayColumn) {
+      if (this.columnType === 'array') {
         // list_has_any(col, ['val1', 'val2'])
         // Fix: mSql.literal(values) fails for arrays (stringifies to "a,b").
         // Fix 2: mSql.sql`[${array}]` fails Typescript check (TemplateValue not Array).
@@ -125,7 +129,7 @@ export class MosaicSelectionManager {
       // Critical: Exclude self from the filter so menus/tables don't filter themselves empty
       clients: new Set([this.client]),
       value: values,
-      predicate: predicate as any, // Cast due to type mismatches in Mosaic definitions
+      predicate: predicate!,
     });
   }
 }

@@ -81,7 +81,7 @@ export function SearchableSelectFilter({
       additionalContext: externalContext,
       limit: 50,
       sortMode: 'count',
-      debugName: `Facet:${label}`,
+      __debugName: `Facet:${label}`,
     });
 
   const handleSearchChange = (val: string) => {
@@ -255,8 +255,8 @@ export function ArraySelectFilter({
       additionalContext: externalContext,
       limit: 100,
       sortMode: 'alpha',
-      isArrayColumn: true,
-      debugName: `FacetArray:${label}`,
+      columnType: 'array',
+      __debugName: `FacetArray:${label}`,
     });
 
   const handleSearchChange = (val: string) => {

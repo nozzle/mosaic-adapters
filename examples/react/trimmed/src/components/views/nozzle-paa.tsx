@@ -342,6 +342,7 @@ function SummaryTable({
     rowSelection: {
       selection: model.selections.cross,
       column: groupBy,
+      columnType: 'scalar', // Explicitly use scalar type
     },
     columns: useMemo(
       () => [
@@ -383,7 +384,7 @@ function SummaryTable({
       [groupBy, title, metricLabel, safeId],
     ),
     tableOptions: baseTableOptions,
-    debugName: `${title}SummaryTable`,
+    __debugName: `${title}SummaryTable`,
   });
 
   const table = useReactTable(tableOptions);
@@ -477,7 +478,7 @@ function DetailTable({ model }: { model: PaaDashboardModel }) {
         ...baseTableOptions,
         enableColumnFilters: true,
       },
-      debugName: 'DetailTable',
+      __debugName: 'DetailTable',
     }),
     [columns, baseTableOptions, model],
   );

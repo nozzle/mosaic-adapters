@@ -2,6 +2,7 @@
 
 import { MosaicSelectionManager } from './selection-manager';
 import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
+import type { ColumnType } from './types';
 
 export interface ToggleSelectionOptions {
   /**
@@ -23,10 +24,10 @@ export interface ToggleSelectionOptions {
    */
   value: any;
   /**
-   * Whether the column contains array data (requiring `list_has_any` logic).
-   * @default false
+   * The type of the column.
+   * @default 'scalar'
    */
-  isArrayColumn?: boolean;
+  columnType?: ColumnType;
 }
 
 /**
@@ -45,7 +46,7 @@ export function toggleMosaicSelection(options: ToggleSelectionOptions): void {
     selection: options.selection,
     client: options.client,
     column: options.column,
-    isArrayColumn: options.isArrayColumn,
+    columnType: options.columnType,
   });
 
   manager.toggle(options.value);

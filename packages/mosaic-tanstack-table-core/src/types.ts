@@ -3,7 +3,12 @@
  * Defines configuration options, store structures, and metadata extensions.
  */
 
-import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
+import type {
+  Coordinator,
+  MosaicClient,
+  Param,
+  Selection,
+} from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
@@ -21,6 +26,10 @@ export type MosaicDataTableSqlFilterType =
   | 'RANGE';
 
 export type FacetSortMode = 'alpha' | 'count';
+
+export type ColumnType = 'scalar' | 'array';
+
+export type SelectionSource = MosaicClient | Record<string, unknown>;
 
 /**
  * This will be merged into the TanStack Table ColumnDef type
@@ -137,7 +146,10 @@ export interface MosaicDataTableOptions<
   rowSelection?: {
     selection: Selection;
     column: string;
-    isArrayColumn?: boolean;
+    /**
+     * @default 'scalar'
+     */
+    columnType?: ColumnType;
   };
   /**
    * The selection that the table writes its own internal filter state to.
@@ -173,7 +185,11 @@ export interface MosaicDataTableOptions<
    * @default 'requestUpdate'
    */
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
-  debugName?: string;
+  /**
+   * Debug label for logging.
+   * Internal use only.
+   */
+  __debugName?: string;
 }
 
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
@@ -209,5 +225,9 @@ export type FacetClientConfig<TResult extends Array<any>> = {
    * @default 'alpha'
    */
   sortMode?: FacetSortMode;
+  /**
+   * Debug label for logging.
+   * Internal use only.
+   */
   __debugName?: string;
 };

@@ -65,6 +65,7 @@ export function createMosaicDataTableClient<
 interface ActiveFacetClient extends MosaicClient {
   connect: () => void;
   disconnect: () => void;
+  requestUpdate: () => void;
 }
 
 type MinMaxResult = { min: number; max: number };
@@ -135,7 +136,8 @@ export class MosaicDataTable<
         client: this,
         column: options.rowSelection.column,
         selection: options.rowSelection.selection,
-        isArrayColumn: options.rowSelection.isArrayColumn,
+        // Configured explicitly via columnType, or defaults to scalar if undefined
+        columnType: options.rowSelection.columnType,
       });
     } else {
       this.#rowSelectionManager = undefined;
@@ -345,7 +347,7 @@ export class MosaicDataTable<
   }
 
   get debugPrefix(): string {
-    return this.options.debugName ? `${this.options.debugName}:` : '';
+    return this.options.__debugName ? `${this.options.__debugName}:` : '';
   }
 
   override queryError(error: Error): this {

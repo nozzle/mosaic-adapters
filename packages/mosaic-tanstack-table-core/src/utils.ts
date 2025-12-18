@@ -165,20 +165,21 @@ export function createStructAccess(columnPath: string): MosaicSQLExpression {
   }
 
   const parts = columnPath.split('.');
+  const [first, ...rest] = parts;
+
+  if (!first) {
+    throw new Error(`Invalid column path: ${columnPath}`);
+  }
 
   // Reduce the parts into a nested SQL expression
-  return parts.reduce(
-    (acc, part, index) => {
-      // First part is the base column (e.g. "related_phrase")
-      if (index === 0) {
-        return mSql.column(part);
-      }
-
-      // Subsequent parts are appended with a dot separator.
-      // We wrap 'part' in mSql.column() so it gets quoted correctly ("phrase")
-      // We wrap the whole thing in mSql.sql`` to create a composite Expression Node.
+  // Initialize accumulator with the first column part to avoid 'null' casting
+  return rest.reduce(
+    (acc, part) => {
+      // Append subsequent parts with a dot separator.
+      // mSql.column(part) ensures correct quoting.
+      // mSql.sql`` creates the composite Expression Node.
       return mSql.sql`${acc}.${mSql.column(part)}`;
     },
-    null as unknown as MosaicSQLExpression,
+    mSql.column(first) as MosaicSQLExpression,
   );
 }

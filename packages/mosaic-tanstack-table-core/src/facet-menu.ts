@@ -11,6 +11,7 @@ import { logger } from './logger';
 import { MosaicSelectionManager } from './selection-manager';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
+import type { ColumnType } from './types';
 
 export type FacetValue = string | number | boolean | Date | null;
 
@@ -23,7 +24,9 @@ export interface MosaicFacetMenuOptions {
   coordinator?: Coordinator;
   sortMode?: 'alpha' | 'count';
   limit?: number;
-  debugName?: string;
+  __debugName?: string;
+  columnType?: ColumnType;
+  // Deprecated support for old option
   isArrayColumn?: boolean;
   /**
    * Debounce time in milliseconds for search term updates.
@@ -95,7 +98,8 @@ export class MosaicFacetMenu extends MosaicClient {
       selection: options.selection,
       client: this,
       column: options.column,
-      isArrayColumn: options.isArrayColumn,
+      columnType:
+        options.columnType ?? (options.isArrayColumn ? 'array' : 'scalar'),
     });
 
     logger.debug('Core', `${this.debugPrefix} Created Instance #${this.id}`);
@@ -150,13 +154,17 @@ export class MosaicFacetMenu extends MosaicClient {
     if (
       oldOptions.table !== newOptions.table ||
       oldOptions.column !== newOptions.column ||
-      oldOptions.selection !== newOptions.selection
+      oldOptions.selection !== newOptions.selection ||
+      oldOptions.columnType !== newOptions.columnType ||
+      oldOptions.isArrayColumn !== newOptions.isArrayColumn
     ) {
       this.selectionManager = new MosaicSelectionManager({
         selection: newOptions.selection,
         client: this,
         column: newOptions.column,
-        isArrayColumn: newOptions.isArrayColumn,
+        columnType:
+          newOptions.columnType ??
+          (newOptions.isArrayColumn ? 'array' : 'scalar'),
       });
 
       if (
@@ -181,7 +189,7 @@ export class MosaicFacetMenu extends MosaicClient {
   };
 
   get debugPrefix() {
-    const name = this.options.debugName || `Facet:${this.options.column}`;
+    const name = this.options.__debugName || `Facet:${this.options.column}`;
     return `[MosaicFacetMenu] ${name}`;
   }
 
@@ -300,11 +308,13 @@ export class MosaicFacetMenu extends MosaicClient {
       column,
       limit = 50,
       sortMode = 'count',
+      columnType,
       isArrayColumn,
       additionalContext,
       filterBy,
     } = this.options;
 
+    const isArray = columnType === 'array' || isArrayColumn === true;
     const colExpr = createStructAccess(column);
 
     let effectiveFilter = filter;
@@ -323,7 +333,7 @@ export class MosaicFacetMenu extends MosaicClient {
 
     let query: SelectQuery;
 
-    if (isArrayColumn) {
+    if (isArray) {
       const innerQuery = mSql.Query.from(table).select({
         tag: mSql.unnest(colExpr),
       });
@@ -372,7 +382,7 @@ export class MosaicFacetMenu extends MosaicClient {
       300,
       'debug',
       'SQL',
-      `Facet Query (${this.options.debugName})`,
+      `Facet Query (${this.options.__debugName})`,
       {
         sql: query.toString(),
         filters: effectiveFilter ? effectiveFilter.toString() : 'None',
@@ -388,9 +398,10 @@ export class MosaicFacetMenu extends MosaicClient {
   }
 
   override queryResult(data: any) {
-    const { column, isArrayColumn } = this.options;
+    const { column, columnType, isArrayColumn } = this.options;
+    const isArray = columnType === 'array' || isArrayColumn === true;
     const values: Array<FacetValue> = [];
-    const key = isArrayColumn ? 'tag' : column;
+    const key = isArray ? 'tag' : column;
 
     if (data && typeof data.toArray === 'function') {
       const rows = data.toArray();
