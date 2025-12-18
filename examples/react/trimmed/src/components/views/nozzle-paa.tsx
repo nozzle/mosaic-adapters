@@ -24,6 +24,10 @@ import {
 const TABLE_NAME = 'nozzle_paa';
 const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 
+// A stable object identity for the topology manager to use as a source.
+// This satisfies the ClauseSource type requirement (must be an object, not string).
+const TOPOLOGY_SOURCE = {};
+
 // --- 1. Global State Topology ---
 
 // A. Input Filter: Top-Bar Inputs
@@ -86,6 +90,27 @@ export function NozzlePaaView() {
       }
     }
     init();
+  }, []);
+
+  // --- 3. Topology Management (Fix for Orphaned Selections) ---
+  // When the Top Bar Inputs ($inputFilter) change, we must clear the
+  // Specific Table Selections ($crossFilter) to prevent logical contradictions
+  // (e.g. Input="YouTube" AND Table="Reddit" => 0 Results).
+  useEffect(() => {
+    const resetDownstream = () => {
+      // Check if we actually have a cross-filter active before clearing
+      // to avoid unnecessary updates/flicker.
+      if ($crossFilter.value !== null) {
+        $crossFilter.update({
+          source: TOPOLOGY_SOURCE,
+          value: null,
+          predicate: null,
+        });
+      }
+    };
+
+    $inputFilter.addEventListener('value', resetDownstream);
+    return () => $inputFilter.removeEventListener('value', resetDownstream);
   }, []);
 
   if (!isReady) {

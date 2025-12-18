@@ -1,4 +1,4 @@
-// examples/react/trimmed/src/components/paa/paa-filters.tsx
+// Filter components for the Nozzle PAA view, implementing multi-select logic and facet queries.
 
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -123,6 +123,23 @@ export function SearchableSelectFilter({
     },
   );
 
+  // Merge selectedValues into options to ensure selected items never disappear
+  // regardless of external filtering.
+  const displayOptions = useMemo(() => {
+    // 1. Convert DB options to a set for fast lookup
+    const dbOptionsSet = new Set(options);
+
+    // 2. Find selected values that are NOT in the DB response
+    // (This happens when another filter excludes them)
+    const missingSelected = selectedValues.filter(
+      (val) => !dbOptionsSet.has(val),
+    );
+
+    // 3. Return Union: MissingSelected + DB Options
+    // We prepend missing items so they appear at the top, making it obvious they are selected.
+    return [...missingSelected, ...options];
+  }, [options, selectedValues]);
+
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -200,7 +217,7 @@ export function SearchableSelectFilter({
               All
             </PassiveMenuItem>
 
-            {options.map((opt) => (
+            {displayOptions.map((opt) => (
               <PassiveMenuItem
                 key={String(opt)}
                 isSelected={selectedValues.includes(opt)}
@@ -210,7 +227,7 @@ export function SearchableSelectFilter({
               </PassiveMenuItem>
             ))}
 
-            {options.length === 0 && (
+            {displayOptions.length === 0 && (
               <div className="py-6 text-center text-sm text-slate-500">
                 No results found.
               </div>
@@ -312,6 +329,16 @@ export function ArraySelectFilter({
     },
   );
 
+  // Merge selectedValues into options here as well
+  const displayOptions = useMemo(() => {
+    const dbOptionsSet = new Set(options);
+    const missingSelected = selectedValues.filter(
+      (val) => !dbOptionsSet.has(val),
+    );
+    // For alpha sort mode, we might want to resort, but prepending is safer for "Selected Visibility"
+    return [...missingSelected, ...options];
+  }, [options, selectedValues]);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setSearchTerm(searchValue);
@@ -388,7 +415,7 @@ export function ArraySelectFilter({
               All
             </PassiveMenuItem>
 
-            {options.map((opt) => {
+            {displayOptions.map((opt) => {
               // Fix: Convert non-primitive React children to string for display and key
               const strVal = String(opt);
               return (
@@ -402,7 +429,7 @@ export function ArraySelectFilter({
               );
             })}
 
-            {options.length === 0 && (
+            {displayOptions.length === 0 && (
               <div className="py-6 text-center text-sm text-slate-500">
                 No results found.
               </div>
