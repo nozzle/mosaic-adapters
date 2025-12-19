@@ -1,14 +1,12 @@
 // packages/mosaic-tanstack-table-core/src/facet-menu.ts
 
-import {
-  MosaicClient,
-  coordinator as defaultCoordinator,
-} from '@uwdata/mosaic-core';
+import { coordinator as defaultCoordinator } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import { Store } from '@tanstack/store';
 import { createStructAccess } from './utils';
 import { logger } from './logger';
 import { MosaicSelectionManager } from './selection-manager';
+import { BaseMosaicClient } from './base-client';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ColumnType } from './types';
@@ -62,7 +60,7 @@ let instanceCounter = 0;
  * - Merges selected values into display options (UX best practice)
  * - Internal debouncing for search inputs
  */
-export class MosaicFacetMenu extends MosaicClient {
+export class MosaicFacetMenu extends BaseMosaicClient {
   public options: MosaicFacetMenuOptions;
   readonly store: Store<MosaicFacetMenuState>;
   readonly id: number;
@@ -72,18 +70,9 @@ export class MosaicFacetMenu extends MosaicClient {
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: MosaicFacetMenuOptions) {
-    super(options.filterBy);
+    super(options.filterBy, options.coordinator);
     this.options = options;
     this.id = ++instanceCounter;
-
-    this.coordinator = options.coordinator || defaultCoordinator();
-
-    if (!(this.coordinator as Coordinator | undefined)) {
-      logger.error(
-        'Core',
-        `${this.debugPrefix} No coordinator available. Queries will fail.`,
-      );
-    }
 
     this.store = new Store<MosaicFacetMenuState>({
       options: [],
@@ -120,16 +109,17 @@ export class MosaicFacetMenu extends MosaicClient {
     const oldOptions = this.options;
     this.options = newOptions;
 
+    // Update coordinator if changed
+    const nextCoordinator =
+      newOptions.coordinator || this.coordinator || defaultCoordinator();
+    this.setCoordinator(nextCoordinator);
+
     // 1. Handle Primary Filter (filterBy) changes
     if (oldOptions.filterBy !== newOptions.filterBy) {
       logger.debug(
         'Core',
-        `${this.debugPrefix} filterBy changed. Reconnecting to Coordinator.`,
+        `${this.debugPrefix} filterBy changed. Requesting update.`,
       );
-      if (this.coordinator) {
-        this.coordinator.disconnect(this);
-        this.coordinator.connect(this);
-      }
       this.requestUpdate();
     }
 
@@ -193,16 +183,8 @@ export class MosaicFacetMenu extends MosaicClient {
     return `[MosaicFacetMenu] ${name}`;
   }
 
-  connect(): () => void {
-    if (!this.coordinator) {
-      this.coordinator = this.options.coordinator || defaultCoordinator();
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (this.coordinator) {
-      this.coordinator.connect(this);
-      this.requestUpdate();
-    }
+  protected override onConnect() {
+    this.requestUpdate();
 
     if (this.options.additionalContext) {
       this.options.additionalContext.addEventListener(
@@ -210,16 +192,15 @@ export class MosaicFacetMenu extends MosaicClient {
         this._additionalContextListener,
       );
     }
+  }
 
-    return () => {
-      this.coordinator?.disconnect(this);
-      if (this.options.additionalContext) {
-        this.options.additionalContext.removeEventListener(
-          'value',
-          this._additionalContextListener,
-        );
-      }
-    };
+  protected override onDisconnect() {
+    if (this.options.additionalContext) {
+      this.options.additionalContext.removeEventListener(
+        'value',
+        this._additionalContextListener,
+      );
+    }
   }
 
   /**
@@ -230,11 +211,6 @@ export class MosaicFacetMenu extends MosaicClient {
     if (this._debounceTimer) {
       clearTimeout(this._debounceTimer);
     }
-
-    // Update the store immediately if needed for UI mirroring?
-    // Usually React inputs track their own state, so we only update the store when the query actually runs.
-    // However, fast typists might want to know if the search is "pending".
-    // For now, we wait for debounce to fire.
 
     const delay = this.options.debounceTime ?? 300;
 
@@ -294,13 +270,6 @@ export class MosaicFacetMenu extends MosaicClient {
   }
 
   // --- QUERY LOGIC ---
-
-  override requestQuery(query?: any): Promise<any> | null {
-    if (!this.coordinator) {
-      return Promise.resolve();
-    }
-    return super.requestQuery(query);
-  }
 
   override query(filter?: FilterExpr): SelectQuery {
     const {
@@ -430,7 +399,7 @@ export class MosaicFacetMenu extends MosaicClient {
   }
 
   override queryError(error: Error) {
-    logger.error('Core', `${this.debugPrefix} Query Error`, { error });
+    super.queryError(error);
     this.store.setState((s) => ({ ...s, loading: false }));
     return this;
   }

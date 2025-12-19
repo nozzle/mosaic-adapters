@@ -4,7 +4,6 @@
  */
 
 import {
-  MosaicClient,
   Selection,
   coordinator as defaultCoordinator,
   isArrowTable,
@@ -15,7 +14,6 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { getCoreRowModel, getFacetedRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
-  createStructAccess,
   functionalUpdate,
   seedInitialTableState,
   toSafeSqlColumnName,
@@ -24,12 +22,10 @@ import { logger } from './logger';
 import { ColumnMapper } from './query/column-mapper';
 import { buildTableQuery, extractInternalFilters } from './query/query-builder';
 import { MosaicSelectionManager } from './selection-manager';
+import { BaseMosaicClient } from './base-client';
+import { SidecarManager } from './sidecar-manager';
 
-import type {
-  Coordinator,
-  FieldInfo,
-  FieldInfoRequest,
-} from '@uwdata/mosaic-core';
+import type { FieldInfo, FieldInfoRequest } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
@@ -38,8 +34,6 @@ import type {
   TableOptions,
 } from '@tanstack/table-core';
 import type {
-  FacetClientConfig,
-  FacetSortMode,
   MosaicDataTableOptions,
   MosaicDataTableStore,
   MosaicTableSource,
@@ -62,14 +56,6 @@ export function createMosaicDataTableClient<
   return client;
 }
 
-interface ActiveFacetClient extends MosaicClient {
-  connect: () => void;
-  disconnect: () => void;
-  requestUpdate: () => void;
-}
-
-type MinMaxResult = { min: number; max: number };
-
 /**
  * A Mosaic Client that does the glue work to drive TanStack Table, using it's
  * TableOptions for configuration.
@@ -77,7 +63,7 @@ type MinMaxResult = { min: number; max: number };
 export class MosaicDataTable<
   TData extends RowData,
   TValue = unknown,
-> extends MosaicClient {
+> extends BaseMosaicClient {
   source: MosaicTableSource;
   schema: Array<FieldInfo> = [];
   tableFilterSelection!: Selection;
@@ -93,16 +79,11 @@ export class MosaicDataTable<
   #columnMapper!: ColumnMapper<TData, TValue>;
 
   // Registry to track active facet sidecar clients.
-  #facetClients: Map<string, ActiveFacetClient> = new Map();
+  public sidecarManager = new SidecarManager<TData, TValue>(this);
   #facetValues: Map<string, any> = new Map();
 
   // Manager for row selection sync
   #rowSelectionManager?: MosaicSelectionManager;
-
-  // Track connection state locally to prevent "Client already connected" errors
-  #isConnected = false;
-
-  #QueryStore: any;
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy); // pass the appropriate Filter Selection
@@ -150,18 +131,12 @@ export class MosaicDataTable<
     // 1. Try options.coordinator
     // 2. Try existing this.coordinator
     // 3. Fallback to defaultCoordinator()
-    // Cast to undefined to allow the check to pass linting if TS thinks it's always defined
     const resolvedCoordinator =
       options.coordinator || this.coordinator || defaultCoordinator();
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (!resolvedCoordinator) {
-      logger.warn(
-        'Core',
-        'MosaicDataTable initialized without a valid Coordinator. Queries will fail.',
-      );
-    }
-    this.coordinator = resolvedCoordinator;
+    // BaseMosaicClient handles the safe swapping via setCoordinator
+    this.setCoordinator(resolvedCoordinator);
+    this.sidecarManager.updateCoordinators(resolvedCoordinator);
 
     type ResolvedStore = MosaicDataTableStore<TData, TValue>;
 
@@ -206,14 +181,7 @@ export class MosaicDataTable<
         return;
       }
 
-      switch (facetType) {
-        case 'unique':
-          this.loadColumnFacet(colId);
-          break;
-        case 'minmax':
-          this.loadColumnMinMax(colId);
-          break;
-      }
+      this.sidecarManager.requestFacet(colId, facetType);
     });
   }
 
@@ -316,8 +284,6 @@ export class MosaicDataTable<
       predicate: predicate,
     });
 
-    this.#QueryStore = statement;
-
     return statement;
   }
 
@@ -351,16 +317,6 @@ export class MosaicDataTable<
 
   get debugPrefix(): string {
     return this.options.__debugName ? `${this.options.__debugName}:` : '';
-  }
-
-  override queryError(error: Error): this {
-    logger.error('Core', `${this.debugPrefix}Query Error`, { error });
-    logger.error(
-      'Core',
-      `${this.debugPrefix}Offending Query:`,
-      this.#QueryStore?.toString() ?? '',
-    );
-    return this;
   }
 
   override queryResult(table: unknown): this {
@@ -408,30 +364,15 @@ export class MosaicDataTable<
     return Promise.resolve();
   }
 
-  connect(): () => void {
-    // Prevent double connection which causes Coordinator to throw
-    if (this.#isConnected) {
-      return () => {};
-    }
-
-    // Connect to the coordinator
-    this.coordinator?.connect(this);
-    this.#isConnected = true;
+  // Hook from BaseMosaicClient
+  protected override onConnect() {
     this.enabled = true;
 
-    // Connect active facet clients
-    this.#facetClients.forEach((client) => {
-      // Ensure facet clients have the latest coordinator
-      if (this.coordinator) {
-        client.coordinator = this.coordinator;
-      }
-      client.connect();
-      client.requestUpdate();
-    });
+    // Connect active facet clients (Sidecar Clients)
+    this.sidecarManager.connectAll();
+    // Refresh them to ensure they have the latest data
+    this.sidecarManager.refreshAll();
 
-    const destroy = this.destroy.bind(this);
-
-    // Setup the primary selection change listener to reset pagination
     const selectionCb = () => {
       // Check if the active update came from US (cross-filtering).
       const activeClause =
@@ -440,9 +381,6 @@ export class MosaicDataTable<
       const isSelfUpdate = activeClause?.source === this;
 
       // 1. Reset Pagination ONLY if the update is external.
-      // If we are cross-filtering (self update), the dataset size hasn't changed
-      // (because we exclude ourselves), so preserving the page index is the better UX.
-      // If the update came from outside, the dataset likely changed size/shape.
       if (!isSelfUpdate) {
         batch(() => {
           this.#store.setState((prev) => ({
@@ -459,10 +397,6 @@ export class MosaicDataTable<
       }
 
       // 2. Trigger Re-Query
-      // We must always re-query.
-      // - If external update: Rows change -> Need new data.
-      // - If self (highlight) update: Rows stay same, but `__is_highlighted` column changes
-      //   (for visual dimming).
       this.requestUpdate();
     };
 
@@ -494,10 +428,8 @@ export class MosaicDataTable<
     };
 
     this.filterBy?.addEventListener('value', selectionCb);
-    // Also listen to highlightBy changes to trigger updates
     this.options.highlightBy?.addEventListener('value', selectionCb);
 
-    // Listen for Row Selection changes
     if (this.options.rowSelection?.selection) {
       this.options.rowSelection.selection.addEventListener(
         'value',
@@ -507,130 +439,28 @@ export class MosaicDataTable<
       rowSelectionCb();
     }
 
-    return () => {
-      this.enabled = false; // Prevents "Client already connected" race conditions
+    // Store cleanup for onDisconnect
+    this._cleanupListener = () => {
+      this.enabled = false;
       this.filterBy?.removeEventListener('value', selectionCb);
       this.options.highlightBy?.removeEventListener('value', selectionCb);
       this.options.rowSelection?.selection.removeEventListener(
         'value',
         rowSelectionCb,
       );
-
-      this.#facetClients.forEach((client) => client.disconnect());
-
-      // CRITICAL: Explicitly disconnect from coordinator on unmount
-      if (this.coordinator) {
-        this.coordinator.disconnect(this);
-      }
-      this.#isConnected = false;
-
-      destroy();
+      this.sidecarManager.disconnectAll();
     };
+  }
+
+  private _cleanupListener?: () => void;
+
+  protected override onDisconnect() {
+    this._cleanupListener?.();
   }
 
   destroy(): void {
     super.destroy();
-    this.#facetClients.forEach((client) => client.disconnect());
-    // Do NOT clear #facetClients here if we want them to persist across re-connects,
-    // but typically destroy() means we are tearing down.
-    // For auto-facets, we might want to clear them so they are re-created if columns change.
-    // However, #facetClients is map by KEY (columnId:type).
-    this.#facetClients.clear();
-  }
-
-  /**
-   * Loads unique values for a specific column (for Select dropdowns).
-   * Respects the external `filterBy` selection AND internal cascading filters.
-   */
-  loadColumnFacet(columnId: string) {
-    // Resolve SQL column via Mapper
-    const sqlColumn = this.#columnMapper.getSqlColumn(columnId);
-    if (!sqlColumn) {
-      return;
-    }
-
-    // Get the sort mode from the column definition meta
-    const colDef = this.#columnMapper.getColumnDef(sqlColumn);
-    const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
-
-    const clientKey = `${columnId}:unique`;
-    if (this.#facetClients.has(clientKey)) {
-      return;
-    }
-
-    const facetClient = new UniqueColumnValuesClient({
-      source: this.source,
-      column: sqlColumn,
-      filterBy: this.filterBy,
-      coordinator: this.coordinator,
-      // Cascading logic: get filters excluding this column
-      getFilterExpressions: () => {
-        return this.getCascadingFilters({ excludeColumnId: columnId });
-      },
-      onResult: (values) => {
-        this.#facetValues.set(columnId, values);
-        batch(() => {
-          this.#store.setState((prev) => ({
-            ...prev,
-            _facetsUpdateCount: prev._facetsUpdateCount + 1,
-          }));
-        });
-      },
-      // Pass the configured sort mode
-      sortMode: sortMode,
-      __debugName: this.debugPrefix + 'UniqueFacet:' + columnId,
-    });
-
-    this.#facetClients.set(clientKey, facetClient);
-    // If the table is already enabled/connected, connect the new facet client immediately
-    if (this.enabled) {
-      facetClient.connect();
-      facetClient.requestUpdate();
-    }
-  }
-
-  /**
-   * Loads Min/Max values for a column (for Range Sliders).
-   */
-  loadColumnMinMax(columnId: string) {
-    // Resolve SQL column via Mapper
-    const sqlColumn = this.#columnMapper.getSqlColumn(columnId);
-    if (!sqlColumn) {
-      return;
-    }
-
-    const clientKey = `${columnId}:minmax`;
-    if (this.#facetClients.has(clientKey)) {
-      return;
-    }
-
-    const facetClient = new MinMaxColumnValuesClient({
-      source: this.source,
-      column: sqlColumn,
-      filterBy: this.filterBy,
-      coordinator: this.coordinator,
-      // Cascading logic: get filters excluding this column
-      getFilterExpressions: () => {
-        return this.getCascadingFilters({ excludeColumnId: columnId });
-      },
-      onResult: (min, max) => {
-        this.#facetValues.set(columnId, [min, max]);
-        batch(() => {
-          this.#store.setState((prev) => ({
-            ...prev,
-            _facetsUpdateCount: prev._facetsUpdateCount + 1,
-          }));
-        });
-      },
-      __debugName: this.debugPrefix + 'MinMaxFacet:' + columnId,
-    });
-
-    this.#facetClients.set(clientKey, facetClient);
-    // If the table is already enabled/connected, connect the new facet client immediately
-    if (this.enabled) {
-      facetClient.connect();
-      facetClient.requestUpdate();
-    }
+    this.sidecarManager.clear();
   }
 
   /**
@@ -692,7 +522,7 @@ export class MosaicDataTable<
           const newFilters = JSON.stringify(tableState.columnFilters);
 
           if (oldFilters !== newFilters) {
-            this.#facetClients.forEach((client) => client.requestUpdate());
+            this.sidecarManager.refreshAll();
           }
 
           this[this.#onTableStateChange]();
@@ -772,268 +602,37 @@ export class MosaicDataTable<
   getFacets(): Map<string, any> {
     return this.#facetValues;
   }
-}
 
-/**
- * This is a helper Mosaic Client to query unique values for a given column.
- */
-export class UniqueColumnValuesClient extends MosaicClient {
-  source: MosaicTableSource;
-  column: string;
-  debugName?: string;
-  getFilterExpressions?: () => Array<FilterExpr>;
-  onResult: (values: Array<unknown>) => void;
-  limit?: number;
-  sortMode: FacetSortMode;
-  searchTerm = '';
-  private _isConnected = false;
+  // --- Exposed Helpers for SidecarManager ---
 
-  constructor(options: FacetClientConfig<Array<unknown>>) {
-    super(options.filterBy);
-
-    // Use || instead of checks to handle null/undefined robustly
-    this.coordinator = options.coordinator || defaultCoordinator();
-
-    // Explicitly cast to prevent "always falsy" lint error if TS types suggest it's always defined,
-    // while protecting against actual runtime failures.
-    if (!(this.coordinator as Coordinator | undefined)) {
-      logger.error(
-        'Core',
-        '[UniqueColumnValuesClient] No coordinator available. Queries will fail.',
-      );
-    }
-
-    this.source = options.source;
-    this.column = options.column;
-    this.getFilterExpressions = options.getFilterExpressions;
-    this.onResult = options.onResult;
-    this.limit = options.limit;
-    this.sortMode = options.sortMode || 'alpha';
-
-    this.debugName = options.__debugName;
+  /**
+   * Returns the SQL column name for a given TanStack Column ID.
+   */
+  getColumnSqlName(columnId: string): string | undefined {
+    return this.#columnMapper.getSqlColumn(columnId);
   }
 
-  connect(): void {
-    if (this._isConnected) {
-      return;
-    }
-    this.coordinator?.connect(this);
-    this._isConnected = true;
+  /**
+   * Returns the ColumnDef for a given SQL column name.
+   */
+  getColumnDef(sqlColumn: string): ColumnDef<TData, TValue> | undefined {
+    return this.#columnMapper.getColumnDef(sqlColumn);
   }
 
-  disconnect(): void {
-    this.coordinator?.disconnect(this);
-    this._isConnected = false;
-  }
-
-  setSearchTerm(term: string) {
-    if (this.searchTerm !== term) {
-      this.searchTerm = term;
-      this.requestUpdate();
-    }
-  }
-
-  // Override requestQuery to safeguard against disconnected clients
-  // occurring during throttled updates.
-  // Updated return type to Promise<any> | null to match base class signature
-  override requestQuery(query?: any): Promise<any> | null {
-    if (!this.coordinator) {
-      return Promise.resolve();
-    }
-    return super.requestQuery(query);
-  }
-
-  override query(primaryFilter?: FilterExpr | null | undefined): SelectQuery {
-    let src: string | SelectQuery;
-    if (typeof this.source === 'function') {
-      src = this.source(primaryFilter);
-    } else {
-      // Unwrap if Param
-      src = isParam(this.source)
-        ? (this.source.value as string)
-        : (this.source as string);
-    }
-
-    const statement = mSql.Query.from(src).select(this.column);
-    const whereClauses: Array<mSql.FilterExpr> = [];
-
-    if (primaryFilter && typeof this.source === 'string') {
-      whereClauses.push(primaryFilter);
-    }
-
-    if (this.getFilterExpressions) {
-      const internalFilters = this.getFilterExpressions();
-      if (internalFilters.length > 0) {
-        whereClauses.push(...internalFilters);
-      }
-    }
-
-    if (this.searchTerm) {
-      // Use createStructAccess to properly handle nested fields/quoting
-      const colExpr = createStructAccess(this.column);
-      const pattern = mSql.literal(`%${this.searchTerm}%`);
-      whereClauses.push(mSql.sql`${colExpr} ILIKE ${pattern}`);
-    }
-
-    if (whereClauses.length > 0) {
-      statement.where(mSql.and(...whereClauses));
-    }
-
-    statement.groupby(this.column);
-
-    // Sort Logic
-    if (this.sortMode === 'count') {
-      // ORDER BY count(*) DESC
-      // We descend because when filtering by frequency, the most frequent items (highest count)
-      // are typically the most relevant to the user.
-      statement.orderby(mSql.desc(mSql.count()));
-    } else {
-      // ORDER BY column ASC (default)
-      statement.orderby(mSql.asc(mSql.column(this.column)));
-    }
-
-    // Limit Logic
-    if (this.limit !== undefined) {
-      statement.limit(this.limit);
-    }
-
-    return statement;
-  }
-
-  override queryResult(table: unknown): this {
-    if (isArrowTable(table)) {
-      const rows = table.toArray();
-      const values: Array<unknown> = [];
-      rows.forEach((row) => {
-        const value = row[this.column];
-        values.push(value);
-      });
-      this.onResult(values);
-    }
-    return this;
-  }
-
-  override queryError(error: Error): this {
-    logger.error('Core', `${this.debugPrefix}Query Error`, { error });
-    return this;
-  }
-
-  get debugPrefix(): string {
-    return this.debugName ? `${this.debugName}:` : '';
-  }
-}
-
-/**
- * A helper Mosaic Client to query Min and Max values for a given column.
- */
-export class MinMaxColumnValuesClient extends MosaicClient {
-  private source: MosaicTableSource;
-  private column: string;
-  debugName?: string;
-  private getFilterExpressions?: () => Array<FilterExpr>;
-  private onResult: (min: number, max: number) => void;
-  private _isConnected = false;
-
-  constructor(options: FacetClientConfig<[number, number]>) {
-    super(options.filterBy);
-
-    // Use || to ensure we fallback if options.coordinator is null OR undefined
-    this.coordinator = options.coordinator || defaultCoordinator();
-
-    // Explicitly cast to prevent "always falsy" lint error if TS types suggest it's always defined,
-    // while protecting against actual runtime failures.
-    if (!(this.coordinator as Coordinator | undefined)) {
-      logger.error(
-        'Core',
-        '[MinMaxColumnValuesClient] No coordinator available. Queries will fail.',
-      );
-    }
-
-    this.source = options.source;
-    this.column = options.column;
-    this.getFilterExpressions = options.getFilterExpressions;
-    this.onResult = options.onResult;
-
-    this.debugName = options.__debugName;
-  }
-
-  connect(): void {
-    if (this._isConnected) {
-      return;
-    }
-    this.coordinator?.connect(this);
-    this._isConnected = true;
-  }
-
-  disconnect(): void {
-    this.coordinator?.disconnect(this);
-    this._isConnected = false;
-  }
-
-  // Override requestQuery to safeguard against disconnected clients
-  // occurring during throttled updates.
-  // Updated return type to Promise<any> | null to match base class signature
-  override requestQuery(query?: any): Promise<any> | null {
-    if (!this.coordinator) {
-      return Promise.resolve();
-    }
-    return super.requestQuery(query);
-  }
-
-  override query(primaryFilter?: FilterExpr | null): SelectQuery {
-    let src: string | SelectQuery;
-    if (typeof this.source === 'function') {
-      src = this.source(primaryFilter);
-    } else {
-      // Unwrap if Param
-      src = isParam(this.source)
-        ? (this.source.value as string)
-        : (this.source as string);
-    }
-
-    const col = mSql.column(this.column);
-    const statement = mSql.Query.from(src).select({
-      min: mSql.min(col),
-      max: mSql.max(col),
+  /**
+   * Updates the facet value for a column and triggers a store update.
+   */
+  updateFacetValue(columnId: string, value: any) {
+    this.#facetValues.set(columnId, value);
+    batch(() => {
+      this.#store.setState((prev) => ({
+        ...prev,
+        _facetsUpdateCount: prev._facetsUpdateCount + 1,
+      }));
     });
-
-    const whereClauses: Array<mSql.FilterExpr> = [];
-
-    if (primaryFilter && typeof this.source === 'string') {
-      whereClauses.push(primaryFilter);
-    }
-
-    if (this.getFilterExpressions) {
-      const internal = this.getFilterExpressions();
-      if (internal.length > 0) {
-        whereClauses.push(...internal);
-      }
-    }
-
-    if (whereClauses.length > 0) {
-      statement.where(mSql.and(...whereClauses));
-    }
-
-    return statement;
   }
 
-  override queryResult(table: unknown): this {
-    if (isArrowTable(table)) {
-      const rows = table.toArray();
-      if (rows.length > 0) {
-        const row = rows[0] as MinMaxResult;
-        this.onResult(row.min, row.max);
-      }
-    }
-    return this;
-  }
-
-  override queryError(error: Error): this {
-    logger.error('Core', `${this.debugPrefix}Query Error`, { error });
-    return this;
-  }
-
-  get debugPrefix(): string {
-    return this.debugName ? `${this.debugName}:` : '';
+  get isEnabled() {
+    return this.isConnected;
   }
 }
