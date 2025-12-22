@@ -1,5 +1,6 @@
 import { isArrowTable } from '@uwdata/mosaic-core';
 import { BaseMosaicClient } from './base-client';
+import { logger } from './logger';
 import type { FacetQueryContext, FacetStrategy } from './facet-strategies';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { MosaicTableSource } from './types';
@@ -59,12 +60,7 @@ export class SidecarClient<T> extends BaseMosaicClient {
   }
 
   override query(filter?: FilterExpr): SelectQuery {
-    // 1. Get Cascading Filters (Fresh)
     const cascadingFilters = this.config.getFilters();
-
-    // 2. Get Primary Filter (passed by Coordinator from filterBy)
-    // We do NOT merge this into cascadingFilters anymore.
-    // The Strategy decides whether to pass it to the Source Factory or the Outer Query.
     const primaryFilter = filter;
 
     const ctx: FacetQueryContext = {
@@ -75,7 +71,12 @@ export class SidecarClient<T> extends BaseMosaicClient {
       ...this.config.options,
     };
 
-    return this.strategy.buildQuery(ctx);
+    const statement = this.strategy.buildQuery(ctx);
+
+    const sqlStr = statement.toString();
+    logger.debug('SQL', `Sidecar [${this.debugName}] Query: ${sqlStr}`);
+
+    return statement;
   }
 
   override queryResult(table: unknown): this {

@@ -9,7 +9,8 @@ export type LogCategory =
   | 'Framework'
   | 'TanStack-Table'
   | 'Mosaic'
-  | 'SQL';
+  | 'SQL'
+  | 'Memory';
 
 interface LogEntry {
   timestamp: string;
@@ -188,6 +189,16 @@ class LogManager {
     this.add('error', category, message, meta);
   }
 
+  /**
+   * Diagnostic: Logs the current memory usage of DuckDB.
+   * STUB: PRAGMA memory_info is not available in EH/MVP WASM bundles.
+   */
+
+  logMemory(_coordinator: any, _label: string) {
+    // This is a stub to prevent TypeError: logger.logMemory is not a function
+    // in clients that were instrumented for memory tracking.
+  }
+
   download() {
     const data = {
       generatedAt: new Date().toISOString(),
@@ -236,6 +247,8 @@ class LogManager {
         return 'color: #2980b9; font-weight: bold;';
       case 'Framework':
         return 'color: #27ae60; font-weight: bold;';
+      case 'Memory':
+        return 'color: #c0392b; font-weight: bold;';
       default:
         return 'color: gray;';
     }

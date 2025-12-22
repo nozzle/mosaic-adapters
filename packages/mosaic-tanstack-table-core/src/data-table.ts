@@ -149,16 +149,7 @@ export class MosaicDataTable<
   }
 
   #initializeAutoFacets(columns: Array<ColumnDef<TData, TValue>>) {
-    columns.forEach((col) => {
-      const facetType = col.meta?.mosaicDataTable?.facet;
-      const colId = col.id;
-
-      if (!facetType || !colId) {
-        return;
-      }
-
-      this.sidecarManager.requestFacet(colId, facetType);
-    });
+    // Lazy facets enabled - registration happens in UI
   }
 
   resolveSource(filter?: FilterExpr | null): string | SelectQuery {
@@ -176,7 +167,6 @@ export class MosaicDataTable<
   ): SelectQuery | null {
     const source = this.resolveSource(primaryFilter);
 
-    // Guard against empty or invalid table sources.
     if (!source || (typeof source === 'string' && source.trim() === '')) {
       return null;
     }
@@ -213,9 +203,7 @@ export class MosaicDataTable<
           highlightPredicate: safeHighlightPredicate,
           manualHighlight: this.options.manualHighlight,
         })
-      : mSql.Query.from(source).select('*', {
-          [this.#sql_total_rows]: mSql.sql`COUNT(*) OVER()`,
-        });
+      : mSql.Query.from(source).select('*');
 
     if (
       effectiveFilter &&
@@ -241,7 +229,46 @@ export class MosaicDataTable<
       });
     }
 
+    // MEMORY OPTIMIZATION: Trigger split count query
+    this.#fetchTotalRows(primaryFilter);
+
     return statement;
+  }
+
+  /**
+   * Optimized secondary query to fetch the total row count without window functions.
+   */
+  async #fetchTotalRows(primaryFilter?: FilterExpr | null) {
+    if (!this.coordinator || !this.#columnMapper) {
+      return;
+    }
+
+    const source = this.resolveSource(primaryFilter);
+    const tableState = this.store.state.tableState;
+
+    const internalClauses = extractInternalFilters({
+      tableState,
+      mapper: this.#columnMapper,
+    });
+
+    const query = mSql.Query.from(source).select({ count: mSql.count() });
+
+    if (primaryFilter) {
+      query.where(primaryFilter);
+    }
+    if (internalClauses.length > 0) {
+      query.where(...internalClauses);
+    }
+
+    try {
+      const result = await this.coordinator.query(query.toString());
+      if (isArrowTable(result) && result.numRows > 0) {
+        const count = Number(result.get(0).count);
+        this.store.setState((prev) => ({ ...prev, totalRows: count }));
+      }
+    } catch (e) {
+      logger.error('SQL', 'Failed to fetch split row count', { error: e });
+    }
   }
 
   public getCascadingFilters(options: {
@@ -276,26 +303,13 @@ export class MosaicDataTable<
 
   override queryResult(table: unknown): this {
     if (isArrowTable(table)) {
-      let totalRows: number | undefined = undefined;
-
       const rows = table.toArray() as Array<TData>;
-
-      if (
-        rows.length > 0 &&
-        rows[0] &&
-        typeof rows[0] === 'object' &&
-        this.#sql_total_rows in rows[0]
-      ) {
-        const firstRow = rows[0] as Record<string, any>;
-        totalRows = firstRow[this.#sql_total_rows];
-      }
 
       batch(() => {
         this.store.setState((prev) => {
           return {
             ...prev,
             rows,
-            totalRows,
           };
         });
       });
