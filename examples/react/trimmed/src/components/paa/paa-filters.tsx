@@ -1,5 +1,3 @@
-// Filter components for the Nozzle PAA view, refactored to delegate logic to Core.
-
 import * as React from 'react';
 import { useState } from 'react';
 import { Check, ChevronDown, X } from 'lucide-react';
@@ -58,9 +56,6 @@ function PassiveMenuItem({
   );
 }
 
-/**
- * COMPONENT: SearchableSelectFilter
- */
 export function SearchableSelectFilter({
   label,
   table,
@@ -72,7 +67,8 @@ export function SearchableSelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  const { displayOptions, setSearchTerm, toggle, selectedValues } =
+  // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
+  const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
     useMosaicFacetMenu({
       table,
       column,
@@ -81,6 +77,7 @@ export function SearchableSelectFilter({
       additionalContext: externalContext,
       limit: 50,
       sortMode: 'count',
+      enabled: isOpen,
       __debugName: `Facet:${label}`,
     });
 
@@ -150,27 +147,35 @@ export function SearchableSelectFilter({
           </div>
 
           <div className="max-h-[300px] overflow-y-auto p-1">
-            <PassiveMenuItem
-              isSelected={selectedValues.length === 0}
-              onClick={() => handleSelect(null)}
-            >
-              All
-            </PassiveMenuItem>
-
-            {displayOptions.map((opt) => (
-              <PassiveMenuItem
-                key={String(opt)}
-                isSelected={selectedValues.includes(opt)}
-                onClick={() => handleSelect(String(opt))}
-              >
-                {String(opt)}
-              </PassiveMenuItem>
-            ))}
-
-            {displayOptions.length === 0 && (
-              <div className="py-6 text-center text-sm text-slate-500">
-                No results found.
+            {loading && displayOptions.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400 italic">
+                Loading options...
               </div>
+            ) : (
+              <>
+                <PassiveMenuItem
+                  isSelected={selectedValues.length === 0}
+                  onClick={() => handleSelect(null)}
+                >
+                  All
+                </PassiveMenuItem>
+
+                {displayOptions.map((opt) => (
+                  <PassiveMenuItem
+                    key={String(opt)}
+                    isSelected={selectedValues.includes(opt)}
+                    onClick={() => handleSelect(String(opt))}
+                  >
+                    {String(opt)}
+                  </PassiveMenuItem>
+                ))}
+
+                {displayOptions.length === 0 && !loading && (
+                  <div className="py-6 text-center text-sm text-slate-500">
+                    No results found.
+                  </div>
+                )}
+              </>
             )}
           </div>
         </DropdownMenuContent>
@@ -179,9 +184,6 @@ export function SearchableSelectFilter({
   );
 }
 
-/**
- * COMPONENT: SelectFilter
- */
 export function SelectFilter({
   label,
   table,
@@ -190,6 +192,9 @@ export function SelectFilter({
   filterBy,
   externalContext,
 }: FilterProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  // OPTIMIZATION: Use local isOpen state for the Radix Select
   const { displayOptions, toggle, selectedValues } = useMosaicFacetMenu({
     table,
     column,
@@ -198,10 +203,11 @@ export function SelectFilter({
     additionalContext: externalContext,
     limit: 50,
     sortMode: 'count',
+    enabled: isOpen,
   });
 
   const handleChange = (val: string) => {
-    toggle(null); // Clear previous (Single Select behavior)
+    toggle(null);
     if (val !== 'ALL') {
       toggle(val);
     }
@@ -215,7 +221,11 @@ export function SelectFilter({
       <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
         {label}
       </label>
-      <Select onValueChange={handleChange} value={valueForSelect}>
+      <Select
+        onValueChange={handleChange}
+        value={valueForSelect}
+        onOpenChange={setIsOpen}
+      >
         <SelectTrigger className="h-9 bg-white border-slate-200">
           <SelectValue placeholder="All" />
         </SelectTrigger>
@@ -232,9 +242,6 @@ export function SelectFilter({
   );
 }
 
-/**
- * COMPONENT: ArraySelectFilter
- */
 export function ArraySelectFilter({
   label,
   table,
@@ -246,7 +253,8 @@ export function ArraySelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  const { displayOptions, setSearchTerm, toggle, selectedValues } =
+  // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
+  const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
     useMosaicFacetMenu({
       table,
       column,
@@ -256,6 +264,7 @@ export function ArraySelectFilter({
       limit: 100,
       sortMode: 'alpha',
       columnType: 'array',
+      enabled: isOpen,
       __debugName: `FacetArray:${label}`,
     });
 
@@ -325,30 +334,38 @@ export function ArraySelectFilter({
           </div>
 
           <div className="max-h-[300px] overflow-y-auto p-1">
-            <PassiveMenuItem
-              isSelected={selectedValues.length === 0}
-              onClick={() => handleSelect(null)}
-            >
-              All
-            </PassiveMenuItem>
-
-            {displayOptions.map((opt) => {
-              const strVal = String(opt);
-              return (
-                <PassiveMenuItem
-                  key={strVal}
-                  isSelected={selectedValues.includes(opt)}
-                  onClick={() => handleSelect(opt)}
-                >
-                  {strVal}
-                </PassiveMenuItem>
-              );
-            })}
-
-            {displayOptions.length === 0 && (
-              <div className="py-6 text-center text-sm text-slate-500">
-                No results found.
+            {loading && displayOptions.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400 italic">
+                Loading options...
               </div>
+            ) : (
+              <>
+                <PassiveMenuItem
+                  isSelected={selectedValues.length === 0}
+                  onClick={() => handleSelect(null)}
+                >
+                  All
+                </PassiveMenuItem>
+
+                {displayOptions.map((opt) => {
+                  const strVal = String(opt);
+                  return (
+                    <PassiveMenuItem
+                      key={strVal}
+                      isSelected={selectedValues.includes(opt)}
+                      onClick={() => handleSelect(opt)}
+                    >
+                      {strVal}
+                    </PassiveMenuItem>
+                  );
+                })}
+
+                {displayOptions.length === 0 && !loading && (
+                  <div className="py-6 text-center text-sm text-slate-500">
+                    No results found.
+                  </div>
+                )}
+              </>
             )}
           </div>
         </DropdownMenuContent>
@@ -357,10 +374,6 @@ export function ArraySelectFilter({
   );
 }
 
-/**
- * COMPONENT: TextFilter
- * Refactored: Uses useMosaicFilter hook
- */
 export function TextFilter({ label, column, selection }: FilterProps) {
   const filter = useMosaicFilter({
     selection,
@@ -392,10 +405,6 @@ export function TextFilter({ label, column, selection }: FilterProps) {
   );
 }
 
-/**
- * COMPONENT: DateRangeFilter
- * Refactored: Uses useMosaicFilter hook
- */
 export function DateRangeFilter({ label, column, selection }: FilterProps) {
   const filter = useMosaicFilter({
     selection,

@@ -1,10 +1,11 @@
-// packages/mosaic-tanstack-react-table/src/facet-hook.ts
-
 import * as React from 'react';
 import { MosaicFacetMenu } from '@nozzleio/mosaic-tanstack-table-core';
 import { useStore } from '@tanstack/react-store';
 import type { MosaicFacetMenuOptions } from '@nozzleio/mosaic-tanstack-table-core';
 
+/**
+ * React hook to manage the state and lifecycle of a Mosaic Facet Menu.
+ */
 export function useMosaicFacetMenu(options: MosaicFacetMenuOptions) {
   // 1. Instantiate the stable client once
   const [client] = React.useState(() => new MosaicFacetMenu(options));
@@ -18,10 +19,14 @@ export function useMosaicFacetMenu(options: MosaicFacetMenuOptions) {
   const state = useStore(client.store);
 
   // 4. Connect/Disconnect lifecycle
+  // Only connect to the coordinator when the facet is enabled (e.g. menu is open).
+  // This prevents idle clients from responding to selection changes with null queries.
   React.useEffect(() => {
-    const cleanup = client.connect();
-    return () => cleanup();
-  }, [client]);
+    if (options.enabled) {
+      const cleanup = client.connect();
+      return () => cleanup();
+    }
+  }, [client, options.enabled]);
 
   return {
     /** Raw options from the database (respecting limit/filters) */

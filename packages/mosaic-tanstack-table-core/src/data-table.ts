@@ -1,8 +1,3 @@
-/**
- * @file Orchestrator for the Mosaic and TanStack Table integration.
- * Manages the data-fetching lifecycle, schema mapping, and reactive state synchronization.
- */
-
 import {
   Selection,
   coordinator as defaultCoordinator,
@@ -41,11 +36,6 @@ import type {
 
 /**
  * Factory function to create a MosaicDataTable client.
- *
- * @typeParam `TData` The row data type used in TanStack Table.
- * @typeParam `TValue` The cell value type used in TanStack Table.
- * @param options Options to be passed into the constructor of the MosaicDataTable.
- * @returns A new instance of the MosaicDataTable client.
  */
 export function createMosaicDataTableClient<
   TData extends RowData,
@@ -56,7 +46,7 @@ export function createMosaicDataTableClient<
 }
 
 /**
- * A Mosaic Client that provides the coordination logic to drive TanStack Table.
+ * A Mosaic Client that handles data fetching and coordination for TanStack Table.
  */
 export class MosaicDataTable<
   TData extends RowData,
@@ -86,12 +76,7 @@ export class MosaicDataTable<
     this.updateOptions(options);
   }
 
-  /**
-   * Updates internal state and store when options change.
-   * @param options The updated options.
-   */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    // Detect if the table source has changed to trigger re-preparation
     const sourceChanged = this.source !== options.table;
 
     this.options = options;
@@ -148,19 +133,14 @@ export class MosaicDataTable<
       }));
     }
 
-    // If explicit columns are provided, initialize the mapper immediately
     if (options.columns) {
       this.#columnMapper = new ColumnMapper(options.columns);
       this.#initializeAutoFacets(options.columns);
-    }
-    // If source changed and we are in dynamic mode (no explicit columns),
-    // clear the old mapper and re-prepare
-    else if (sourceChanged) {
+    } else if (sourceChanged) {
       this.#columnMapper = undefined;
       this.schema = [];
 
       if (this.isConnected) {
-        // Re-run the preparation phase to infer new schema
         this.prepare().then(() => {
           this.requestUpdate();
         });
@@ -168,9 +148,6 @@ export class MosaicDataTable<
     }
   }
 
-  /**
-   * Initializes facet sidecars based on column metadata.
-   */
   #initializeAutoFacets(columns: Array<ColumnDef<TData, TValue>>) {
     columns.forEach((col) => {
       const facetType = col.meta?.mosaicDataTable?.facet;
@@ -184,9 +161,6 @@ export class MosaicDataTable<
     });
   }
 
-  /**
-   * Resolves the polymorphic data source into a SQL string or query object.
-   */
   resolveSource(filter?: FilterExpr | null): string | SelectQuery {
     if (typeof this.source === 'function') {
       return this.source(filter);
@@ -202,6 +176,7 @@ export class MosaicDataTable<
   ): SelectQuery | null {
     const source = this.resolveSource(primaryFilter);
 
+    // Guard against empty or invalid table sources.
     if (!source || (typeof source === 'string' && source.trim() === '')) {
       return null;
     }
@@ -269,9 +244,6 @@ export class MosaicDataTable<
     return statement;
   }
 
-  /**
-   * Generates filters for cascading selection logic.
-   */
   public getCascadingFilters(options: {
     excludeColumnId: string;
   }): Array<mSql.FilterExpr> {
@@ -443,9 +415,6 @@ export class MosaicDataTable<
     this.sidecarManager.clear();
   }
 
-  /**
-   * Defines the fields to be queried by Mosaic.
-   */
   fields(): Array<FieldInfoRequest> {
     const source = this.resolveSource();
 
@@ -464,9 +433,6 @@ export class MosaicDataTable<
     return this.#columnMapper.getMosaicFieldRequests(source);
   }
 
-  /**
-   * Produces TanStack Table options from internal store state.
-   */
   getTableOptions(
     state: Store<MosaicDataTableStore<TData, TValue>>['state'],
   ): TableOptions<TData> {
