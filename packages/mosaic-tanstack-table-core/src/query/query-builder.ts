@@ -1,3 +1,8 @@
+/**
+ * Query Builder logic for constructing the primary SQL SelectQuery for the table.
+ * Handles column mapping, sorting, pagination, and total row count injection.
+ */
+
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
 import { createStructAccess } from '../utils';
@@ -12,29 +17,28 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   tableState: TableState;
   mapper: ColumnMapper<TData, TValue>;
   totalRowsColumnName: string;
-  excludeColumnId?: string; // For cascading facets
-  /**
-   * The predicate to use for highlighting rows.
-   * If provided, a computed column `__is_highlighted` (1 or 0) will be added.
-   */
+  totalRowsMode?: 'split' | 'window';
+  excludeColumnId?: string;
   highlightPredicate?: mSql.FilterExpr | null;
-  /**
-   * If true, skip adding the `__is_highlighted` column to the SELECT list.
-   * Use this when the source (subquery) already calculates it.
-   */
   manualHighlight?: boolean;
 }
 
 export function buildTableQuery<TData extends RowData, TValue>(
   options: QueryBuilderOptions<TData, TValue>,
 ): SelectQuery {
-  const { source, tableState, mapper, highlightPredicate, manualHighlight } =
-    options;
+  const {
+    source,
+    tableState,
+    mapper,
+    highlightPredicate,
+    manualHighlight,
+    totalRowsMode,
+    totalRowsColumnName,
+  } = options;
 
   const { pagination, sorting } = tableState;
 
   // 1. Select Columns
-  // We iterate the mapped columns and construct the SELECT clause.
   const selectColumns = mapper.getSelectColumns().map((col: string) => {
     if (col.includes('.')) {
       const structExpr = createStructAccess(col);
@@ -45,12 +49,12 @@ export function buildTableQuery<TData extends RowData, TValue>(
 
   const extraSelects: Record<string, any> = {};
 
-  // MEMORY OPTIMIZATION:
-  // We no longer add COUNT(*) OVER() here. Window functions force DuckDB
-  // to materialize the entire dataset in memory to compute the count,
-  // causing OOM on large files. The count is now fetched separately.
+  // WINDOW MODE: Add the total count as a window function to every row
+  if (totalRowsMode === 'window') {
+    extraSelects[totalRowsColumnName] = mSql.sql`COUNT(*) OVER()`;
+  }
 
-  // Calculate Highlight Column if not in manual mode
+  // Calculate Highlight Column
   if (!manualHighlight) {
     let highlightCol;
     const isHighlightActive =
@@ -111,6 +115,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
         sorting,
         filtersCount: whereClauses.length,
         hasHighlight: !manualHighlight,
+        totalRowsMode,
       },
     },
   );
@@ -119,8 +124,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
 }
 
 /**
- * Helper to extract just the internal filter expressions for cross-filtering.
- * This is now used by both the data query and the separate count query.
+ * Helper to extract just the internal filter expressions.
  */
 export function extractInternalFilters<TData extends RowData, TValue>(options: {
   tableState: TableState;

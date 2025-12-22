@@ -1,4 +1,7 @@
-// View component for the Athletes dataset demonstrating basic table features, filtering, and regression plots
+/**
+ * View component for the Athletes dataset.
+ * Uses 'window' pagination mode to sync perfectly with the interactive regression plot.
+ */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
@@ -16,7 +19,6 @@ const tableName = 'athletes';
 
 const $query = vg.Selection.intersect();
 const $tableFilter = vg.Selection.intersect();
-// Combined filter for the main visualizations
 const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
 type AthleteRowData = {
@@ -47,7 +49,6 @@ export function AthletesView() {
       try {
         setIsPending(true);
 
-        // Setup the Athletes Linear Regression Plot from https://idl.uw.edu/mosaic/examples/linear-regression.html
         await vg
           .coordinator()
           .exec([
@@ -171,8 +172,8 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'nationality',
-              sqlFilterType: 'EQUALS', // 'equals' for drop-down exact match
-              facet: 'unique', // Auto-load facets
+              sqlFilterType: 'EQUALS',
+              facet: 'unique',
             },
             filterVariant: 'select',
           },
@@ -188,7 +189,7 @@ function AthletesTable() {
             mosaicDataTable: {
               sqlColumn: 'sex',
               sqlFilterType: 'EQUALS',
-              facet: 'unique', // Auto-load facets
+              facet: 'unique',
             },
             filterVariant: 'select',
           },
@@ -235,7 +236,7 @@ function AthletesTable() {
             mosaicDataTable: {
               sqlColumn: 'height',
               sqlFilterType: 'RANGE',
-              facet: 'minmax', // Auto-load bounds
+              facet: 'minmax',
             },
           },
           enableColumnFilter: true,
@@ -258,7 +259,7 @@ function AthletesTable() {
             mosaicDataTable: {
               sqlColumn: 'weight',
               sqlFilterType: 'RANGE',
-              facet: 'minmax', // Auto-load bounds
+              facet: 'minmax',
             },
             filterVariant: 'range',
           },
@@ -273,9 +274,8 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sport',
-              // Using PARTIAL_ILIKE so 'gym' finds 'Gymnastics'
               sqlFilterType: 'PARTIAL_ILIKE',
-              facet: 'unique', // Auto-load facets
+              facet: 'unique',
             },
             filterVariant: 'select',
           },
@@ -345,6 +345,8 @@ function AthletesTable() {
     filterBy: $query,
     tableFilterSelection: $tableFilter,
     columns,
+    // Use 'window' mode for Athletes to prevent snapping during map interactions.
+    totalRowsMode: 'window',
     tableOptions: {
       enableHiding: true,
       enableMultiSort: true,
@@ -353,9 +355,6 @@ function AthletesTable() {
     },
     onTableStateChange: 'requestUpdate',
   });
-
-  // Removed manual useEffect for client.loadColumnFacet() calls!
-  // The MosaicDataTable core now handles this based on the column meta defined above.
 
   const table = useReactTable(tableOptions);
 

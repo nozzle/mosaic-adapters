@@ -1,3 +1,8 @@
+/**
+ * MosaicDataTable handles the integration between the Mosaic coordinator and TanStack Table.
+ * It manages data fetching, query generation, pagination, and dual-mode total row count tracking.
+ */
+
 import {
   Selection,
   coordinator as defaultCoordinator,
@@ -67,6 +72,9 @@ export class MosaicDataTable<
   #facetValues: Map<string, any> = new Map();
 
   #rowSelectionManager?: MosaicSelectionManager;
+
+  // Track the ID of the most recent total row count request to prevent race conditions.
+  #latestCountRequestId = 0;
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy);
@@ -200,6 +208,7 @@ export class MosaicDataTable<
           tableState,
           mapper: this.#columnMapper,
           totalRowsColumnName: this.#sql_total_rows,
+          totalRowsMode: this.options.totalRowsMode,
           highlightPredicate: safeHighlightPredicate,
           manualHighlight: this.options.manualHighlight,
         })
@@ -229,8 +238,11 @@ export class MosaicDataTable<
       });
     }
 
-    // MEMORY OPTIMIZATION: Trigger split count query
-    this.#fetchTotalRows(primaryFilter);
+    // Trigger secondary count query only if using 'split' mode (default).
+    // In 'window' mode, the count is part of the data query result.
+    if (!this.options.totalRowsMode || this.options.totalRowsMode === 'split') {
+      this.#fetchTotalRows(primaryFilter);
+    }
 
     return statement;
   }
@@ -243,6 +255,7 @@ export class MosaicDataTable<
       return;
     }
 
+    const requestId = ++this.#latestCountRequestId;
     const source = this.resolveSource(primaryFilter);
     const tableState = this.store.state.tableState;
 
@@ -253,21 +266,32 @@ export class MosaicDataTable<
 
     const query = mSql.Query.from(source).select({ count: mSql.count() });
 
-    if (primaryFilter) {
+    if (primaryFilter && typeof this.source !== 'function') {
       query.where(primaryFilter);
     }
+
     if (internalClauses.length > 0) {
       query.where(...internalClauses);
     }
 
     try {
       const result = await this.coordinator.query(query.toString());
+
+      if (requestId !== this.#latestCountRequestId) {
+        return;
+      }
+
       if (isArrowTable(result) && result.numRows > 0) {
         const count = Number(result.get(0).count);
         this.store.setState((prev) => ({ ...prev, totalRows: count }));
       }
     } catch (e) {
-      logger.error('SQL', 'Failed to fetch split row count', { error: e });
+      if (requestId === this.#latestCountRequestId) {
+        logger.error('SQL', 'Failed to fetch split row count', {
+          error: e,
+          sql: query.toString(),
+        });
+      }
     }
   }
 
@@ -307,9 +331,26 @@ export class MosaicDataTable<
 
       batch(() => {
         this.store.setState((prev) => {
+          let totalRows = prev.totalRows;
+
+          // WINDOW MODE: Extract the total count from the first row of results
+          if (this.options.totalRowsMode === 'window' && rows.length > 0) {
+            const firstRow = rows[0] as any;
+            if (this.#sql_total_rows in firstRow) {
+              totalRows = Number(firstRow[this.#sql_total_rows]);
+            }
+          } else if (
+            this.options.totalRowsMode === 'window' &&
+            rows.length === 0
+          ) {
+            // If query returns 0 rows, we can safely assume count is 0
+            totalRows = 0;
+          }
+
           return {
             ...prev,
             rows,
+            totalRows,
           };
         });
       });

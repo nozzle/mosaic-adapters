@@ -1,4 +1,7 @@
-// examples/react/trimmed/src/components/views/nozzle-paa.tsx
+/**
+ * View component for the Nozzle PAA dataset.
+ * Uses 'split' pagination mode to ensure memory safety on potentially large SEO datasets.
+ */
 
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -27,16 +30,11 @@ const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
 
-  // --- 1. Instantiate Model ---
-  // The model encapsulates all Selections, Topology logic, and Schema mapping.
-  // We explicitly type the generic <PaaDashboardModel> to ensure TS infers the return type correctly,
-  // resolving the "missing property" and "Selection | undefined" errors.
   const model = useMosaicViewModel<PaaDashboardModel>(
     (c) => new PaaDashboardModel(c),
     vg.coordinator(),
   );
 
-  // --- 2. Data Initialization ---
   useEffect(() => {
     async function init() {
       try {
@@ -65,10 +63,8 @@ export function NozzlePaaView() {
 
   return (
     <div className="flex flex-col gap-6 bg-slate-50/50 min-h-screen pb-10">
-      {/* Header Section */}
       <HeaderSection model={model} />
 
-      {/* Filter Controls: Update input filter */}
       <div className="px-6 -mt-8 relative z-10">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">
           <div className="text-sm font-bold text-slate-700 mr-2">
@@ -130,7 +126,6 @@ export function NozzlePaaView() {
         </div>
       </div>
 
-      {/* Summary Grids */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 px-6">
         <SummaryTable
           model={model}
@@ -168,7 +163,6 @@ export function NozzlePaaView() {
         />
       </div>
 
-      {/* Detail Table */}
       <div className="flex-1 px-6 min-h-[500px]">
         <div className="bg-white border rounded-lg shadow-sm h-full flex flex-col overflow-hidden">
           <div className="p-4 border-b bg-slate-50/50 font-semibold text-slate-800">
@@ -182,8 +176,6 @@ export function NozzlePaaView() {
     </div>
   );
 }
-
-// --- Sub-Components ---
 
 function HeaderSection({ model }: { model: PaaDashboardModel }) {
   const qPhrases = (filter: any) =>
@@ -203,7 +195,6 @@ function HeaderSection({ model }: { model: PaaDashboardModel }) {
       .select({ value: mSql.count('requested').distinct() })
       .where(filter);
 
-  // KPIs use globalContext to reflect ALL current filters
   const valPhrases = useMosaicValue(
     qPhrases,
     model.selections.globalContext as any,
@@ -276,7 +267,6 @@ function SummaryTable({
         groupKey = mSql.column(groupBy);
       }
 
-      // MANUAL HIGHLIGHT LOGIC:
       const highlightPred = model.selections.cross.predicate(null);
 
       let highlightCol;
@@ -322,7 +312,6 @@ function SummaryTable({
         sorting: [{ id: 'metric', desc: true }],
         pagination: { pageSize: 10 },
       },
-      // CRITICAL: Map Row ID to the value we are faceting on
       getRowId: (row: any) => String(row[safeId]),
       enableRowSelection: true,
       enableMultiRowSelection: true,
@@ -330,19 +319,17 @@ function SummaryTable({
     [safeId],
   );
 
-  const { tableOptions, client } = useMosaicReactTable({
+  const { tableOptions } = useMosaicReactTable({
     table: queryFactory,
-    // FILTER BY Inputs AND Detail Table
     filterBy: model.selections.summaryContext,
-    // HIGHLIGHT BY Peers (Cross-filtering)
     highlightBy: model.selections.cross,
-    // NEW: Tell Core we handled it manually
     manualHighlight: true,
-    // NEW: Native Row Selection configuration
+    // Explicitly use 'split' mode for summary grids to keep memory footprint predictable.
+    totalRowsMode: 'split',
     rowSelection: {
       selection: model.selections.cross,
       column: groupBy,
-      columnType: 'scalar', // Explicitly use scalar type
+      columnType: 'scalar',
     },
     columns: useMemo(
       () => [
@@ -474,6 +461,8 @@ function DetailTable({ model }: { model: PaaDashboardModel }) {
       tableFilterSelection: model.selections.detail,
       columns,
       totalRowsColumnName: '__total_rows',
+      // Explicitly use 'split' mode for PAA Detail Table for maximum stability.
+      totalRowsMode: 'split' as const,
       tableOptions: {
         ...baseTableOptions,
         enableColumnFilters: true,

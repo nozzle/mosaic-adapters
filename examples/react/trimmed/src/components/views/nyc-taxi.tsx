@@ -1,5 +1,7 @@
-// View component for the NYC Taxi dataset demonstrating geospatial features, aggregation, and cross-filtering
-// Refactored to use NycTaxiModel (MVVM) for logic separation.
+/**
+ * View component for the NYC Taxi dataset.
+ * Demonstrates geospatial features, aggregation, and cross-filtering using Window-mode pagination.
+ */
 
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -37,13 +39,11 @@ export function NycTaxiView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
-  // --- 1. Initialize Model (Singleton per component) ---
   const model = useMosaicViewModel(
     (c) => new NycTaxiModel(c),
     vg.coordinator(),
   );
 
-  // --- 2. Setup Data & Visualizations ---
   useEffect(() => {
     if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {
       return;
@@ -53,7 +53,6 @@ export function NycTaxiView() {
       try {
         setIsPending(true);
 
-        // 1. Data Init
         await vg.coordinator().exec([
           vg.loadExtension('spatial'),
           vg.loadParquet('rides', fileURL, {
@@ -79,8 +78,6 @@ export function NycTaxiView() {
         WHERE fare_amount > 0 AND trip_distance > 0`,
         ]);
 
-        // 2. Visualizations
-        // We use model.selections instead of global variables now.
         const mapAttributes = [
           vg.width(350),
           vg.height(550),
@@ -157,7 +154,7 @@ export function NycTaxiView() {
     }
 
     setup();
-  }, [model]); // Re-run if model instance changes (it should be stable though)
+  }, [model]);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6">
@@ -188,7 +185,6 @@ export function NycTaxiView() {
   );
 }
 
-// --- Table 1: Raw Details ---
 function TripsDetailTable({ model }: { model: NycTaxiModel }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
@@ -209,7 +205,7 @@ function TripsDetailTable({ model }: { model: NycTaxiModel }) {
             mosaicDataTable: {
               sqlColumn: 'datetime',
               sqlFilterType: 'RANGE',
-              facet: 'minmax', // Auto-load bounds
+              facet: 'minmax',
             },
           },
         },
@@ -225,7 +221,7 @@ function TripsDetailTable({ model }: { model: NycTaxiModel }) {
             mosaicDataTable: {
               sqlColumn: 'vendor_id',
               sqlFilterType: 'EQUALS',
-              facet: 'unique', // Auto-load facets
+              facet: 'unique',
             },
           },
         },
@@ -241,7 +237,7 @@ function TripsDetailTable({ model }: { model: NycTaxiModel }) {
             mosaicDataTable: {
               sqlColumn: 'fare_amount',
               sqlFilterType: 'RANGE',
-              facet: 'minmax', // Auto-load bounds
+              facet: 'minmax',
             },
           },
         },
@@ -252,10 +248,10 @@ function TripsDetailTable({ model }: { model: NycTaxiModel }) {
   const mosaicOptions: MosaicDataTableOptions<TripRowData> = useMemo(
     () => ({
       table: tableName,
-      // Use Model Selections
       filterBy: model.selections.detailContext,
       tableFilterSelection: model.selections.detailFilter,
       columns,
+      totalRowsMode: 'window', // FIX: Enable Atomic updates for interactive maps
       tableOptions: { enableColumnFilters: true },
     }),
     [columns, model],
@@ -271,11 +267,9 @@ function TripsDetailTable({ model }: { model: NycTaxiModel }) {
   );
 }
 
-// --- Table 2: Aggregated Summary ---
 function TripsSummaryTable({ model }: { model: NycTaxiModel }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
-  // Columns for the AGGREGATED data
   const columns = useMemo(
     () =>
       [
@@ -319,7 +313,7 @@ function TripsSummaryTable({ model }: { model: NycTaxiModel }) {
             mosaicDataTable: {
               sqlColumn: 'trip_count',
               sqlFilterType: 'RANGE',
-              facet: 'minmax', // Auto-load bounds
+              facet: 'minmax',
             },
             filterVariant: 'range',
           },
@@ -335,7 +329,7 @@ function TripsSummaryTable({ model }: { model: NycTaxiModel }) {
             mosaicDataTable: {
               sqlColumn: 'avg_fare',
               sqlFilterType: 'RANGE',
-              facet: 'minmax', // Auto-load bounds
+              facet: 'minmax',
             },
             filterVariant: 'range',
           },
@@ -346,12 +340,11 @@ function TripsSummaryTable({ model }: { model: NycTaxiModel }) {
 
   const mosaicOptions: MosaicDataTableOptions<SummaryRowData> = useMemo(
     () => ({
-      // Use Model Factory
       table: model.summaryQueryFactory,
-      // Use Model Selections
       filterBy: model.selections.summaryContext,
       tableFilterSelection: model.selections.summaryFilter,
       columns,
+      totalRowsMode: 'window', // FIX: Enable Atomic updates for interactive maps
       tableOptions: {
         enableColumnFilters: true,
         initialState: { sorting: [{ id: 'trip_count', desc: true }] },
