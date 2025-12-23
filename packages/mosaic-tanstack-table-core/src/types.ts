@@ -29,6 +29,17 @@ export type ColumnType = 'scalar' | 'array';
  */
 export type SelectionSource = object;
 
+/**
+ * Interface describing the common API surface for Mosaic Clients
+ * managed within this library.
+ */
+export interface IMosaicClient {
+  readonly isConnected: boolean;
+  connect: () => () => void;
+  disconnect: () => void;
+  setCoordinator: (coordinator: Coordinator) => void;
+}
+
 export type MosaicDataTableColumnDefMetaOptions = {
   mosaicDataTable?: {
     sqlColumn?: string;

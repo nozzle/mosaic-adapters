@@ -4,6 +4,7 @@
  */
 
 import {
+  MosaicClient,
   Selection,
   coordinator as defaultCoordinator,
   isArrowTable,
@@ -22,10 +23,14 @@ import { logger } from './logger';
 import { ColumnMapper } from './query/column-mapper';
 import { buildTableQuery, extractInternalFilters } from './query/query-builder';
 import { MosaicSelectionManager } from './selection-manager';
-import { BaseMosaicClient } from './base-client';
+import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SidecarManager } from './sidecar-manager';
 
-import type { FieldInfo, FieldInfoRequest } from '@uwdata/mosaic-core';
+import type {
+  Coordinator,
+  FieldInfo,
+  FieldInfoRequest,
+} from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
@@ -34,6 +39,7 @@ import type {
   TableOptions,
 } from '@tanstack/table-core';
 import type {
+  IMosaicClient,
   MosaicDataTableOptions,
   MosaicDataTableStore,
   MosaicTableSource,
@@ -60,10 +66,10 @@ export function createMosaicDataTableClient<
 /**
  * A Mosaic Client that provides the coordination logic to drive TanStack Table.
  */
-export class MosaicDataTable<
-  TData extends RowData,
-  TValue = unknown,
-> extends BaseMosaicClient {
+export class MosaicDataTable<TData extends RowData, TValue = unknown>
+  extends MosaicClient
+  implements IMosaicClient
+{
   public readonly id: number;
   source: MosaicTableSource;
   schema: Array<FieldInfo> = [];
@@ -81,6 +87,8 @@ export class MosaicDataTable<
 
   #rowSelectionManager?: MosaicSelectionManager;
 
+  private lifecycle = createLifecycleManager(this);
+
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy);
     this.id = ++instanceCounter;
@@ -93,6 +101,41 @@ export class MosaicDataTable<
     );
 
     this.updateOptions(options);
+  }
+
+  get isConnected() {
+    return this.lifecycle.isConnected;
+  }
+
+  setCoordinator(coordinator: Coordinator) {
+    this.lifecycle.handleCoordinatorSwap(this.coordinator, coordinator, () =>
+      this.connect(),
+    );
+    this.coordinator = coordinator;
+  }
+
+  connect(): () => void {
+    return this.lifecycle.connect(this.coordinator);
+  }
+
+  disconnect() {
+    this.lifecycle.disconnect(this.coordinator);
+  }
+
+  /**
+   * Safe wrapper for requestQuery.
+   * Returns a resolved promise if no coordinator is present, preventing crashes.
+   */
+  override requestQuery(query?: any): Promise<any> | null {
+    if (!this.coordinator) {
+      return Promise.resolve();
+    }
+    return super.requestQuery(query);
+  }
+
+  override queryError(error: Error): this {
+    handleQueryError(`MosaicDataTable #${this.id}`, error);
+    return this;
   }
 
   /**
@@ -112,8 +155,6 @@ export class MosaicDataTable<
     this.source = options.table;
 
     // Guaranteed initialization: uses provided selection, or falls back to an internal default.
-    // We bypass the lint check for 'unnecessary conditional' because this method is called by the constructor
-    // before the field is technically initialized.
     const currentSelection = (this as any).tableFilterSelection as
       | Selection
       | undefined;
@@ -254,7 +295,6 @@ export class MosaicDataTable<
     const tableState = this.store.state.tableState;
 
     // Use current mapper if initialized, otherwise generate raw select.
-    // We cast to any to check if the private field has been initialized yet in dynamic modes.
     const mapper = (this as any).#columnMapper as
       | ColumnMapper<TData, TValue>
       | undefined;
@@ -394,7 +434,7 @@ export class MosaicDataTable<
     return Promise.resolve();
   }
 
-  protected override __onConnect() {
+  public __onConnect() {
     this.enabled = true;
 
     this.sidecarManager.connectAll();
@@ -472,7 +512,7 @@ export class MosaicDataTable<
 
   private _cleanupListener?: () => void;
 
-  protected override __onDisconnect() {
+  public __onDisconnect() {
     this._cleanupListener?.();
   }
 

@@ -1,15 +1,16 @@
-// packages/mosaic-tanstack-table-core/src/facet-menu.ts
-
-import { coordinator as defaultCoordinator } from '@uwdata/mosaic-core';
+import {
+  MosaicClient,
+  coordinator as defaultCoordinator,
+} from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import { Store } from '@tanstack/store';
 import { createStructAccess } from './utils';
 import { logger } from './logger';
 import { MosaicSelectionManager } from './selection-manager';
-import { BaseMosaicClient } from './base-client';
+import { createLifecycleManager, handleQueryError } from './client-utils';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
-import type { ColumnType } from './types';
+import type { ColumnType, IMosaicClient } from './types';
 
 export type FacetValue = string | number | boolean | Date | null;
 
@@ -58,15 +59,8 @@ let instanceCounter = 0;
 
 /**
  * A "Sidecar" Client for fetching metadata (unique values) independent of the main table query.
- *
- * Features:
- * - Fetches unique values from the database (Facet)
- * - Manages selection state (Multi-select / Single-select support via Manager)
- * - Handles cascading logic (excludes own column filters)
- * - Merges selected values into display options (UX best practice)
- * - Internal debouncing for search inputs
  */
-export class MosaicFacetMenu extends BaseMosaicClient {
+export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   public options: MosaicFacetMenuOptions;
   readonly store: Store<MosaicFacetMenuState>;
   readonly id: number;
@@ -75,10 +69,13 @@ export class MosaicFacetMenu extends BaseMosaicClient {
   private _searchTerm = '';
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+  private lifecycle = createLifecycleManager(this);
+
   constructor(options: MosaicFacetMenuOptions) {
-    super(options.filterBy, options.coordinator);
+    super(options.filterBy);
     this.options = options;
     this.id = ++instanceCounter;
+    this.coordinator = options.coordinator || defaultCoordinator();
 
     this.store = new Store<MosaicFacetMenuState>({
       options: [],
@@ -100,12 +97,31 @@ export class MosaicFacetMenu extends BaseMosaicClient {
     logger.debug('Core', `${this.debugPrefix} Created Instance #${this.id}`);
   }
 
+  get isConnected() {
+    return this.lifecycle.isConnected;
+  }
+
   /**
    * Override the base filterBy getter to ensure the Coordinator always sees
    * the most current selection from options.
    */
   override get filterBy() {
     return this.options.filterBy;
+  }
+
+  setCoordinator(coordinator: Coordinator) {
+    this.lifecycle.handleCoordinatorSwap(this.coordinator, coordinator, () =>
+      this.connect(),
+    );
+    this.coordinator = coordinator;
+  }
+
+  connect(): () => void {
+    return this.lifecycle.connect(this.coordinator);
+  }
+
+  disconnect() {
+    this.lifecycle.disconnect(this.coordinator);
   }
 
   /**
@@ -194,7 +210,7 @@ export class MosaicFacetMenu extends BaseMosaicClient {
     return `[MosaicFacetMenu] ${name}`;
   }
 
-  protected override __onConnect() {
+  public __onConnect() {
     if (this.options.enabled !== false) {
       this.requestUpdate();
     }
@@ -207,7 +223,7 @@ export class MosaicFacetMenu extends BaseMosaicClient {
     }
   }
 
-  protected override __onDisconnect() {
+  public __onDisconnect() {
     if (this.options.additionalContext) {
       this.options.additionalContext.removeEventListener(
         'value',
@@ -254,7 +270,6 @@ export class MosaicFacetMenu extends BaseMosaicClient {
 
   /**
    * Helper to keep the reactive store in sync with the Manager's state.
-   * Also re-calculates displayOptions to ensure selected items are visible.
    */
   private _syncStoreFromManager() {
     const values = this.selectionManager.getCurrentValues();
@@ -270,8 +285,6 @@ export class MosaicFacetMenu extends BaseMosaicClient {
 
   /**
    * Merges database options with selected values.
-   * Logic: Prepend any selected values that are NOT present in the database response.
-   * This handles cases where filters/limits hide the currently selected item.
    */
   private _mergeDisplayOptions(
     dbOptions: Array<FacetValue>,
@@ -283,6 +296,13 @@ export class MosaicFacetMenu extends BaseMosaicClient {
   }
 
   // --- QUERY LOGIC ---
+
+  override requestQuery(query?: any): Promise<any> | null {
+    if (!this.coordinator) {
+      return Promise.resolve();
+    }
+    return super.requestQuery(query);
+  }
 
   override query(filter?: FilterExpr): SelectQuery | null {
     if (
@@ -407,7 +427,6 @@ export class MosaicFacetMenu extends BaseMosaicClient {
       }
     }
 
-    // Update state with new options AND re-calculate displayOptions
     const currentSelected = this.store.state.selectedValues;
     const merged = this._mergeDisplayOptions(values, currentSelected);
 
@@ -421,7 +440,7 @@ export class MosaicFacetMenu extends BaseMosaicClient {
   }
 
   override queryError(error: Error) {
-    super.queryError(error);
+    handleQueryError(`MosaicFacetMenu #${this.id}`, error);
     this.store.setState((s) => ({ ...s, loading: false }));
     return this;
   }

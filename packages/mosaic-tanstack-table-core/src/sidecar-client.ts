@@ -1,28 +1,24 @@
-import { isArrowTable } from '@uwdata/mosaic-core';
-import { BaseMosaicClient } from './base-client';
+import {
+  MosaicClient,
+  coordinator as defaultCoordinator,
+  isArrowTable,
+} from '@uwdata/mosaic-core';
 import { logger } from './logger';
+import { createLifecycleManager, handleQueryError } from './client-utils';
 import type { FacetQueryContext, FacetStrategy } from './facet-strategies';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
-import type { MosaicTableSource } from './types';
-import type { Selection } from '@uwdata/mosaic-core';
+import type { IMosaicClient, MosaicTableSource } from './types';
+import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 
 export interface SidecarConfig<T> {
   source: MosaicTableSource;
   column: string;
   /**
    * Function to retrieve the current cascading filters from the host table.
-   * This is called dynamically at query time.
    */
   getFilters: () => Array<FilterExpr>;
   onResult: (data: T) => void;
-  /**
-   * Optional global filter selection (e.g. table's filterBy).
-   * Usually handled via getFilters() but kept for flexibility.
-   */
   filterBy?: Selection;
-  /**
-   * Initial options for the query context.
-   */
   options?: Partial<
     Omit<
       FacetQueryContext,
@@ -34,14 +30,36 @@ export interface SidecarConfig<T> {
 
 /**
  * A generic Mosaic Client that delegates query building and result transformation
- * to a Strategy. Used for fetching metadata like Unique Values or Min/Max.
+ * to a Strategy.
  */
-export class SidecarClient<T> extends BaseMosaicClient {
+export class SidecarClient<T> extends MosaicClient implements IMosaicClient {
+  private lifecycle = createLifecycleManager(this);
+
   constructor(
     private config: SidecarConfig<T>,
     private strategy: FacetStrategy<T>,
   ) {
     super(config.filterBy);
+    this.coordinator = defaultCoordinator();
+  }
+
+  get isConnected() {
+    return this.lifecycle.isConnected;
+  }
+
+  setCoordinator(coordinator: Coordinator) {
+    this.lifecycle.handleCoordinatorSwap(this.coordinator, coordinator, () =>
+      this.connect(),
+    );
+    this.coordinator = coordinator;
+  }
+
+  connect(): () => void {
+    return this.lifecycle.connect(this.coordinator);
+  }
+
+  disconnect() {
+    this.lifecycle.disconnect(this.coordinator);
   }
 
   /**
@@ -57,6 +75,13 @@ export class SidecarClient<T> extends BaseMosaicClient {
   ) {
     this.config.options = { ...this.config.options, ...opts };
     this.requestUpdate();
+  }
+
+  override requestQuery(query?: any): Promise<any> | null {
+    if (!this.coordinator) {
+      return Promise.resolve();
+    }
+    return super.requestQuery(query);
   }
 
   override query(filter?: FilterExpr): SelectQuery {
@@ -87,6 +112,11 @@ export class SidecarClient<T> extends BaseMosaicClient {
       );
       this.config.onResult(result);
     }
+    return this;
+  }
+
+  override queryError(error: Error): this {
+    handleQueryError(this.debugName, error);
     return this;
   }
 
