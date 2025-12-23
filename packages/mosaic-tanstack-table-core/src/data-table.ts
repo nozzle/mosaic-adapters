@@ -80,7 +80,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   #sql_total_rows = toSafeSqlColumnName('__total_rows');
   #onTableStateChange: 'requestQuery' | 'requestUpdate' = 'requestUpdate';
 
-  #columnMapper!: ColumnMapper<TData, TValue>;
+  #columnMapper: ColumnMapper<TData, TValue> | undefined;
 
   public sidecarManager = new SidecarManager<TData, TValue>(this);
   #facetValues: Map<string, any> = new Map();
@@ -203,11 +203,13 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         _facetsUpdateCount: 0,
       });
     } else {
-      this.#store.setState((prev) => ({
-        ...prev,
-        columnDefs:
-          options.columns !== undefined ? options.columns : prev.columnDefs,
-      }));
+      // If we have explicit columns, update them immediately.
+      if (options.columns !== undefined) {
+        this.#store.setState((prev) => ({
+          ...prev,
+          columnDefs: options.columns!,
+        }));
+      }
     }
 
     // Split Mode Logic: Spin up a sidecar for total counts
@@ -232,6 +234,18 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     // clear the old schema and re-prepare
     else if (sourceChanged) {
       this.schema = [];
+
+      // CRITICAL FIX: Reset the column mapper immediately.
+      // This prevents the client from generating queries using the OLD schema against the NEW table
+      // (which causes "Binder Error: Referenced column not found" errors).
+      this.#columnMapper = undefined;
+
+      // Also reset the store to prevent the UI from rendering stale columns
+      this.#store.setState((prev) => ({
+        ...prev,
+        columnDefs: [],
+        rows: [],
+      }));
 
       if (this.isConnected) {
         // Re-run the preparation phase to infer new schema
@@ -304,9 +318,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     const tableState = this.store.state.tableState;
 
     // Use current mapper if initialized, otherwise generate raw select.
-    const mapper = (this as any).#columnMapper as
-      | ColumnMapper<TData, TValue>
-      | undefined;
+    const mapper = this.#columnMapper;
 
     const statement = mapper
       ? buildTableQuery({
@@ -366,9 +378,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       : tableState;
 
     // Cast to check if mapper is ready
-    const mapper = (this as any).#columnMapper as
-      | ColumnMapper<TData, TValue>
-      | undefined;
+    const mapper = this.#columnMapper;
 
     if (!mapper) {
       return [];
@@ -437,9 +447,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.schema = schema;
 
       // Access private field via any to check initialization
-      const mapper = (this as any).#columnMapper as
-        | ColumnMapper<TData, TValue>
-        | undefined;
+      const mapper = this.#columnMapper;
 
       // Initialize inferred mapper if we have no column definitions and no existing mapper
       if (schema.length > 0 && this.options.columns === undefined && !mapper) {
@@ -555,9 +563,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     }
 
     // Access mapper via any to check initialization
-    const mapper = (this as any).#columnMapper as
-      | ColumnMapper<TData, TValue>
-      | undefined;
+    const mapper = this.#columnMapper;
 
     if (!mapper) {
       return [{ table: source, column: '*' }];
@@ -687,16 +693,12 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   }
 
   getColumnSqlName(columnId: string): string | undefined {
-    const mapper = (this as any).#columnMapper as
-      | ColumnMapper<TData, TValue>
-      | undefined;
+    const mapper = this.#columnMapper;
     return mapper?.getSqlColumn(columnId);
   }
 
   getColumnDef(sqlColumn: string): ColumnDef<TData, TValue> | undefined {
-    const mapper = (this as any).#columnMapper as
-      | ColumnMapper<TData, TValue>
-      | undefined;
+    const mapper = this.#columnMapper;
     return mapper?.getColumnDef(sqlColumn);
   }
 
