@@ -8,7 +8,6 @@ export * from './logger';
 export * from './utils';
 export * from './selection-utils';
 export * from './view-model';
-export * from './base-client';
 export * from './facet-strategies';
 export * from './sidecar-client';
 export * from './sidecar-manager';

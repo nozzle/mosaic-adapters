@@ -124,7 +124,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   /**
    * Safe wrapper for requestQuery.
-   * Returns a resolved promise if no coordinator is present, preventing crashes.
+   * Uses super.requestQuery to ensure the library's client-coordinator handshake is preserved.
    */
   override requestQuery(query?: any): Promise<any> | null {
     if (!this.coordinator) {

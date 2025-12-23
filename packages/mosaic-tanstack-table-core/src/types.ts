@@ -38,6 +38,16 @@ export interface IMosaicClient {
   connect: () => () => void;
   disconnect: () => void;
   setCoordinator: (coordinator: Coordinator) => void;
+  __onConnect?: () => void;
+  __onDisconnect?: () => void;
+}
+
+/**
+ * Internal hooks used by the lifecycle manager.
+ */
+export interface IMosaicLifecycleHooks {
+  __onConnect?: () => void;
+  __onDisconnect?: () => void;
 }
 
 export type MosaicDataTableColumnDefMetaOptions = {

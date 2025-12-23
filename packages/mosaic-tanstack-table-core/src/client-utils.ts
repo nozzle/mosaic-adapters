@@ -1,13 +1,6 @@
 import { logger } from './logger';
 import type { Coordinator, MosaicClient } from '@uwdata/mosaic-core';
-
-/**
- * Internal hooks used by the lifecycle manager.
- */
-export interface IMosaicLifecycleHooks {
-  __onConnect?: () => void;
-  __onDisconnect?: () => void;
-}
+import type { IMosaicLifecycleHooks } from './types';
 
 /**
  * Creates a lifecycle manager to handle coordinator connection and coordination swapping.

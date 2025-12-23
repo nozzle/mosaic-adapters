@@ -58,6 +58,10 @@ export class SidecarClient<T> extends MosaicClient implements IMosaicClient {
     return this.lifecycle.connect(this.coordinator);
   }
 
+  setCoordinatorRef(coordinator: Coordinator) {
+    this.coordinator = coordinator;
+  }
+
   disconnect() {
     this.lifecycle.disconnect(this.coordinator);
   }
