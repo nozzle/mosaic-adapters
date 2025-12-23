@@ -1,25 +1,26 @@
 /**
  * View component for the Athletes dataset.
- * Uses 'window' pagination mode to sync perfectly with the interactive regression plot.
+ * Refactored to use a managed ViewModel for clean reset cycles and restored full column definitions.
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
-import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  useMosaicReactTable,
+  useMosaicViewModel,
+} from '@nozzleio/mosaic-tanstack-react-table';
+import { AthletesModel } from './athletes-model';
 import type { ColumnDef } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
+import { ResetDashboardButton } from '@/components/reset-button';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
 const tableName = 'athletes';
-
-const $query = vg.Selection.intersect();
-const $tableFilter = vg.Selection.intersect();
-const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
 type AthleteRowData = {
   id: number;
@@ -36,9 +37,18 @@ type AthleteRowData = {
   info: string | null;
 };
 
-export function AthletesView() {
+export function AthletesView({
+  onResetRequest,
+}: {
+  onResetRequest: () => void;
+}) {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
+
+  const model = useMosaicViewModel(
+    (c) => new AthletesModel(c),
+    vg.coordinator(),
+  );
 
   useEffect(() => {
     if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {
@@ -58,19 +68,19 @@ export function AthletesView() {
         const inputs = vg.hconcat(
           vg.menu({
             label: 'Sport',
-            as: $query,
+            as: model.selections.query,
             from: tableName,
             column: 'sport',
           }),
           vg.menu({
             label: 'Gender',
-            as: $query,
+            as: model.selections.query,
             from: tableName,
             column: 'sex',
           }),
           vg.search({
             label: 'Name',
-            as: $query,
+            as: model.selections.query,
             from: tableName,
             column: 'name',
             type: 'contains',
@@ -78,20 +88,23 @@ export function AthletesView() {
         );
 
         const plot = vg.plot(
-          vg.dot(vg.from(tableName, { filterBy: $combined }), {
+          vg.dot(vg.from(tableName, { filterBy: model.selections.combined }), {
             x: 'weight',
             y: 'height',
             fill: 'sex',
             r: 2,
             opacity: 0.05,
           }),
-          vg.regressionY(vg.from(tableName, { filterBy: $combined }), {
-            x: 'weight',
-            y: 'height',
-            stroke: 'sex',
-          }),
+          vg.regressionY(
+            vg.from(tableName, { filterBy: model.selections.combined }),
+            {
+              x: 'weight',
+              y: 'height',
+              stroke: 'sex',
+            },
+          ),
           vg.intervalXY({
-            as: $query,
+            as: model.selections.query,
             brush: { fillOpacity: 0, stroke: 'currentColor' },
           }),
           vg.xyDomain(vg.Fixed),
@@ -100,36 +113,40 @@ export function AthletesView() {
 
         const layout = vg.vconcat(inputs, vg.vspace(10), plot);
         chartDivRef.current?.replaceChildren(layout);
-
         setIsPending(false);
       } catch (err) {
-        console.warn('AthletesView setup interrupted or failed:', err);
+        console.warn('AthletesView setup failed:', err);
       }
     }
 
     setup();
-  }, []);
+  }, [model]);
 
   return (
     <>
-      <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
-      {isPending && <div className="italic">Loading data...</div>}
+      <div className="flex justify-between items-center mb-2">
+        <h4 className="text-lg font-medium">Chart & Controls</h4>
+        <ResetDashboardButton onReset={onResetRequest} />
+      </div>
+      {isPending && (
+        <div className="italic text-slate-400">Loading data...</div>
+      )}
       <div ref={chartDivRef} />
       <hr className="my-4" />
       <h4 className="text-lg mb-2 font-medium">Table area</h4>
       {isPending ? (
-        <div className="italic">Loading data...</div>
+        <div className="italic text-slate-400">Loading table...</div>
       ) : (
-        <AthletesTable />
+        <AthletesTable model={model} />
       )}
     </>
   );
 }
 
-function AthletesTable() {
+function AthletesTable({ model }: { model: AthletesModel }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
-  const columns = useMemo(
+  const columns: Array<ColumnDef<AthleteRowData, any>> = useMemo(
     () =>
       [
         {
@@ -138,9 +155,6 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="ID" view={view} />
           ),
           accessorKey: 'id',
-          enableHiding: false,
-          enableSorting: false,
-          enableMultiSort: false,
           enableColumnFilter: false,
         },
         {
@@ -148,14 +162,14 @@ function AthletesTable() {
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Name" view={view} />
           ),
-          accessorFn: (row) => row.name,
+          accessorKey: 'name',
           enableColumnFilter: true,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'name',
-              sqlFilterType: 'PARTIAL_ILIKE',
+              sqlFilterType: 'PARTIAL_ILIKE' as const,
             },
-            filterVariant: 'text',
+            filterVariant: 'text' as const,
           },
         },
         {
@@ -172,10 +186,10 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'nationality',
-              sqlFilterType: 'EQUALS',
-              facet: 'unique',
+              sqlFilterType: 'EQUALS' as const,
+              facet: 'unique' as const,
             },
-            filterVariant: 'select',
+            filterVariant: 'select' as const,
           },
         },
         {
@@ -188,10 +202,10 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sex',
-              sqlFilterType: 'EQUALS',
-              facet: 'unique',
+              sqlFilterType: 'EQUALS' as const,
+              facet: 'unique' as const,
             },
-            filterVariant: 'select',
+            filterVariant: 'select' as const,
           },
         },
         {
@@ -200,21 +214,18 @@ function AthletesTable() {
             <RenderTableHeader column={column} title="DOB" view={view} />
           ),
           cell: (props) => {
-            const value = props.getValue();
-            if (value instanceof Date) {
-              return simpleDateFormatter.format(value);
-            }
-            return value;
+            const val = props.getValue();
+            return val instanceof Date ? simpleDateFormatter.format(val) : val;
           },
           accessorKey: 'date_of_birth',
           enableColumnFilter: true,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'date_of_birth',
-              sqlFilterType: 'RANGE',
+              sqlFilterType: 'RANGE' as const,
             },
-            filterVariant: 'range',
-            rangeFilterType: 'date',
+            filterVariant: 'range' as const,
+            rangeFilterType: 'date' as const,
           },
         },
         {
@@ -224,22 +235,19 @@ function AthletesTable() {
           ),
           cell: (props) => {
             const value = props.getValue();
-            if (typeof value === 'number') {
-              return `${value}m`;
-            }
-            return value;
+            return typeof value === 'number' ? `${value}m` : value;
           },
           accessorKey: 'height',
+          enableColumnFilter: true,
           meta: {
-            filterVariant: 'range',
-            rangeFilterType: 'number',
             mosaicDataTable: {
               sqlColumn: 'height',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
+              sqlFilterType: 'RANGE' as const,
+              facet: 'minmax' as const,
             },
+            filterVariant: 'range' as const,
+            rangeFilterType: 'number' as const,
           },
-          enableColumnFilter: true,
         },
         {
           id: 'Weight',
@@ -248,20 +256,18 @@ function AthletesTable() {
           ),
           cell: (props) => {
             const value = props.getValue();
-            if (typeof value === 'number') {
-              return `${value}kg`;
-            }
-            return value;
+            return typeof value === 'number' ? `${value}kg` : value;
           },
           accessorKey: 'weight',
           enableColumnFilter: true,
           meta: {
             mosaicDataTable: {
               sqlColumn: 'weight',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
+              sqlFilterType: 'RANGE' as const,
+              facet: 'minmax' as const,
             },
-            filterVariant: 'range',
+            filterVariant: 'range' as const,
+            rangeFilterType: 'number' as const,
           },
         },
         {
@@ -274,10 +280,10 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sport',
-              sqlFilterType: 'PARTIAL_ILIKE',
-              facet: 'unique',
+              sqlFilterType: 'PARTIAL_ILIKE' as const,
+              facet: 'unique' as const,
             },
-            filterVariant: 'select',
+            filterVariant: 'select' as const,
           },
         },
         {
@@ -318,20 +324,14 @@ function AthletesTable() {
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Actions" view={view} />
           ),
-          cell: ({ row }) => {
-            return (
-              <div>
-                <button
-                  className="px-1 py-0.5 border rounded text-sm opacity-80 hover:opacity-100"
-                  onClick={() => {
-                    console.info('Row:', row.id, row.original);
-                  }}
-                >
-                  console.info(row)
-                </button>
-              </div>
-            );
-          },
+          cell: ({ row }) => (
+            <button
+              className="px-1 py-0.5 border rounded text-xs opacity-80 hover:opacity-100"
+              onClick={() => console.info('Athlete:', row.original)}
+            >
+              Log
+            </button>
+          ),
           enableHiding: false,
           enableSorting: false,
           enableColumnFilter: false,
@@ -340,12 +340,11 @@ function AthletesTable() {
     [view],
   );
 
-  const { tableOptions } = useMosaicReactTable<AthleteRowData>({
+  const { tableOptions } = useMosaicReactTable({
     table: tableName,
-    filterBy: $query,
-    tableFilterSelection: $tableFilter,
+    filterBy: model.selections.query,
+    tableFilterSelection: model.selections.tableFilter,
     columns,
-    // Use 'window' mode for Athletes to prevent snapping during map interactions.
     totalRowsMode: 'window',
     tableOptions: {
       enableHiding: true,
@@ -353,10 +352,9 @@ function AthletesTable() {
       enableSorting: true,
       enableColumnFilters: true,
     },
-    onTableStateChange: 'requestUpdate',
   });
 
   const table = useReactTable(tableOptions);
 
-  return <RenderTable table={table} columns={table.options.columns} />;
+  return <RenderTable table={table} columns={columns} />;
 }

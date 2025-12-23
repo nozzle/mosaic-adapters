@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, ChevronDown, X } from 'lucide-react';
 import {
   useMosaicFacetMenu,
@@ -25,11 +25,11 @@ import { cn } from '@/lib/utils';
 
 interface FilterProps {
   label: string;
-  table: string;
+  table?: string;
   column: string;
   selection: Selection;
   filterBy?: Selection;
-  externalContext?: Selection;
+  additionalContext?: Selection;
 }
 
 function PassiveMenuItem({
@@ -62,24 +62,45 @@ export function SearchableSelectFilter({
   column,
   selection,
   filterBy,
-  externalContext,
+  additionalContext,
 }: FilterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
-  const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
-    useMosaicFacetMenu({
-      table,
-      column,
-      selection,
-      filterBy,
-      additionalContext: externalContext,
-      limit: 50,
-      sortMode: 'count',
-      enabled: isOpen,
-      __debugName: `Facet:${label}`,
-    });
+  const {
+    displayOptions,
+    setSearchTerm,
+    toggle,
+    selectedValues,
+    loading,
+    client,
+  } = useMosaicFacetMenu({
+    table: table || '',
+    column,
+    selection,
+    filterBy,
+    additionalContext: additionalContext,
+    limit: 50,
+    sortMode: 'count',
+    enabled: isOpen,
+    __debugName: `Facet:${label}`,
+  });
+
+  useEffect(() => {
+    const sync = () => {
+      const currentValues = selection.valueFor(client);
+      // Logic: If selection is null or an empty array, reset local search
+      const isEmpty =
+        !currentValues ||
+        (Array.isArray(currentValues) && currentValues.length === 0);
+      if (isEmpty) {
+        setSearchValue('');
+        setSearchTerm('');
+      }
+    };
+    selection.addEventListener('value', sync);
+    return () => selection.removeEventListener('value', sync);
+  }, [selection, client, setSearchTerm]);
 
   const handleSearchChange = (val: string) => {
     setSearchValue(val);
@@ -190,17 +211,16 @@ export function SelectFilter({
   column,
   selection,
   filterBy,
-  externalContext,
+  additionalContext,
 }: FilterProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // OPTIMIZATION: Use local isOpen state for the Radix Select
   const { displayOptions, toggle, selectedValues } = useMosaicFacetMenu({
-    table,
+    table: table || '',
     column,
     selection,
     filterBy,
-    additionalContext: externalContext,
+    additionalContext: additionalContext,
     limit: 50,
     sortMode: 'count',
     enabled: isOpen,
@@ -248,25 +268,45 @@ export function ArraySelectFilter({
   column,
   selection,
   filterBy,
-  externalContext,
+  additionalContext,
 }: FilterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
-  const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
-    useMosaicFacetMenu({
-      table,
-      column,
-      selection,
-      filterBy,
-      additionalContext: externalContext,
-      limit: 100,
-      sortMode: 'alpha',
-      columnType: 'array',
-      enabled: isOpen,
-      __debugName: `FacetArray:${label}`,
-    });
+  const {
+    displayOptions,
+    setSearchTerm,
+    toggle,
+    selectedValues,
+    loading,
+    client,
+  } = useMosaicFacetMenu({
+    table: table || '',
+    column,
+    selection,
+    filterBy,
+    additionalContext: additionalContext,
+    limit: 100,
+    sortMode: 'alpha',
+    columnType: 'array',
+    enabled: isOpen,
+    __debugName: `FacetArray:${label}`,
+  });
+
+  useEffect(() => {
+    const sync = () => {
+      const currentValues = selection.valueFor(client);
+      const isEmpty =
+        !currentValues ||
+        (Array.isArray(currentValues) && currentValues.length === 0);
+      if (isEmpty) {
+        setSearchValue('');
+        setSearchTerm('');
+      }
+    };
+    selection.addEventListener('value', sync);
+    return () => selection.removeEventListener('value', sync);
+  }, [selection, client, setSearchTerm]);
 
   const handleSearchChange = (val: string) => {
     setSearchValue(val);
@@ -384,6 +424,18 @@ export function TextFilter({ label, column, selection }: FilterProps) {
 
   const [val, setVal] = useState('');
 
+  // EFFECT: Sync local input state with global Selection state (crucial for resets)
+  useEffect(() => {
+    const sync = () => {
+      const currentVal = selection.valueFor(filter);
+      if (currentVal === null || currentVal === undefined) {
+        setVal('');
+      }
+    };
+    selection.addEventListener('value', sync);
+    return () => selection.removeEventListener('value', sync);
+  }, [selection, filter]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setVal(value);
@@ -415,7 +467,20 @@ export function DateRangeFilter({ label, column, selection }: FilterProps) {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
 
-  React.useEffect(() => {
+  // EFFECT: Reconcile local state with logical resets
+  useEffect(() => {
+    const sync = () => {
+      const currentVal = selection.valueFor(filter);
+      if (!currentVal) {
+        setStart('');
+        setEnd('');
+      }
+    };
+    selection.addEventListener('value', sync);
+    return () => selection.removeEventListener('value', sync);
+  }, [selection, filter]);
+
+  useEffect(() => {
     filter.setValue([start || null, end || null]);
   }, [start, end, filter]);
 

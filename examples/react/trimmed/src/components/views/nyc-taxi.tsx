@@ -1,6 +1,6 @@
 /**
  * View component for the NYC Taxi dataset.
- * Demonstrates geospatial features, aggregation, and cross-filtering using Window-mode pagination.
+ * Demonstrates geospatial features, aggregation, and cross-filtering.
  */
 
 import * as React from 'react';
@@ -12,11 +12,11 @@ import {
   useMosaicViewModel,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { NycTaxiModel } from './nyc-model';
-import type { ColumnDef } from '@tanstack/react-table';
-import type { MosaicDataTableOptions } from '@nozzleio/mosaic-tanstack-react-table';
+import type { Table } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
+import { ResetDashboardButton } from '@/components/reset-button';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet';
@@ -35,9 +35,16 @@ interface SummaryRowData {
   avg_fare: number;
 }
 
-export function NycTaxiView() {
+export function NycTaxiView({
+  onResetRequest,
+}: {
+  onResetRequest: () => void;
+}) {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
+
+  const [_, setDetailTable] = useState<Table<TripRowData> | null>(null);
+  const [__, setSummaryTable] = useState<Table<SummaryRowData> | null>(null);
 
   const model = useMosaicViewModel(
     (c) => new NycTaxiModel(c),
@@ -69,11 +76,10 @@ export function NycTaxiView() {
           }),
           `CREATE OR REPLACE TABLE ${tableName} AS SELECT
           (HOUR(datetime) + MINUTE(datetime)/60) AS time,
-          MONTH(datetime) AS month,
           datetime,
           ST_X(pick) AS px, ST_Y(pick) AS py,
           ST_X(drop) AS dx, ST_Y(drop) AS dy,
-          trip_distance, fare_amount, tip_amount, total_amount, vendor_id
+          trip_distance, fare_amount, vendor_id
         FROM rides
         WHERE fare_amount > 0 AND trip_distance > 0`,
         ]);
@@ -92,21 +98,9 @@ export function NycTaxiView() {
         const pickupMap = vg.plot(
           vg.raster(
             vg.from(tableName, { filterBy: model.selections.chartContext }),
-            {
-              x: 'px',
-              y: 'py',
-              bandwidth: 0,
-            },
+            { x: 'px', y: 'py', bandwidth: 0 },
           ),
           vg.intervalXY({ as: model.selections.brush }),
-          vg.text([{ label: 'Pickups' }], {
-            dx: 10,
-            dy: 10,
-            text: 'label',
-            fill: 'black',
-            fontSize: '1.2em',
-            frameAnchor: 'top-left',
-          }),
           vg.colorScheme('blues'),
           ...mapAttributes,
         );
@@ -114,42 +108,18 @@ export function NycTaxiView() {
         const dropoffMap = vg.plot(
           vg.raster(
             vg.from(tableName, { filterBy: model.selections.chartContext }),
-            {
-              x: 'dx',
-              y: 'dy',
-              bandwidth: 0,
-            },
+            { x: 'dx', y: 'dy', bandwidth: 0 },
           ),
           vg.intervalXY({ as: model.selections.brush }),
-          vg.text([{ label: 'Dropoffs' }], {
-            dx: 10,
-            dy: 10,
-            text: 'label',
-            fill: 'black',
-            fontSize: '1.2em',
-            frameAnchor: 'top-left',
-          }),
           vg.colorScheme('oranges'),
           ...mapAttributes,
         );
 
-        const vendorMenu = vg.menu({
-          label: 'Vendor',
-          as: model.selections.vendorFilter,
-          from: tableName,
-          column: 'vendor_id',
-        });
-
-        const layout = vg.vconcat(
-          vendorMenu,
-          vg.vspace(10),
-          vg.hconcat(pickupMap, vg.hspace(10), dropoffMap),
-        );
-
+        const layout = vg.hconcat(pickupMap, vg.hspace(10), dropoffMap);
         chartDivRef.current?.replaceChildren(layout);
         setIsPending(false);
       } catch (err) {
-        console.warn('NycTaxiView setup interrupted or failed:', err);
+        console.warn('NycTaxiView setup failed:', err);
       }
     }
 
@@ -157,207 +127,140 @@ export function NycTaxiView() {
   }, [model]);
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6">
-      <div>
-        <h4 className="text-lg mb-2 font-medium">NYC Taxi Map</h4>
-        <div ref={chartDivRef} />
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-end">
+        <ResetDashboardButton onReset={onResetRequest} />
       </div>
 
-      <div className="flex flex-col gap-8 overflow-hidden">
-        {isPending ? (
-          <div className="italic">Initializing...</div>
-        ) : (
-          <>
-            <div>
-              <h4 className="text-lg mb-2 font-medium">Trip Details (Raw)</h4>
-              <TripsDetailTable model={model} />
-            </div>
-            <div>
-              <h4 className="text-lg mb-2 font-medium">
-                Zone Summary (Aggregated)
-              </h4>
-              <TripsSummaryTable model={model} />
-            </div>
-          </>
-        )}
+      <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6">
+        <div>
+          <h4 className="text-lg mb-2 font-medium">NYC Taxi Map</h4>
+          <div ref={chartDivRef} />
+        </div>
+
+        <div className="flex flex-col gap-8">
+          {isPending ? (
+            <div className="italic">Initializing...</div>
+          ) : (
+            <>
+              <TripsDetailTable model={model} onTableReady={setDetailTable} />
+              <TripsSummaryTable model={model} onTableReady={setSummaryTable} />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function TripsDetailTable({ model }: { model: NycTaxiModel }) {
+function TripsDetailTable({ model, onTableReady }: any) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
-
   const columns = useMemo(
-    () =>
-      [
-        {
-          id: 'datetime',
-          accessorKey: 'datetime',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Time" view={view} />
-          ),
-          cell: (props) => props.getValue()?.toLocaleString(),
-          enableColumnFilter: true,
-          meta: {
-            filterVariant: 'range',
-            rangeFilterType: 'datetime',
-            mosaicDataTable: {
-              sqlColumn: 'datetime',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
+    () => [
+      {
+        id: 'datetime',
+        accessorKey: 'datetime',
+        header: ({ column }: any) => (
+          <RenderTableHeader column={column} title="Time" view={view} />
+        ),
+        enableColumnFilter: true,
+        meta: {
+          filterVariant: 'range' as const,
+          rangeFilterType: 'datetime' as const,
+          mosaicDataTable: {
+            sqlColumn: 'datetime',
+            sqlFilterType: 'RANGE' as const,
           },
         },
-        {
-          id: 'vendor_id',
-          accessorKey: 'vendor_id',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Vendor" view={view} />
-          ),
-          enableColumnFilter: true,
-          meta: {
-            filterVariant: 'select',
-            mosaicDataTable: {
-              sqlColumn: 'vendor_id',
-              sqlFilterType: 'EQUALS',
-              facet: 'unique',
-            },
+      },
+      {
+        id: 'vendor_id',
+        accessorKey: 'vendor_id',
+        header: ({ column }: any) => (
+          <RenderTableHeader column={column} title="Vendor" view={view} />
+        ),
+        enableColumnFilter: true,
+        meta: {
+          filterVariant: 'select' as const,
+          mosaicDataTable: {
+            sqlColumn: 'vendor_id',
+            sqlFilterType: 'EQUALS' as const,
+            facet: 'unique' as const,
           },
         },
-        {
-          id: 'fare_amount',
-          accessorKey: 'fare_amount',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Fare" view={view} />
-          ),
-          enableColumnFilter: true,
-          meta: {
-            filterVariant: 'range',
-            mosaicDataTable: {
-              sqlColumn: 'fare_amount',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
-          },
-        },
-      ] satisfies Array<ColumnDef<TripRowData, any>>,
+      },
+    ],
     [view],
   );
 
-  const mosaicOptions: MosaicDataTableOptions<TripRowData> = useMemo(
-    () => ({
-      table: tableName,
-      filterBy: model.selections.detailContext,
-      tableFilterSelection: model.selections.detailFilter,
-      columns,
-      totalRowsMode: 'window', // FIX: Enable Atomic updates for interactive maps
-      tableOptions: { enableColumnFilters: true },
-    }),
-    [columns, model],
-  );
-
-  const { tableOptions } = useMosaicReactTable(mosaicOptions);
+  const { tableOptions } = useMosaicReactTable({
+    table: tableName,
+    filterBy: model.selections.detailContext,
+    tableFilterSelection: model.selections.detailFilter,
+    columns,
+    totalRowsMode: 'window',
+  });
 
   const table = useReactTable(tableOptions);
+  useEffect(() => onTableReady(table), [table, onTableReady]);
   return (
-    <div className="max-h-[400px] overflow-auto border rounded">
+    <div className="max-h-[300px] overflow-auto border rounded">
       <RenderTable table={table} columns={columns} />
     </div>
   );
 }
 
-function TripsSummaryTable({ model }: { model: NycTaxiModel }) {
+function TripsSummaryTable({ model, onTableReady }: any) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
-
   const columns = useMemo(
-    () =>
-      [
-        {
-          id: 'zone_x',
-          accessorKey: 'zone_x',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Zone X" view={view} />
-          ),
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'zone_x',
-              sqlFilterType: 'EQUALS',
-            },
-            filterVariant: 'text',
+    () => [
+      {
+        id: 'zone_x',
+        accessorKey: 'zone_x',
+        header: ({ column }: any) => (
+          <RenderTableHeader column={column} title="Zone X" view={view} />
+        ),
+        enableColumnFilter: true,
+        meta: {
+          filterVariant: 'text' as const,
+          mosaicDataTable: {
+            sqlColumn: 'zone_x',
+            sqlFilterType: 'EQUALS' as const,
           },
         },
-        {
-          id: 'zone_y',
-          accessorKey: 'zone_y',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Zone Y" view={view} />
-          ),
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'zone_y',
-              sqlFilterType: 'EQUALS',
-            },
-            filterVariant: 'text',
+      },
+      {
+        id: 'trip_count',
+        accessorKey: 'trip_count',
+        header: ({ column }: any) => (
+          <RenderTableHeader column={column} title="Count" view={view} />
+        ),
+        enableColumnFilter: true,
+        meta: {
+          filterVariant: 'range' as const,
+          mosaicDataTable: {
+            sqlColumn: 'trip_count',
+            sqlFilterType: 'RANGE' as const,
+            facet: 'minmax' as const,
           },
         },
-        {
-          id: 'trip_count',
-          accessorKey: 'trip_count',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Count" view={view} />
-          ),
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'trip_count',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
-            filterVariant: 'range',
-          },
-        },
-        {
-          id: 'avg_fare',
-          accessorKey: 'avg_fare',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Avg Fare" view={view} />
-          ),
-          cell: (p) => p.getValue().toFixed(2),
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'avg_fare',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
-            filterVariant: 'range',
-          },
-        },
-      ] satisfies Array<ColumnDef<SummaryRowData, any>>,
+      },
+    ],
     [view],
   );
 
-  const mosaicOptions: MosaicDataTableOptions<SummaryRowData> = useMemo(
-    () => ({
-      table: model.summaryQueryFactory,
-      filterBy: model.selections.summaryContext,
-      tableFilterSelection: model.selections.summaryFilter,
-      columns,
-      totalRowsMode: 'window', // FIX: Enable Atomic updates for interactive maps
-      tableOptions: {
-        enableColumnFilters: true,
-        initialState: { sorting: [{ id: 'trip_count', desc: true }] },
-      },
-    }),
-    [columns, model],
-  );
-
-  const { tableOptions } = useMosaicReactTable(mosaicOptions);
+  const { tableOptions } = useMosaicReactTable({
+    table: model.summaryQueryFactory,
+    filterBy: model.selections.summaryContext,
+    tableFilterSelection: model.selections.summaryFilter,
+    columns,
+    totalRowsMode: 'window',
+  });
 
   const table = useReactTable(tableOptions);
+  useEffect(() => onTableReady(table), [table, onTableReady]);
   return (
-    <div className="max-h-[400px] overflow-auto border rounded">
+    <div className="max-h-[300px] overflow-auto border rounded">
       <RenderTable table={table} columns={columns} />
     </div>
   );

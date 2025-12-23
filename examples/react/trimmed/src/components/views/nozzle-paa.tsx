@@ -13,7 +13,7 @@ import {
   useMosaicViewModel,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { PaaDashboardModel } from './paa-model';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, Table } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import { RenderTable } from '@/components/render-table';
 import { useMosaicValue } from '@/hooks/useMosaicValue';
@@ -23,12 +23,18 @@ import {
   SearchableSelectFilter,
   TextFilter,
 } from '@/components/paa/paa-filters';
+import { ResetDashboardButton } from '@/components/reset-button';
 
 const TABLE_NAME = 'nozzle_paa';
 const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 
-export function NozzlePaaView() {
+export function NozzlePaaView({
+  onResetRequest,
+}: {
+  onResetRequest: () => void;
+}) {
   const [isReady, setIsReady] = useState(false);
+  const [_, setDetailTable] = useState<Table<any> | null>(null);
 
   const model = useMosaicViewModel<PaaDashboardModel>(
     (c) => new PaaDashboardModel(c),
@@ -67,62 +73,62 @@ export function NozzlePaaView() {
 
       <div className="px-6 -mt-8 relative z-10">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">
-          <div className="text-sm font-bold text-slate-700 mr-2">
-            FILTER BY:
+          <div className="flex flex-1 flex-wrap gap-6 items-center">
+            <div className="text-sm font-bold text-slate-700 mr-2">
+              FILTER BY:
+            </div>
+
+            <SearchableSelectFilter
+              label="Domain"
+              table={TABLE_NAME}
+              column="domain"
+              selection={model.selections.input}
+              filterBy={model.selections.input}
+              additionalContext={model.selections.externalContext}
+            />
+            <TextFilter
+              label="Phrase"
+              table={TABLE_NAME}
+              column="phrase"
+              selection={model.selections.input}
+            />
+            <ArraySelectFilter
+              label="Keyword Group"
+              table={TABLE_NAME}
+              column="keyword_groups"
+              selection={model.selections.input}
+              filterBy={model.selections.input}
+              additionalContext={model.selections.externalContext}
+            />
+            <TextFilter
+              label="Answer Contains"
+              table={TABLE_NAME}
+              column="description"
+              selection={model.selections.input}
+            />
+            <DateRangeFilter
+              label="Requested Date"
+              table={TABLE_NAME}
+              column="requested"
+              selection={model.selections.input}
+            />
+            <SearchableSelectFilter
+              label="Device"
+              table={TABLE_NAME}
+              column="device"
+              selection={model.selections.input}
+              filterBy={model.selections.input}
+              additionalContext={model.selections.externalContext}
+            />
+            <TextFilter
+              label="Question Contains"
+              table={TABLE_NAME}
+              column="related_phrase.phrase"
+              selection={model.selections.input}
+            />
           </div>
 
-          <SearchableSelectFilter
-            label="Domain"
-            table={TABLE_NAME}
-            column="domain"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-            externalContext={model.selections.externalContext}
-          />
-          <TextFilter
-            label="Phrase"
-            table={TABLE_NAME}
-            column="phrase"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-          />
-          <ArraySelectFilter
-            label="Keyword Group"
-            table={TABLE_NAME}
-            column="keyword_groups"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-            externalContext={model.selections.externalContext}
-          />
-          <TextFilter
-            label="Answer Contains"
-            table={TABLE_NAME}
-            column="description"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-          />
-          <DateRangeFilter
-            label="Requested Date"
-            table={TABLE_NAME}
-            column="requested"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-          />
-          <SearchableSelectFilter
-            label="Device"
-            table={TABLE_NAME}
-            column="device"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-            externalContext={model.selections.externalContext}
-          />
-          <TextFilter
-            label="Question Contains"
-            table={TABLE_NAME}
-            column="related_phrase.phrase"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-          />
+          <ResetDashboardButton onReset={onResetRequest} className="ml-auto" />
         </div>
       </div>
 
@@ -169,7 +175,7 @@ export function NozzlePaaView() {
             Detailed Breakdown
           </div>
           <div className="flex-1 overflow-auto p-0">
-            <DetailTable model={model} />
+            <DetailTable model={model} onTableReady={setDetailTable} />
           </div>
         </div>
       </div>
@@ -319,57 +325,58 @@ function SummaryTable({
     [safeId],
   );
 
+  const columns = useMemo(
+    () => [
+      {
+        id: 'select',
+        header: '',
+        size: 30,
+        enableSorting: false,
+        enableColumnFilter: false,
+        enableHiding: false,
+        cell: ({ row }: any) => {
+          return (
+            <div className="flex items-center justify-center">
+              <input
+                type="checkbox"
+                checked={row.getIsSelected()}
+                onChange={row.getToggleSelectedHandler()}
+                onClick={(e) => e.stopPropagation()}
+                className="cursor-pointer size-4"
+              />
+            </div>
+          );
+        },
+      } as ColumnDef<any, any>,
+      {
+        id: groupBy,
+        accessorKey: safeId,
+        header: title,
+        enableColumnFilter: false,
+      } as ColumnDef<any, any>,
+      {
+        id: 'metric',
+        accessorKey: 'metric',
+        header: metricLabel,
+        cell: (info: any) => info.getValue()?.toLocaleString(),
+        enableColumnFilter: false,
+      } as ColumnDef<any, any>,
+    ],
+    [groupBy, title, metricLabel, safeId],
+  );
+
   const { tableOptions } = useMosaicReactTable({
     table: queryFactory,
     filterBy: model.selections.summaryContext,
     highlightBy: model.selections.cross,
     manualHighlight: true,
-    // Explicitly use 'split' mode for summary grids to keep memory footprint predictable.
     totalRowsMode: 'split',
     rowSelection: {
       selection: model.selections.cross,
       column: groupBy,
       columnType: 'scalar',
     },
-    columns: useMemo(
-      () => [
-        {
-          id: 'select',
-          header: '',
-          size: 30,
-          enableSorting: false,
-          enableColumnFilter: false,
-          enableHiding: false,
-          cell: ({ row }: any) => {
-            return (
-              <div className="flex items-center justify-center">
-                <input
-                  type="checkbox"
-                  checked={row.getIsSelected()}
-                  onChange={row.getToggleSelectedHandler()}
-                  onClick={(e) => e.stopPropagation()}
-                  className="cursor-pointer size-4"
-                />
-              </div>
-            );
-          },
-        },
-        {
-          id: groupBy,
-          accessorKey: safeId,
-          header: title,
-          enableColumnFilter: false,
-        },
-        {
-          id: 'metric',
-          accessorKey: 'metric',
-          header: metricLabel,
-          cell: (info: any) => info.getValue()?.toLocaleString(),
-          enableColumnFilter: false,
-        },
-      ],
-      [groupBy, title, metricLabel, safeId],
-    ),
+    columns,
     tableOptions: baseTableOptions,
     __debugName: `${title}SummaryTable`,
   });
@@ -401,47 +408,60 @@ interface PaaRowData {
   description: string;
 }
 
-function DetailTable({ model }: { model: PaaDashboardModel }) {
-  const columns = useMemo(
-    () =>
-      [
-        {
-          id: 'domain',
-          accessorKey: 'domain',
-          header: 'Domain',
-          size: 150,
-          meta: {
-            mosaicDataTable: model.getColumnMeta('domain'),
-          },
+function DetailTable({
+  model,
+  onTableReady,
+}: {
+  model: PaaDashboardModel;
+  onTableReady: (table: Table<PaaRowData>) => void;
+}) {
+  const columns: Array<ColumnDef<PaaRowData, any>> = useMemo(
+    () => [
+      {
+        id: 'domain',
+        accessorKey: 'domain',
+        header: 'Domain',
+        size: 150,
+        enableColumnFilter: true,
+        meta: {
+          filterVariant: 'text' as const,
+          mosaicDataTable: model.getColumnMeta('domain'),
         },
-        {
-          id: 'paa_question',
-          accessorFn: (row) => row['related_phrase.phrase'],
-          header: 'PAA Question',
-          size: 350,
-          meta: {
-            mosaicDataTable: model.getColumnMeta('paa_question'),
-          },
+      },
+      {
+        id: 'paa_question',
+        accessorFn: (row: PaaRowData) => row['related_phrase.phrase'],
+        header: 'PAA Question',
+        size: 350,
+        enableColumnFilter: true,
+        meta: {
+          filterVariant: 'text' as const,
+          mosaicDataTable: model.getColumnMeta('paa_question'),
         },
-        {
-          id: 'title',
-          accessorKey: 'title',
-          header: 'Answer Title',
-          size: 300,
-          meta: {
-            mosaicDataTable: model.getColumnMeta('title'),
-          },
+      },
+      {
+        id: 'title',
+        accessorKey: 'title',
+        header: 'Answer Title',
+        size: 300,
+        enableColumnFilter: true,
+        meta: {
+          filterVariant: 'text' as const,
+          mosaicDataTable: model.getColumnMeta('title'),
         },
-        {
-          id: 'description',
-          accessorKey: 'description',
-          header: 'Answer Description',
-          size: 400,
-          meta: {
-            mosaicDataTable: model.getColumnMeta('description'),
-          },
+      },
+      {
+        id: 'description',
+        accessorKey: 'description',
+        header: 'Answer Description',
+        size: 400,
+        enableColumnFilter: true,
+        meta: {
+          filterVariant: 'text' as const,
+          mosaicDataTable: model.getColumnMeta('description'),
         },
-      ] satisfies Array<ColumnDef<PaaRowData, any>>,
+      },
+    ],
     [model],
   );
 
@@ -461,7 +481,6 @@ function DetailTable({ model }: { model: PaaDashboardModel }) {
       tableFilterSelection: model.selections.detail,
       columns,
       totalRowsColumnName: '__total_rows',
-      // Explicitly use 'split' mode for PAA Detail Table for maximum stability.
       totalRowsMode: 'split' as const,
       tableOptions: {
         ...baseTableOptions,
@@ -475,6 +494,10 @@ function DetailTable({ model }: { model: PaaDashboardModel }) {
   const { tableOptions } = useMosaicReactTable(mosaicOptions);
 
   const table = useReactTable(tableOptions);
+
+  useEffect(() => {
+    onTableReady(table);
+  }, [table, onTableReady]);
 
   return <RenderTable table={table} columns={columns} />;
 }

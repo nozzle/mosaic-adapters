@@ -32,7 +32,7 @@ export function ConnectorProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    async function switchConnector() {
+    function switchConnector() {
       // 1. Clear existing client state/cache in the coordinator
       vg.coordinator().clear();
 

@@ -23,7 +23,7 @@ export interface MosaicViewModelOptions {
   >;
 }
 
-export class MosaicViewModel {
+export abstract class MosaicViewModel {
   public coordinator: Coordinator;
   private options: MosaicViewModelOptions;
 
@@ -41,8 +41,12 @@ export class MosaicViewModel {
   }
 
   /**
+   * Abstract method to clear all selections managed by the dashboard.
+   */
+  public abstract reset(): void;
+
+  /**
    * Updates the coordinator reference.
-   * Encapsulates mutation to satisfy linting rules when used with useState lazy init.
    */
   public setCoordinator(coordinator: Coordinator) {
     this.coordinator = coordinator;
@@ -67,7 +71,6 @@ export class MosaicViewModel {
 
   public disconnect(): void {
     // Execute all cleanups in reverse order (LIFO)
-    // This is safer for dependent resources
     for (let i = this._disposables.length - 1; i >= 0; i--) {
       const dispose = this._disposables[i];
       if (dispose) {
@@ -79,7 +82,6 @@ export class MosaicViewModel {
 
   /**
    * Register a cleanup function to be called when the model disconnects.
-   * Useful for Bridges, Timers, or custom subscriptions.
    */
   public register(cleanup: () => void) {
     this._disposables.push(cleanup);
@@ -98,21 +100,16 @@ export class MosaicViewModel {
   }
 
   /**
-   * Helper: Connect a child MosaicClient (like a FacetMenu that exists only in logic)
-   * and ensure it disconnects when the model dies.
+   * Helper: Connect a child MosaicClient.
    */
   public manageClient(
     client: { connect: () => any; disconnect?: () => any } | MosaicClient,
   ) {
-    // Duck-typing check because MosaicClient signatures vary slightly
     if ('connect' in client && typeof client.connect === 'function') {
       const cleanup = (client as any).connect();
-      // If connect returns a function (standard Mosaic), use it
       if (typeof cleanup === 'function') {
         this.register(cleanup);
-      }
-      // If connect returns nothing, look for explicit disconnect
-      else if (
+      } else if (
         'disconnect' in client &&
         typeof client.disconnect === 'function'
       ) {
@@ -122,7 +119,7 @@ export class MosaicViewModel {
   }
 
   /**
-   * Setup topology. Can be overridden by subclasses or handled via `onConnect` callback.
+   * Setup topology. Can be overridden by subclasses.
    */
   protected setupTopology(): void {
     // Default no-op
@@ -130,8 +127,6 @@ export class MosaicViewModel {
 
   /**
    * Returns column metadata (SQL mapping) independent of UI rendering.
-   * Used to keep SQL logic out of View components.
-   * Looks up in `options.columnMeta` if available.
    */
   public getColumnMeta(
     columnId: string,

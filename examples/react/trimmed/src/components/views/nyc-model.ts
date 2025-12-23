@@ -28,14 +28,12 @@ export class NycTaxiModel extends MosaicViewModel {
   constructor(coordinator: any) {
     super(coordinator);
 
-    // 1. Instantiate Selections (Scoped to this instance, safe for multi-view)
     const brush = vg.Selection.intersect();
     const detailFilter = vg.Selection.intersect();
     const summaryFilter = vg.Selection.intersect();
     const vendorFilter = vg.Selection.intersect();
-    const zoneFilter = vg.Selection.intersect(); // Output of the bridge
+    const zoneFilter = vg.Selection.intersect();
 
-    // 2. Define Contexts
     this.selections = {
       brush,
       detailFilter,
@@ -54,27 +52,39 @@ export class NycTaxiModel extends MosaicViewModel {
     };
   }
 
-  // Override setupTopology from concrete MosaicViewModel
+  public reset(): void {
+    const source = { type: 'reset' };
+    this.selections.brush.update({ source, value: null, predicate: null });
+    this.selections.detailFilter.update({
+      source,
+      value: null,
+      predicate: null,
+    });
+    this.selections.summaryFilter.update({
+      source,
+      value: null,
+      predicate: null,
+    });
+    this.selections.vendorFilter.update({
+      source,
+      value: null,
+      predicate: null,
+    });
+  }
+
   protected setupTopology(): void {
-    // 3. Register the Aggregation Bridge
-    // This translates Summary Table filters (Count > N) into Detail Table filters (Zone IN (...))
     const bridge = new AggregationBridge({
-      // Now that SelectionSource matches 'object', we can pass 'this' safely
-      // as it's a stable object reference used for identity.
       source: this,
       inputSelection: this.selections.summaryFilter,
       contextSelection: this.selections.summaryContext,
       outputSelection: this.selections.zoneFilter,
       resolve: (summaryPred, contextPred) => {
         const ZONE_SIZE = 1000;
-
-        // Build subquery logic (Identical to previous React implementation)
-        const subquery = mSql.Query.from('trips') // Hardcoded table name for now
+        const subquery = mSql.Query.from('trips')
           .select({
             zone_x: mSql.sql`round(dx / ${ZONE_SIZE})`,
             zone_y: mSql.sql`round(dy / ${ZONE_SIZE})`,
             trip_count: mSql.count(),
-            avg_fare: mSql.avg('fare_amount'),
           })
           .groupby('zone_x', 'zone_y');
 
@@ -91,17 +101,11 @@ export class NycTaxiModel extends MosaicViewModel {
       },
     });
 
-    // Register the disconnect function so it cleans up when the component unmounts
     this.register(bridge.connect());
   }
 
-  /**
-   * Factory for the Summary Table Aggregation Query.
-   * Defined as an arrow property to ensure stable reference identity across renders.
-   */
   public summaryQueryFactory = (filter: mSql.FilterExpr | null | undefined) => {
     const ZONE_SIZE = 1000;
-    // Note: We use the passed `filter` argument from MosaicDataTable
     const query = mSql.Query.from('trips')
       .select({
         zone_x: mSql.sql`round(dx / ${ZONE_SIZE})`,
@@ -118,9 +122,8 @@ export class NycTaxiModel extends MosaicViewModel {
   };
 
   public getColumnMeta(
-    id: string,
+    _id: string,
   ): MosaicDataTableColumnDefMetaOptions['mosaicDataTable'] {
-    // Implement if we need specific SQL mappings (e.g. for Structs)
     return {};
   }
 }

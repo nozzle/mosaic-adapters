@@ -1,4 +1,10 @@
+/**
+ * Main dashboard container. Manages the lifecycle of different analytical views
+ * and implements a hard-reset mechanism via React keys.
+ */
+
 import * as React from 'react';
+import { useState } from 'react';
 import { TableStyleSwitcher } from './render-table';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
@@ -30,17 +36,7 @@ const views = new Map([
       Component: NozzlePaaView,
     },
   ],
-  [
-    'other',
-    {
-      title: 'Other View',
-      Component: () => <div>Other view content goes here.</div>,
-    },
-  ],
 ]);
-
-type ViewMap = typeof views;
-type ViewConfig = ViewMap extends Map<infer _K, infer V> ? V : never;
 
 export function RenderView() {
   return (
@@ -57,6 +53,12 @@ function RenderViewContent() {
 
   const { mode, status } = useConnector();
 
+  // High-level refresh key. Changing this destroys and reconstructs the dashboard state.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const handleReset = () => setRefreshKey((prev) => prev + 1);
+
+  const activeView = views.get(view || 'athletes');
+
   return (
     <>
       <div className="flex justify-between items-start mb-4">
@@ -67,7 +69,10 @@ function RenderViewContent() {
                 key={`${id}-button`}
                 size="sm"
                 variant={view === id ? 'outline' : 'ghost'}
-                onClick={() => setView(id)}
+                onClick={() => {
+                  setView(id);
+                  setRefreshKey(0); // Reset key when switching dashboards
+                }}
               >
                 {title}
               </Button>
@@ -78,32 +83,19 @@ function RenderViewContent() {
 
         <ConnectorToggle />
       </div>
-      {view && views.has(view) ? (
-        // Only render the layout if we are fully connected.
-        // This prevents the "Uncaught (in promise) Cleared" error by ensuring
-        // the component is unmounted while the coordinator is being cleared/swapped.
-        status === 'connected' ? (
-          <RenderLayout key={`${view}-${mode}`} view={views.get(view)!} />
-        ) : (
-          <div className="h-64 flex items-center justify-center text-slate-400 italic">
-            Connecting to {mode === 'remote' ? 'Remote Server' : 'WASM'}...
-          </div>
-        )
+
+      {activeView && status === 'connected' ? (
+        // Key increment forces unmount of visuals and ViewModels, clearing all zombie clauses.
+        <div key={`${view}-${mode}-${refreshKey}`}>
+          <h2 className="text-xl mb-4 font-medium">{activeView.title}</h2>
+          <hr className="my-4" />
+          <activeView.Component onResetRequest={handleReset} />
+        </div>
       ) : (
-        <div>
-          <p>Invalid view: "{view}". Please select a valid dashboard.</p>
+        <div className="h-64 flex items-center justify-center text-slate-400 italic">
+          {status === 'connected' ? 'Invalid View' : `Connecting to ${mode}...`}
         </div>
       )}
-    </>
-  );
-}
-
-function RenderLayout({ view: { title, Component } }: { view: ViewConfig }) {
-  return (
-    <>
-      <h2 className="text-xl mb-4 font-medium">{title}</h2>
-      <hr className="my-4" />
-      <Component />
     </>
   );
 }
