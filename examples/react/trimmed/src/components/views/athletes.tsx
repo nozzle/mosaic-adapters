@@ -1,3 +1,7 @@
+/**
+ * View component for the Athletes dataset.
+ * Uses 'window' pagination mode to sync perfectly with the interactive regression plot.
+ */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
@@ -15,7 +19,6 @@ const tableName = 'athletes';
 
 const $query = vg.Selection.intersect();
 const $tableFilter = vg.Selection.intersect();
-// Combined filter for the main visualizations
 const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
 type AthleteRowData = {
@@ -43,62 +46,65 @@ export function AthletesView() {
     }
 
     async function setup() {
-      setIsPending(true);
+      try {
+        setIsPending(true);
 
-      // Setup the Athletes Linear Regression Plot from https://idl.uw.edu/mosaic/examples/linear-regression.html
-      await vg
-        .coordinator()
-        .exec([
-          `CREATE OR REPLACE TABLE ${tableName} AS SELECT * FROM '${fileURL}'`,
-        ]);
+        await vg
+          .coordinator()
+          .exec([
+            `CREATE OR REPLACE TABLE ${tableName} AS SELECT * FROM '${fileURL}'`,
+          ]);
 
-      const inputs = vg.hconcat(
-        vg.menu({
-          label: 'Sport',
-          as: $query,
-          from: tableName,
-          column: 'sport',
-        }),
-        vg.menu({
-          label: 'Gender',
-          as: $query,
-          from: tableName,
-          column: 'sex',
-        }),
-        vg.search({
-          label: 'Name',
-          as: $query,
-          from: tableName,
-          column: 'name',
-          type: 'contains',
-        }),
-      );
+        const inputs = vg.hconcat(
+          vg.menu({
+            label: 'Sport',
+            as: $query,
+            from: tableName,
+            column: 'sport',
+          }),
+          vg.menu({
+            label: 'Gender',
+            as: $query,
+            from: tableName,
+            column: 'sex',
+          }),
+          vg.search({
+            label: 'Name',
+            as: $query,
+            from: tableName,
+            column: 'name',
+            type: 'contains',
+          }),
+        );
 
-      const plot = vg.plot(
-        vg.dot(vg.from(tableName, { filterBy: $combined }), {
-          x: 'weight',
-          y: 'height',
-          fill: 'sex',
-          r: 2,
-          opacity: 0.05,
-        }),
-        vg.regressionY(vg.from(tableName, { filterBy: $combined }), {
-          x: 'weight',
-          y: 'height',
-          stroke: 'sex',
-        }),
-        vg.intervalXY({
-          as: $query,
-          brush: { fillOpacity: 0, stroke: 'currentColor' },
-        }),
-        vg.xyDomain(vg.Fixed),
-        vg.colorDomain(vg.Fixed),
-      );
+        const plot = vg.plot(
+          vg.dot(vg.from(tableName, { filterBy: $combined }), {
+            x: 'weight',
+            y: 'height',
+            fill: 'sex',
+            r: 2,
+            opacity: 0.05,
+          }),
+          vg.regressionY(vg.from(tableName, { filterBy: $combined }), {
+            x: 'weight',
+            y: 'height',
+            stroke: 'sex',
+          }),
+          vg.intervalXY({
+            as: $query,
+            brush: { fillOpacity: 0, stroke: 'currentColor' },
+          }),
+          vg.xyDomain(vg.Fixed),
+          vg.colorDomain(vg.Fixed),
+        );
 
-      const layout = vg.vconcat(inputs, vg.vspace(10), plot);
-      chartDivRef.current?.replaceChildren(layout);
+        const layout = vg.vconcat(inputs, vg.vspace(10), plot);
+        chartDivRef.current?.replaceChildren(layout);
 
-      setIsPending(false);
+        setIsPending(false);
+      } catch (err) {
+        console.warn('AthletesView setup interrupted or failed:', err);
+      }
     }
 
     setup();
@@ -166,7 +172,8 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'nationality',
-              sqlFilterType: 'EQUALS', // 'equals' for drop-down exact match
+              sqlFilterType: 'EQUALS',
+              facet: 'unique',
             },
             filterVariant: 'select',
           },
@@ -182,6 +189,7 @@ function AthletesTable() {
             mosaicDataTable: {
               sqlColumn: 'sex',
               sqlFilterType: 'EQUALS',
+              facet: 'unique',
             },
             filterVariant: 'select',
           },
@@ -228,6 +236,7 @@ function AthletesTable() {
             mosaicDataTable: {
               sqlColumn: 'height',
               sqlFilterType: 'RANGE',
+              facet: 'minmax',
             },
           },
           enableColumnFilter: true,
@@ -250,6 +259,7 @@ function AthletesTable() {
             mosaicDataTable: {
               sqlColumn: 'weight',
               sqlFilterType: 'RANGE',
+              facet: 'minmax',
             },
             filterVariant: 'range',
           },
@@ -264,8 +274,8 @@ function AthletesTable() {
           meta: {
             mosaicDataTable: {
               sqlColumn: 'sport',
-              // Using PARTIAL_ILIKE so 'gym' finds 'Gymnastics'
               sqlFilterType: 'PARTIAL_ILIKE',
+              facet: 'unique',
             },
             filterVariant: 'select',
           },
@@ -330,11 +340,13 @@ function AthletesTable() {
     [view],
   );
 
-  const { tableOptions, client } = useMosaicReactTable<AthleteRowData>({
+  const { tableOptions } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
     filterBy: $query,
     tableFilterSelection: $tableFilter,
     columns,
+    // Use 'window' mode for Athletes to prevent snapping during map interactions.
+    totalRowsMode: 'window',
     tableOptions: {
       enableHiding: true,
       enableMultiSort: true,
@@ -343,21 +355,6 @@ function AthletesTable() {
     },
     onTableStateChange: 'requestUpdate',
   });
-
-  // Trigger Server-Side Facet Loading
-  useEffect(() => {
-    // TODO: Explore having these auto-load based config used in the column meta.
-
-    // Load range bounds for Height and Weight
-    client.loadColumnMinMax('Height');
-    client.loadColumnMinMax('Weight');
-
-    // Load unique values for Gender and Nationality
-    // Removed Sport facet loading as it's now a text search
-    client.loadColumnFacet('Gender');
-    client.loadColumnFacet('nationality');
-    client.loadColumnFacet('Sport');
-  }, [client]);
 
   const table = useReactTable(tableOptions);
 

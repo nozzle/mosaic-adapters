@@ -9,6 +9,10 @@ import type { RowData, TableOptions } from '@tanstack/react-table';
 
 export type * from '@nozzleio/mosaic-tanstack-table-core';
 
+/**
+ * React hook to instantiate and manage a MosaicDataTable client.
+ * Provides integration between Mosaic's coordinator and TanStack Table's state management.
+ */
 export function useMosaicReactTable<TData extends RowData, TValue = any>(
   options: MosaicDataTableOptions<TData, TValue>,
 ): {
@@ -38,9 +42,11 @@ export function useMosaicReactTable<TData extends RowData, TValue = any>(
 
   React.useEffect(() => {
     // Connect the client to the coordinator on mount, and disconnect on unmount.
+    // We include options.coordinator in the dependency array to ensure we retry connecting
+    // if the coordinator was null on mount (async init) and then became available.
     const unsub = client.connect();
     return unsub;
-  }, [client]);
+  }, [client, options.coordinator]);
 
   return { tableOptions, client };
 }

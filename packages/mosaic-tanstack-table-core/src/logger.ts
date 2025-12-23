@@ -1,6 +1,9 @@
-// A structured logging utility that separates console output from stored logs.
-// It allows for quiet console output while retaining detailed metadata
-// (state snapshots, SQL queries) in a downloadable JSON format for debugging.
+/**
+ * A structured logging utility that separates console output from stored logs.
+ * Includes capabilities for sanitizing console output and heuristic error detection.
+ */
+
+import type { Coordinator } from '@uwdata/mosaic-core';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type LogCategory =
@@ -8,7 +11,8 @@ export type LogCategory =
   | 'Framework'
   | 'TanStack-Table'
   | 'Mosaic'
-  | 'SQL';
+  | 'SQL'
+  | 'Memory';
 
 interface LogEntry {
   timestamp: string;
@@ -17,6 +21,42 @@ interface LogEntry {
   message: string;
   // meta is for heavy objects (Table State, columns, etc)
   meta?: Record<string, any>;
+}
+
+/**
+ * Truncates and sanitizes objects for console display to prevent
+ * polluting the console with thousands of array items.
+ */
+function sanitizeForConsole(obj: any, depth = 0): any {
+  if (depth > 2) {
+    return '...';
+  }
+  if (Array.isArray(obj)) {
+    if (obj.length > 5) {
+      return [
+        ...obj.slice(0, 5).map((o) => sanitizeForConsole(o, depth + 1)),
+        `... (${obj.length - 5} more items)`,
+      ];
+    }
+    return obj.map((o) => sanitizeForConsole(o, depth + 1));
+  }
+  if (typeof obj === 'object' && obj !== null) {
+    const res: any = {};
+    for (const k in obj) {
+      // Heuristic: truncate likely large data arrays
+      if (
+        (k === 'rows' || k === 'data') &&
+        Array.isArray(obj[k]) &&
+        obj[k].length > 10
+      ) {
+        res[k] = `Array(${obj[k].length})`;
+      } else {
+        res[k] = sanitizeForConsole(obj[k], depth + 1);
+      }
+    }
+    return res;
+  }
+  return obj;
 }
 
 class LogManager {
@@ -43,20 +83,43 @@ class LogManager {
   ) {
     const numericLevel = this.levelMap[level];
 
+    // 0. Heuristic Check for Common SQL Errors (Struct Access)
+    if (
+      (level === 'error' || level === 'warn') &&
+      meta &&
+      (typeof meta.error?.message === 'string' || typeof meta.sql === 'string')
+    ) {
+      const textToCheck = meta.error?.message || meta.sql;
+      // Look for "something.something" pattern which indicates incorrect quoting
+      // Fix: Exclude dot from the first character set to prevent polynomial backtracking ReDoS
+      const structErrorRegex = /"[^".]+\.[^"]+"/;
+      const match = textToCheck.match(structErrorRegex);
+
+      if (match) {
+        // Log a high-visibility warning to help developers immediately
+        console.warn(
+          `%c[Mosaic-Fix-Hint] Potential Struct Syntax Error detected: ${JSON.stringify(match[0])}`,
+          'background: #ffcc00; color: black; padding: 2px; border-radius: 2px;',
+          '\nDuckDB requires nested columns to be quoted separately like "table"."column", not "table.column".\nCheck your createStructAccess utility.',
+        );
+      }
+    }
+
     // 1. Handle Console Output (The "Quiet" Channel)
     if (numericLevel >= this.consoleLevel) {
       const badge = `[${category}]`;
       const style = this.getConsoleStyle(category);
+      const sanitizedMeta = meta ? sanitizeForConsole(meta) : undefined;
 
       if (level === 'error') {
-        console.error(`%c${badge} ${message}`, style, meta || '');
+        console.error(`%c${badge} ${message}`, style, sanitizedMeta || '');
       } else if (level === 'warn') {
-        console.warn(`%c${badge} ${message}`, style, meta || '');
+        console.warn(`%c${badge} ${message}`, style, sanitizedMeta || '');
       } else {
         // For Info/Debug in console, use collapsed groups if meta exists to keep it tidy
-        if (meta) {
+        if (sanitizedMeta) {
           console.groupCollapsed(`%c${badge} ${message}`, style);
-          console.log(meta);
+          console.log(sanitizedMeta);
           console.groupEnd();
         } else {
           console.log(`%c${badge} ${message}`, style);
@@ -128,6 +191,16 @@ class LogManager {
     this.add('error', category, message, meta);
   }
 
+  /**
+   * Diagnostic: Logs the current memory usage of DuckDB.
+   * STUB: PRAGMA memory_info is not available in EH/MVP WASM bundles.
+   */
+
+  logMemory(_coordinator: Coordinator, _label: string) {
+    // This is a stub to prevent TypeError: logger.logMemory is not a function
+    // in clients that were instrumented for memory tracking.
+  }
+
   download() {
     const data = {
       generatedAt: new Date().toISOString(),
@@ -139,10 +212,20 @@ class LogManager {
           : 'unknown',
       userAgent:
         typeof window !== 'undefined' ? window.navigator.userAgent : 'node',
-      logs: this.logs,
+      // Define the schema for the array tuples below
+      logSchema: ['timestamp', 'level', 'category', 'message', 'meta'],
+      // Transform objects to arrays to reduce key repetition overhead
+      logs: this.logs.map((l) => [
+        l.timestamp,
+        l.level,
+        l.category,
+        l.message,
+        l.meta,
+      ]),
     };
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
+    // Use default stringify (no indentation) for maximum compression
+    const blob = new Blob([JSON.stringify(data)], {
       type: 'application/json',
     });
     const url = URL.createObjectURL(blob);
@@ -166,6 +249,8 @@ class LogManager {
         return 'color: #2980b9; font-weight: bold;';
       case 'Framework':
         return 'color: #27ae60; font-weight: bold;';
+      case 'Memory':
+        return 'color: #c0392b; font-weight: bold;';
       default:
         return 'color: gray;';
     }

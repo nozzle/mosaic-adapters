@@ -15,6 +15,7 @@ import {
 import type {
   Column,
   ColumnDef,
+  Row,
   RowData,
   Table as TanStackTable,
 } from '@tanstack/react-table';
@@ -43,7 +44,12 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { cn, toDateInputString, toDateTimeInputString } from '@/lib/utils';
+import {
+  cn,
+  isRowHighlighted,
+  toDateInputString,
+  toDateTimeInputString,
+} from '@/lib/utils';
 import {
   NativeSelect,
   NativeSelectOption,
@@ -52,8 +58,9 @@ import {
 export function ShadcnTable<TData extends RowData, TValue>(props: {
   table: TanStackTable<TData>;
   columns: Array<ColumnDef<TData, TValue>>;
+  onRowClick?: (row: Row<TData>) => void;
 }) {
-  const { table, columns } = props;
+  const { table, columns, onRowClick } = props;
 
   return (
     <div className="grid gap-2">
@@ -92,21 +99,32 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && 'selected'}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                const isDimmed = !isRowHighlighted(row);
+
+                return (
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && 'selected'}
+                    onClick={() => onRowClick?.(row)}
+                    className={cn(
+                      // Interactive cursor if clickable
+                      onRowClick && 'cursor-pointer transition-opacity',
+                      // Dim if not highlighted
+                      isDimmed && 'opacity-30 grayscale',
+                    )}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell
@@ -521,18 +539,26 @@ function DebouncedInput({
   debounce?: number;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'>) {
   const [value, setValue] = React.useState(initialValue);
+  const isMounted = React.useRef(false);
 
   React.useEffect(() => {
     setValue(initialValue);
   }, [initialValue]);
 
   React.useEffect(() => {
+    // Skip the first run (on mount) to prevent pushing initial (often empty/undefined) values
+    // to the parent immediately, which can trigger unwanted filter resets or updates.
+    if (!isMounted.current) {
+      isMounted.current = true;
+      return;
+    }
+
     const timeout = setTimeout(() => {
       onChange(value);
     }, debounce);
 
     return () => clearTimeout(timeout);
-  }, [value]);
+  }, [value, debounce]); // Re-added debounce to dependencies for correctness
 
   return (
     <Input

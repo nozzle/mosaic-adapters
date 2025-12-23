@@ -8,4 +8,10 @@ declare module '@tanstack/react-table' {
     // Added 'datetime' to the allowed types
     rangeFilterType?: 'number' | 'date' | 'datetime';
   }
+
+  // Extend TableMeta to support passing selection state down to cells
+
+  interface TableMeta<TData extends RowData> {
+    selectedValue?: any;
+  }
 }

@@ -1,3 +1,8 @@
+/**
+ * Utility functions for state management, SQL generation, and data type coercion.
+ */
+
+import * as mSql from '@uwdata/mosaic-sql';
 import type { RowData, TableOptions, TableState } from '@tanstack/table-core';
 
 /**
@@ -139,4 +144,42 @@ export function toRangeValue(value: unknown): number | Date | null {
   // Fallback for other types
   const num = Number(value);
   return isFinite(num) ? num : null;
+}
+
+export type MosaicSQLExpression =
+  | ReturnType<typeof mSql.sql>
+  | ReturnType<typeof mSql.column>;
+
+/**
+ * Constructs a Mosaic SQL expression for a struct column access.
+ * Uses the Mosaic AST to safely compose column references.
+ *
+ * Input: "related_phrase.phrase"
+ * Output: sql`${column("related_phrase")}.${column("phrase")}`
+ * SQL Result: "related_phrase"."phrase"
+ */
+export function createStructAccess(columnPath: string): MosaicSQLExpression {
+  // If it's a simple column, just return the column node
+  if (!columnPath.includes('.')) {
+    return mSql.column(columnPath);
+  }
+
+  const parts = columnPath.split('.');
+  const [first, ...rest] = parts;
+
+  if (!first) {
+    throw new Error(`Invalid column path: ${columnPath}`);
+  }
+
+  // Reduce the parts into a nested SQL expression
+  // Initialize accumulator with the first column part to avoid 'null' casting
+  return rest.reduce(
+    (acc, part) => {
+      // Append subsequent parts with a dot separator.
+      // mSql.column(part) ensures correct quoting.
+      // mSql.sql`` creates the composite Expression Node.
+      return mSql.sql`${acc}.${mSql.column(part)}`;
+    },
+    mSql.column(first) as MosaicSQLExpression,
+  );
 }

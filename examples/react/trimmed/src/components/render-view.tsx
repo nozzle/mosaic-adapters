@@ -1,12 +1,12 @@
 import * as React from 'react';
-import * as vg from '@uwdata/vgplot';
+import { TableStyleSwitcher } from './render-table';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
 import { NycTaxiView } from '@/components/views/nyc-taxi';
+import { NozzlePaaView } from '@/components/views/nozzle-paa';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
-
-const wasmConnector = vg.wasmConnector({ log: false });
-vg.coordinator().databaseConnector(wasmConnector);
+import { ConnectorProvider, useConnector } from '@/context/ConnectorContext';
+import { ConnectorToggle } from '@/components/connector-toggle';
 
 const views = new Map([
   [
@@ -24,6 +24,13 @@ const views = new Map([
     },
   ],
   [
+    'nozzle-paa',
+    {
+      title: 'Nozzle PAA Report',
+      Component: NozzlePaaView,
+    },
+  ],
+  [
     'other',
     {
       title: 'Other View',
@@ -36,26 +43,52 @@ type ViewMap = typeof views;
 type ViewConfig = ViewMap extends Map<infer _K, infer V> ? V : never;
 
 export function RenderView() {
+  return (
+    <ConnectorProvider>
+      <RenderViewContent />
+    </ConnectorProvider>
+  );
+}
+
+function RenderViewContent() {
   const [view, setView] = useURLSearchParam('dashboard', 'athletes', {
     reloadOnChange: true,
   });
 
+  const { mode, status } = useConnector();
+
   return (
     <>
-      <div className="mb-4 flex gap-2">
-        {Array.from(views.entries()).map(([id, { title }]) => (
-          <Button
-            key={`${id}-button`}
-            size="sm"
-            onClick={() => setView(id)}
-            disabled={view === id}
-          >
-            {title}
-          </Button>
-        ))}
+      <div className="flex justify-between items-start mb-4">
+        <div className="grid gap-2">
+          <div className="flex border bg-neutral-100 rounded-lg px-1.5 py-1">
+            {Array.from(views.entries()).map(([id, { title }]) => (
+              <Button
+                key={`${id}-button`}
+                size="sm"
+                variant={view === id ? 'outline' : 'ghost'}
+                onClick={() => setView(id)}
+              >
+                {title}
+              </Button>
+            ))}
+          </div>
+          <TableStyleSwitcher />
+        </div>
+
+        <ConnectorToggle />
       </div>
       {view && views.has(view) ? (
-        <RenderLayout view={views.get(view)!} />
+        // Only render the layout if we are fully connected.
+        // This prevents the "Uncaught (in promise) Cleared" error by ensuring
+        // the component is unmounted while the coordinator is being cleared/swapped.
+        status === 'connected' ? (
+          <RenderLayout key={`${view}-${mode}`} view={views.get(view)!} />
+        ) : (
+          <div className="h-64 flex items-center justify-center text-slate-400 italic">
+            Connecting to {mode === 'remote' ? 'Remote Server' : 'WASM'}...
+          </div>
+        )
       ) : (
         <div>
           <p>Invalid view: "{view}". Please select a valid dashboard.</p>

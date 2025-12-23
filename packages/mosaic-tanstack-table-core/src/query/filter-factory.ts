@@ -1,5 +1,9 @@
 import * as mSql from '@uwdata/mosaic-sql';
-import { escapeSqlLikePattern, toRangeValue } from '../utils';
+import {
+  createStructAccess,
+  escapeSqlLikePattern,
+  toRangeValue,
+} from '../utils';
 import { logger } from '../logger';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { MosaicDataTableSqlFilterType } from '../types';
@@ -27,25 +31,26 @@ const strategies: Record<MosaicDataTableSqlFilterType, FilterStrategy> = {
     const min = toRangeValue(rawMin);
     const max = toRangeValue(rawMax);
 
+    // If both are null, we have no filter to apply
     if (min === null && max === null) {
       return undefined;
     }
 
     let clause: FilterExpr | undefined = undefined;
 
+    // Use createStructAccess for struct columns in Range filters
+    const colExpr = createStructAccess(columnAccessor);
+
     // Build SQL clauses using Mosaic literals to handle type safety
-    if (max === null) {
+    if (max === null && min !== null) {
       // GREATER THAN OR EQUAL TO min
-      clause = mSql.gte(mSql.column(columnAccessor), mSql.literal(min));
-    } else if (min === null) {
+      clause = mSql.gte(colExpr, mSql.literal(min));
+    } else if (min === null && max !== null) {
       // LESS THAN OR EQUAL TO max
-      clause = mSql.lte(mSql.column(columnAccessor), mSql.literal(max));
-    } else {
+      clause = mSql.lte(colExpr, mSql.literal(max));
+    } else if (min !== null && max !== null) {
       // BETWEEN min AND max
-      clause = mSql.isBetween(mSql.column(columnAccessor), [
-        mSql.literal(min),
-        mSql.literal(max),
-      ]);
+      clause = mSql.isBetween(colExpr, [mSql.literal(min), mSql.literal(max)]);
     }
 
     return clause;
@@ -88,16 +93,26 @@ const strategies: Record<MosaicDataTableSqlFilterType, FilterStrategy> = {
     });
   },
 
-  EQUALS: ({ columnAccessor, value, columnId }) => {
-    // Allow 0, false, but reject null, undefined, empty string
-    if (value === null || value === undefined || value === '') {
-      logger.warn(
-        'Core',
-        `[FilterFactory] Column "${columnId}" has empty value for EQUALS filter.`,
-      );
+  EQUALS: ({ columnAccessor, value, columnId: _unused }) => {
+    // HARDENING: Reject Arrays. EQUALS strategy cannot handle Range/List value arrays.
+    // This prevents crashes if a Range Filter accidentally falls back to EQUALS strategy.
+    if (Array.isArray(value)) {
+      // Optional: logger.warn('Core', `[FilterFactory] EQUALS strategy received an array value for column "${columnId}". Ignoring to prevent SQL errors.`);
       return undefined;
     }
-    const clause = mSql.eq(mSql.column(columnAccessor), mSql.literal(value));
+
+    // Allow 0, false, but reject null, undefined, empty string
+    if (value === null || value === undefined || value === '') {
+      // Don't warn for empty strings as this is common in UI state (cleared filter)
+      // logger.warn('Core', ...);
+      return undefined;
+    }
+
+    // Use createStructAccess for struct columns in Equals filters
+    const clause = mSql.eq(
+      createStructAccess(columnAccessor),
+      mSql.literal(value),
+    );
 
     return clause;
   },
@@ -110,27 +125,36 @@ function handleLike(options: {
   operator: 'LIKE' | 'ILIKE';
   isPartial: boolean;
 }): FilterExpr | undefined {
-  if (typeof options.value !== 'string' || options.value.length === 0) {
-    logger.warn(
-      'Core',
-      `[FilterFactory] Column "${options.columnId}" has invalid value for text filter. Expected non-empty string.`,
-      { value: options.value },
-    );
+  // Safe coercion to string to ensure even numeric inputs (ids) are handled if they ended up here.
+  // Using String() handles null/undefined as "null"/"undefined", so we check existence first.
+  if (options.value === null || options.value === undefined) {
     return undefined;
   }
 
-  let pattern: string;
-  if (options.isPartial) {
-    // Hardening: Escape wildcards so "100%" means literal 100%, not "100[anything]"
-    pattern = `%${escapeSqlLikePattern(options.value)}%`;
-  } else {
-    pattern = options.value;
+  const valStr = String(options.value);
+  if (valStr.length === 0) {
+    // Empty search string = no filter
+    return undefined;
   }
 
-  // mSql.literal handles SQL Injection safety (quote escaping)
-  const clause = mSql.sql`${mSql.column(options.columnAccessor)} ${options.operator} ${mSql.literal(pattern)}`;
+  let pattern = valStr;
+  if (options.isPartial) {
+    // Hardening: Escape wildcards so "100%" means literal 100%, not "100[anything]"
+    pattern = `%${escapeSqlLikePattern(valStr)}%`;
+  } else {
+    pattern = valStr;
+  }
 
-  return clause;
+  // Use createStructAccess for struct columns in Like filters
+  const colExpr = createStructAccess(options.columnAccessor);
+  const patternLiteral = mSql.literal(pattern);
+
+  // Explicitly construct the SQL based on the operator type.
+  if (options.operator === 'ILIKE') {
+    return mSql.sql`${colExpr} ILIKE ${patternLiteral}`;
+  } else {
+    return mSql.sql`${colExpr} LIKE ${patternLiteral}`;
+  }
 }
 
 export function createFilterClause(options: {

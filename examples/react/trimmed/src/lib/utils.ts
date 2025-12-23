@@ -1,6 +1,7 @@
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { ClassValue } from 'clsx';
+import type { Row } from '@tanstack/react-table';
 
 export function cn(...inputs: Array<ClassValue>) {
   return twMerge(clsx(inputs));
@@ -56,4 +57,25 @@ export function toDateInputString(value: unknown): string {
   const dd = pad(date.getDate());
 
   return `${yyyy}-${MM}-${dd}`;
+}
+
+/**
+ * Checks if a table row is currently highlighted.
+ * This encapsulates the Mosaic `__is_highlighted` SQL column logic.
+ *
+ * @param row - The TanStack Table row object
+ * @returns true if the row is highlighted (or if no highlight filter is active), false if it is dimmed.
+ */
+export function isRowHighlighted<TData>(row: Row<TData>): boolean {
+  // @ts-expect-error __is_highlighted is dynamically injected by Mosaic SQL logic
+  const val = row.original.__is_highlighted;
+
+  // If undefined, it means no highlight query is active (all rows visible).
+  if (val === undefined) {
+    return true;
+  }
+
+  // If defined, DuckDB returns BigInt (0n or 1n) or Number.
+  // 0 means "dimmed/unselected", 1 means "highlighted/selected".
+  return Number(val) !== 0;
 }

@@ -1,13 +1,25 @@
 import * as React from 'react';
 import { flexRender } from '@tanstack/react-table';
-import type { Column, ColumnDef, RowData, Table } from '@tanstack/react-table';
-import { toDateInputString, toDateTimeInputString } from '@/lib/utils';
+import type {
+  Column,
+  ColumnDef,
+  Row,
+  RowData,
+  Table,
+} from '@tanstack/react-table';
+import {
+  cn,
+  isRowHighlighted,
+  toDateInputString,
+  toDateTimeInputString,
+} from '@/lib/utils';
 
 export function BareTable<TData extends RowData, TValue>(props: {
   table: Table<TData>;
   columns: Array<ColumnDef<TData, TValue>>;
+  onRowClick?: (row: Row<TData>) => void;
 }) {
-  const { table } = props;
+  const { table, onRowClick } = props;
 
   return (
     <div className="grid gap-4 overflow-scroll">
@@ -39,15 +51,27 @@ export function BareTable<TData extends RowData, TValue>(props: {
           ))}
         </thead>
         <tbody>
-          {table.getRowModel().rows.map((row) => (
-            <tr key={row.id} className="py-1">
-              {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className="text-nowrap px-2">
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {table.getRowModel().rows.map((row) => {
+            const isDimmed = !isRowHighlighted(row);
+
+            return (
+              <tr
+                key={row.id}
+                className={cn(
+                  'py-1',
+                  onRowClick && 'cursor-pointer hover:bg-slate-100',
+                  isDimmed && 'opacity-30 grayscale',
+                )}
+                onClick={() => onRowClick?.(row)}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id} className="text-nowrap px-2">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
         <tfoot>
           {table.getFooterGroups().map((footerGroup) => (
@@ -286,16 +310,17 @@ function SelectFilter<TData extends RowData, TValue>({
   );
 }
 
-function DebouncedRangeFilter({
+function DebouncedRangeFilter<TData extends RowData, TValue>({
   column,
   type = 'number',
   placeholderPrefix = '',
 }: {
-  column: any;
+  column: Column<TData, TValue>;
   type?: 'number' | 'date' | 'datetime';
   placeholderPrefix?: string;
 }) {
-  const columnFilterValue = column.getFilterValue();
+  // Explicitly typing the filter value tuple to avoid 'any'
+  const columnFilterValue = column.getFilterValue() as [any, any] | undefined;
   const minMax = column.getFacetedMinMaxValues();
 
   // Determine the HTML Input type
@@ -327,17 +352,13 @@ function DebouncedRangeFilter({
     minMax?.[1] !== undefined ? formatValue(minMax[1]) : placeholderPrefix;
 
   const currentMin =
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    (columnFilterValue as [any, any])?.[0] !== undefined
-      ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        formatValue((columnFilterValue as [any, any])?.[0])
+    columnFilterValue?.[0] !== undefined
+      ? formatValue(columnFilterValue[0])
       : '';
 
   const currentMax =
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    (columnFilterValue as [any, any])?.[1] !== undefined
-      ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        formatValue((columnFilterValue as [any, any])?.[1])
+    columnFilterValue?.[1] !== undefined
+      ? formatValue(columnFilterValue[1])
       : '';
 
   return (
@@ -346,8 +367,10 @@ function DebouncedRangeFilter({
         type={inputType}
         value={currentMin}
         onChange={(value) =>
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          column.setFilterValue((old: [any, any]) => [value, old?.[1]])
+          column.setFilterValue((old: [any, any] | undefined) => [
+            value,
+            old?.[1],
+          ])
         }
         placeholder={`Min ${minValue ? `(${minValue})` : ''}`}
         className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
@@ -357,8 +380,10 @@ function DebouncedRangeFilter({
         type={inputType}
         value={currentMax}
         onChange={(value) =>
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          column.setFilterValue((old: [any, any]) => [old?.[0], value])
+          column.setFilterValue((old: [any, any] | undefined) => [
+            old?.[0],
+            value,
+          ])
         }
         placeholder={`Max ${maxValue ? `(${maxValue})` : ''}`}
         className="w-full px-2 py-1 text-xs border rounded shadow-sm font-normal text-gray-600 focus:border-blue-500 outline-none min-w-10"
