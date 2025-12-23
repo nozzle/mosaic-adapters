@@ -152,3 +152,52 @@ export const MinMaxStrategy: FacetStrategy<[number, number] | undefined> = {
     return undefined;
   },
 };
+
+/**
+ * Strategy for fetching the Total Row Count.
+ * Used for Pagination in 'split' mode.
+ */
+export const TotalCountStrategy: FacetStrategy<number> = {
+  buildQuery: (ctx) => {
+    let src: string | SelectQuery;
+    const outerFilters: Array<FilterExpr> = [];
+
+    if (typeof ctx.source === 'function') {
+      // Factory: Primary Filter INNER
+      src = ctx.source(ctx.primaryFilter);
+      // Cascading Filters OUTER
+      if (ctx.cascadingFilters.length > 0) {
+        outerFilters.push(...ctx.cascadingFilters);
+      }
+    } else {
+      // String: All OUTER
+      src = isParam(ctx.source)
+        ? (ctx.source.value as string)
+        : (ctx.source as string);
+
+      if (ctx.primaryFilter) {
+        outerFilters.push(ctx.primaryFilter);
+      }
+      if (ctx.cascadingFilters.length > 0) {
+        outerFilters.push(...ctx.cascadingFilters);
+      }
+    }
+
+    const statement = mSql.Query.from(src).select({
+      count: mSql.count(),
+    });
+
+    if (outerFilters.length > 0) {
+      statement.where(mSql.and(...outerFilters));
+    }
+
+    return statement;
+  },
+
+  transformResult: (rows) => {
+    if (rows.length > 0) {
+      return Number(rows[0].count) || 0;
+    }
+    return 0;
+  },
+};

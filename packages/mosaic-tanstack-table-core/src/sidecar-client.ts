@@ -67,6 +67,16 @@ export class SidecarClient<T> extends MosaicClient implements IMosaicClient {
   }
 
   /**
+   * Update the data source.
+   */
+  updateSource(source: MosaicTableSource) {
+    if (this.config.source !== source) {
+      this.config.source = source;
+      this.requestUpdate();
+    }
+  }
+
+  /**
    * Update runtime options (like search term) and trigger a re-query.
    */
   updateRuntimeOptions(
@@ -88,7 +98,14 @@ export class SidecarClient<T> extends MosaicClient implements IMosaicClient {
     return super.requestQuery(query);
   }
 
-  override query(filter?: FilterExpr): SelectQuery {
+  override query(filter?: FilterExpr): SelectQuery | null {
+    // Safety Check: If source is an empty string, don't query.
+    // This prevents "Parser Error: zero-length delimited identifier"
+    const src = this.config.source;
+    if (typeof src === 'string' && src.trim() === '') {
+      return null;
+    }
+
     const cascadingFilters = this.config.getFilters();
     const primaryFilter = filter;
 

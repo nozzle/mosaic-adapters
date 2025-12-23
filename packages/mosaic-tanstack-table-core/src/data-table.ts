@@ -154,6 +154,10 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
     this.source = options.table;
 
+    if (sourceChanged) {
+      this.sidecarManager.updateSource(options.table);
+    }
+
     // Guaranteed initialization: uses provided selection, or falls back to an internal default.
     const currentSelection = (this as any).tableFilterSelection as
       | Selection
@@ -204,6 +208,11 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         columnDefs:
           options.columns !== undefined ? options.columns : prev.columnDefs,
       }));
+    }
+
+    // Split Mode Logic: Spin up a sidecar for total counts
+    if (options.totalRowsMode === 'split') {
+      this.sidecarManager.requestTotalCount();
     }
 
     // If explicit columns are provided, initialize the mapper immediately
@@ -338,18 +347,23 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   /**
    * Generates filters for cascading selection logic.
+   * If excludeColumnId is omitted, returns all filters (used for Total Count).
    */
-  public getCascadingFilters(options: {
-    excludeColumnId: string;
+  public getCascadingFilters(options?: {
+    excludeColumnId?: string;
   }): Array<mSql.FilterExpr> {
     const tableState = this.store.state.tableState;
 
-    const filteredState = {
-      ...tableState,
-      columnFilters: tableState.columnFilters.filter(
-        (f) => f.id !== options.excludeColumnId,
-      ),
-    };
+    const excludeId = options?.excludeColumnId;
+
+    const filteredState = excludeId
+      ? {
+          ...tableState,
+          columnFilters: tableState.columnFilters.filter(
+            (f) => f.id !== excludeId,
+          ),
+        }
+      : tableState;
 
     // Cast to check if mapper is ready
     const mapper = (this as any).#columnMapper as
@@ -381,6 +395,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       const rows = table.toArray() as Array<TData>;
 
       if (
+        this.options.totalRowsMode === 'window' &&
         rows.length > 0 &&
         rows[0] &&
         typeof rows[0] === 'object' &&
@@ -395,7 +410,11 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           return {
             ...prev,
             rows,
-            totalRows,
+            // Only overwrite totalRows if we are in window mode or if it's undefined
+            totalRows:
+              this.options.totalRowsMode === 'window'
+                ? totalRows
+                : prev.totalRows,
           };
         });
       });
@@ -687,6 +706,15 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.store.setState((prev) => ({
         ...prev,
         _facetsUpdateCount: prev._facetsUpdateCount + 1,
+      }));
+    });
+  }
+
+  updateTotalRows(count: number) {
+    batch(() => {
+      this.store.setState((prev) => ({
+        ...prev,
+        totalRows: count,
       }));
     });
   }
