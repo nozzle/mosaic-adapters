@@ -1,5 +1,3 @@
-// examples/react/trimmed/src/components/bare-table.tsx
-
 import * as React from 'react';
 import { flexRender } from '@tanstack/react-table';
 import type {

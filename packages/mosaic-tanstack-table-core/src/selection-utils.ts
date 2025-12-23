@@ -1,5 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/selection-utils.ts
-
 import { MosaicSelectionManager } from './selection-manager';
 import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
 import type { ColumnType } from './types';

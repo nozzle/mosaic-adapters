@@ -1,5 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/selection-manager.ts
-
 import * as mSql from '@uwdata/mosaic-sql';
 import { createStructAccess } from './utils';
 import type { MosaicClient, Selection } from '@uwdata/mosaic-core';

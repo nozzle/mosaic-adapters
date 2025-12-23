@@ -58,7 +58,7 @@ export abstract class BaseMosaicClient extends MosaicClient {
 
     this.coordinator.connect(this);
     this.isConnected = true;
-    this.onConnect();
+    this.__onConnect();
 
     return () => this.disconnect();
   }
@@ -66,7 +66,7 @@ export abstract class BaseMosaicClient extends MosaicClient {
   disconnect() {
     this.coordinator?.disconnect(this);
     this.isConnected = false;
-    this.onDisconnect();
+    this.__onDisconnect();
   }
 
   /**
@@ -88,10 +88,10 @@ export abstract class BaseMosaicClient extends MosaicClient {
   /**
    * Hook called after successful connection.
    */
-  protected onConnect() {}
+  protected __onConnect() {}
 
   /**
    * Hook called after disconnection.
    */
-  protected onDisconnect() {}
+  protected __onDisconnect() {}
 }

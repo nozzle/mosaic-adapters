@@ -1,5 +1,3 @@
-// examples/react/trimmed/src/tanstack-table.d.ts
-
 import '@tanstack/react-table';
 import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
 

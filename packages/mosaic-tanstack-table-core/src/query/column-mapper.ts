@@ -2,13 +2,17 @@ import { logger } from '../logger';
 import type { ColumnDef, RowData } from '@tanstack/table-core';
 import type { FieldInfoRequest } from '@uwdata/mosaic-core';
 
+let mapperIdCounter = 0;
+
 export class ColumnMapper<TData extends RowData, TValue = unknown> {
+  public readonly id: number;
   private idToSqlMap = new Map<string, string>();
   private sqlToDefMap = new Map<string, ColumnDef<TData, TValue>>();
   private columnAccessorKeys: Array<string> = [];
   public shouldSearchAllColumns = false;
 
   constructor(columnDefs: Array<ColumnDef<TData, TValue>>) {
+    this.id = ++mapperIdCounter;
     this.parse(columnDefs);
   }
 
@@ -37,6 +41,13 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
       return false;
     });
 
+    if (queryableColumns.length > 0) {
+      logger.debug(
+        'Core',
+        `[ColumnMapper #${this.id}] Parsing ${queryableColumns.length} columns`,
+      );
+    }
+
     queryableColumns.forEach((def, index) => {
       let columnAccessor: string | undefined = undefined;
 
@@ -57,7 +68,7 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
         if (sqlColumnMeta !== undefined && sqlColumnMeta !== accessor) {
           logger.debug(
             'Core',
-            `[ColumnMapper] Column definition accessorKey "${accessor}" differs from mosaicDataTable.sqlColumn "${sqlColumnMeta}". Using metadata.`,
+            `[ColumnMapper #${this.id}] Column definition accessorKey "${accessor}" differs from mosaicDataTable.sqlColumn "${sqlColumnMeta}". Using metadata.`,
             { def },
           );
         }
@@ -74,7 +85,7 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
         if (!sqlColumnMeta) {
           // CRITICAL CHANGE: Throw Error instead of warning
           throw new Error(
-            `[Mosaic ColumnMapper] Column at index ${index} uses 'accessorFn' but is missing required metadata.\n` +
+            `[Mosaic ColumnMapper #${this.id}] Column at index ${index} uses 'accessorFn' but is missing required metadata.\n` +
               `You MUST provide 'meta.mosaicDataTable.sqlColumn' so Mosaic knows what to query.\n` +
               `Header: ${typeof def.header === 'string' ? def.header : 'Unknown'}`,
           );
@@ -84,7 +95,7 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
       }
 
       if (!columnAccessor) {
-        const message = `[ColumnMapper] Column definition is missing an \`accessorKey\` or valid \`mosaicDataTable.sqlColumn\` metadata to map to a Mosaic Query column. Please provide one of these properties.`;
+        const message = `[ColumnMapper #${this.id}] Column definition is missing an \`accessorKey\` or valid \`mosaicDataTable.sqlColumn\` metadata to map to a Mosaic Query column. Please provide one of these properties.`;
         logger.error('Core', message, { def });
         throw new Error(message);
       }
@@ -93,9 +104,18 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
       // TanStack Table often auto-generates IDs, but best to be safe
       const id = def.id || columnAccessor;
       if (!id) {
-        const message = `[ColumnMapper] Column definition is missing an \`id\` property and could not be inferred. Please provide an explicit \`id\` or use \`accessorKey\`.`;
+        const message = `[ColumnMapper #${this.id}] Column definition is missing an \`id\` property and could not be inferred. Please provide an explicit \`id\` or use \`accessorKey\`.`;
         logger.error('Core', message, { def });
         throw new Error(message);
+      }
+
+      // Debug Log for Metadata Injection
+      if (def.meta?.mosaicDataTable) {
+        logger.debug(
+          'Core',
+          `[ColumnMapper #${this.id}] Mapped "${id}" -> SQL "${columnAccessor}" with Meta:`,
+          def.meta.mosaicDataTable,
+        );
       }
 
       // Store mappings

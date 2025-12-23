@@ -539,18 +539,26 @@ function DebouncedInput({
   debounce?: number;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'>) {
   const [value, setValue] = React.useState(initialValue);
+  const isMounted = React.useRef(false);
 
   React.useEffect(() => {
     setValue(initialValue);
   }, [initialValue]);
 
   React.useEffect(() => {
+    // Skip the first run (on mount) to prevent pushing initial (often empty/undefined) values
+    // to the parent immediately, which can trigger unwanted filter resets or updates.
+    if (!isMounted.current) {
+      isMounted.current = true;
+      return;
+    }
+
     const timeout = setTimeout(() => {
       onChange(value);
     }, debounce);
 
     return () => clearTimeout(timeout);
-  }, [value]);
+  }, [value, debounce]); // Re-added debounce to dependencies for correctness
 
   return (
     <Input

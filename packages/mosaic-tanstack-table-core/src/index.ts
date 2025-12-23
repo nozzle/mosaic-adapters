@@ -1,4 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/index.ts
 export * from './data-table';
 export * from './facet-menu';
 export * from './selection-manager';

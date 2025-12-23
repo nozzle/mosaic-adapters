@@ -3,6 +3,8 @@
  * Includes capabilities for sanitizing console output and heuristic error detection.
  */
 
+import type { Coordinator } from '@uwdata/mosaic-core';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type LogCategory =
   | 'Core'
@@ -194,7 +196,7 @@ class LogManager {
    * STUB: PRAGMA memory_info is not available in EH/MVP WASM bundles.
    */
 
-  logMemory(_coordinator: any, _label: string) {
+  logMemory(_coordinator: Coordinator, _label: string) {
     // This is a stub to prevent TypeError: logger.logMemory is not a function
     // in clients that were instrumented for memory tracking.
   }

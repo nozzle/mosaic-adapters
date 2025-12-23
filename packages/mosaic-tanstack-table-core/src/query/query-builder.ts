@@ -1,8 +1,3 @@
-/**
- * Query Builder logic for constructing the primary SQL SelectQuery for the table.
- * Handles column mapping, sorting, pagination, and total row count injection.
- */
-
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
 import { createStructAccess } from '../utils';
@@ -18,8 +13,16 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   mapper: ColumnMapper<TData, TValue>;
   totalRowsColumnName: string;
   totalRowsMode?: 'split' | 'window';
-  excludeColumnId?: string;
+  excludeColumnId?: string; // For cascading facets
+  /**
+   * The predicate to use for highlighting rows.
+   * If provided, a computed column `__is_highlighted` (1 or 0) will be added.
+   */
   highlightPredicate?: mSql.FilterExpr | null;
+  /**
+   * If true, skip adding the `__is_highlighted` column to the SELECT list.
+   * Use this when the source (subquery) already calculates it.
+   */
   manualHighlight?: boolean;
 }
 
@@ -30,20 +33,26 @@ export function buildTableQuery<TData extends RowData, TValue>(
     source,
     tableState,
     mapper,
+    totalRowsColumnName,
+    totalRowsMode,
+    excludeColumnId,
     highlightPredicate,
     manualHighlight,
-    totalRowsMode,
-    totalRowsColumnName,
   } = options;
 
-  const { pagination, sorting } = tableState;
+  const { pagination, sorting, columnFilters } = tableState;
 
   // 1. Select Columns
-  const selectColumns = mapper.getSelectColumns().map((col: string) => {
+  // We iterate the mapped columns and construct the SELECT clause.
+  // If a column has a dot, we treat it as a struct access `parent.child`
+  // and ALIAS it to the original key so TanStack Table can find it flatly.
+  const selectColumns = mapper.getSelectColumns().map((col) => {
     if (col.includes('.')) {
+      // Use helper to generate "a"."b" struct access
       const structExpr = createStructAccess(col);
       return { [col]: structExpr };
     }
+    // Standard column
     return mSql.column(col);
   });
 
@@ -54,7 +63,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
     extraSelects[totalRowsColumnName] = mSql.sql`COUNT(*) OVER()`;
   }
 
-  // Calculate Highlight Column
+  // Calculate Highlight Column if not in manual mode
   if (!manualHighlight) {
     let highlightCol;
     const isHighlightActive =
@@ -62,34 +71,71 @@ export function buildTableQuery<TData extends RowData, TValue>(
       (!Array.isArray(highlightPredicate) || highlightPredicate.length > 0);
 
     if (isHighlightActive) {
+      // Ensure the predicate is a valid SQL Node for interpolation.
+      // If highlightPredicate is an array (implicit AND), wrap it.
       const safePredicate = Array.isArray(highlightPredicate)
         ? mSql.and(...highlightPredicate)
         : highlightPredicate;
 
+      // SQL: MAX(CASE WHEN predicate THEN 1 ELSE 0 END)
+      // We use MAX() to ensure safety with GROUP BY queries (if the source is aggregated).
+      // If *any* record in the group matches the filter, the group is highlighted.
       const caseExpr = mSql.sql`CASE WHEN ${safePredicate} THEN 1 ELSE 0 END`;
       highlightCol = mSql.max(caseExpr);
     } else {
+      // If no filter exists (or it's empty), everything is highlighted (default state)
       highlightCol = mSql.literal(1);
     }
     extraSelects['__is_highlighted'] = highlightCol;
   }
 
+  // Initialize statement with Total Rows Window Function and Highlight Flag
+  // mSql.Query.from() handles both strings (table names) and SelectQuery objects (subqueries)
   const statement = mSql.Query.from(source).select(
     ...selectColumns,
     extraSelects,
   );
 
-  // 2. Generate WHERE Clauses
-  const whereClauses = extractInternalFilters(options);
+  // 2. Generate WHERE Clauses (Internal Table Filters)
+  const whereClauses: Array<mSql.FilterExpr> = [];
+
+  columnFilters.forEach((filter) => {
+    // Cascading logic: Skip if excluded (e.g. for a Facet Sidecar)
+    if (excludeColumnId && filter.id === excludeColumnId) {
+      return;
+    }
+
+    const sqlColumn = mapper.getSqlColumn(filter.id);
+    if (!sqlColumn) {
+      return;
+    }
+
+    const colDef = mapper.getColumnDef(sqlColumn);
+    const filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
+
+    const clause = createFilterClause({
+      sqlColumn,
+      filterType,
+      value: filter.value,
+      columnId: filter.id,
+    });
+
+    if (clause) {
+      whereClauses.push(clause);
+    }
+  });
+
   if (whereClauses.length > 0) {
     statement.where(...whereClauses);
   }
 
   // 3. Apply Sorting
+  // Only sort by columns that exist in our mapping
   const orderingCriteria: Array<mSql.OrderByNode> = [];
   sorting.forEach((sort) => {
     const sqlColumn = mapper.getSqlColumn(sort.id);
     if (sqlColumn) {
+      // Use createStructAccess for sorting nested columns too
       const colExpr = createStructAccess(sqlColumn);
       orderingCriteria.push(sort.desc ? mSql.desc(colExpr) : mSql.asc(colExpr));
     }
@@ -102,6 +148,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
     .limit(pagination.pageSize)
     .offset(pagination.pageIndex * pagination.pageSize);
 
+  // INFO: Downgraded to 'debug' to reduce console noise while keeping full logs available
   logger.debounce(
     'sql-query-builder',
     300,
@@ -115,6 +162,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
         sorting,
         filtersCount: whereClauses.length,
         hasHighlight: !manualHighlight,
+        highlightPredicateRaw: highlightPredicate,
         totalRowsMode,
       },
     },
@@ -124,27 +172,39 @@ export function buildTableQuery<TData extends RowData, TValue>(
 }
 
 /**
- * Helper to extract just the internal filter expressions.
+ * Helper to extract just the internal filter expressions for cross-filtering.
+ * This effectively runs the "WHERE" generation logic without constructing a full SELECT.
  */
 export function extractInternalFilters<TData extends RowData, TValue>(options: {
   tableState: TableState;
   mapper: ColumnMapper<TData, TValue>;
-  excludeColumnId?: string;
 }): Array<mSql.FilterExpr> {
   const clauses: Array<mSql.FilterExpr> = [];
 
   options.tableState.columnFilters.forEach((filter) => {
-    if (options.excludeColumnId && filter.id === options.excludeColumnId) {
-      return;
-    }
-
     const sqlColumn = options.mapper.getSqlColumn(filter.id);
     if (!sqlColumn) {
+      logger.warn(
+        'Core',
+        `[QueryBuilder] Could not map filter ID "${filter.id}" to SQL Column`,
+      );
       return;
     }
 
     const colDef = options.mapper.getColumnDef(sqlColumn);
     const filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
+
+    // DIAGNOSTIC LOGGING: Check what we resolved with Mapper ID
+    logger.debug(
+      'Core',
+      `[QueryBuilder] Resolving Filter for "${filter.id}" using Mapper #${options.mapper.id}`,
+      {
+        sqlColumn,
+        filterType: filterType || 'UNDEFINED (Defaults to EQUALS)',
+        value: filter.value,
+        hasMeta: !!colDef?.meta?.mosaicDataTable,
+      },
+    );
 
     const clause = createFilterClause({
       sqlColumn,
