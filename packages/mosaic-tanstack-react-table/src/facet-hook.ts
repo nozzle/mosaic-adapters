@@ -5,6 +5,7 @@ import type { MosaicFacetMenuOptions } from '@nozzleio/mosaic-tanstack-table-cor
 
 /**
  * React hook to manage the state and lifecycle of a Mosaic Facet Menu.
+ * Connects a specific column's sidecar client to the UI.
  */
 export function useMosaicFacetMenu(options: MosaicFacetMenuOptions) {
   // 1. Instantiate the stable client once
@@ -20,13 +21,13 @@ export function useMosaicFacetMenu(options: MosaicFacetMenuOptions) {
 
   // 4. Connect/Disconnect lifecycle
   // Only connect to the coordinator when the facet is enabled (e.g. menu is open).
-  // This prevents idle clients from responding to selection changes with null queries.
+  // We include options.coordinator to ensure connection occurs if the coordinator initializes late.
   React.useEffect(() => {
     if (options.enabled) {
       const cleanup = client.connect();
       return () => cleanup();
     }
-  }, [client, options.enabled]);
+  }, [client, options.enabled, options.coordinator]);
 
   return {
     /** Raw options from the database (respecting limit/filters) */
