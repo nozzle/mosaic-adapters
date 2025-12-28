@@ -1,6 +1,6 @@
 /**
  * View component for the Athletes dataset.
- * Refactored to use a managed ViewModel for clean reset cycles and restored full column definitions.
+ * Updated to use the factory-created AthletesViewModel.
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -10,7 +10,8 @@ import {
   useMosaicReactTable,
   useMosaicViewModel,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { AthletesModel } from './athletes-model';
+import { createAthletesModel } from './athletes-model';
+import type { AthletesViewModel } from './athletes-model';
 import type { ColumnDef } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -46,7 +47,7 @@ export function AthletesView({
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
   const model = useMosaicViewModel(
-    (c) => new AthletesModel(c),
+    (c) => createAthletesModel(c),
     vg.coordinator(),
   );
 
@@ -143,7 +144,7 @@ export function AthletesView({
   );
 }
 
-function AthletesTable({ model }: { model: AthletesModel }) {
+function AthletesTable({ model }: { model: AthletesViewModel }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
   const columns: Array<ColumnDef<AthleteRowData, any>> = useMemo(

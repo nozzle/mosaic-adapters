@@ -1,6 +1,6 @@
 /**
  * View component for the Nozzle PAA dataset.
- * Uses 'split' pagination mode to ensure memory safety on potentially large SEO datasets.
+ * Updated to use the factory-created PaaDashboardViewModel.
  */
 
 import * as React from 'react';
@@ -12,7 +12,8 @@ import {
   useMosaicReactTable,
   useMosaicViewModel,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { PaaDashboardModel } from './paa-model';
+import { createPaaDashboardModel } from './paa-model';
+import type { PaaDashboardViewModel } from './paa-model';
 import type { ColumnDef, Table } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import { RenderTable } from '@/components/render-table';
@@ -36,8 +37,8 @@ export function NozzlePaaView({
   const [isReady, setIsReady] = useState(false);
   const [_, setDetailTable] = useState<Table<any> | null>(null);
 
-  const model = useMosaicViewModel<PaaDashboardModel>(
-    (c) => new PaaDashboardModel(c),
+  const model = useMosaicViewModel<PaaDashboardViewModel>(
+    (c) => createPaaDashboardModel(c),
     vg.coordinator(),
   );
 
@@ -183,7 +184,7 @@ export function NozzlePaaView({
   );
 }
 
-function HeaderSection({ model }: { model: PaaDashboardModel }) {
+function HeaderSection({ model }: { model: PaaDashboardViewModel }) {
   const qPhrases = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
       .select({ value: mSql.count('phrase').distinct() })
@@ -253,7 +254,7 @@ function SummaryTable({
   aggFn,
   where,
 }: {
-  model: PaaDashboardModel;
+  model: PaaDashboardViewModel;
   title: string;
   groupBy: string;
   metric: string;
@@ -412,7 +413,7 @@ function DetailTable({
   model,
   onTableReady,
 }: {
-  model: PaaDashboardModel;
+  model: PaaDashboardViewModel;
   onTableReady: (table: Table<PaaRowData>) => void;
 }) {
   const columns: Array<ColumnDef<PaaRowData, any>> = useMemo(

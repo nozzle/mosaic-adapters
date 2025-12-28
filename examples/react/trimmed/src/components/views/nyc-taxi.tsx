@@ -1,6 +1,6 @@
 /**
  * View component for the NYC Taxi dataset.
- * Demonstrates geospatial features, aggregation, and cross-filtering.
+ * Updated to use the factory-created NycTaxiViewModel.
  */
 
 import * as React from 'react';
@@ -11,7 +11,7 @@ import {
   useMosaicReactTable,
   useMosaicViewModel,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { NycTaxiModel } from './nyc-model';
+import { createNycTaxiModel } from './nyc-model';
 import type { Table } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -47,7 +47,7 @@ export function NycTaxiView({
   const [__, setSummaryTable] = useState<Table<SummaryRowData> | null>(null);
 
   const model = useMosaicViewModel(
-    (c) => new NycTaxiModel(c),
+    (c) => createNycTaxiModel(c),
     vg.coordinator(),
   );
 
