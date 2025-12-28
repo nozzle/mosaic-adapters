@@ -1,4 +1,7 @@
-// Refactored layout to include a footer for debug buttons, preventing overlap
+/**
+ * Main application entry point.
+ * Defines the high-level layout and provides global debug tools for logging.
+ */
 import { logger } from '@nozzleio/mosaic-tanstack-react-table';
 import { RenderView } from '@/components/render-view';
 

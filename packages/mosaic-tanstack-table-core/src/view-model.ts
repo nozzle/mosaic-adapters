@@ -1,6 +1,6 @@
 /**
- * Concrete class for View Models that manage Mosaic selections, topology, and schema mapping.
- * Uses a configuration object for callbacks to avoid inheritance-based friction.
+ * Provides a configuration-driven lifecycle for dashboard analytical models.
+ * Manages selections, topology setup, and coordinated resource cleanup.
  */
 
 import type { Coordinator, MosaicClient, Selection } from '@uwdata/mosaic-core';
@@ -8,7 +8,7 @@ import type { MosaicDataTableColumnDefMetaOptions } from './types';
 
 /**
  * Configuration for a Mosaic ViewModel.
- * Encapsulates the behavioral logic previously handled by abstract methods.
+ * Encapsulates the behavior and metadata for a specific analytical view.
  */
 export interface MosaicViewModelConfig<T extends MosaicViewModel = any> {
   /** Callback to clear all logical selections managed by the dashboard */

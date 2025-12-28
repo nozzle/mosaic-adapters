@@ -1,6 +1,6 @@
 /**
- * View component for the Athletes dataset.
- * Updated to use the factory-created AthletesViewModel.
+ * Dashboard view component for the Athletes dataset.
+ * Integrates Mosaic-powered charts and TanStack tables with coordinated filtering.
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';

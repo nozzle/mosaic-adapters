@@ -235,9 +235,8 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     else if (sourceChanged) {
       this.schema = [];
 
-      // CRITICAL FIX: Reset the column mapper immediately.
-      // This prevents the client from generating queries using the OLD schema against the NEW table
-      // (which causes "Binder Error: Referenced column not found" errors).
+      // Reset the column mapper to prevent the client from generating queries
+      // using the old schema against the new table.
       this.#columnMapper = undefined;
 
       // Also reset the store to prevent the UI from rendering stale columns

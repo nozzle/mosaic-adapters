@@ -1,3 +1,8 @@
+/**
+ * Factory for constructing Mosaic SQL Select queries from table state.
+ * Translates TanStack Table state (filtering, sorting, pagination) into executable SQL.
+ */
+
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
 import { createStructAccess } from '../utils';
@@ -148,7 +153,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
     .limit(pagination.pageSize)
     .offset(pagination.pageIndex * pagination.pageSize);
 
-  // INFO: Downgraded to 'debug' to reduce console noise while keeping full logs available
+  // Log the generated SQL for developer debugging
   logger.debounce(
     'sql-query-builder',
     300,
