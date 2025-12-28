@@ -15,6 +15,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { getCoreRowModel, getFacetedRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
+  didStatePropertyChange,
   functionalUpdate,
   seedInitialTableState,
   toSafeSqlColumnName,
@@ -37,6 +38,7 @@ import type {
   RowData,
   Table,
   TableOptions,
+  TableState,
 } from '@tanstack/table-core';
 import type {
   IMosaicClient,
@@ -598,28 +600,38 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       getFacetedMinMaxValues: this.getFacetedMinMaxValues(),
       state: state.tableState,
       onStateChange: (updater) => {
-        const hashedOldState = JSON.stringify(this.store.state.tableState);
-        const tableState = functionalUpdate(
-          updater,
-          this.store.state.tableState,
-        );
+        const oldState = this.store.state.tableState;
+        const newState = functionalUpdate(updater, oldState);
 
         this.store.setState((prev) => ({
           ...prev,
-          tableState,
+          tableState: newState,
         }));
 
-        const hashedNewState = JSON.stringify(tableState);
-        if (hashedOldState !== hashedNewState) {
-          const oldFilters = JSON.stringify(
-            JSON.parse(hashedOldState).columnFilters,
-          );
-          const newFilters = JSON.stringify(tableState.columnFilters);
+        // Categories of state changes to track
+        const fetchTriggerKeys: Array<keyof TableState> = [
+          'pagination',
+          'sorting',
+          'columnFilters',
+        ];
+        const sidecarTriggerKeys: Array<keyof TableState> = ['columnFilters'];
 
-          if (oldFilters !== newFilters) {
-            this.sidecarManager.refreshAll();
-          }
+        const needsNewQuery = didStatePropertyChange(
+          oldState,
+          newState,
+          fetchTriggerKeys,
+        );
+        const needsSidecarRefresh = didStatePropertyChange(
+          oldState,
+          newState,
+          sidecarTriggerKeys,
+        );
 
+        if (needsSidecarRefresh) {
+          this.sidecarManager.refreshAll();
+        }
+
+        if (needsNewQuery) {
           this[this.#onTableStateChange]();
         }
       },

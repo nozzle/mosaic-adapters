@@ -18,6 +18,23 @@ export function functionalUpdate<T>(updater: T | ((old: T) => T), old: T): T {
 }
 
 /**
+ * Performs a shallow reference check on a specific subset of object keys.
+ * Used for high-performance change detection in immutable state trees.
+ */
+export function didStatePropertyChange<T>(
+  oldState: T,
+  newState: T,
+  keys: Array<keyof T>,
+): boolean {
+  for (const key of keys) {
+    if (oldState[key] !== newState[key]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Sanitises a string so it can be safely used as a SQL column name.
  * - Keeps letters, numbers, underscores, and dots (for table.column)
  * - Strips everything else
