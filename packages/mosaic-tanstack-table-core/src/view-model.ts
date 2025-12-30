@@ -1,22 +1,21 @@
 /**
- * Base class for View Models that manage Mosaic selections, topology, and schema mapping
- * independent of the UI framework. Provides lifecycle management for listeners and clients.
+ * Provides a configuration-driven lifecycle for dashboard analytical models.
+ * Manages selections, topology setup, and coordinated resource cleanup.
  */
 
 import type { Coordinator, MosaicClient, Selection } from '@uwdata/mosaic-core';
 import type { MosaicDataTableColumnDefMetaOptions } from './types';
 
-export interface MosaicViewModelOptions {
-  coordinator: Coordinator;
-  /**
-   * Callback to setup selection topology and listeners.
-   * Called when the model connects.
-   */
-  onConnect?: (model: MosaicViewModel) => void;
-  /**
-   * Metadata map for columns.
-   * Used to resolve `getColumnMeta` calls.
-   */
+/**
+ * Configuration for a Mosaic ViewModel.
+ * Encapsulates the behavior and metadata for a specific analytical view.
+ */
+export interface MosaicViewModelConfig<T extends MosaicViewModel = any> {
+  /** Callback to clear all logical selections managed by the dashboard */
+  reset: (model: T) => void;
+  /** Setup selection topology and listeners. Called during model connection. */
+  setupTopology?: (model: T) => void;
+  /** Metadata map for columns used to resolve getColumnMeta calls */
   columnMeta?: Record<
     string,
     MosaicDataTableColumnDefMetaOptions['mosaicDataTable']
@@ -25,24 +24,25 @@ export interface MosaicViewModelOptions {
 
 export class MosaicViewModel {
   public coordinator: Coordinator;
-  private options: MosaicViewModelOptions;
+  private _config: MosaicViewModelConfig;
 
   // Store unsubscribe functions for cleanup (listeners, bridges, etc)
   private _disposables: Array<() => void> = [];
 
-  constructor(optionsOrCoordinator: MosaicViewModelOptions | Coordinator) {
-    if ('coordinator' in optionsOrCoordinator) {
-      this.options = optionsOrCoordinator;
-      this.coordinator = optionsOrCoordinator.coordinator;
-    } else {
-      this.coordinator = optionsOrCoordinator;
-      this.options = { coordinator: optionsOrCoordinator };
-    }
+  constructor(coordinator: Coordinator, config: MosaicViewModelConfig) {
+    this.coordinator = coordinator;
+    this._config = config;
+  }
+
+  /**
+   * Executes the reset logic provided in the configuration.
+   */
+  public reset(): void {
+    this._config.reset(this);
   }
 
   /**
    * Updates the coordinator reference.
-   * Encapsulates mutation to satisfy linting rules when used with useState lazy init.
    */
   public setCoordinator(coordinator: Coordinator) {
     this.coordinator = coordinator;
@@ -53,21 +53,22 @@ export class MosaicViewModel {
    * Call this when the View mounts.
    */
   public connect(): () => void {
-    // 1. Run Setup Logic
-    this.setupTopology();
-
-    // 2. Run Composition Callback (if provided)
-    if (this.options.onConnect) {
-      this.options.onConnect(this);
+    // 1. Run Setup Logic from config
+    if (this._config.setupTopology) {
+      this._config.setupTopology(this);
     }
 
-    // 3. Return a cleanup function for React/Frameworks to call on unmount
+    // 2. Return a cleanup function for React/Frameworks to call on unmount
     return () => this.disconnect();
   }
 
   public disconnect(): void {
+    // Early exit if no disposables exist
+    if (this._disposables.length === 0) {
+      return;
+    }
+
     // Execute all cleanups in reverse order (LIFO)
-    // This is safer for dependent resources
     for (let i = this._disposables.length - 1; i >= 0; i--) {
       const dispose = this._disposables[i];
       if (dispose) {
@@ -79,7 +80,6 @@ export class MosaicViewModel {
 
   /**
    * Register a cleanup function to be called when the model disconnects.
-   * Useful for Bridges, Timers, or custom subscriptions.
    */
   public register(cleanup: () => void) {
     this._disposables.push(cleanup);
@@ -98,21 +98,16 @@ export class MosaicViewModel {
   }
 
   /**
-   * Helper: Connect a child MosaicClient (like a FacetMenu that exists only in logic)
-   * and ensure it disconnects when the model dies.
+   * Helper: Connect a child MosaicClient.
    */
   public manageClient(
     client: { connect: () => any; disconnect?: () => any } | MosaicClient,
   ) {
-    // Duck-typing check because MosaicClient signatures vary slightly
     if ('connect' in client && typeof client.connect === 'function') {
       const cleanup = (client as any).connect();
-      // If connect returns a function (standard Mosaic), use it
       if (typeof cleanup === 'function') {
         this.register(cleanup);
-      }
-      // If connect returns nothing, look for explicit disconnect
-      else if (
+      } else if (
         'disconnect' in client &&
         typeof client.disconnect === 'function'
       ) {
@@ -122,23 +117,23 @@ export class MosaicViewModel {
   }
 
   /**
-   * Setup topology. Can be overridden by subclasses or handled via `onConnect` callback.
-   */
-  protected setupTopology(): void {
-    // Default no-op
-  }
-
-  /**
    * Returns column metadata (SQL mapping) independent of UI rendering.
-   * Used to keep SQL logic out of View components.
-   * Looks up in `options.columnMeta` if available.
    */
   public getColumnMeta(
     columnId: string,
   ): MosaicDataTableColumnDefMetaOptions['mosaicDataTable'] {
-    if (this.options.columnMeta) {
-      return this.options.columnMeta[columnId];
+    if (this._config.columnMeta) {
+      return this._config.columnMeta[columnId];
     }
     return undefined;
   }
+}
+
+/**
+ * Factory function for creating ViewModels without class extension.
+ */
+export function createMosaicViewModel<
+  T extends MosaicViewModel = MosaicViewModel,
+>(coordinator: Coordinator, config: MosaicViewModelConfig<T>): T {
+  return new MosaicViewModel(coordinator, config) as T;
 }

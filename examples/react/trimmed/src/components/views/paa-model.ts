@@ -27,7 +27,14 @@ export class PaaDashboardModel extends MosaicViewModel {
   private readonly TOPOLOGY_SOURCE = {}; // Stable identity
 
   constructor(coordinator: any) {
-    super(coordinator);
+    super(coordinator, {
+      reset: () => {
+        // No-op for now
+      },
+      setupTopology: (model) => {
+        (model as PaaDashboardModel).setupTopology();
+      },
+    });
 
     // 1. Instantiate Selections (Moved from React Global/Component scope)
     const input = vg.Selection.crossfilter();
@@ -59,7 +66,7 @@ export class PaaDashboardModel extends MosaicViewModel {
   }
 
   // 3. Define the Logic
-  protected setupTopology(): void {
+  public setupTopology(): void {
     // Logic: When top-bar inputs change, clear specific row clicks
     // to prevent logical contradictions (e.g. Input="YouTube" AND Table="Reddit" => 0 Results).
     this.listen(this.selections.input, 'value', () => {

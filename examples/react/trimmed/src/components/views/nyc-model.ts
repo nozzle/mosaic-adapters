@@ -26,7 +26,14 @@ export class NycTaxiModel extends MosaicViewModel {
   };
 
   constructor(coordinator: any) {
-    super(coordinator);
+    super(coordinator, {
+      reset: () => {
+        // No-op for now
+      },
+      setupTopology: (model) => {
+        (model as NycTaxiModel).setupTopology();
+      },
+    });
 
     // 1. Instantiate Selections (Scoped to this instance, safe for multi-view)
     const brush = vg.Selection.intersect();
@@ -55,7 +62,7 @@ export class NycTaxiModel extends MosaicViewModel {
   }
 
   // Override setupTopology from concrete MosaicViewModel
-  protected setupTopology(): void {
+  public setupTopology(): void {
     // 3. Register the Aggregation Bridge
     // This translates Summary Table filters (Count > N) into Detail Table filters (Zone IN (...))
     const bridge = new AggregationBridge({

@@ -15,6 +15,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { getCoreRowModel, getFacetedRowModel } from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
+  didStatePropertyChange,
   functionalUpdate,
   seedInitialTableState,
   toSafeSqlColumnName,
@@ -37,6 +38,7 @@ import type {
   RowData,
   Table,
   TableOptions,
+  TableState,
 } from '@tanstack/table-core';
 import type {
   IMosaicClient,
@@ -130,6 +132,13 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     if (!this.coordinator) {
       return Promise.resolve();
     }
+
+    // Safety check: Don't request if source is invalid
+    const source = this.resolveSource();
+    if (!source || (typeof source === 'string' && source.trim() === '')) {
+      return Promise.resolve();
+    }
+
     return super.requestQuery(query);
   }
 
@@ -143,7 +152,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
    * @param options The updated options.
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    // Detect if the table source has changed to trigger re-preparation
     const sourceChanged = this.source !== options.table;
 
     this.options = options;
@@ -158,7 +166,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.sidecarManager.updateSource(options.table);
     }
 
-    // Guaranteed initialization: uses provided selection, or falls back to an internal default.
     const currentSelection = (this as any).tableFilterSelection as
       | Selection
       | undefined;
@@ -184,7 +191,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
     type ResolvedStore = MosaicDataTableStore<TData, TValue>;
 
-    // Type cast to check if the private store is initialized yet
     const currentStore = (this as any).#store as
       | Store<ResolvedStore>
       | undefined;
@@ -203,7 +209,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         _facetsUpdateCount: 0,
       });
     } else {
-      // If we have explicit columns, update them immediately.
       if (options.columns !== undefined) {
         this.#store.setState((prev) => ({
           ...prev,
@@ -212,45 +217,44 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       }
     }
 
-    // Split Mode Logic: Spin up a sidecar for total counts
     if (options.totalRowsMode === 'split') {
       this.sidecarManager.requestTotalCount();
     }
 
-    // If explicit columns are provided, initialize the mapper immediately
     if (options.columns) {
-      // Diagnostic Log
-      if (options.__debugName?.includes('DetailTable')) {
-        logger.debug(
-          'Core',
-          `[MosaicDataTable #${this.id}] Updating Columns. Count: ${options.columns.length}`,
-        );
-      }
-
       this.#columnMapper = new ColumnMapper(options.columns);
       this.#initializeAutoFacets(options.columns);
     }
-    // If source changed and we are in dynamic mode (no explicit columns),
-    // clear the old schema and re-prepare
-    else if (sourceChanged) {
-      this.schema = [];
 
-      // CRITICAL FIX: Reset the column mapper immediately.
-      // This prevents the client from generating queries using the OLD schema against the NEW table
-      // (which causes "Binder Error: Referenced column not found" errors).
+    // ATOMIC RESET: Handle fundamental source changes to prevent filter contention
+    if (sourceChanged) {
+      logger.debug(
+        'Core',
+        `[MosaicDataTable #${this.id}] Data Source Swap: "${this.source}" -> "${options.table}". Wiping stale analytical state.`,
+      );
+
+      this.schema = [];
       this.#columnMapper = undefined;
 
-      // Also reset the store to prevent the UI from rendering stale columns
-      this.#store.setState((prev) => ({
-        ...prev,
-        columnDefs: [],
-        rows: [],
-      }));
+      // Force enable to prevent hibernation blocking the initial load
+      this.enabled = true;
+
+      batch(() => {
+        this.#store.setState((prev) => ({
+          ...prev,
+          columnDefs: options.columns ?? [],
+          rows: [],
+          totalRows: undefined,
+          // Wipe all filters and sorting when source changes
+          tableState: seedInitialTableState<TData>(
+            options.tableOptions?.initialState,
+          ),
+        }));
+      });
 
       if (this.isConnected) {
-        // Re-run the preparation phase to infer new schema
         this.prepare().then(() => {
-          this.requestUpdate();
+          this.requestQuery();
         });
       }
     }
@@ -316,8 +320,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       : highlightPredicate;
 
     const tableState = this.store.state.tableState;
-
-    // Use current mapper if initialized, otherwise generate raw select.
     const mapper = this.#columnMapper;
 
     const statement = mapper
@@ -357,10 +359,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return statement;
   }
 
-  /**
-   * Generates filters for cascading selection logic.
-   * If excludeColumnId is omitted, returns all filters (used for Total Count).
-   */
   public getCascadingFilters(options?: {
     excludeColumnId?: string;
   }): Array<mSql.FilterExpr> {
@@ -377,7 +375,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         }
       : tableState;
 
-    // Cast to check if mapper is ready
     const mapper = this.#columnMapper;
 
     if (!mapper) {
@@ -401,7 +398,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   override queryResult(table: unknown): this {
     if (isArrowTable(table)) {
       let totalRows: number | undefined = undefined;
-
       const rows = table.toArray() as Array<TData>;
 
       if (
@@ -420,7 +416,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           return {
             ...prev,
             rows,
-            // Only overwrite totalRows if we are in window mode or if it's undefined
             totalRows:
               this.options.totalRowsMode === 'window'
                 ? totalRows
@@ -446,10 +441,8 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       const schema = await queryFieldInfo(this.coordinator!, this.fields());
       this.schema = schema;
 
-      // Access private field via any to check initialization
       const mapper = this.#columnMapper;
 
-      // Initialize inferred mapper if we have no column definitions and no existing mapper
       if (schema.length > 0 && this.options.columns === undefined && !mapper) {
         const inferredColumns = schema.map((s) => ({
           accessorKey: s.column,
@@ -548,9 +541,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     this.sidecarManager.clear();
   }
 
-  /**
-   * Defines the fields to be queried by Mosaic.
-   */
   fields(): Array<FieldInfoRequest> {
     const source = this.resolveSource();
 
@@ -562,7 +552,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       return [];
     }
 
-    // Access mapper via any to check initialization
     const mapper = this.#columnMapper;
 
     if (!mapper) {
@@ -572,9 +561,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return mapper.getMosaicFieldRequests(source);
   }
 
-  /**
-   * Produces TanStack Table options from internal store state.
-   */
   getTableOptions(
     state: Store<MosaicDataTableStore<TData, TValue>>['state'],
   ): TableOptions<TData> {
@@ -599,28 +585,37 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       getFacetedMinMaxValues: this.getFacetedMinMaxValues(),
       state: state.tableState,
       onStateChange: (updater) => {
-        const hashedOldState = JSON.stringify(this.store.state.tableState);
-        const tableState = functionalUpdate(
-          updater,
-          this.store.state.tableState,
-        );
+        const oldState = this.store.state.tableState;
+        const newState = functionalUpdate(updater, oldState);
 
         this.store.setState((prev) => ({
           ...prev,
-          tableState,
+          tableState: newState,
         }));
 
-        const hashedNewState = JSON.stringify(tableState);
-        if (hashedOldState !== hashedNewState) {
-          const oldFilters = JSON.stringify(
-            JSON.parse(hashedOldState).columnFilters,
-          );
-          const newFilters = JSON.stringify(tableState.columnFilters);
+        const fetchTriggerKeys: Array<keyof TableState> = [
+          'pagination',
+          'sorting',
+          'columnFilters',
+        ];
+        const sidecarTriggerKeys: Array<keyof TableState> = ['columnFilters'];
 
-          if (oldFilters !== newFilters) {
-            this.sidecarManager.refreshAll();
-          }
+        const needsNewQuery = didStatePropertyChange(
+          oldState,
+          newState,
+          fetchTriggerKeys,
+        );
+        const needsSidecarRefresh = didStatePropertyChange(
+          oldState,
+          newState,
+          sidecarTriggerKeys,
+        );
 
+        if (needsSidecarRefresh) {
+          this.sidecarManager.refreshAll();
+        }
+
+        if (needsNewQuery) {
           this[this.#onTableStateChange]();
         }
       },
