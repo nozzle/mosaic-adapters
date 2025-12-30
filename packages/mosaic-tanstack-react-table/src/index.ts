@@ -3,3 +3,4 @@ export * from './hook';
 export * from './facet-hook';
 export * from './use-view-model';
 export * from './filter-hook';
+export * from './facet-group';

@@ -2,9 +2,12 @@ import * as React from 'react';
 import { useState } from 'react';
 import { Check, ChevronDown, X } from 'lucide-react';
 import {
+  useConsolidatedFacet,
   useMosaicFacetMenu,
   useMosaicFilter,
 } from '@nozzleio/mosaic-tanstack-react-table';
+// Fix: Import ColumnType from the react package, not core
+import type { ColumnType } from '@nozzleio/mosaic-tanstack-react-table';
 import type { Selection } from '@uwdata/mosaic-core';
 
 import { Input } from '@/components/ui/input';
@@ -56,6 +59,144 @@ function PassiveMenuItem({
   );
 }
 
+// ----------------------------------------------------------------------
+// NEW CONSOLIDATED COMPONENTS
+// ----------------------------------------------------------------------
+
+export function ConsolidatedSearchableSelectFilter({
+  label,
+  column,
+  columnType,
+}: {
+  label: string;
+  column: string;
+  columnType?: ColumnType;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
+  const [selectedLocal, setSelectedLocal] = useState<Array<any>>([]);
+
+  // Hook into the shared client
+  const { options, loading, toggle } = useConsolidatedFacet({
+    column,
+    type: 'unique',
+    limit: 50,
+    sortMode: 'count',
+    columnType,
+  });
+
+  const handleSelect = (val: string | null) => {
+    // Update local optimistic UI
+    if (val === null) {
+      setSelectedLocal([]);
+    } else {
+      if (selectedLocal.includes(val)) {
+        setSelectedLocal(selectedLocal.filter((v) => v !== val));
+      } else {
+        setSelectedLocal([...selectedLocal, val]);
+      }
+    }
+    // Push to client
+    toggle(val);
+    if (val === null) {
+      setIsOpen(false);
+    }
+  };
+
+  // Filter display options based on search (Client-side filtering of the top 50 results)
+  const displayOptions = (options as Array<string>).filter((opt) =>
+    String(opt).toLowerCase().includes(searchValue.toLowerCase()),
+  );
+
+  const renderTriggerLabel = () => {
+    if (selectedLocal.length === 0) {
+      return 'All';
+    }
+    if (selectedLocal.length === 1) {
+      return String(selectedLocal[0]);
+    }
+    return `${selectedLocal.length} selected`;
+  };
+
+  return (
+    <div className="flex flex-col gap-1 w-[200px]">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </label>
+
+      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            className="w-full justify-between bg-white font-normal h-9 border-slate-200"
+          >
+            <span className="truncate">{renderTriggerLabel()}</span>
+            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent className="w-[200px] p-0" align="start">
+          <div className="flex items-center border-b px-3">
+            <input
+              className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="Search..."
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            />
+            {selectedLocal.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSelect(null);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
+          <div className="max-h-[300px] overflow-y-auto p-1">
+            {loading && options.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400 italic">
+                Loading...
+              </div>
+            ) : (
+              <>
+                <PassiveMenuItem
+                  isSelected={selectedLocal.length === 0}
+                  onClick={() => handleSelect(null)}
+                >
+                  All
+                </PassiveMenuItem>
+
+                {displayOptions.map((opt) => (
+                  <PassiveMenuItem
+                    key={String(opt)}
+                    isSelected={selectedLocal.includes(opt)}
+                    onClick={() => handleSelect(String(opt))}
+                  >
+                    {String(opt)}
+                  </PassiveMenuItem>
+                ))}
+              </>
+            )}
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// EXISTING LEGACY COMPONENTS
+// ----------------------------------------------------------------------
+
 export function SearchableSelectFilter({
   label,
   table,
@@ -67,7 +208,6 @@ export function SearchableSelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
   const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
     useMosaicFacetMenu({
       table,
