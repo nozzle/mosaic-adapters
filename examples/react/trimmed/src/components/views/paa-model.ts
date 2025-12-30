@@ -13,6 +13,8 @@ import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanst
 // Define the shape of our selections for type safety
 interface PaaSelections extends Record<string, Selection> {
   input: Selection;
+  facets: Selection;
+  search: Selection;
   detail: Selection;
   cross: Selection;
   // Contexts
@@ -37,13 +39,30 @@ export class PaaDashboardModel extends MosaicViewModel {
     });
 
     // 1. Instantiate Selections (Moved from React Global/Component scope)
-    const input = vg.Selection.crossfilter();
+    // "facets" will handle the dropdown inputs (Domain, Device, Keyword Groups)
+    // These need to be cross-filtered against each other.
+    const facets = vg.Selection.crossfilter();
+
+    // "search" will handle the text and date inputs (Phrase, Description, Date)
+    // These typically act as a hard filter on top of everything.
+    const search = vg.Selection.crossfilter();
+
+    // The Global Input is the intersection of Facets AND Search.
+    // This allows us to pass 'search' as the "External Context" to the Facet Manager,
+    // ensuring that dropdown options are filtered by search terms, but (crucially)
+    // managing their own internal cross-filtering logic for cascading.
+    const input = vg.Selection.intersect({
+      include: [facets, search],
+    });
+
     const detail = vg.Selection.intersect();
     const cross = vg.Selection.crossfilter();
 
     // 2. Define Derived Contexts
     this.selections = {
       input,
+      facets,
+      search,
       detail,
       cross,
       // External: The "Rest of the World" from the perspective of the Input Layer.

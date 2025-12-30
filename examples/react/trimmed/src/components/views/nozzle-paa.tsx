@@ -68,7 +68,11 @@ export function NozzlePaaView() {
       <div className="px-6 -mt-8 relative z-10">
         <MosaicFacetGroup
           table={TABLE_NAME}
-          filterBy={model.selections.input}
+          // Facet selections should be written to the 'facets' selection
+          selection={model.selections.facets}
+          // The 'context' for facets is the Search Selection (Phrase, Description filters)
+          // This ensures Facet Options are filtered by search terms.
+          filterBy={model.selections.search}
           coordinator={vg.coordinator()}
           __debugName="PaaSidebar"
         >
@@ -85,7 +89,7 @@ export function NozzlePaaView() {
               label="Phrase"
               table={TABLE_NAME}
               column="phrase"
-              selection={model.selections.input}
+              selection={model.selections.search}
               filterBy={model.selections.input}
             />
             <ConsolidatedSearchableSelectFilter
@@ -97,14 +101,14 @@ export function NozzlePaaView() {
               label="Answer Contains"
               table={TABLE_NAME}
               column="description"
-              selection={model.selections.input}
+              selection={model.selections.search}
               filterBy={model.selections.input}
             />
             <DateRangeFilter
               label="Requested Date"
               table={TABLE_NAME}
               column="requested"
-              selection={model.selections.input}
+              selection={model.selections.search}
               filterBy={model.selections.input}
             />
             <ConsolidatedSearchableSelectFilter
@@ -115,7 +119,7 @@ export function NozzlePaaView() {
               label="Question Contains"
               table={TABLE_NAME}
               column="related_phrase.phrase"
-              selection={model.selections.input}
+              selection={model.selections.search}
               filterBy={model.selections.input}
             />
           </div>
