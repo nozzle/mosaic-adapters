@@ -22,25 +22,24 @@ const FacetGroupContext = createContext<FacetGroupContextType | null>(null);
 
 export function MosaicFacetGroup({
   children,
+  selection,
   ...options
 }: React.PropsWithChildren<MosaicFacetClientOptions>) {
   // 1. Create the single consolidated client
   // Using lazy initializer to ensure exactly one instance
-  const [client] = useState(() => new MosaicFacetClient(options));
+  // Pass `selection` explicitly alongside other options to the client constructor
+  const [client] = useState(
+    () => new MosaicFacetClient({ ...options, selection }),
+  );
 
   // 2. Manage Lifecycle
+  // We explicitly include 'selection' and 'options.filterBy' in dependencies to ensure updates propagate
   useEffect(() => {
-    // Ensure options (coordinator, table, filterBy) are synced
-    if (options.coordinator) {
-      client.setCoordinator(options.coordinator);
-    }
-    if (options.table) {
-      client.updateSource(options.table);
-    }
+    client.updateOptions({ ...options, selection });
 
     const cleanup = client.connect();
     return () => cleanup();
-  }, [client, options.coordinator, options.table]);
+  }, [client, options, selection]);
 
   const contextValue = React.useMemo(
     () => ({

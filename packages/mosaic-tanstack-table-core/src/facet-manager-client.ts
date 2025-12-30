@@ -32,7 +32,13 @@ export type FacetRequest =
   | { type: 'totalCount'; column: string };
 
 export interface MosaicFacetClientOptions {
+  /** The selection that provides context (External Filters) to this client */
   filterBy?: Selection;
+  /**
+   * The selection where updates should be written (Write Target).
+   * If not provided, defaults to `filterBy`.
+   */
+  selection?: Selection;
   table: MosaicTableSource;
   onUpdate?: (results: Record<string, any>) => void;
   __debugName?: string;
@@ -66,6 +72,9 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
   // Managers for driving the global selection (One per column)
   private selectionManagers = new Map<string, MosaicSelectionManager>();
 
+  // Virtual Identities for preventing overwrite collisions in CrossFilters
+  private proxies = new Map<string, object>();
+
   public readonly store: Store<MosaicFacetClientState>;
 
   constructor(options: MosaicFacetClientOptions) {
@@ -85,6 +94,14 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
     return this.lifecycle.isConnected;
   }
 
+  /**
+   * Override the base filterBy getter to ensure the Coordinator always sees
+   * the most current selection passed via options.
+   */
+  override get filterBy() {
+    return this.options.filterBy;
+  }
+
   setCoordinator(coordinator: Coordinator) {
     this.lifecycle.handleCoordinatorSwap(this.coordinator, coordinator, () =>
       this.connect(),
@@ -101,6 +118,70 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
   }
 
   /**
+   * Updates options and handles re-connection/listener updates if needed.
+   * This is crucial for React hot-reloading and dynamic prop updates.
+   */
+  updateOptions(newOptions: MosaicFacetClientOptions) {
+    const oldOptions = this.options;
+    this.options = newOptions;
+
+    // 1. Update Base Properties
+    if (this.table !== newOptions.table) {
+      this.updateSource(newOptions.table);
+    }
+
+    if (newOptions.coordinator) {
+      this.setCoordinator(newOptions.coordinator);
+    }
+
+    // 2. Update FilterBy (Read Context)
+    // If the dependency reference changes, we must reconnect to ensure
+    // the Coordinator attaches listeners to the new selection object.
+    if (oldOptions.filterBy !== newOptions.filterBy) {
+      if (this.isConnected) {
+        this.disconnect();
+        this.connect();
+      }
+    }
+
+    // 3. Update SelectionManagers (Write Targets)
+    // If the write target (selection) or the fallback (filterBy) changes, we need to re-bind.
+    if (
+      oldOptions.selection !== newOptions.selection ||
+      oldOptions.filterBy !== newOptions.filterBy
+    ) {
+      const newTarget = newOptions.selection || newOptions.filterBy;
+
+      // Re-bind all existing managers to the new selection
+      for (const [colId] of this.selectionManagers.entries()) {
+        const req = this.requests.get(colId);
+        const proxyIdentity = this.proxies.get(colId);
+
+        if (newTarget && req && proxyIdentity) {
+          let colType: ColumnType = 'scalar';
+          if (req.type !== 'totalCount') {
+            if (req.columnType) {
+              colType = req.columnType;
+            } else if (req.type === 'unique') {
+              colType = 'scalar';
+            }
+
+            this.selectionManagers.set(
+              colId,
+              new MosaicSelectionManager({
+                selection: newTarget,
+                client: proxyIdentity as any,
+                column: req.sqlColumn || req.column,
+                columnType: colType,
+              }),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Registers a column for consolidated fetching.
    * Call this during table initialization for every column with facet meta.
    */
@@ -108,8 +189,18 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
     if (!this.requests.has(columnId)) {
       this.requests.set(columnId, req);
 
-      // Initialize a SelectionManager if we are driving a selection
-      if (this.options.filterBy && req.type !== 'totalCount') {
+      // Create a unique identity for this column.
+      // This "Proxy" is used as the source when updating Selections.
+      // This ensures that CrossFilter selections distinguish updates from "Domain" vs "Device",
+      // even though they are both managed by this single MosaicFacetClient instance.
+      const proxyIdentity = { id: columnId };
+      this.proxies.set(columnId, proxyIdentity);
+
+      // Determine the target selection for writing updates.
+      // Prefer explicit 'selection' option, fallback to 'filterBy'.
+      const targetSelection = this.options.selection || this.options.filterBy;
+
+      if (targetSelection && req.type !== 'totalCount') {
         // Infer column type: explicit > request type inference > default scalar
         let colType: ColumnType = 'scalar';
         if (req.columnType) {
@@ -121,8 +212,8 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
         this.selectionManagers.set(
           columnId,
           new MosaicSelectionManager({
-            selection: this.options.filterBy,
-            client: this, // The Consolidated Client is the source
+            selection: targetSelection,
+            client: proxyIdentity as any, // Cast to any to satisfy type signature, object identity is sufficient
             column: req.sqlColumn || req.column,
             columnType: colType,
           }),
@@ -156,10 +247,12 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
    * and pushes the update to the Mosaic Selection.
    */
   handleInput(columnId: string, value: any) {
-    if (!this.options.filterBy) {
+    const targetSelection = this.options.selection || this.options.filterBy;
+
+    if (!targetSelection) {
       logger.warn(
         'Core',
-        '[MosaicFacetClient] handleInput called but no filterBy selection provided.',
+        '[MosaicFacetClient] handleInput called but no selection provided.',
       );
       return;
     }
