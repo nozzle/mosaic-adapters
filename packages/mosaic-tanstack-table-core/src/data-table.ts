@@ -25,6 +25,7 @@ import { buildTableQuery, extractInternalFilters } from './query/query-builder';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SidecarManager } from './sidecar-manager';
+import type { Table as ArrowTable } from 'apache-arrow';
 
 import type {
   Coordinator,
@@ -190,13 +191,14 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       | undefined;
 
     if (!currentStore) {
-      this.#store = new Store({
+      this.#store = new Store<ResolvedStore>({
         tableState: seedInitialTableState<TData>(
           options.tableOptions?.initialState,
         ),
         tableOptions: {
           ...(options.tableOptions ?? {}),
         } as ResolvedStore['tableOptions'],
+        arrowResult: null,
         rows: [] as ResolvedStore['rows'],
         totalRows: undefined as ResolvedStore['totalRows'],
         columnDefs: options.columns ?? ([] as ResolvedStore['columnDefs']),
@@ -236,14 +238,13 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.schema = [];
 
       // CRITICAL FIX: Reset the column mapper immediately.
-      // This prevents the client from generating queries using the OLD schema against the NEW table
-      // (which causes "Binder Error: Referenced column not found" errors).
       this.#columnMapper = undefined;
 
       // Also reset the store to prevent the UI from rendering stale columns
       this.#store.setState((prev) => ({
         ...prev,
         columnDefs: [],
+        arrowResult: null,
         rows: [],
       }));
 
@@ -400,26 +401,86 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   override queryResult(table: unknown): this {
     if (isArrowTable(table)) {
+      const arrowResult = table as unknown as ArrowTable;
       let totalRows: number | undefined = undefined;
 
-      const rows = table.toArray() as Array<TData>;
+      // Extract field names for proxy introspection
+      const schemaKeys = arrowResult.schema.fields.map((f) => f.name);
+      // Use a Set for faster inclusion checks in hot paths
+      const schemaKeySet = new Set(schemaKeys);
 
-      if (
-        this.options.totalRowsMode === 'window' &&
-        rows.length > 0 &&
-        rows[0] &&
-        typeof rows[0] === 'object' &&
-        this.#sql_total_rows in rows[0]
-      ) {
-        const firstRow = rows[0] as Record<string, any>;
-        totalRows = firstRow[this.#sql_total_rows];
+      // LAZY OPTIMIZATION WITH PROXIES:
+      // We create lightweight Proxy objects that intercept property access.
+      // This avoids eager deserialization of the entire Arrow table (Zero-Copy).
+      // We implement ownKeys/getOwnPropertyDescriptor to ensure API compatibility
+      // with standard JS objects (for console.log, ...spread, etc).
+      const lazyRows = Array.from(
+        { length: arrowResult.numRows },
+        (_, i) =>
+          new Proxy(
+            { _index: i },
+            {
+              get: (target, prop) => {
+                // 1. Internal Access
+                if (prop === '_index') {
+                  return target._index;
+                }
+
+                // 2. Data Access
+                // Check if property is a known column to fetch from Arrow
+                if (typeof prop === 'string' && schemaKeySet.has(prop)) {
+                  const arrowRow = arrowResult.get(target._index);
+                  return arrowRow?.[prop];
+                }
+
+                // 3. Fallback (e.g. toString, toJSON if not handled)
+                return Reflect.get(target, prop);
+              },
+              // Enable Object.keys(row) and ...row to work
+              ownKeys: (target) => {
+                return [...Reflect.ownKeys(target), ...schemaKeys];
+              },
+              // Enable property enumeration (needed for spread/stringify)
+              getOwnPropertyDescriptor: (target, prop) => {
+                if (typeof prop === 'string' && schemaKeySet.has(prop)) {
+                  return {
+                    enumerable: true,
+                    configurable: true,
+                    // We omit 'value' so the runtime invokes the 'get' trap when accessed
+                  };
+                }
+                return Reflect.getOwnPropertyDescriptor(target, prop);
+              },
+            },
+          ),
+      ) as unknown as Array<TData>;
+
+      // If in window mode, verify and extract total count from the first row lazily
+      if (this.options.totalRowsMode === 'window' && arrowResult.numRows > 0) {
+        try {
+          const firstRow = arrowResult.get(0);
+          if (firstRow) {
+            // Note: Arrow returns BigInt for counts usually, coerce safely
+            const val = firstRow[this.#sql_total_rows];
+            if (val !== undefined) {
+              totalRows = Number(val);
+            }
+          }
+        } catch (e) {
+          logger.warn(
+            'Core',
+            'Failed to read total rows from window function',
+            { error: e },
+          );
+        }
       }
 
       batch(() => {
         this.store.setState((prev) => {
           return {
             ...prev,
-            rows,
+            arrowResult: arrowResult,
+            rows: lazyRows,
             // Only overwrite totalRows if we are in window mode or if it's undefined
             totalRows:
               this.options.totalRowsMode === 'window'
@@ -598,6 +659,10 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       getFacetedUniqueValues: this.getFacetedUniqueValues(),
       getFacetedMinMaxValues: this.getFacetedMinMaxValues(),
       state: state.tableState,
+      meta: {
+        // Expose the raw arrow table to the UI (e.g. for Copy actions that need full row access)
+        arrowTable: state.arrowResult,
+      } as any,
       onStateChange: (updater) => {
         const hashedOldState = JSON.stringify(this.store.state.tableState);
         const tableState = functionalUpdate(

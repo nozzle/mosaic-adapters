@@ -25,7 +25,8 @@
     "@tanstack/store": "catalog:",
     "@tanstack/table-core": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
-    "@uwdata/mosaic-sql": "catalog:"
+    "@uwdata/mosaic-sql": "catalog:",
+    "apache-arrow": "^17.0.0"
   },
   "devDependencies": {
     "eslint": "catalog:",
