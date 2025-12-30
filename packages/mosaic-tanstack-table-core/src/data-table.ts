@@ -404,15 +404,55 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       const arrowResult = table as unknown as ArrowTable;
       let totalRows: number | undefined = undefined;
 
-      // LAZY OPTIMIZATION:
-      // Instead of converting the entire Arrow table to JS objects (which freezes the main thread),
-      // we generate a lightweight array of index objects. The column accessors (wrapped below)
-      // will fetch the actual data lazily from `arrowResult`.
-      const rowIndices = Array.from(
+      // Extract field names for proxy introspection
+      const schemaKeys = arrowResult.schema.fields.map((f) => f.name);
+      // Use a Set for faster inclusion checks in hot paths
+      const schemaKeySet = new Set(schemaKeys);
+
+      // LAZY OPTIMIZATION WITH PROXIES:
+      // We create lightweight Proxy objects that intercept property access.
+      // This avoids eager deserialization of the entire Arrow table (Zero-Copy).
+      // We implement ownKeys/getOwnPropertyDescriptor to ensure API compatibility
+      // with standard JS objects (for console.log, ...spread, etc).
+      const lazyRows = Array.from(
         { length: arrowResult.numRows },
-        (_, i) => ({
-          _index: i,
-        }),
+        (_, i) =>
+          new Proxy(
+            { _index: i },
+            {
+              get: (target, prop) => {
+                // 1. Internal Access
+                if (prop === '_index') {
+                  return target._index;
+                }
+
+                // 2. Data Access
+                // Check if property is a known column to fetch from Arrow
+                if (typeof prop === 'string' && schemaKeySet.has(prop)) {
+                  const arrowRow = arrowResult.get(target._index);
+                  return arrowRow?.[prop];
+                }
+
+                // 3. Fallback (e.g. toString, toJSON if not handled)
+                return Reflect.get(target, prop);
+              },
+              // Enable Object.keys(row) and ...row to work
+              ownKeys: (target) => {
+                return [...Reflect.ownKeys(target), ...schemaKeys];
+              },
+              // Enable property enumeration (needed for spread/stringify)
+              getOwnPropertyDescriptor: (target, prop) => {
+                if (typeof prop === 'string' && schemaKeySet.has(prop)) {
+                  return {
+                    enumerable: true,
+                    configurable: true,
+                    // We omit 'value' so the runtime invokes the 'get' trap when accessed
+                  };
+                }
+                return Reflect.getOwnPropertyDescriptor(target, prop);
+              },
+            },
+          ),
       ) as unknown as Array<TData>;
 
       // If in window mode, verify and extract total count from the first row lazily
@@ -440,7 +480,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           return {
             ...prev,
             arrowResult: arrowResult,
-            rows: rowIndices,
+            rows: lazyRows,
             // Only overwrite totalRows if we are in window mode or if it's undefined
             totalRows:
               this.options.totalRowsMode === 'window'
@@ -599,54 +639,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   getTableOptions(
     state: Store<MosaicDataTableStore<TData, TValue>>['state'],
   ): TableOptions<TData> {
-    // WRAP COLUMNS for Lazy Access
-    // We wrap every column to redirect data access to the stored Arrow Table
-    // via the row index.
-    const wrapColumn = (
-      col: ColumnDef<TData, TValue>,
-    ): ColumnDef<TData, TValue> => {
-      // If it already has a custom accessor function, wrap it to resolve the underlying row first
-      if ('accessorFn' in col && typeof col.accessorFn === 'function') {
-        const originalFn = col.accessorFn;
-        return {
-          ...col,
-          accessorFn: (row: any, index) => {
-            const arrowTable = state.arrowResult;
-            if (!arrowTable || typeof row._index !== 'number') {
-              return null;
-            }
-            const arrowRow = arrowTable.get(row._index);
-            // Pass the REAL arrow row to the original accessor
-            return originalFn(arrowRow as TData, index);
-          },
-        } as ColumnDef<TData, TValue>;
-      }
-
-      // If it uses accessorKey, we must convert it to an accessorFn
-      // because row[key] will fail on our lightweight { _index } objects.
-      if ('accessorKey' in col && typeof col.accessorKey === 'string') {
-        const key = col.accessorKey;
-        return {
-          ...col,
-          // Remove accessorKey to prevent TanStack from trying to access row[key]
-          accessorKey: undefined,
-          id: col.id || key, // Ensure ID is preserved
-          accessorFn: (row: any) => {
-            const arrowTable = state.arrowResult;
-            if (!arrowTable || typeof row._index !== 'number') {
-              return null;
-            }
-            const arrowRow = arrowTable.get(row._index);
-            return arrowRow?.[key];
-          },
-        } as ColumnDef<TData, TValue>;
-      }
-
-      // Fallback for group columns or display-only columns
-      return col;
-    };
-
-    const rawColumns =
+    const columns =
       state.columnDefs.length === 0
         ? this.schema.map((field) => {
             return {
@@ -654,33 +647,13 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
               header: field.column,
             } satisfies ColumnDef<TData, TValue>;
           })
-        : state.columnDefs;
-
-    const wrappedColumns = rawColumns.map(wrapColumn);
-
-    // WRAP getRowId if provided
-    // Because 'row' passed to getRowId will be the proxy { _index: i },
-    // we must resolve it to the real row so user logic (e.g. row.id) works.
-    const userGetRowId = state.tableOptions.getRowId;
-    let getRowId = userGetRowId;
-
-    if (userGetRowId) {
-      getRowId = (row, index, parent) => {
-        const arrowTable = state.arrowResult;
-        // Check if row is a proxy object with _index
-        if (arrowTable && row && typeof (row as any)._index === 'number') {
-          const arrowRow = arrowTable.get((row as any)._index);
-          if (arrowRow) {
-            return userGetRowId(arrowRow as unknown as TData, index, parent);
-          }
-        }
-        return userGetRowId(row, index, parent);
-      };
-    }
+        : state.columnDefs.map((column) => {
+            return column satisfies ColumnDef<TData, TValue>;
+          });
 
     return {
       data: state.rows,
-      columns: wrappedColumns,
+      columns,
       getCoreRowModel: getCoreRowModel(),
       getFacetedRowModel: getFacetedRowModel(),
       getFacetedUniqueValues: this.getFacetedUniqueValues(),
@@ -736,7 +709,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       manualFiltering: true,
       rowCount: state.totalRows,
       ...state.tableOptions,
-      getRowId, // Applied after spread to ensure our wrapper takes precedence
     };
   }
 
