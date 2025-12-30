@@ -31,3 +31,4 @@ Optimization Properties
 filterStable
 client.filterStable
 Return true if the structure of the client's query (e.g., group by bins) does not change when the filter changes. This allows the Coordinator to apply pre-aggregation optimizations.
+```

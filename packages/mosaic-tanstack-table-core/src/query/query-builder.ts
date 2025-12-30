@@ -141,13 +141,26 @@ export function buildTableQuery<TData extends RowData, TValue>(
 }
 
 /**
- * Helper to extract just the internal filter expressions for cross-filtering.
+ * Helper to extract internal filter expressions for cross-filtering.
+ * Returns an array of predicates.
  */
 export function extractInternalFilters<TData extends RowData, TValue>(options: {
   tableState: TableState;
   mapper: ColumnMapper<TData, TValue>;
 }): Array<mSql.FilterExpr> {
-  const clauses: Array<mSql.FilterExpr> = [];
+  const map = getFilterMap(options);
+  return Array.from(map.values());
+}
+
+/**
+ * Helper to extract internal filter expressions mapped by Column ID.
+ * This is essential for the FacetManager to selectively exclude filters (cascading logic).
+ */
+export function getFilterMap<TData extends RowData, TValue>(options: {
+  tableState: TableState;
+  mapper: ColumnMapper<TData, TValue>;
+}): Map<string, mSql.FilterExpr> {
+  const map = new Map<string, mSql.FilterExpr>();
 
   options.tableState.columnFilters.forEach((filter) => {
     const sqlColumn = options.mapper.getSqlColumn(filter.id);
@@ -166,9 +179,9 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
     });
 
     if (clause) {
-      clauses.push(clause);
+      map.set(filter.id, clause);
     }
   });
 
-  return clauses;
+  return map;
 }

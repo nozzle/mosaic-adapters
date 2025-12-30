@@ -1,6 +1,8 @@
 /**
  * Orchestrator for the Mosaic and TanStack Table integration.
  * Manages the data-fetching lifecycle, schema mapping, and reactive state synchronization.
+ *
+ * Updated to use Consolidated Facet Strategy (MosaicFacetClient).
  */
 
 import {
@@ -22,10 +24,14 @@ import {
 } from './utils';
 import { logger } from './logger';
 import { ColumnMapper } from './query/column-mapper';
-import { buildTableQuery, extractInternalFilters } from './query/query-builder';
+import {
+  buildTableQuery,
+  extractInternalFilters,
+  getFilterMap,
+} from './query/query-builder';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
-import { SidecarManager } from './sidecar-manager';
+import { MosaicFacetClient } from './facet-manager-client';
 
 import type {
   Coordinator,
@@ -51,11 +57,6 @@ let instanceCounter = 0;
 
 /**
  * Factory function to create a MosaicDataTable client.
- *
- * @typeParam `TData` The row data type used in TanStack Table.
- * @typeParam `TValue` The cell value type used in TanStack Table.
- * @param options Options to be passed into the constructor of the MosaicDataTable.
- * @returns A new instance of the MosaicDataTable client.
  */
 export function createMosaicDataTableClient<
   TData extends RowData,
@@ -84,7 +85,8 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   #columnMapper: ColumnMapper<TData, TValue> | undefined;
 
-  public sidecarManager = new SidecarManager<TData, TValue>(this);
+  // New Consolidated Facet Client
+  private facetClient: MosaicFacetClient;
   #facetValues: Map<string, any> = new Map();
 
   #rowSelectionManager?: MosaicSelectionManager;
@@ -102,6 +104,35 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       `[MosaicDataTable #${this.id}] Initializing with debugName: ${options.__debugName}`,
     );
 
+    // Initialize Facet Client
+    this.facetClient = new MosaicFacetClient({
+      filterBy: options.filterBy,
+      table: options.table,
+      coordinator: options.coordinator,
+      onUpdate: (results) => {
+        batch(() => {
+          // Handle Total Count update if present
+          if ('__total_rows' in results) {
+            this.store.setState((prev) => ({
+              ...prev,
+              totalRows: Number(results['__total_rows']) || 0,
+            }));
+            delete results['__total_rows'];
+          }
+
+          // Handle Column Facets
+          Object.entries(results).forEach(([colId, data]) => {
+            this.#facetValues.set(colId, data);
+          });
+          this.store.setState((prev) => ({
+            ...prev,
+            _facetsUpdateCount: prev._facetsUpdateCount + 1,
+          }));
+        });
+      },
+      __debugName: `${options.__debugName || 'Table'}:Facets`,
+    });
+
     this.updateOptions(options);
   }
 
@@ -114,26 +145,33 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.connect(),
     );
     this.coordinator = coordinator;
+    this.facetClient.setCoordinator(coordinator);
   }
 
   connect(): () => void {
-    return this.lifecycle.connect(this.coordinator);
+    // Connect both main table client and facet client
+    const cleanupTable = this.lifecycle.connect(this.coordinator);
+    const cleanupFacets = this.facetClient.connect();
+
+    return () => {
+      cleanupTable();
+      cleanupFacets();
+    };
   }
 
   disconnect() {
     this.lifecycle.disconnect(this.coordinator);
+    this.facetClient.disconnect();
   }
 
   /**
    * Safe wrapper for requestQuery.
-   * Uses super.requestQuery to ensure the library's client-coordinator handshake is preserved.
    */
   override requestQuery(query?: any): Promise<any> | null {
     if (!this.coordinator) {
       return Promise.resolve();
     }
 
-    // Safety check: Don't request if source is invalid
     const source = this.resolveSource();
     if (!source || (typeof source === 'string' && source.trim() === '')) {
       return Promise.resolve();
@@ -149,7 +187,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   /**
    * Updates internal state and store when options change.
-   * @param options The updated options.
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
     const sourceChanged = this.source !== options.table;
@@ -163,7 +200,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     this.source = options.table;
 
     if (sourceChanged) {
-      this.sidecarManager.updateSource(options.table);
+      this.facetClient.updateSource(options.table);
     }
 
     const currentSelection = (this as any).tableFilterSelection as
@@ -187,7 +224,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       options.coordinator || this.coordinator || defaultCoordinator();
 
     this.setCoordinator(resolvedCoordinator);
-    this.sidecarManager.updateCoordinators(resolvedCoordinator);
 
     type ResolvedStore = MosaicDataTableStore<TData, TValue>;
 
@@ -217,16 +253,20 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       }
     }
 
-    if (options.totalRowsMode === 'split') {
-      this.sidecarManager.requestTotalCount();
-    }
-
     if (options.columns) {
       this.#columnMapper = new ColumnMapper(options.columns);
       this.#initializeAutoFacets(options.columns);
     }
 
-    // ATOMIC RESET: Handle fundamental source changes to prevent filter contention
+    // Handle Total Rows Strategy
+    if (options.totalRowsMode === 'split') {
+      this.facetClient.register('__total_rows', {
+        type: 'totalCount',
+        column: '__total_rows',
+      });
+    }
+
+    // Handle source changes reset
     if (sourceChanged) {
       logger.debug(
         'Core',
@@ -235,8 +275,8 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
       this.schema = [];
       this.#columnMapper = undefined;
+      this.#facetValues.clear();
 
-      // Force enable to prevent hibernation blocking the initial load
       this.enabled = true;
 
       batch(() => {
@@ -245,7 +285,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           columnDefs: options.columns ?? [],
           rows: [],
           totalRows: undefined,
-          // Wipe all filters and sorting when source changes
           tableState: seedInitialTableState<TData>(
             options.tableOptions?.initialState,
           ),
@@ -255,25 +294,39 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       if (this.isConnected) {
         this.prepare().then(() => {
           this.requestQuery();
+          this.facetClient.requestUpdate();
         });
       }
     }
   }
 
   /**
-   * Initializes facet sidecars based on column metadata.
+   * Registers columns with the Facet Manager.
    */
   #initializeAutoFacets(columns: Array<ColumnDef<TData, TValue>>) {
     columns.forEach((col) => {
       const facetType = col.meta?.mosaicDataTable?.facet;
+      const sqlColumn = col.meta?.mosaicDataTable?.sqlColumn;
+      const sortMode = col.meta?.mosaicDataTable?.facetSortMode;
       const colId = col.id;
 
-      if (!facetType || !colId) {
+      if (!facetType || !colId || !sqlColumn) {
         return;
       }
 
-      this.sidecarManager.requestFacet(colId, facetType);
+      this.facetClient.register(colId, {
+        type: facetType,
+        column: colId,
+        sqlColumn: sqlColumn,
+        limit: 100, // Default limit for unique values
+        sortMode: sortMode,
+      });
     });
+
+    // If connected, ensure facets are fetched
+    if (this.isConnected) {
+      this.facetClient.requestUpdate();
+    }
   }
 
   /**
@@ -340,6 +393,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       statement.where(effectiveFilter);
     }
 
+    // Handle Faceting Updates from Table Internal Filters
     if (mapper) {
       const internalClauses = extractInternalFilters({
         tableState,
@@ -363,7 +417,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     excludeColumnId?: string;
   }): Array<mSql.FilterExpr> {
     const tableState = this.store.state.tableState;
-
     const excludeId = options?.excludeColumnId;
 
     const filteredState = excludeId
@@ -389,10 +442,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   override queryPending(): this {
     return this;
-  }
-
-  get debugPrefix(): string {
-    return this.options.__debugName ? `${this.options.__debugName}:` : '';
   }
 
   override queryResult(table: unknown): this {
@@ -457,8 +506,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   public __onConnect() {
     this.enabled = true;
 
-    this.sidecarManager.connectAll();
-    this.sidecarManager.refreshAll();
+    this.facetClient.requestUpdate();
 
     const selectionCb = () => {
       const activeClause =
@@ -490,7 +538,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       }
 
       const values = this.#rowSelectionManager.getCurrentValues();
-
       const newRowSelection: Record<string, boolean> = {};
       values.forEach((v) => {
         newRowSelection[String(v)] = true;
@@ -526,7 +573,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         'value',
         rowSelectionCb,
       );
-      this.sidecarManager.disconnectAll();
     };
   }
 
@@ -538,7 +584,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   destroy(): void {
     super.destroy();
-    this.sidecarManager.clear();
+    this.facetClient.disconnect();
   }
 
   fields(): Array<FieldInfoRequest> {
@@ -598,21 +644,26 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           'sorting',
           'columnFilters',
         ];
-        const sidecarTriggerKeys: Array<keyof TableState> = ['columnFilters'];
+        const facetTriggerKeys: Array<keyof TableState> = ['columnFilters'];
 
         const needsNewQuery = didStatePropertyChange(
           oldState,
           newState,
           fetchTriggerKeys,
         );
-        const needsSidecarRefresh = didStatePropertyChange(
+        const needsFacetRefresh = didStatePropertyChange(
           oldState,
           newState,
-          sidecarTriggerKeys,
+          facetTriggerKeys,
         );
 
-        if (needsSidecarRefresh) {
-          this.sidecarManager.refreshAll();
+        if (needsFacetRefresh && this.#columnMapper) {
+          // Push new internal filters to facet client
+          const filterMap = getFilterMap({
+            tableState: newState,
+            mapper: this.#columnMapper,
+          });
+          this.facetClient.setInternalFilters(filterMap);
         }
 
         if (needsNewQuery) {
@@ -671,8 +722,13 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return (_table, columnId) => {
       return () => {
         const values = this.getFacets().get(columnId);
-        if (Array.isArray(values) && values.length === 2) {
-          return values as [number, number];
+        if (
+          values &&
+          typeof values === 'object' &&
+          'min' in values &&
+          'max' in values
+        ) {
+          return [values.min, values.max];
         }
         return undefined;
       };
@@ -695,16 +751,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   getColumnDef(sqlColumn: string): ColumnDef<TData, TValue> | undefined {
     const mapper = this.#columnMapper;
     return mapper?.getColumnDef(sqlColumn);
-  }
-
-  updateFacetValue(columnId: string, value: any) {
-    this.#facetValues.set(columnId, value);
-    batch(() => {
-      this.store.setState((prev) => ({
-        ...prev,
-        _facetsUpdateCount: prev._facetsUpdateCount + 1,
-      }));
-    });
   }
 
   updateTotalRows(count: number) {

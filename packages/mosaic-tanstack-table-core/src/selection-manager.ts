@@ -97,27 +97,30 @@ export class MosaicSelectionManager {
     if (values && values.length > 0) {
       const colExpr = createStructAccess(this.column);
 
-      if (this.columnType === 'array') {
-        // list_has_any(col, ['val1', 'val2'])
-        // Fix: mSql.literal(values) fails for arrays (stringifies to "a,b").
-        // Fix 2: mSql.sql`[${array}]` fails Typescript check (TemplateValue not Array).
-        // Solution: Manually construct the comma-separated list expression via reduce.
-        const listContent = values.slice(1).reduce((acc, v) => {
-          return mSql.sql`${acc}, ${mSql.literal(v)}`;
-        }, mSql.literal(values[0]));
+      // Filter out null/undefined to be safe
+      const validValues = values.filter((v) => v !== null && v !== undefined);
 
-        const listLiteral = mSql.sql`[${listContent}]`;
-        predicate = mSql.listHasAny(colExpr, listLiteral);
-      } else {
-        if (values.length === 1) {
-          // col = 'val'
-          predicate = mSql.eq(colExpr, mSql.literal(values[0]));
+      if (validValues.length > 0) {
+        if (this.columnType === 'array') {
+          // list_has_any(col, ['val1', 'val2'])
+          // Manual construction to ensure array literal syntax [a, b] is generated correctly
+          const listContent = validValues.slice(1).reduce((acc, v) => {
+            return mSql.sql`${acc}, ${mSql.literal(v)}`;
+          }, mSql.literal(validValues[0]));
+
+          const listLiteral = mSql.sql`[${listContent}]`;
+          predicate = mSql.listHasAny(colExpr, listLiteral);
         } else {
-          // col IN ('val1', 'val2')
-          predicate = mSql.isIn(
-            colExpr,
-            values.map((v) => mSql.literal(v)),
-          );
+          if (validValues.length === 1) {
+            // col = 'val'
+            predicate = mSql.eq(colExpr, mSql.literal(validValues[0]));
+          } else {
+            // col IN ('val1', 'val2')
+            predicate = mSql.isIn(
+              colExpr,
+              validValues.map((v) => mSql.literal(v)),
+            );
+          }
         }
       }
     }

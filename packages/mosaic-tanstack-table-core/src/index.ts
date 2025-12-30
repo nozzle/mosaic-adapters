@@ -9,5 +9,4 @@ export * from './utils';
 export * from './selection-utils';
 export * from './view-model';
 export * from './facet-strategies';
-export * from './sidecar-client';
-export * from './sidecar-manager';
+export * from './facet-manager-client';
