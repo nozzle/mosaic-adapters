@@ -271,19 +271,19 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
     for (const [colId, req] of this.requests.entries()) {
       let subQuery: SelectQuery;
 
-      // Cascading Logic
+      // Cascading Logic: Collect all filters EXCEPT the one for the current column
       const cascadingClauses: Array<FilterExpr> = [];
       for (const [filterColId, predicate] of this.internalFilters.entries()) {
         if (filterColId !== colId) {
           cascadingClauses.push(predicate);
         }
       }
-      const hasCascadingFilters = cascadingClauses.length > 0;
 
       if (req.type === 'totalCount') {
         subQuery = mSql.Query.from('viewport').select({
           count: mSql.count(),
         });
+        // Total Count should respect ALL filters, including itself
         if (this.internalFilters.has(colId)) {
           cascadingClauses.push(this.internalFilters.get(colId)!);
         }
@@ -296,9 +296,7 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
         let distinctSub: SelectQuery;
 
         if (isArray) {
-          // Fix for "Binder Error: UNNEST() for correlated expressions"
-          // We use the UNNEST inside the FROM clause (lateral join style)
-          // FROM "viewport", UNNEST("col") AS "u"("val")
+          // Array: UNNEST logic
           distinctSub = mSql.Query.from(
             mSql.sql`"viewport", UNNEST(${colExpr}) AS "u"("val")`,
           )
@@ -312,7 +310,7 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
             distinctSub.orderby(mSql.desc(mSql.count()));
           }
         } else {
-          // Standard Scalar Logic
+          // Scalar: Standard Group By
           distinctSub = mSql.Query.from('viewport')
             .select({ val: colExpr })
             .groupby(colExpr)
@@ -325,8 +323,15 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
           }
         }
 
-        if (hasCascadingFilters) {
-          distinctSub.where(mSql.and(...cascadingClauses));
+        // --- FILTER LOGIC ---
+        // 1. Cascading filters (Peer filters)
+        // 2. Not Null check (Always exclude NULLs from dropdown options)
+        const clauses = [...cascadingClauses];
+        const valRef = isArray ? mSql.column('val') : colExpr;
+        clauses.push(mSql.isNotNull(valRef));
+
+        if (clauses.length > 0) {
+          distinctSub.where(mSql.and(...clauses));
         }
 
         subQuery = mSql.Query.from(distinctSub).select({
@@ -339,7 +344,7 @@ export class MosaicFacetClient extends MosaicClient implements IMosaicClient {
           stats: mSql.sql`{'min': MIN(${colExpr}), 'max': MAX(${colExpr})}`,
         });
 
-        if (hasCascadingFilters) {
+        if (cascadingClauses.length > 0) {
           subQuery.where(mSql.and(...cascadingClauses));
         }
       }
