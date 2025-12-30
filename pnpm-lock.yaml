@@ -253,6 +253,9 @@ importers:
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
         version: 0.21.1
+      apache-arrow:
+        specifier: ^17.0.0
+        version: 17.0.0
     devDependencies:
       eslint:
         specifier: 'catalog:'

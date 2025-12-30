@@ -25,6 +25,7 @@ import { buildTableQuery, extractInternalFilters } from './query/query-builder';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SidecarManager } from './sidecar-manager';
+import type { Table as ArrowTable } from 'apache-arrow';
 
 import type {
   Coordinator,
@@ -190,13 +191,14 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       | undefined;
 
     if (!currentStore) {
-      this.#store = new Store({
+      this.#store = new Store<ResolvedStore>({
         tableState: seedInitialTableState<TData>(
           options.tableOptions?.initialState,
         ),
         tableOptions: {
           ...(options.tableOptions ?? {}),
         } as ResolvedStore['tableOptions'],
+        arrowResult: null,
         rows: [] as ResolvedStore['rows'],
         totalRows: undefined as ResolvedStore['totalRows'],
         columnDefs: options.columns ?? ([] as ResolvedStore['columnDefs']),
@@ -236,14 +238,13 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.schema = [];
 
       // CRITICAL FIX: Reset the column mapper immediately.
-      // This prevents the client from generating queries using the OLD schema against the NEW table
-      // (which causes "Binder Error: Referenced column not found" errors).
       this.#columnMapper = undefined;
 
       // Also reset the store to prevent the UI from rendering stale columns
       this.#store.setState((prev) => ({
         ...prev,
         columnDefs: [],
+        arrowResult: null,
         rows: [],
       }));
 
@@ -400,26 +401,46 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   override queryResult(table: unknown): this {
     if (isArrowTable(table)) {
+      const arrowResult = table as unknown as ArrowTable;
       let totalRows: number | undefined = undefined;
 
-      const rows = table.toArray() as Array<TData>;
+      // LAZY OPTIMIZATION:
+      // Instead of converting the entire Arrow table to JS objects (which freezes the main thread),
+      // we generate a lightweight array of index objects. The column accessors (wrapped below)
+      // will fetch the actual data lazily from `arrowResult`.
+      const rowIndices = Array.from(
+        { length: arrowResult.numRows },
+        (_, i) => ({
+          _index: i,
+        }),
+      ) as unknown as Array<TData>;
 
-      if (
-        this.options.totalRowsMode === 'window' &&
-        rows.length > 0 &&
-        rows[0] &&
-        typeof rows[0] === 'object' &&
-        this.#sql_total_rows in rows[0]
-      ) {
-        const firstRow = rows[0] as Record<string, any>;
-        totalRows = firstRow[this.#sql_total_rows];
+      // If in window mode, verify and extract total count from the first row lazily
+      if (this.options.totalRowsMode === 'window' && arrowResult.numRows > 0) {
+        try {
+          const firstRow = arrowResult.get(0);
+          if (firstRow) {
+            // Note: Arrow returns BigInt for counts usually, coerce safely
+            const val = firstRow[this.#sql_total_rows];
+            if (val !== undefined) {
+              totalRows = Number(val);
+            }
+          }
+        } catch (e) {
+          logger.warn(
+            'Core',
+            'Failed to read total rows from window function',
+            { error: e },
+          );
+        }
       }
 
       batch(() => {
         this.store.setState((prev) => {
           return {
             ...prev,
-            rows,
+            arrowResult: arrowResult,
+            rows: rowIndices,
             // Only overwrite totalRows if we are in window mode or if it's undefined
             totalRows:
               this.options.totalRowsMode === 'window'
@@ -578,7 +599,54 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   getTableOptions(
     state: Store<MosaicDataTableStore<TData, TValue>>['state'],
   ): TableOptions<TData> {
-    const columns =
+    // WRAP COLUMNS for Lazy Access
+    // We wrap every column to redirect data access to the stored Arrow Table
+    // via the row index.
+    const wrapColumn = (
+      col: ColumnDef<TData, TValue>,
+    ): ColumnDef<TData, TValue> => {
+      // If it already has a custom accessor function, wrap it to resolve the underlying row first
+      if ('accessorFn' in col && typeof col.accessorFn === 'function') {
+        const originalFn = col.accessorFn;
+        return {
+          ...col,
+          accessorFn: (row: any, index) => {
+            const arrowTable = state.arrowResult;
+            if (!arrowTable || typeof row._index !== 'number') {
+              return null;
+            }
+            const arrowRow = arrowTable.get(row._index);
+            // Pass the REAL arrow row to the original accessor
+            return originalFn(arrowRow as TData, index);
+          },
+        } as ColumnDef<TData, TValue>;
+      }
+
+      // If it uses accessorKey, we must convert it to an accessorFn
+      // because row[key] will fail on our lightweight { _index } objects.
+      if ('accessorKey' in col && typeof col.accessorKey === 'string') {
+        const key = col.accessorKey;
+        return {
+          ...col,
+          // Remove accessorKey to prevent TanStack from trying to access row[key]
+          accessorKey: undefined,
+          id: col.id || key, // Ensure ID is preserved
+          accessorFn: (row: any) => {
+            const arrowTable = state.arrowResult;
+            if (!arrowTable || typeof row._index !== 'number') {
+              return null;
+            }
+            const arrowRow = arrowTable.get(row._index);
+            return arrowRow?.[key];
+          },
+        } as ColumnDef<TData, TValue>;
+      }
+
+      // Fallback for group columns or display-only columns
+      return col;
+    };
+
+    const rawColumns =
       state.columnDefs.length === 0
         ? this.schema.map((field) => {
             return {
@@ -586,18 +654,42 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
               header: field.column,
             } satisfies ColumnDef<TData, TValue>;
           })
-        : state.columnDefs.map((column) => {
-            return column satisfies ColumnDef<TData, TValue>;
-          });
+        : state.columnDefs;
+
+    const wrappedColumns = rawColumns.map(wrapColumn);
+
+    // WRAP getRowId if provided
+    // Because 'row' passed to getRowId will be the proxy { _index: i },
+    // we must resolve it to the real row so user logic (e.g. row.id) works.
+    const userGetRowId = state.tableOptions.getRowId;
+    let getRowId = userGetRowId;
+
+    if (userGetRowId) {
+      getRowId = (row, index, parent) => {
+        const arrowTable = state.arrowResult;
+        // Check if row is a proxy object with _index
+        if (arrowTable && row && typeof (row as any)._index === 'number') {
+          const arrowRow = arrowTable.get((row as any)._index);
+          if (arrowRow) {
+            return userGetRowId(arrowRow as unknown as TData, index, parent);
+          }
+        }
+        return userGetRowId(row, index, parent);
+      };
+    }
 
     return {
       data: state.rows,
-      columns,
+      columns: wrappedColumns,
       getCoreRowModel: getCoreRowModel(),
       getFacetedRowModel: getFacetedRowModel(),
       getFacetedUniqueValues: this.getFacetedUniqueValues(),
       getFacetedMinMaxValues: this.getFacetedMinMaxValues(),
       state: state.tableState,
+      meta: {
+        // Expose the raw arrow table to the UI (e.g. for Copy actions that need full row access)
+        arrowTable: state.arrowResult,
+      } as any,
       onStateChange: (updater) => {
         const hashedOldState = JSON.stringify(this.store.state.tableState);
         const tableState = functionalUpdate(
@@ -644,6 +736,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       manualFiltering: true,
       rowCount: state.totalRows,
       ...state.tableOptions,
+      getRowId, // Applied after spread to ensure our wrapper takes precedence
     };
   }
 

@@ -3,6 +3,7 @@
  * Defines configuration options, store structures, and metadata extensions.
  */
 
+import type { Table as ArrowTable } from 'apache-arrow';
 import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
@@ -111,6 +112,16 @@ export interface MosaicDataTableOptions<
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   columnDefs: Array<ColumnDef<TData, TValue>>;
   tableState: TableState;
+  /**
+   * The raw Arrow Table result.
+   * We store this to support lazy access patterns.
+   */
+  arrowResult: ArrowTable | null;
+  /**
+   * The rows array used by TanStack Table.
+   * In optimized mode, this contains lightweight objects (e.g. { _index: i })
+   * that reference the arrowResult.
+   */
   rows: Array<TData>;
   totalRows: number | undefined;
   tableOptions: SubsetTableOptions<TData>;
