@@ -1,9 +1,10 @@
 # Mosaic Architecture
 
-/* 
- * This file explains the high-level conceptual model of Mosaic, 
- * focusing on the interaction between the Coordinator, Database, and Clients.
- */
+/\*
+
+- This file explains the high-level conceptual model of Mosaic,
+- focusing on the interaction between the Coordinator, Database, and Clients.
+  \*/
 
 Mosaic is a framework for linking databases and interactive views. It follows a "Pushdown Computation" model, where the heavy lifting of data processing is moved out of the browser's main thread and into a specialized database engine (typically DuckDB).
 
@@ -19,6 +20,6 @@ Mosaic is a framework for linking databases and interactive views. It follows a 
 ## Key Primitives
 
 - **Coordinator**: The central hub. It manages the query queue, caching, and client registration.
-- **Clients**: Data consumers. They define *what* data they need via SQL and *how* to show it.
+- **Clients**: Data consumers. They define _what_ data they need via SQL and _how_ to show it.
 - **Params & Selections**: Reactive state. Params hold single values; Selections hold SQL filters.
 - **Connectors**: The bridge to the database, supporting Wasm (in-browser), Web Sockets, or REST.

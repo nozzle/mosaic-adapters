@@ -8,10 +8,8 @@ import { useEffect, useMemo, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
-import {
-  useMosaicReactTable,
-  useMosaicViewModel,
-} from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicSession } from '@nozzleio/mosaic-react-core';
 import { PaaDashboardModel } from './paa-model';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
@@ -30,7 +28,8 @@ const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
 
-  const model = useMosaicViewModel<PaaDashboardModel>(
+  // Updated to use the new generic session hook
+  const model = useMosaicSession<PaaDashboardModel>(
     (c) => new PaaDashboardModel(c),
     vg.coordinator(),
   );

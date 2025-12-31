@@ -7,10 +7,8 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
-import {
-  useMosaicReactTable,
-  useMosaicViewModel,
-} from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicSession } from '@nozzleio/mosaic-react-core';
 import { NycTaxiModel } from './nyc-model';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { MosaicDataTableOptions } from '@nozzleio/mosaic-tanstack-react-table';
@@ -39,10 +37,8 @@ export function NycTaxiView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
-  const model = useMosaicViewModel(
-    (c) => new NycTaxiModel(c),
-    vg.coordinator(),
-  );
+  // Updated to use the new generic session hook
+  const model = useMosaicSession((c) => new NycTaxiModel(c), vg.coordinator());
 
   useEffect(() => {
     if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {

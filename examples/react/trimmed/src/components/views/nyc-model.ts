@@ -5,14 +5,18 @@
 
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
-import {
-  AggregationBridge,
-  MosaicViewModel,
+import { AggregationBridge } from '@nozzleio/mosaic-tanstack-react-table';
+import { MosaicLifecycle } from '@nozzleio/mosaic-react-core';
+import type {
+  MosaicDataTableColumnDefMetaOptions,
+  MosaicTableDataProvider,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
 import type { Selection } from '@uwdata/mosaic-core';
 
-export class NycTaxiModel extends MosaicViewModel {
+export class NycTaxiModel
+  extends MosaicLifecycle
+  implements MosaicTableDataProvider
+{
   public selections: {
     brush: Selection;
     detailFilter: Selection;
@@ -54,7 +58,7 @@ export class NycTaxiModel extends MosaicViewModel {
     };
   }
 
-  // Override setupTopology from concrete MosaicViewModel
+  // Override setupTopology from concrete MosaicLifecycle
   protected setupTopology(): void {
     // 3. Register the Aggregation Bridge
     // This translates Summary Table filters (Count > N) into Detail Table filters (Zone IN (...))
@@ -121,6 +125,6 @@ export class NycTaxiModel extends MosaicViewModel {
     id: string,
   ): MosaicDataTableColumnDefMetaOptions['mosaicDataTable'] {
     // Implement if we need specific SQL mappings (e.g. for Structs)
-    return {};
+    return undefined;
   }
 }

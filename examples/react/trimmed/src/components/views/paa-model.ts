@@ -4,11 +4,12 @@
  */
 
 import * as vg from '@uwdata/vgplot';
-// Change: Import from the react-table adapter to ensure symbol identity matches the hook
-// and to avoid needing a direct dependency on table-core in the example app.
-import { MosaicViewModel } from '@nozzleio/mosaic-tanstack-react-table';
+import { MosaicLifecycle } from '@nozzleio/mosaic-react-core';
 import type { Selection } from '@uwdata/mosaic-core';
-import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
+import type {
+  MosaicDataTableColumnDefMetaOptions,
+  MosaicTableDataProvider,
+} from '@nozzleio/mosaic-tanstack-react-table';
 
 // Define the shape of our selections for type safety
 interface PaaSelections extends Record<string, Selection> {
@@ -22,7 +23,10 @@ interface PaaSelections extends Record<string, Selection> {
   globalContext: Selection;
 }
 
-export class PaaDashboardModel extends MosaicViewModel {
+export class PaaDashboardModel
+  extends MosaicLifecycle
+  implements MosaicTableDataProvider
+{
   public selections: PaaSelections;
   private readonly TOPOLOGY_SOURCE = {}; // Stable identity
 
@@ -76,6 +80,7 @@ export class PaaDashboardModel extends MosaicViewModel {
   }
 
   // 4. Define Schema Mapping
+  // Explicitly implement the interface from Table Core
   public getColumnMeta(
     id: string,
   ): MosaicDataTableColumnDefMetaOptions['mosaicDataTable'] {

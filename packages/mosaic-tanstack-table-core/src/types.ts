@@ -59,6 +59,16 @@ export type MosaicDataTableColumnDefMetaOptions = {
   };
 };
 
+/**
+ * Interface for Models/Controllers that wish to provide metadata to a MosaicDataTable.
+ * Implementing this allows a model to specify SQL types/mappings for table columns.
+ */
+export interface MosaicTableDataProvider {
+  getColumnMeta: (
+    columnId: string,
+  ) => MosaicDataTableColumnDefMetaOptions['mosaicDataTable'] | undefined;
+}
+
 export type SubsetTableOptions<TData extends RowData> = Omit<
   TableOptions<TData>,
   | 'data'
