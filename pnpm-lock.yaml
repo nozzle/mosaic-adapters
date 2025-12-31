@@ -89,6 +89,9 @@ importers:
 
   examples/react/trimmed:
     dependencies:
+      '@nozzleio/mosaic-react-core':
+        specifier: workspace:*
+        version: link:../../../packages/mosaic-react-core
       '@nozzleio/mosaic-tanstack-react-table':
         specifier: workspace:*
         version: link:../../../packages/mosaic-tanstack-react-table

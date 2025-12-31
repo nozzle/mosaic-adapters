@@ -5,10 +5,7 @@
     "jsxImportSource": "react",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@nozzleio/mosaic-react-core": [
-        "../../../packages/mosaic-react-core/src/index.ts"
-      ]
+      "@/*": ["./src/*"]
     }
   }
 }
