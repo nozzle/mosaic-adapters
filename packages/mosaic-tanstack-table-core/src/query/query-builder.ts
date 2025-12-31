@@ -2,10 +2,11 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
 import { createStructAccess } from '../utils';
 
-import { createFilterClause } from './filter-factory';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
 import type { RowData, TableState } from '@tanstack/table-core';
 import type { ColumnMapper } from './column-mapper';
+import type { StrategyRegistry } from '../registry';
+import type { FilterStrategy } from './filter-factory';
 
 export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   source: string | SelectQuery;
@@ -24,6 +25,7 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
    * Use this when the source (subquery) already calculates it.
    */
   manualHighlight?: boolean;
+  filterRegistry: StrategyRegistry<FilterStrategy>;
 }
 
 export function buildTableQuery<TData extends RowData, TValue>(
@@ -38,6 +40,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
     excludeColumnId,
     highlightPredicate,
     manualHighlight,
+    filterRegistry,
   } = options;
 
   const { pagination, sorting, columnFilters } = tableState;
@@ -111,11 +114,19 @@ export function buildTableQuery<TData extends RowData, TValue>(
     }
 
     const colDef = mapper.getColumnDef(sqlColumn);
-    const filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
+    const filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType || 'EQUALS';
+    const strategy = filterRegistry.get(filterType);
 
-    const clause = createFilterClause({
-      sqlColumn,
-      filterType,
+    if (!strategy) {
+      logger.warn(
+        'Core',
+        `[QueryBuilder] No strategy found for filter type "${filterType}" on column "${filter.id}".`,
+      );
+      return;
+    }
+
+    const clause = strategy({
+      columnAccessor: sqlColumn,
       value: filter.value,
       columnId: filter.id,
     });
@@ -178,6 +189,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
 export function extractInternalFilters<TData extends RowData, TValue>(options: {
   tableState: TableState;
   mapper: ColumnMapper<TData, TValue>;
+  filterRegistry: StrategyRegistry<FilterStrategy>;
 }): Array<mSql.FilterExpr> {
   const clauses: Array<mSql.FilterExpr> = [];
 
@@ -192,7 +204,16 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
     }
 
     const colDef = options.mapper.getColumnDef(sqlColumn);
-    const filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
+    const filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType || 'EQUALS';
+    const strategy = options.filterRegistry.get(filterType);
+
+    if (!strategy) {
+      logger.warn(
+        'Core',
+        `[QueryBuilder] No strategy found for filter type "${filterType}" on column "${filter.id}".`,
+      );
+      return;
+    }
 
     // DIAGNOSTIC LOGGING: Check what we resolved with Mapper ID
     logger.debug(
@@ -200,15 +221,14 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
       `[QueryBuilder] Resolving Filter for "${filter.id}" using Mapper #${options.mapper.id}`,
       {
         sqlColumn,
-        filterType: filterType || 'UNDEFINED (Defaults to EQUALS)',
+        filterType,
         value: filter.value,
         hasMeta: !!colDef?.meta?.mosaicDataTable,
       },
     );
 
-    const clause = createFilterClause({
-      sqlColumn,
-      filterType,
+    const clause = strategy({
+      columnAccessor: sqlColumn,
       value: filter.value,
       columnId: filter.id,
     });

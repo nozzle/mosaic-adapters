@@ -8,5 +8,7 @@ export * from './logger';
 export * from './utils';
 export * from './selection-utils';
 export * from './facet-strategies';
+export * from './query/filter-factory';
+export * from './registry';
 export * from './sidecar-client';
 export * from './sidecar-manager';

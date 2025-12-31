@@ -201,3 +201,9 @@ export const TotalCountStrategy: FacetStrategy<number> = {
     return 0;
   },
 };
+
+export const defaultFacetStrategies: Record<string, FacetStrategy<any>> = {
+  unique: UniqueValuesStrategy,
+  minmax: MinMaxStrategy,
+  totalCount: TotalCountStrategy,
+};

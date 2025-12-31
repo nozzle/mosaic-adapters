@@ -6,17 +6,14 @@ import {
 } from '../utils';
 import { logger } from '../logger';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
-import type { MosaicDataTableSqlFilterType } from '../types';
 
-type FilterStrategy = (options: {
+export type FilterStrategy = (options: {
   columnAccessor: string;
   value: unknown;
   columnId?: string;
 }) => FilterExpr | undefined;
 
-const DEFAULT_SQL_FILTER_TYPE: MosaicDataTableSqlFilterType = 'EQUALS';
-
-const strategies: Record<MosaicDataTableSqlFilterType, FilterStrategy> = {
+const strategies: Record<string, FilterStrategy> = {
   RANGE: ({ columnAccessor, value, columnId }) => {
     // Only handle Range Filters (Array values for Min/Max)
     if (!Array.isArray(value)) {
@@ -157,17 +154,4 @@ function handleLike(options: {
   }
 }
 
-export function createFilterClause(options: {
-  sqlColumn: string;
-  value: unknown;
-  filterType?: MosaicDataTableSqlFilterType;
-  columnId?: string;
-}): FilterExpr | undefined {
-  const filterType = options.filterType || DEFAULT_SQL_FILTER_TYPE;
-  const strategy = strategies[filterType];
-  return strategy({
-    columnAccessor: options.sqlColumn,
-    value: options.value,
-    columnId: options.columnId,
-  });
-}
+export const defaultFilterStrategies = strategies;

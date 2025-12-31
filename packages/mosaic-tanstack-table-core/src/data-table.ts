@@ -25,6 +25,9 @@ import { buildTableQuery, extractInternalFilters } from './query/query-builder';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SidecarManager } from './sidecar-manager';
+import { StrategyRegistry } from './registry';
+import { defaultFilterStrategies } from './query/filter-factory';
+import { defaultFacetStrategies } from './facet-strategies';
 
 import type {
   Coordinator,
@@ -44,6 +47,8 @@ import type {
   MosaicDataTableStore,
   MosaicTableSource,
 } from './types';
+import type { FilterStrategy } from './query/filter-factory';
+import type { FacetStrategy } from './facet-strategies';
 
 let instanceCounter = 0;
 
@@ -82,7 +87,10 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   #columnMapper: ColumnMapper<TData, TValue> | undefined;
 
-  public sidecarManager = new SidecarManager<TData, TValue>(this);
+  public sidecarManager: SidecarManager<TData, TValue>;
+  public filterRegistry: StrategyRegistry<FilterStrategy>;
+  public facetRegistry: StrategyRegistry<FacetStrategy<any>>;
+
   #facetValues: Map<string, any> = new Map();
 
   #rowSelectionManager?: MosaicSelectionManager;
@@ -94,6 +102,20 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     this.id = ++instanceCounter;
     this.options = options;
     this.source = options.table;
+
+    // Initialize Registries
+    this.filterRegistry = new StrategyRegistry({
+      ...defaultFilterStrategies,
+      ...options.filterStrategies,
+    });
+
+    this.facetRegistry = new StrategyRegistry({
+      ...defaultFacetStrategies,
+      ...options.facetStrategies,
+    });
+
+    // Initialize Sidecar Manager with reference to this host and the registry
+    this.sidecarManager = new SidecarManager(this, this.facetRegistry);
 
     logger.debug(
       'Core',
@@ -153,6 +175,18 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     }
 
     this.source = options.table;
+
+    // Re-register custom strategies if they changed (overwriting existing ones)
+    if (options.filterStrategies) {
+      Object.entries(options.filterStrategies).forEach(([k, v]) =>
+        this.filterRegistry.register(k, v),
+      );
+    }
+    if (options.facetStrategies) {
+      Object.entries(options.facetStrategies).forEach(([k, v]) =>
+        this.facetRegistry.register(k, v),
+      );
+    }
 
     if (sourceChanged) {
       this.sidecarManager.updateSource(options.table);
@@ -329,6 +363,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           highlightPredicate: safeHighlightPredicate,
           manualHighlight: this.options.manualHighlight,
           totalRowsMode: this.options.totalRowsMode,
+          filterRegistry: this.filterRegistry,
         })
       : mSql.Query.from(source).select('*', {
           [this.#sql_total_rows]: mSql.sql`COUNT(*) OVER()`,
@@ -342,6 +377,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       const internalClauses = extractInternalFilters({
         tableState,
         mapper: mapper,
+        filterRegistry: this.filterRegistry,
       });
 
       const predicate =
@@ -387,6 +423,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return extractInternalFilters({
       tableState: filteredState,
       mapper: mapper,
+      filterRegistry: this.filterRegistry,
     });
   }
 

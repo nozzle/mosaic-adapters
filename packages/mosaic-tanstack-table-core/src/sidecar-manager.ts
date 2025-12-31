@@ -1,13 +1,11 @@
 import { SidecarClient } from './sidecar-client';
-import {
-  MinMaxStrategy,
-  TotalCountStrategy,
-  UniqueValuesStrategy,
-} from './facet-strategies';
+import { TotalCountStrategy } from './facet-strategies';
 import type { MosaicDataTable } from './data-table';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type { RowData } from '@tanstack/table-core';
 import type { MosaicTableSource } from './types';
+import type { StrategyRegistry } from './registry';
+import type { FacetStrategy } from './facet-strategies';
 
 /**
  * Manages "Sidecar" clients for a MosaicDataTable.
@@ -16,18 +14,29 @@ import type { MosaicTableSource } from './types';
 export class SidecarManager<TData extends RowData, TValue = unknown> {
   private clients = new Map<string, SidecarClient<any>>();
 
-  constructor(private host: MosaicDataTable<TData, TValue>) {}
+  constructor(
+    private host: MosaicDataTable<TData, TValue>,
+    private facetRegistry: StrategyRegistry<FacetStrategy<any>>,
+  ) {}
 
   /**
    * Idempotently requests a facet sidecar for a column.
    */
-  requestFacet(columnId: string, type: 'unique' | 'minmax') {
+  requestFacet(columnId: string, type: string) {
     const key = `${columnId}:${type}`;
     if (this.clients.has(key)) {
       return;
     }
 
-    const strategy = type === 'unique' ? UniqueValuesStrategy : MinMaxStrategy;
+    const strategy = this.facetRegistry.get(type);
+
+    if (!strategy) {
+      console.warn(
+        `[SidecarManager] No strategy registered for facet type "${type}" on column "${columnId}".`,
+      );
+      return;
+    }
+
     const sqlColumn = this.host.getColumnSqlName(columnId);
 
     if (!sqlColumn) {

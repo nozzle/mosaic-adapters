@@ -11,6 +11,8 @@ import type {
   TableOptions,
   TableState,
 } from '@tanstack/table-core';
+import type { FacetStrategy } from './facet-strategies';
+import type { FilterStrategy } from './query/filter-factory';
 
 export type MosaicDataTableSqlFilterType =
   | 'EQUALS'
@@ -18,7 +20,8 @@ export type MosaicDataTableSqlFilterType =
   | 'PARTIAL_LIKE'
   | 'ILIKE'
   | 'PARTIAL_ILIKE'
-  | 'RANGE';
+  | 'RANGE'
+  | (string & {}); // Allow custom string types
 
 export type FacetSortMode = 'alpha' | 'count';
 
@@ -55,7 +58,7 @@ export type MosaicDataTableColumnDefMetaOptions = {
     sqlColumn?: string;
     sqlFilterType?: MosaicDataTableSqlFilterType;
     facetSortMode?: FacetSortMode;
-    facet?: 'unique' | 'minmax';
+    facet?: 'unique' | 'minmax' | (string & {}); // Allow custom facet types
   };
 };
 
@@ -116,6 +119,16 @@ export interface MosaicDataTableOptions<
   totalRowsMode?: 'split' | 'window';
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
   __debugName?: string;
+
+  /**
+   * Custom filter strategies to register for this table instance.
+   */
+  filterStrategies?: Record<string, FilterStrategy>;
+
+  /**
+   * Custom facet strategies to register for this table instance.
+   */
+  facetStrategies?: Record<string, FacetStrategy<any>>;
 }
 
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
