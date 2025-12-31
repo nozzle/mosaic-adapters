@@ -1,3 +1,4 @@
+// packages/mosaic-tanstack-table-core/src/facet-strategies.ts
 import * as mSql from '@uwdata/mosaic-sql';
 import { isParam } from '@uwdata/mosaic-core';
 import { createStructAccess } from './utils';
@@ -14,6 +15,8 @@ export interface FacetQueryContext {
   searchTerm?: string; // For unique values
   limit?: number;
   sortMode?: 'alpha' | 'count';
+  /** Allow strategies to accept custom configuration (e.g. bins, strict mode, etc) */
+  [key: string]: any;
 }
 
 export interface FacetStrategy<TResult> {

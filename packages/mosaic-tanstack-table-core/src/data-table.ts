@@ -1,3 +1,4 @@
+// packages/mosaic-tanstack-table-core/src/data-table.ts
 /**
  * Orchestrator for the Mosaic and TanStack Table integration.
  * Manages the data-fetching lifecycle, schema mapping, and reactive state synchronization.
@@ -304,6 +305,21 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
       this.sidecarManager.requestFacet(colId, facetType);
     });
+  }
+
+  /**
+   * Request auxiliary data (Sidecars) linked to this table's context.
+   * Useful for generating Histograms, Heatmaps, or other aggregates driven by the table's filters.
+   */
+  public requestAuxiliary(config: {
+    id: string;
+    type: string;
+    column: string;
+    excludeColumnId?: string;
+    options?: Record<string, any>;
+    onResult?: (result: any) => void;
+  }) {
+    this.sidecarManager.requestAuxiliary(config);
   }
 
   /**

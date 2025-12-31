@@ -1,3 +1,4 @@
+// packages/mosaic-tanstack-table-core/src/sidecar-manager.ts
 import { SidecarClient } from './sidecar-client';
 import { TotalCountStrategy } from './facet-strategies';
 import type { MosaicDataTable } from './data-table';
@@ -23,32 +24,70 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
    * Idempotently requests a facet sidecar for a column.
    */
   requestFacet(columnId: string, type: string) {
-    const key = `${columnId}:${type}`;
-    if (this.clients.has(key)) {
+    // Facets are just a specific type of auxiliary query, keyed by column
+    this.requestAuxiliary({
+      id: `${columnId}:${type}`,
+      type,
+      column: columnId,
+      // For standard facets, we exclude the column itself from the filters
+      excludeColumnId: columnId,
+      // CRITICAL FIX: Explicitly map the result to the columnId.
+      // The host table expects to find the facet values under 'columnId'
+      // to satisfy TanStack Table's getFacetedUniqueValues() API.
+      // This overrides the default behavior which would store it under 'id' (columnId:type).
+      onResult: (val) => {
+        this.host.updateFacetValue(columnId, val);
+      },
+    });
+  }
+
+  /**
+   * Generic method to request any auxiliary data driven by the table context.
+   * Useful for Sidebars, Histograms, or Custom Widgets.
+   */
+  requestAuxiliary(config: {
+    /** Unique identifier for this request (e.g. 'price_hist', 'col_a:unique') */
+    id: string;
+    /** The name of the registered strategy to use */
+    type: string;
+    /** The SQL column/expression to operate on */
+    column: string;
+    /**
+     * If provided, filters on this column ID will be EXCLUDED from the query.
+     * This is standard Cross-Filter behavior (Multi-Selects shouldn't filter themselves).
+     */
+    excludeColumnId?: string;
+    /** Additional options to pass to the strategy (e.g. bins, limits) */
+    options?: Record<string, any>;
+    /** Optional custom result handler. Defaults to host.updateFacetValue(id, val) */
+    onResult?: (result: any) => void;
+  }) {
+    if (this.clients.has(config.id)) {
       return;
     }
 
-    const strategy = this.facetRegistry.get(type);
+    const strategy = this.facetRegistry.get(config.type);
 
     if (!strategy) {
       console.warn(
-        `[SidecarManager] No strategy registered for facet type "${type}" on column "${columnId}".`,
+        `[SidecarManager] No strategy registered for type "${config.type}" (ID: ${config.id}).`,
       );
       return;
     }
 
-    const sqlColumn = this.host.getColumnSqlName(columnId);
+    // Resolve SQL column if it's a known table column, otherwise pass raw
+    const sqlColumn =
+      this.host.getColumnSqlName(config.column) || config.column;
 
-    if (!sqlColumn) {
-      console.warn(
-        `[SidecarManager] Cannot request facet for unknown column: ${columnId}`,
-      );
-      return;
-    }
-
-    // Get Sort Mode from Column Definition Meta
+    // Determine sort mode if applicable (heuristic from schema)
     const colDef = this.host.getColumnDef(sqlColumn);
     const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
+
+    // Merge options
+    const queryOptions = {
+      sortMode,
+      ...config.options,
+    };
 
     const client = new SidecarClient(
       {
@@ -57,12 +96,18 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
         filterBy: this.host.filterBy,
         // Dynamic Callback to get current table state
         getFilters: () =>
-          this.host.getCascadingFilters({ excludeColumnId: columnId }),
-        onResult: (val) => this.host.updateFacetValue(columnId, val),
-        options: {
-          sortMode: type === 'unique' ? sortMode : undefined,
+          this.host.getCascadingFilters({
+            excludeColumnId: config.excludeColumnId,
+          }),
+        onResult: (val) => {
+          if (config.onResult) {
+            config.onResult(val);
+          } else {
+            this.host.updateFacetValue(config.id, val);
+          }
         },
-        __debugName: `${this.host.options.__debugName || 'Table'}:${type}:${columnId}`,
+        options: queryOptions,
+        __debugName: `${this.host.options.__debugName || 'Table'}:Aux:${config.id}`,
       },
       strategy,
     );
@@ -78,7 +123,7 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
       client.requestUpdate();
     }
 
-    this.clients.set(key, client);
+    this.clients.set(config.id, client);
   }
 
   /**
