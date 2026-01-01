@@ -223,6 +223,9 @@ importers:
 
   packages/mosaic-tanstack-react-table:
     dependencies:
+      '@nozzleio/mosaic-react-core':
+        specifier: workspace:*
+        version: link:../mosaic-react-core
       '@nozzleio/mosaic-tanstack-table-core':
         specifier: workspace:*
         version: link:../mosaic-tanstack-table-core

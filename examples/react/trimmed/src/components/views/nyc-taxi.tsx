@@ -1,6 +1,7 @@
 /**
  * View component for the NYC Taxi dataset.
  * Demonstrates geospatial features, aggregation, and cross-filtering using Window-mode pagination.
+ * REFACTORED: Now uses functional hooks for topology management.
  */
 
 import * as React from 'react';
@@ -8,10 +9,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
-import { useMosaicSession } from '@nozzleio/mosaic-react-core';
-import { NycTaxiModel } from './nyc-model';
+import { useCoordinator } from '@nozzleio/mosaic-react-core';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { MosaicDataTableOptions } from '@nozzleio/mosaic-tanstack-react-table';
+import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
@@ -36,9 +37,10 @@ interface SummaryRowData {
 export function NycTaxiView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
+  const coordinator = useCoordinator();
 
-  // Updated to use the new generic session hook
-  const model = useMosaicSession((c) => new NycTaxiModel(c), vg.coordinator());
+  // Use the new functional topology hook
+  const topology = useNycTaxiTopology();
 
   useEffect(() => {
     if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {
@@ -49,7 +51,7 @@ export function NycTaxiView() {
       try {
         setIsPending(true);
 
-        await vg.coordinator().exec([
+        await coordinator.exec([
           vg.loadExtension('spatial'),
           vg.loadParquet('rides', fileURL, {
             select: [
@@ -86,15 +88,12 @@ export function NycTaxiView() {
         ];
 
         const pickupMap = vg.plot(
-          vg.raster(
-            vg.from(tableName, { filterBy: model.selections.chartContext }),
-            {
-              x: 'px',
-              y: 'py',
-              bandwidth: 0,
-            },
-          ),
-          vg.intervalXY({ as: model.selections.brush }),
+          vg.raster(vg.from(tableName, { filterBy: topology.chartContext }), {
+            x: 'px',
+            y: 'py',
+            bandwidth: 0,
+          }),
+          vg.intervalXY({ as: topology.brush }),
           vg.text([{ label: 'Pickups' }], {
             dx: 10,
             dy: 10,
@@ -108,15 +107,12 @@ export function NycTaxiView() {
         );
 
         const dropoffMap = vg.plot(
-          vg.raster(
-            vg.from(tableName, { filterBy: model.selections.chartContext }),
-            {
-              x: 'dx',
-              y: 'dy',
-              bandwidth: 0,
-            },
-          ),
-          vg.intervalXY({ as: model.selections.brush }),
+          vg.raster(vg.from(tableName, { filterBy: topology.chartContext }), {
+            x: 'dx',
+            y: 'dy',
+            bandwidth: 0,
+          }),
+          vg.intervalXY({ as: topology.brush }),
           vg.text([{ label: 'Dropoffs' }], {
             dx: 10,
             dy: 10,
@@ -131,7 +127,7 @@ export function NycTaxiView() {
 
         const vendorMenu = vg.menu({
           label: 'Vendor',
-          as: model.selections.vendorFilter,
+          as: topology.vendorFilter,
           from: tableName,
           column: 'vendor_id',
         });
@@ -150,7 +146,7 @@ export function NycTaxiView() {
     }
 
     setup();
-  }, [model]);
+  }, [coordinator, topology]);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6">
@@ -166,13 +162,13 @@ export function NycTaxiView() {
           <>
             <div>
               <h4 className="text-lg mb-2 font-medium">Trip Details (Raw)</h4>
-              <TripsDetailTable model={model} />
+              <TripsDetailTable topology={topology} />
             </div>
             <div>
               <h4 className="text-lg mb-2 font-medium">
                 Zone Summary (Aggregated)
               </h4>
-              <TripsSummaryTable model={model} />
+              <TripsSummaryTable topology={topology} />
             </div>
           </>
         )}
@@ -181,7 +177,11 @@ export function NycTaxiView() {
   );
 }
 
-function TripsDetailTable({ model }: { model: NycTaxiModel }) {
+function TripsDetailTable({
+  topology,
+}: {
+  topology: ReturnType<typeof useNycTaxiTopology>;
+}) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
   const columns = useMemo(
@@ -244,13 +244,13 @@ function TripsDetailTable({ model }: { model: NycTaxiModel }) {
   const mosaicOptions: MosaicDataTableOptions<TripRowData> = useMemo(
     () => ({
       table: tableName,
-      filterBy: model.selections.detailContext,
-      tableFilterSelection: model.selections.detailFilter,
+      filterBy: topology.detailContext,
+      tableFilterSelection: topology.detailFilter,
       columns,
-      totalRowsMode: 'window', // FIX: Enable Atomic updates for interactive maps
+      totalRowsMode: 'window',
       tableOptions: { enableColumnFilters: true },
     }),
-    [columns, model],
+    [columns, topology],
   );
 
   const { tableOptions } = useMosaicReactTable(mosaicOptions);
@@ -263,7 +263,11 @@ function TripsDetailTable({ model }: { model: NycTaxiModel }) {
   );
 }
 
-function TripsSummaryTable({ model }: { model: NycTaxiModel }) {
+function TripsSummaryTable({
+  topology,
+}: {
+  topology: ReturnType<typeof useNycTaxiTopology>;
+}) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
   const columns = useMemo(
@@ -336,17 +340,17 @@ function TripsSummaryTable({ model }: { model: NycTaxiModel }) {
 
   const mosaicOptions: MosaicDataTableOptions<SummaryRowData> = useMemo(
     () => ({
-      table: model.summaryQueryFactory,
-      filterBy: model.selections.summaryContext,
-      tableFilterSelection: model.selections.summaryFilter,
+      table: topology.summaryQueryFactory,
+      filterBy: topology.summaryContext,
+      tableFilterSelection: topology.summaryFilter,
       columns,
-      totalRowsMode: 'window', // FIX: Enable Atomic updates for interactive maps
+      totalRowsMode: 'window',
       tableOptions: {
         enableColumnFilters: true,
         initialState: { sorting: [{ id: 'trip_count', desc: true }] },
       },
     }),
-    [columns, model],
+    [columns, topology],
   );
 
   const { tableOptions } = useMosaicReactTable(mosaicOptions);

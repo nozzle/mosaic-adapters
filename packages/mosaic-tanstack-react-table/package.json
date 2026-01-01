@@ -24,6 +24,7 @@
     "test:lint": "pnpm run lint"
   },
   "dependencies": {
+    "@nozzleio/mosaic-react-core": "workspace:*",
     "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@tanstack/react-store": "catalog:",
     "@tanstack/table-core": "catalog:",

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-core';
 import { useStore } from '@tanstack/react-store';
+import { useCoordinator } from '@nozzleio/mosaic-react-core';
 import type {
   MosaicDataTable,
   MosaicDataTableOptions,
@@ -19,34 +20,42 @@ export function useMosaicReactTable<TData extends RowData, TValue = any>(
   tableOptions: TableOptions<TData>;
   client: MosaicDataTable<TData, TValue>;
 } {
-  // Create a stable `MosaicDataTable` client instance.
-  // Use useState lazy initializer to ensure the client is created exactly once per component lifecycle.
+  // 1. Get the coordinator from Context (preferred) or Options (fallback)
+  const contextCoordinator = useCoordinator();
+  const coordinator = options.coordinator ?? contextCoordinator;
+
+  // 2. Create a stable `MosaicDataTable` client instance.
   const [client] = React.useState(() =>
     createMosaicDataTableClient<TData, TValue>(options),
   );
 
-  // Subscribe to the client's store to get framework-land updates.
-  const store = useStore(client.store);
+  // 3. Sync the coordinator to the client
+  // This allows the client to switch backends if the context changes (e.g. WASM -> Remote)
+  React.useEffect(() => {
+    client.setCoordinator(coordinator);
+  }, [client, coordinator]);
 
-  // Get the current table options from the client.
-  const tableOptions = React.useMemo(
-    () => client.getTableOptions(store),
-    [client, store],
-  );
-
-  // Update the client options when they change.
-  // We rely on standard React dependency checks here.
+  // 4. Update Client Options
   React.useEffect(() => {
     client.updateOptions(options);
   }, [options, client]);
 
+  // 5. Connect Lifecycle
+  // We use manual connect here instead of `useMosaicClient` because `MosaicDataTable`
+  // has specific internal logic for initial data fetching and sidecar management
+  // that is triggered via its own connect method.
   React.useEffect(() => {
-    // Connect the client to the coordinator on mount, and disconnect on unmount.
-    // We include options.coordinator in the dependency array to ensure we retry connecting
-    // if the coordinator was null on mount (async init) and then became available.
     const unsub = client.connect();
     return unsub;
-  }, [client, options.coordinator]);
+  }, [client, coordinator]);
+
+  // 6. Subscribe to store updates
+  const store = useStore(client.store);
+
+  const tableOptions = React.useMemo(
+    () => client.getTableOptions(store),
+    [client, store],
+  );
 
   return { tableOptions, client };
 }

@@ -1,18 +1,17 @@
 /**
  * View component for the Nozzle PAA dataset.
- * Uses 'split' pagination mode to ensure memory safety on potentially large SEO datasets.
+ * Demonstrates 'split' pagination mode and the new Functional Topology pattern.
  */
 
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
-import { useMosaicSession } from '@nozzleio/mosaic-react-core';
-import { PaaDashboardModel } from './paa-model';
+import { useCoordinator } from '@nozzleio/mosaic-react-core';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
+import { usePaaTopology } from '@/hooks/usePaaTopology';
 import { RenderTable } from '@/components/render-table';
 import { useMosaicValue } from '@/hooks/useMosaicValue';
 import {
@@ -27,30 +26,26 @@ const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
+  const coordinator = useCoordinator();
 
-  // Updated to use the new generic session hook
-  const model = useMosaicSession<PaaDashboardModel>(
-    (c) => new PaaDashboardModel(c),
-    vg.coordinator(),
-  );
+  // Functional Topology Hook
+  const topology = usePaaTopology();
 
   useEffect(() => {
     async function init() {
       try {
         const parquetUrl = new URL(PARQUET_PATH, window.location.origin).href;
 
-        await vg
-          .coordinator()
-          .exec([
-            `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
-          ]);
+        await coordinator.exec([
+          `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
+        ]);
         setIsReady(true);
       } catch (err) {
         console.warn('NozzlePaaView init interrupted or failed:', err);
       }
     }
     init();
-  }, []);
+  }, [coordinator]);
 
   if (!isReady) {
     return (
@@ -62,7 +57,7 @@ export function NozzlePaaView() {
 
   return (
     <div className="flex flex-col gap-6 bg-slate-50/50 min-h-screen pb-10">
-      <HeaderSection model={model} />
+      <HeaderSection topology={topology} />
 
       <div className="px-6 -mt-8 relative z-10">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">
@@ -74,60 +69,60 @@ export function NozzlePaaView() {
             label="Domain"
             table={TABLE_NAME}
             column="domain"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-            externalContext={model.selections.externalContext}
+            selection={topology.input}
+            filterBy={topology.input}
+            externalContext={topology.externalContext}
           />
           <TextFilter
             label="Phrase"
             table={TABLE_NAME}
             column="phrase"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
+            selection={topology.input}
+            filterBy={topology.input}
           />
           <ArraySelectFilter
             label="Keyword Group"
             table={TABLE_NAME}
             column="keyword_groups"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-            externalContext={model.selections.externalContext}
+            selection={topology.input}
+            filterBy={topology.input}
+            externalContext={topology.externalContext}
           />
           <TextFilter
             label="Answer Contains"
             table={TABLE_NAME}
             column="description"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
+            selection={topology.input}
+            filterBy={topology.input}
           />
           <DateRangeFilter
             label="Requested Date"
             table={TABLE_NAME}
             column="requested"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
+            selection={topology.input}
+            filterBy={topology.input}
           />
           <SearchableSelectFilter
             label="Device"
             table={TABLE_NAME}
             column="device"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-            externalContext={model.selections.externalContext}
+            selection={topology.input}
+            filterBy={topology.input}
+            externalContext={topology.externalContext}
           />
           <TextFilter
             label="Question Contains"
             table={TABLE_NAME}
             column="related_phrase.phrase"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
+            selection={topology.input}
+            filterBy={topology.input}
           />
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 px-6">
         <SummaryTable
-          model={model}
+          topology={topology}
           title="Keyword Phrase"
           groupBy="phrase"
           metric="search_volume"
@@ -135,7 +130,7 @@ export function NozzlePaaView() {
           aggFn={mSql.max}
         />
         <SummaryTable
-          model={model}
+          topology={topology}
           title="PAA Questions"
           groupBy="related_phrase.phrase"
           metric="*"
@@ -143,7 +138,7 @@ export function NozzlePaaView() {
           aggFn={mSql.count}
         />
         <SummaryTable
-          model={model}
+          topology={topology}
           title="Domain"
           groupBy="domain"
           metric="*"
@@ -152,7 +147,7 @@ export function NozzlePaaView() {
           where={mSql.sql`domain IS NOT NULL`}
         />
         <SummaryTable
-          model={model}
+          topology={topology}
           title="URL"
           groupBy="url"
           metric="*"
@@ -168,7 +163,7 @@ export function NozzlePaaView() {
             Detailed Breakdown
           </div>
           <div className="flex-1 overflow-auto p-0">
-            <DetailTable model={model} />
+            <DetailTable topology={topology} />
           </div>
         </div>
       </div>
@@ -176,7 +171,11 @@ export function NozzlePaaView() {
   );
 }
 
-function HeaderSection({ model }: { model: PaaDashboardModel }) {
+function HeaderSection({
+  topology,
+}: {
+  topology: ReturnType<typeof usePaaTopology>;
+}) {
   const qPhrases = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
       .select({ value: mSql.count('phrase').distinct() })
@@ -194,15 +193,12 @@ function HeaderSection({ model }: { model: PaaDashboardModel }) {
       .select({ value: mSql.count('requested').distinct() })
       .where(filter);
 
-  const valPhrases = useMosaicValue(
-    qPhrases,
-    model.selections.globalContext as any,
-  );
+  const valPhrases = useMosaicValue(qPhrases, topology.globalContext as any);
   const valQuestions = useMosaicValue(
     qQuestions,
-    model.selections.globalContext as any,
+    topology.globalContext as any,
   );
-  const valDays = useMosaicValue(qDays, model.selections.globalContext as any);
+  const valDays = useMosaicValue(qDays, topology.globalContext as any);
 
   return (
     <div className="bg-[#0e7490] text-white pt-8 pb-12 px-6">
@@ -238,7 +234,7 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
 }
 
 function SummaryTable({
-  model,
+  topology,
   title,
   groupBy,
   metric,
@@ -246,7 +242,7 @@ function SummaryTable({
   aggFn,
   where,
 }: {
-  model: PaaDashboardModel;
+  topology: ReturnType<typeof usePaaTopology>;
   title: string;
   groupBy: string;
   metric: string;
@@ -266,7 +262,7 @@ function SummaryTable({
         groupKey = mSql.column(groupBy);
       }
 
-      const highlightPred = model.selections.cross.predicate(null);
+      const highlightPred = topology.cross.predicate(null);
 
       let highlightCol;
       const hasPred =
@@ -302,7 +298,7 @@ function SummaryTable({
 
       return q;
     },
-    [groupBy, metric, aggFn, where, safeId, model.selections.cross],
+    [groupBy, metric, aggFn, where, safeId, topology.cross],
   );
 
   const baseTableOptions = useMemo(
@@ -320,13 +316,13 @@ function SummaryTable({
 
   const { tableOptions } = useMosaicReactTable({
     table: queryFactory,
-    filterBy: model.selections.summaryContext,
-    highlightBy: model.selections.cross,
+    filterBy: topology.summaryContext,
+    highlightBy: topology.cross,
     manualHighlight: true,
     // Explicitly use 'split' mode for summary grids to keep memory footprint predictable.
     totalRowsMode: 'split',
     rowSelection: {
-      selection: model.selections.cross,
+      selection: topology.cross,
       column: groupBy,
       columnType: 'scalar',
     },
@@ -400,7 +396,11 @@ interface PaaRowData {
   description: string;
 }
 
-function DetailTable({ model }: { model: PaaDashboardModel }) {
+function DetailTable({
+  topology,
+}: {
+  topology: ReturnType<typeof usePaaTopology>;
+}) {
   const columns = useMemo(
     () =>
       [
@@ -410,7 +410,7 @@ function DetailTable({ model }: { model: PaaDashboardModel }) {
           header: 'Domain',
           size: 150,
           meta: {
-            mosaicDataTable: model.getColumnMeta('domain'),
+            mosaicDataTable: topology.getColumnMeta('domain'),
           },
         },
         {
@@ -419,7 +419,7 @@ function DetailTable({ model }: { model: PaaDashboardModel }) {
           header: 'PAA Question',
           size: 350,
           meta: {
-            mosaicDataTable: model.getColumnMeta('paa_question'),
+            mosaicDataTable: topology.getColumnMeta('paa_question'),
           },
         },
         {
@@ -428,7 +428,7 @@ function DetailTable({ model }: { model: PaaDashboardModel }) {
           header: 'Answer Title',
           size: 300,
           meta: {
-            mosaicDataTable: model.getColumnMeta('title'),
+            mosaicDataTable: topology.getColumnMeta('title'),
           },
         },
         {
@@ -437,11 +437,11 @@ function DetailTable({ model }: { model: PaaDashboardModel }) {
           header: 'Answer Description',
           size: 400,
           meta: {
-            mosaicDataTable: model.getColumnMeta('description'),
+            mosaicDataTable: topology.getColumnMeta('description'),
           },
         },
       ] satisfies Array<ColumnDef<PaaRowData, any>>,
-    [model],
+    [topology],
   );
 
   const baseTableOptions = useMemo(
@@ -456,8 +456,8 @@ function DetailTable({ model }: { model: PaaDashboardModel }) {
   const mosaicOptions = useMemo(
     () => ({
       table: TABLE_NAME,
-      filterBy: model.selections.detailContext,
-      tableFilterSelection: model.selections.detail,
+      filterBy: topology.detailContext,
+      tableFilterSelection: topology.detail,
       columns,
       totalRowsColumnName: '__total_rows',
       // Explicitly use 'split' mode for PAA Detail Table for maximum stability.
@@ -468,7 +468,7 @@ function DetailTable({ model }: { model: PaaDashboardModel }) {
       },
       __debugName: 'DetailTable',
     }),
-    [columns, baseTableOptions, model],
+    [columns, baseTableOptions, topology],
   );
 
   const { tableOptions } = useMosaicReactTable(mosaicOptions);

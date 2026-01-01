@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { isArrowTable } from '@uwdata/mosaic-core';
-import * as vg from '@uwdata/vgplot';
+import { useCoordinator } from '@nozzleio/mosaic-react-core';
 import type { Selection } from '@uwdata/mosaic-core';
 
 /**
@@ -18,6 +18,7 @@ export function useMosaicValue(
   selection: Selection,
 ) {
   const [value, setValue] = useState<number | string>('-');
+  const coordinator = useCoordinator();
 
   useEffect(() => {
     const setup = async () => {
@@ -27,9 +28,9 @@ export function useMosaicValue(
       // 2. Build the query using the factory
       const query = queryFactory(predicate);
 
-      // 3. Execute via Coordinator (WASM/Socket)
+      // 3. Execute via Coordinator
       // We convert to string to ensure the connector receives a raw SQL string
-      const result = await vg.coordinator().query(query.toString());
+      const result = await coordinator.query(query.toString());
 
       // 4. Parse Arrow Result
       if (isArrowTable(result) && result.numRows > 0) {
@@ -47,7 +48,7 @@ export function useMosaicValue(
     // 5. Subscribe to Selection changes to trigger re-fetches
     selection.addEventListener('value', setup);
     return () => selection.removeEventListener('value', setup);
-  }, [queryFactory, selection]);
+  }, [queryFactory, selection, coordinator]);
 
   return value;
 }
