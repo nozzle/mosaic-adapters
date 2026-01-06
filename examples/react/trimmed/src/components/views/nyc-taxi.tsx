@@ -12,10 +12,10 @@ import {
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import {
+  coerceNumber,
+  coerceSafeTimestamp,
   createMosaicMapping,
-  mosaicSchemaHelpers,
 } from '@nozzleio/mosaic-tanstack-table-core';
-import { z } from 'zod';
 import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -25,37 +25,35 @@ const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet';
 const tableName = 'trips';
 
-// 1. Zod Schemas
-const TripSchema = z.object({
-  datetime: mosaicSchemaHelpers.date,
-  fare_amount: mosaicSchemaHelpers.number,
-  vendor_id: z.string(),
-});
-type TripRowData = z.infer<typeof TripSchema>;
+// 1. Interfaces
+interface TripRowData {
+  datetime: Date | null;
+  fare_amount: number;
+  vendor_id: string;
+}
 
-const SummarySchema = z.object({
-  zone_x: mosaicSchemaHelpers.number,
-  zone_y: mosaicSchemaHelpers.number,
-  trip_count: mosaicSchemaHelpers.number,
-  avg_fare: mosaicSchemaHelpers.number,
-});
-type SummaryRowData = z.infer<typeof SummarySchema>;
+interface SummaryRowData {
+  zone_x: number;
+  zone_y: number;
+  trip_count: number;
+  avg_fare: number;
+}
 
 // 2. Mappings
-const { mapping: TripMapping } = createMosaicMapping(TripSchema, {
+const { mapping: TripMapping } = createMosaicMapping<TripRowData>({
   datetime: {
     sqlColumn: 'datetime',
     type: 'TIMESTAMP',
     filterType: 'DATE_RANGE',
     filterOptions: {
-      convertToUTC: true, // NYC Taxi data is stored as UTC, but user inputs Local Time. This shifts input +5 hrs.
+      convertToUTC: true,
     },
   },
   vendor_id: { sqlColumn: 'vendor_id', type: 'VARCHAR', filterType: 'EQUALS' },
   fare_amount: { sqlColumn: 'fare_amount', type: 'FLOAT', filterType: 'RANGE' },
 });
 
-const { mapping: SummaryMapping } = createMosaicMapping(SummarySchema, {
+const { mapping: SummaryMapping } = createMosaicMapping<SummaryRowData>({
   zone_x: { sqlColumn: 'zone_x', type: 'INTEGER', filterType: 'EQUALS' },
   zone_y: { sqlColumn: 'zone_y', type: 'INTEGER', filterType: 'EQUALS' },
   trip_count: { sqlColumn: 'trip_count', type: 'INTEGER', filterType: 'RANGE' },
@@ -246,13 +244,18 @@ function TripsDetailTable({
     [view, helper],
   );
 
-  const { tableOptions } = useMosaicReactTable({
+  const { tableOptions } = useMosaicReactTable<TripRowData>({
     table: tableName,
     filterBy: topology.detailContext,
     tableFilterSelection: topology.detailFilter,
     columns,
-    schema: TripSchema,
     mapping: TripMapping,
+    converter: (row) =>
+      ({
+        ...row,
+        datetime: coerceSafeTimestamp(row.datetime),
+        fare_amount: coerceNumber(row.fare_amount),
+      }) as TripRowData,
     totalRowsMode: 'window',
     tableOptions: { enableColumnFilters: true },
   });
@@ -310,13 +313,20 @@ function TripsSummaryTable({
     [view, helper],
   );
 
-  const { tableOptions } = useMosaicReactTable({
+  const { tableOptions } = useMosaicReactTable<SummaryRowData>({
     table: topology.summaryQueryFactory,
     filterBy: topology.summaryContext,
     tableFilterSelection: topology.summaryFilter,
     columns,
-    schema: SummarySchema,
     mapping: SummaryMapping,
+    converter: (row) =>
+      ({
+        ...row,
+        zone_x: coerceNumber(row.zone_x),
+        zone_y: coerceNumber(row.zone_y),
+        trip_count: coerceNumber(row.trip_count),
+        avg_fare: coerceNumber(row.avg_fare),
+      }) as SummaryRowData,
     totalRowsMode: 'window',
     tableOptions: {
       enableColumnFilters: true,

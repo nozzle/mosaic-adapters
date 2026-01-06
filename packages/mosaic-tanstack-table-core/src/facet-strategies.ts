@@ -1,8 +1,8 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { isParam } from '@uwdata/mosaic-core';
-import { z } from 'zod';
 import { createStructAccess } from './utils';
 import { SqlIdentifier } from './domain/sql-identifier';
+import { assertIsArray, assertIsNumber } from './validation';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { MosaicTableSource } from './types';
 
@@ -23,7 +23,7 @@ export interface FacetQueryContext<TInput = any> {
 
 /**
  * Interface for Facet Strategies.
- * Includes Zod Schema for runtime validation of database results.
+ * Uses manual validation instead of schema libraries to ensure runtime safety.
  */
 export interface FacetStrategy<TInput, TOutput> {
   /**
@@ -32,6 +32,7 @@ export interface FacetStrategy<TInput, TOutput> {
    * @returns A Mosaic SQL SelectQuery object.
    */
   buildQuery: (ctx: FacetQueryContext<TInput>) => SelectQuery;
+
   /**
    * Transforms the raw database result rows into the expected output shape.
    * @param rows - The raw array of objects returned by the database driver.
@@ -39,8 +40,12 @@ export interface FacetStrategy<TInput, TOutput> {
    * @returns The transformed data matching TOutput.
    */
   transformResult: (rows: Array<any>, column: string) => TOutput;
-  /** Schema to validate the transformed result at runtime */
-  resultSchema: z.ZodType<TOutput>;
+
+  /**
+   * Validates the transformed result at runtime.
+   * Should throw an error if the data does not match TOutput.
+   */
+  validate: (data: unknown) => TOutput;
 }
 
 /**
@@ -109,7 +114,10 @@ export const UniqueValuesStrategy: FacetStrategy<void, Array<unknown>> = {
     return values;
   },
 
-  resultSchema: z.array(z.unknown()),
+  validate: (data) => {
+    assertIsArray(data);
+    return data;
+  },
 };
 
 /**
@@ -156,7 +164,6 @@ export const MinMaxStrategy: FacetStrategy<void, [number, number] | undefined> =
     transformResult: (rows) => {
       if (rows.length > 0) {
         const row = rows[0];
-        // Basic type coercion for safety before Zod validation
         const min = Number(row.min);
         const max = Number(row.max);
         if (!isNaN(min) && !isNaN(max)) {
@@ -166,7 +173,18 @@ export const MinMaxStrategy: FacetStrategy<void, [number, number] | undefined> =
       return undefined;
     },
 
-    resultSchema: z.tuple([z.number(), z.number()]).optional(),
+    validate: (data) => {
+      if (data === undefined) {
+        return undefined;
+      }
+      assertIsArray(data);
+      if (data.length === 2) {
+        assertIsNumber(data[0]);
+        assertIsNumber(data[1]);
+        return data as [number, number];
+      }
+      return undefined;
+    },
   };
 
 /**
@@ -214,7 +232,10 @@ export const TotalCountStrategy: FacetStrategy<void, number> = {
     return 0;
   },
 
-  resultSchema: z.number().int().nonnegative(),
+  validate: (data) => {
+    assertIsNumber(data);
+    return data;
+  },
 };
 
 export const defaultFacetStrategies: Record<string, FacetStrategy<any, any>> = {

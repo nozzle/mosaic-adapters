@@ -1,10 +1,6 @@
 /**
  * Orchestrator for the Mosaic and TanStack Table integration.
  * Manages the data-fetching lifecycle, schema mapping, and reactive state synchronization.
- * Updates:
- * - Enforces StrictId for column references.
- * - Updates FacetRegistry generics.
- * - Strict typing for requestAuxiliary.
  */
 
 import {
@@ -83,7 +79,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   public sidecarManager: SidecarManager<TData, TValue>;
   public filterRegistry: StrategyRegistry<FilterStrategy>;
-  // Fixed: Added second generic argument <any, any> to FacetStrategy
   public facetRegistry: StrategyRegistry<FacetStrategy<any, any>>;
 
   #facetValues: Map<string, unknown> = new Map();
@@ -184,7 +179,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     if (options.rowSelection) {
       this.#rowSelectionManager = new MosaicSelectionManager({
         client: this,
-        // Fixed: Cast StrictId to string for the internal manager which expects string keys for now
         column: options.rowSelection.column as string,
         selection: options.rowSelection.selection,
         columnType: options.rowSelection.columnType,
@@ -275,10 +269,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     });
   }
 
-  /**
-   * Request auxiliary data (Sidecars) linked to this table's context.
-   * Type-safe wrapper around SidecarManager using Discriminated Union SidecarRequest.
-   */
   public requestAuxiliary(config: SidecarRequest<TData>) {
     this.sidecarManager.requestAuxiliary(config);
   }
@@ -409,38 +399,20 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   override queryResult(table: unknown): this {
     if (isArrowTable(table)) {
       let totalRows: number | undefined = undefined;
-
-      // Changed from any[] to unknown[] to allow stricter checking
+      // Convert to array of objects
       let rows: Array<unknown> = table.toArray();
 
-      const mode = this.options.validationMode ?? 'first';
-      const schema = this.options.schema;
-
-      if (mode === 'none') {
-        if (process.env.NODE_ENV !== 'production') {
-          logger.warn(
-            'Core',
-            `[MosaicDataTable ${this.debugPrefix}] ValidationMode 'none' is unsafe.`,
-          );
-        }
-      }
-
-      if (mode !== 'none' && rows.length > 0) {
+      // Apply optional converter if provided
+      if (this.options.converter) {
         try {
-          if (mode === 'first') {
-            schema.parse(rows[0]);
-          } else {
-            rows = rows.map((r) => schema.parse(r));
-          }
+          rows = rows.map((r) =>
+            this.options.converter!(r as Record<string, unknown>),
+          );
         } catch (err) {
           logger.warn(
             'Core',
-            `[MosaicDataTable ${this.debugPrefix}] Schema Mismatch (Soft Fail). Proceeding with raw data.`,
-            {
-              error: err,
-              expectedSchema: schema,
-              receivedRowSample: rows[0],
-            },
+            `[MosaicDataTable ${this.debugPrefix}] Converter failed. Proceeding with raw data.`,
+            { error: err },
           );
         }
       }
@@ -733,9 +705,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this.#facetValues;
   }
 
-  /**
-   * Retrieves a facet value with optional type guarding.
-   */
   getFacetValue<T>(
     columnId: string,
     guard?: (val: unknown) => val is T,
@@ -751,7 +720,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       return undefined;
     }
 
-    // Cast as unknown then T to bypass 'unknown not assignable to T' check
     return val as unknown as T;
   }
 

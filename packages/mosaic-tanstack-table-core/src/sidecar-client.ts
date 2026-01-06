@@ -27,7 +27,7 @@ export interface SidecarConfig<TInput, TOutput> {
 
 /**
  * A generic Mosaic Client that delegates query building and result transformation to a Strategy.
- * Enforces Zod validation on the output to ensure type safety at the runtime boundary.
+ * Enforces runtime validation on the output via the Strategy's validate method.
  */
 export class SidecarClient<TInput, TOutput>
   extends MosaicClient
@@ -124,8 +124,8 @@ export class SidecarClient<TInput, TOutput>
           table.toArray(),
           this.config.column,
         );
-        // 2. Validate shape against Schema (Runtime boundary check)
-        const safeResult = this.strategy.resultSchema.parse(result);
+        // 2. Validate shape using the strategy's own validator
+        const safeResult = this.strategy.validate(result);
 
         this.config.onResult(safeResult);
       } catch (err) {

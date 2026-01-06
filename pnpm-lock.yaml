@@ -158,9 +158,6 @@ importers:
       tailwindcss:
         specifier: ^4.1.17
         version: 4.1.17
-      zod:
-        specifier: ^3.22.4
-        version: 3.25.76
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.1.17
@@ -265,9 +262,6 @@ importers:
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
         version: 0.21.1
-      zod:
-        specifier: ^3.22.4
-        version: 3.25.76
     devDependencies:
       eslint:
         specifier: 'catalog:'

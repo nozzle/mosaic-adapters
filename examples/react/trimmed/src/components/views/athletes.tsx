@@ -11,10 +11,10 @@ import {
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import {
+  coerceDate,
+  coerceNumber,
   createMosaicMapping,
-  mosaicSchemaHelpers,
 } from '@nozzleio/mosaic-tanstack-table-core';
-import { z } from 'zod';
 import type { HistogramBin } from '@/lib/strategies';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -30,26 +30,25 @@ const $query = vg.Selection.intersect();
 const $tableFilter = vg.Selection.intersect();
 const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
-// 1. Zod Schema
-const AthleteSchema = z.object({
-  id: mosaicSchemaHelpers.number,
-  name: z.string(),
-  nationality: z.string(),
-  sex: z.string(),
-  date_of_birth: mosaicSchemaHelpers.date.nullable(),
-  height: mosaicSchemaHelpers.number.nullable(),
-  weight: mosaicSchemaHelpers.number.nullable(),
-  sport: z.string().nullable(),
-  gold: mosaicSchemaHelpers.number.nullable(),
-  silver: mosaicSchemaHelpers.number.nullable(),
-  bronze: mosaicSchemaHelpers.number.nullable(),
-  info: z.string().nullable(),
-});
-
-type AthleteRowData = z.infer<typeof AthleteSchema>;
+// 1. Typescript Interface 
+interface AthleteRowData {
+  id: number;
+  name: string;
+  nationality: string;
+  sex: string;
+  date_of_birth: Date | null;
+  height: number | null;
+  weight: number | null;
+  sport: string | null;
+  gold: number | null;
+  silver: number | null;
+  bronze: number | null;
+  info: string | null;
+}
 
 // 2. Strict SQL Mapping
-const { mapping: AthleteMapping } = createMosaicMapping(AthleteSchema, {
+// We pass the generic type to ensure keys match AthleteRowData
+const { mapping: AthleteMapping } = createMosaicMapping<AthleteRowData>({
   id: { sqlColumn: 'id', type: 'INTEGER', filterType: 'EQUALS' },
   name: { sqlColumn: 'name', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
   nationality: {
@@ -259,9 +258,19 @@ function AthletesTable() {
     filterBy: $query,
     tableFilterSelection: $tableFilter,
     columns,
-    schema: AthleteSchema,
     mapping: AthleteMapping,
-    validationMode: 'first',
+    // Optional converter to ensure data types (esp. Dates)
+    converter: (row) =>
+      ({
+        ...row,
+        // Coerce fields that might come as strings/numbers from raw SQL
+        date_of_birth: coerceDate(row.date_of_birth),
+        height: coerceNumber(row.height),
+        weight: coerceNumber(row.weight),
+        gold: coerceNumber(row.gold),
+        silver: coerceNumber(row.silver),
+        bronze: coerceNumber(row.bronze),
+      }) as AthleteRowData,
     totalRowsMode: 'window',
     tableOptions: {
       enableHiding: true,

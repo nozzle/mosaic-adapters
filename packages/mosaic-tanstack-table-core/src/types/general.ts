@@ -13,7 +13,6 @@ import type {
 } from '@tanstack/table-core';
 import type { FacetStrategy } from '../facet-strategies';
 import type { FilterStrategy } from '../query/filter-factory';
-import type { ZodType } from 'zod';
 import type { StrictId } from './paths';
 
 // Re-export strict path types
@@ -83,11 +82,7 @@ export interface StrictSqlColumnConfig<TType extends SqlType> {
 
 /**
  * Maps TypeScript data keys to SQL column configurations.
- * Enforces strict compatibility between the JS type (TData[Key]) and the SQL configuration.
  * Keys must be valid StrictIds (direct keys or nested paths).
- *
- * NOTE: This type is generally constructed via createMosaicMapping factory
- * to ensure Zod inference logic is applied.
  */
 export type MosaicColumnMapping<TData> = Partial<
   Record<
@@ -111,14 +106,13 @@ export interface SqlColumnConfig {
 /**
  * Discriminated Union for Filter Inputs.
  * Strictly enforces the shape of the value based on the filter mode.
- * Now supports nullable bounds for open-ended ranges.
  */
 export type FilterInput =
   | { mode: 'TEXT'; value: string }
   | { mode: 'MATCH'; value: string | number | boolean }
   | { mode: 'RANGE'; value: [number | null, number | null] }
-  | { mode: 'DATE_RANGE'; value: [string | null, string | null] } // Enforce ISO Strings
-  | { mode: 'SELECT'; value: string | number | boolean }; // Single select
+  | { mode: 'DATE_RANGE'; value: [string | null, string | null] }
+  | { mode: 'SELECT'; value: string | number | boolean };
 
 export type FilterMode = FilterInput['mode'];
 
@@ -138,9 +132,6 @@ export interface IMosaicLifecycleHooks {
   __onDisconnect?: () => void;
 }
 
-/**
- * Deprecated: Metadata extensions are being replaced by strict mappings.
- */
 export type MosaicDataTableColumnDefMetaOptions = {
   mosaicDataTable?: {
     sqlColumn?: string;
@@ -178,22 +169,17 @@ export interface MosaicDataTableOptions<
   TValue = unknown,
 > {
   table: MosaicTableSource;
+
   /**
-   * Runtime schema validator.
+   * Optional converter to transform raw database rows into the application TData shape.
+   * Useful for date coercion or custom parsing.
    */
-  schema: ZodType<TData, any, any>;
+  converter?: (row: Record<string, unknown>) => TData;
+
   /**
    * Strict mapping definition between TypeScript keys and SQL columns.
    */
   mapping?: MosaicColumnMapping<TData>;
-
-  /**
-   * Validation strategy for incoming data.
-   * 'first': Validate only row 0 (O(1) performance).
-   * 'all': Validate every row (O(N) performance).
-   * @deprecated 'none' is unsafe and should be avoided.
-   */
-  validationMode?: 'first' | 'all' | 'none';
 
   coordinator?: Coordinator;
   filterBy?: Selection | undefined;
@@ -201,7 +187,7 @@ export interface MosaicDataTableOptions<
   manualHighlight?: boolean;
   rowSelection?: {
     selection: Selection;
-    column: StrictId<TData>; // Enforce StrictId
+    column: StrictId<TData>;
     columnType?: ColumnType;
   };
   tableFilterSelection?: Selection | undefined;

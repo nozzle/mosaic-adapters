@@ -1,7 +1,10 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { isParam } from '@uwdata/mosaic-core';
-import { z } from 'zod';
-// Fix: Import from react package (which re-exports core) because core is not a direct dependency
+// Import validation helpers from the core package
+import {
+  assertIsArray,
+  assertIsNumber,
+} from '@nozzleio/mosaic-tanstack-table-core';
 import type {
   FacetQueryContext,
   FacetStrategy,
@@ -16,15 +19,6 @@ export interface HistogramBin {
 export interface HistogramInput {
   binSize: number;
 }
-
-// Zod schema for runtime validation of the histogram output
-const HistogramOutputSchema = z.array(
-  z.object({
-    bin0: z.number(),
-    bin1: z.number(),
-    count: z.number(),
-  }),
-);
 
 /**
  * A custom strategy to generate Histogram data.
@@ -86,8 +80,6 @@ export const HistogramStrategy: FacetStrategy<
 
   transformResult: (rows: Array<any>, _column: string) => {
     // Post-process to add bin1 (end of bin) for convenience
-    // We can't easily access 'binSize' here without passing it through,
-    // but we can infer or just return bin0.
     return rows.map((r) => ({
       bin0: Number(r.bin0),
       bin1: Number(r.bin0) + 5, // We'd ideally pass binSize through context or infer it
@@ -95,6 +87,18 @@ export const HistogramStrategy: FacetStrategy<
     }));
   },
 
-  // Required Runtime Validation
-  resultSchema: HistogramOutputSchema,
+  // Required Runtime Validation 
+  validate: (data: unknown) => {
+    assertIsArray(data);
+    // Basic shape check for the first item if it exists
+    if (data.length > 0) {
+      const item = data[0] as any;
+      if (typeof item !== 'object' || item === null) {
+        throw new Error('Invalid histogram data format');
+      }
+      assertIsNumber(item.bin0);
+      assertIsNumber(item.count);
+    }
+    return data as Array<HistogramBin>;
+  },
 };

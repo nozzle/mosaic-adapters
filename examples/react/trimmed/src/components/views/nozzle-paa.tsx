@@ -12,10 +12,9 @@ import {
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import {
+  coerceNumber,
   createMosaicMapping,
-  mosaicSchemaHelpers,
 } from '@nozzleio/mosaic-tanstack-table-core';
-import { z } from 'zod';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import { usePaaTopology } from '@/hooks/usePaaTopology';
 import { RenderTable } from '@/components/render-table';
@@ -31,16 +30,14 @@ const TABLE_NAME = 'nozzle_paa';
 const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 
 // --- MAIN DETAIL TABLE ---
-// Schema validation relaxed to .nullable() to handle SQL NULLs coming from Parquet/DuckDB
-const PaaSchema = z.object({
-  domain: z.string().nullable(),
-  paa_question: z.string().nullable(),
-  title: z.string().nullable(),
-  description: z.string().nullable(),
-});
-type PaaRowData = z.infer<typeof PaaSchema>;
+interface PaaRowData {
+  domain: string | null;
+  paa_question: string | null;
+  title: string | null;
+  description: string | null;
+}
 
-const { mapping: PaaMapping } = createMosaicMapping(PaaSchema, {
+const { mapping: PaaMapping } = createMosaicMapping<PaaRowData>({
   domain: { sqlColumn: 'domain', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
   paa_question: {
     sqlColumn: 'related_phrase.phrase',
@@ -56,15 +53,13 @@ const { mapping: PaaMapping } = createMosaicMapping(PaaSchema, {
 });
 
 // --- SUMMARY TABLE SCHEMAS (Generic for GroupBy queries) ---
-// We create specific schemas to satisfy the strict typing requirements
-const GroupBySchema = z.object({
-  key: z.union([z.string(), z.number(), z.null()]),
-  metric: mosaicSchemaHelpers.number.nullable(),
-  __is_highlighted: mosaicSchemaHelpers.number.optional(),
-});
-type GroupByRow = z.infer<typeof GroupBySchema>;
+interface GroupByRow {
+  key: string | number | null;
+  metric: number | null;
+  __is_highlighted?: number;
+}
 
-const { mapping: GroupByMapping } = createMosaicMapping(GroupBySchema, {
+const { mapping: GroupByMapping } = createMosaicMapping<GroupByRow>({
   key: { sqlColumn: 'key', type: 'VARCHAR', filterType: 'EQUALS' },
   metric: { sqlColumn: 'metric', type: 'INTEGER', filterType: 'RANGE' },
   __is_highlighted: {
@@ -383,7 +378,7 @@ function SummaryTable({
     [groupBy, title, metricLabel, helper],
   );
 
-  const { tableOptions } = useMosaicReactTable({
+  const { tableOptions } = useMosaicReactTable<GroupByRow>({
     table: queryFactory,
     filterBy: topology.summaryContext,
     highlightBy: topology.cross,
@@ -392,19 +387,17 @@ function SummaryTable({
     rowSelection: {
       selection: topology.cross,
       // Fix: Cast groupBy to keyof GroupByRow.
-      // This is necessary because in this "Summary Table" pattern, the local schema uses generic keys ('key', 'metric'),
-      // but we want the Selection to generate SQL for the *actual* database column (e.g. 'phrase'),
-      // which is passed in via the `groupBy` prop.
-      // The core `MosaicSelectionManager` uses this column string to build the SQL, so this cast ensures
-      // strict type checks pass while preserving the advanced logic.
       column: groupBy as keyof GroupByRow,
       columnType: 'scalar',
     },
     columns,
-    // Pass the Generic Schema/Mapping that matches the query alias structure
-    schema: GroupBySchema,
     mapping: GroupByMapping,
-    validationMode: 'first',
+    converter: (row) =>
+      ({
+        ...row,
+        metric: coerceNumber(row.metric),
+        __is_highlighted: coerceNumber(row.__is_highlighted),
+      }) as GroupByRow,
     tableOptions: {
       initialState: {
         sorting: [{ id: 'metric', desc: true }],
@@ -458,12 +451,11 @@ function DetailTable({
     [helper],
   );
 
-  const { tableOptions } = useMosaicReactTable({
+  const { tableOptions } = useMosaicReactTable<PaaRowData>({
     table: TABLE_NAME,
     filterBy: topology.detailContext,
     tableFilterSelection: topology.detail,
     columns,
-    schema: PaaSchema,
     mapping: PaaMapping,
     totalRowsColumnName: '__total_rows',
     totalRowsMode: 'split',
