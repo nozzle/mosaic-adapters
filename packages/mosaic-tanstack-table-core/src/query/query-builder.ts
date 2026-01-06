@@ -1,4 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/query/query-builder.ts
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
 import { createStructAccess, toRangeValue } from '../utils';
@@ -8,7 +7,8 @@ import type { RowData, TableState } from '@tanstack/table-core';
 import type { ColumnMapper } from './column-mapper';
 import type { StrategyRegistry } from '../registry';
 import type { FilterStrategy } from './filter-factory';
-import type { FilterValue, MosaicColumnMapping } from '../types';
+import type { FilterInput, MosaicColumnMapping } from '../types';
+import type { StrictId } from '../types/paths';
 
 export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   source: string | SelectQuery;
@@ -39,8 +39,6 @@ export function buildTableQuery<TData extends RowData, TValue>(
   const { pagination, sorting } = tableState;
 
   // 1. Select Columns
-  // UPDATED: We now use 'alias' from the mapper instead of 'id'.
-  // This allows the ID (used for state/filtering) to differ from the Accessor (used for data reading).
   const selectColumns = mapper.getSelectColumns().map(({ sql, alias }) => {
     const colStr = sql.toString();
 
@@ -50,12 +48,11 @@ export function buildTableQuery<TData extends RowData, TValue>(
       return { [alias]: structExpr };
     }
 
-    // Simple column aliasing: SELECT "sql_col" AS "alias"
+    // Simple column aliasing
     if (alias !== colStr) {
       return { [alias]: mSql.column(colStr) };
     }
 
-    // Direct match: SELECT "id"
     return mSql.column(colStr);
   });
 
@@ -132,7 +129,8 @@ export function buildTableQuery<TData extends RowData, TValue>(
 }
 
 /**
- * Extracts internal filters and converts weak TanStack state to Strong Types.
+ * Extracts internal filters and converts weak TanStack state to Strong Types (FilterInput).
+ * This logic now strictly parses the raw state based on the column's Mapping configuration.
  */
 export function extractInternalFilters<TData extends RowData, TValue>(options: {
   tableState: TableState;
@@ -155,15 +153,24 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
 
     // Resolve Configuration
     let filterType = 'EQUALS';
+    let mappingConfig;
 
     // 1. Try Strict Mapping
-    const mappingConfig = options.mapping?.[filter.id as keyof TData];
-    if (mappingConfig) {
-      filterType = mappingConfig.filterType || 'EQUALS';
-    } else {
-      // 2. Fallback to Meta
+    if (options.mapping) {
+      const key = filter.id as StrictId<TData>;
+      mappingConfig = options.mapping[key];
+      if (mappingConfig?.filterType) {
+        filterType = mappingConfig.filterType;
+      }
+    }
+
+    if (!mappingConfig) {
+      // 2. Fallback to Meta (Deprecated)
       const colDef = options.mapper.getColumnDef(sqlColumn.toString());
-      filterType = colDef?.meta?.mosaicDataTable?.sqlFilterType || 'EQUALS';
+      const metaType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
+      if (metaType) {
+        filterType = metaType;
+      }
     }
 
     const strategy = options.filterRegistry.get(filterType);
@@ -171,31 +178,87 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
       return;
     }
 
-    // TYPE COERCION LAYER: Convert Unknown -> FilterValue
+    // TYPE COERCION LAYER: Convert Unknown -> Strict FilterInput
     const rawValue = filter.value;
-    let safeInput: FilterValue | null = null;
+    let safeInput: FilterInput | null = null;
 
-    if (Array.isArray(rawValue)) {
-      // Arrays are likely Ranges
-      if (
-        rawValue.length === 2 &&
-        (typeof rawValue[0] === 'number' ||
-          typeof rawValue[0] === 'string' ||
-          rawValue[0] === null)
-      ) {
-        const min = toRangeValue(rawValue[0]);
-        const max = toRangeValue(rawValue[1]);
-        if (min !== null || max !== null) {
+    // Strict Mode: Use the configured filterType to dictate parsing logic
+    if (filterType === 'RANGE') {
+      if (Array.isArray(rawValue) && rawValue.length === 2) {
+        const rawMin = toRangeValue(rawValue[0]);
+        const rawMax = toRangeValue(rawValue[1]);
+
+        // toRangeValue returns number | Date | null.
+        // We strictly require numbers for the RANGE type.
+        // If we get a Date, we treat it as null (invalid for numeric range).
+        const minNum =
+          typeof rawMin === 'number' && !isNaN(rawMin) ? rawMin : null;
+        const maxNum =
+          typeof rawMax === 'number' && !isNaN(rawMax) ? rawMax : null;
+
+        // Valid if at least one bound exists
+        if (minNum !== null || maxNum !== null) {
           safeInput = {
-            type: 'range',
-            value: [min as number | null, max as number | null],
+            mode: 'RANGE',
+            value: [minNum, maxNum],
           };
         }
       }
-    } else if (typeof rawValue === 'string') {
-      safeInput = { type: 'text', value: rawValue };
-    } else if (typeof rawValue === 'number') {
-      safeInput = { type: 'select', value: rawValue };
+    } else if (filterType === 'DATE_RANGE') {
+      // Expect array of ISO strings
+      // We trust the input is strings if the mapping says DATE_RANGE
+      // (toRangeValue converts strings to Dates, so we don't use it here if we want raw ISO)
+      if (
+        Array.isArray(rawValue) &&
+        rawValue.length === 2 &&
+        (typeof rawValue[0] === 'string' || rawValue[0] === null) &&
+        (typeof rawValue[1] === 'string' || rawValue[1] === null)
+      ) {
+        const minStr = rawValue[0] as string | null;
+        const maxStr = rawValue[1] as string | null;
+        if (minStr || maxStr) {
+          safeInput = {
+            mode: 'DATE_RANGE',
+            value: [minStr, maxStr],
+          };
+        }
+      }
+    } else if (filterType === 'SELECT') {
+      if (
+        typeof rawValue === 'string' ||
+        typeof rawValue === 'number' ||
+        typeof rawValue === 'boolean'
+      ) {
+        safeInput = { mode: 'SELECT', value: rawValue };
+      }
+    } else if (
+      filterType === 'ILIKE' ||
+      filterType === 'LIKE' ||
+      filterType === 'PARTIAL_ILIKE'
+    ) {
+      if (typeof rawValue === 'string') {
+        safeInput = { mode: 'TEXT', value: rawValue };
+      }
+    } else if (filterType === 'EQUALS') {
+      // EQUALS is flexible, maps to MATCH mode
+      if (
+        typeof rawValue === 'string' ||
+        typeof rawValue === 'number' ||
+        typeof rawValue === 'boolean'
+      ) {
+        safeInput = { mode: 'MATCH', value: rawValue };
+      }
+    } else {
+      // Legacy Fallback
+      if (Array.isArray(rawValue) && rawValue.length === 2) {
+        // Assume number range for backward compat if legacy
+        safeInput = {
+          mode: 'RANGE',
+          value: [Number(rawValue[0]) || null, Number(rawValue[1]) || null],
+        };
+      } else if (typeof rawValue === 'string') {
+        safeInput = { mode: 'TEXT', value: rawValue };
+      }
     }
 
     if (safeInput) {

@@ -10,18 +10,15 @@ import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { IMosaicClient, MosaicTableSource } from './types';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 
-export interface SidecarConfig<T> {
+export interface SidecarConfig<TInput, TOutput> {
   source: MosaicTableSource;
   column: string;
-  /**
-   * Function to retrieve the current cascading filters from the host table.
-   */
   getFilters: () => Array<FilterExpr>;
-  onResult: (data: T) => void;
+  onResult: (data: TOutput) => void;
   filterBy?: Selection;
   options?: Partial<
     Omit<
-      FacetQueryContext,
+      FacetQueryContext<TInput>,
       'source' | 'column' | 'cascadingFilters' | 'primaryFilter'
     >
   >;
@@ -29,15 +26,18 @@ export interface SidecarConfig<T> {
 }
 
 /**
- * A generic Mosaic Client that delegates query building and result transformation
- * to a Strategy.
+ * A generic Mosaic Client that delegates query building and result transformation to a Strategy.
+ * Enforces Zod validation on the output to ensure type safety at the runtime boundary.
  */
-export class SidecarClient<T> extends MosaicClient implements IMosaicClient {
+export class SidecarClient<TInput, TOutput>
+  extends MosaicClient
+  implements IMosaicClient
+{
   private lifecycle = createLifecycleManager(this);
 
   constructor(
-    private config: SidecarConfig<T>,
-    private strategy: FacetStrategy<T>,
+    private config: SidecarConfig<TInput, TOutput>,
+    private strategy: FacetStrategy<TInput, TOutput>,
   ) {
     super(config.filterBy);
     this.coordinator = defaultCoordinator();
@@ -66,9 +66,6 @@ export class SidecarClient<T> extends MosaicClient implements IMosaicClient {
     this.lifecycle.disconnect(this.coordinator);
   }
 
-  /**
-   * Update the data source.
-   */
   updateSource(source: MosaicTableSource) {
     if (this.config.source !== source) {
       this.config.source = source;
@@ -76,13 +73,10 @@ export class SidecarClient<T> extends MosaicClient implements IMosaicClient {
     }
   }
 
-  /**
-   * Update runtime options (like search term) and trigger a re-query.
-   */
   updateRuntimeOptions(
     opts: Partial<
       Omit<
-        FacetQueryContext,
+        FacetQueryContext<TInput>,
         'source' | 'column' | 'cascadingFilters' | 'primaryFilter'
       >
     >,
@@ -99,8 +93,6 @@ export class SidecarClient<T> extends MosaicClient implements IMosaicClient {
   }
 
   override query(filter?: FilterExpr): SelectQuery | null {
-    // Safety Check: If source is an empty string, don't query.
-    // This prevents "Parser Error: zero-length delimited identifier"
     const src = this.config.source;
     if (typeof src === 'string' && src.trim() === '') {
       return null;
@@ -109,16 +101,15 @@ export class SidecarClient<T> extends MosaicClient implements IMosaicClient {
     const cascadingFilters = this.config.getFilters();
     const primaryFilter = filter;
 
-    const ctx: FacetQueryContext = {
+    const ctx: FacetQueryContext<TInput> = {
       source: this.config.source,
       column: this.config.column,
       cascadingFilters,
       primaryFilter,
-      ...this.config.options,
+      ...(this.config.options as any),
     };
 
     const statement = this.strategy.buildQuery(ctx);
-
     const sqlStr = statement.toString();
     logger.debug('SQL', `Sidecar [${this.debugName}] Query: ${sqlStr}`);
 
@@ -127,11 +118,25 @@ export class SidecarClient<T> extends MosaicClient implements IMosaicClient {
 
   override queryResult(table: unknown): this {
     if (isArrowTable(table)) {
-      const result = this.strategy.transformResult(
-        table.toArray(),
-        this.config.column,
-      );
-      this.config.onResult(result);
+      try {
+        // 1. Transform raw Arrow rows into expected shape
+        const result = this.strategy.transformResult(
+          table.toArray(),
+          this.config.column,
+        );
+        // 2. Validate shape against Schema (Runtime boundary check)
+        const safeResult = this.strategy.resultSchema.parse(result);
+
+        this.config.onResult(safeResult);
+      } catch (err) {
+        logger.error(
+          'Core',
+          `[Sidecar ${this.debugName}] Result Validation Failed`,
+          {
+            error: err,
+          },
+        );
+      }
     }
     return this;
   }

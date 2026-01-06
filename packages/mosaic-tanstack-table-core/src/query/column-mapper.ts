@@ -3,6 +3,7 @@ import { SqlIdentifier } from '../domain/sql-identifier';
 import type { ColumnDef, RowData } from '@tanstack/table-core';
 import type { FieldInfoRequest } from '@uwdata/mosaic-core';
 import type { MosaicColumnMapping } from '../types';
+import type { StrictId } from '../types/paths';
 
 let mapperIdCounter = 0;
 
@@ -66,7 +67,8 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
 
       // 1. Try to resolve via Strict Mapping first
       if (this.mapping && 'accessorKey' in def && def.accessorKey) {
-        const key = def.accessorKey as keyof TData;
+        // Fixed: Cast accessorKey to StrictId to allow indexing into the typed mapping record
+        const key = def.accessorKey as StrictId<TData>;
         const config = this.mapping[key];
         if (config) {
           columnAccessor = config.sqlColumn;
@@ -133,15 +135,12 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
       }
 
       // 6. Determine Select Alias
-      // If accessorKey is provided and is a simple string, it is the safest alias
-      // because TanStack Table will try to read from it.
-      // If we alias to 'id' but accessorKey is different, TanStack will read undefined.
       let alias = id;
       if (
         'accessorKey' in def &&
         typeof def.accessorKey === 'string' &&
         def.accessorKey.trim().length > 0 &&
-        !def.accessorKey.includes('.') // Avoid aliasing to paths like "a.b" which might be invalid output keys or imply nesting
+        !def.accessorKey.includes('.')
       ) {
         alias = def.accessorKey;
       }
@@ -168,12 +167,9 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
     if (!this.mapping) {
       return undefined;
     }
-    for (const key in this.mapping) {
-      if (key === columnId) {
-        return this.mapping[key];
-      }
-    }
-    return undefined;
+    // Fixed: Cast columnId to strict ID for lookup
+    const key = columnId as StrictId<TData>;
+    return this.mapping[key];
   }
 
   public getColumnDef(sqlColumn: string): ColumnDef<TData, TValue> | undefined {

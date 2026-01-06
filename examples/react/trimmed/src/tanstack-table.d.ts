@@ -1,7 +1,7 @@
-// examples/react/trimmed/src/tanstack-table.d.ts
 import '@tanstack/react-table';
 import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
-import type { HistogramBin } from '@/lib/strategies';
+import type { HistogramBin, HistogramInput } from '@/lib/strategies';
+import type { FacetStrategyDefinition } from '@nozzleio/mosaic-tanstack-table-core';
 
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue>
@@ -19,9 +19,7 @@ declare module '@tanstack/react-table' {
 // This allows the core library to understand our custom 'histogram' strategy
 declare module '@nozzleio/mosaic-tanstack-table-core' {
   interface MosaicFacetRegistry {
-    histogram: {
-      input: { binSize: number };
-      output: Array<HistogramBin>;
-    };
+    // Updated to use the new Definition type
+    histogram: FacetStrategyDefinition<HistogramInput, Array<HistogramBin>>;
   }
 }

@@ -1,12 +1,12 @@
-// packages/mosaic-tanstack-table-core/src/facet-strategies.ts
 import * as mSql from '@uwdata/mosaic-sql';
 import { isParam } from '@uwdata/mosaic-core';
+import { z } from 'zod';
 import { createStructAccess } from './utils';
 import { SqlIdentifier } from './domain/sql-identifier';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { MosaicTableSource } from './types';
 
-export interface FacetQueryContext {
+export interface FacetQueryContext<TInput = any> {
   source: MosaicTableSource; // The table or subquery
   column: string;
   /** Internal table filters (excluding the facet column itself) */
@@ -16,38 +16,36 @@ export interface FacetQueryContext {
   searchTerm?: string; // For unique values
   limit?: number;
   sortMode?: 'alpha' | 'count';
-  /** Allow strategies to accept custom configuration (e.g. bins, strict mode, etc) */
-  [key: string]: any;
+  /** Custom configuration options passed from the UI */
+  options?: TInput;
 }
 
-export interface FacetStrategy<TResult> {
-  buildQuery: (ctx: FacetQueryContext) => SelectQuery;
-  transformResult: (rows: Array<any>, column: string) => TResult;
+/**
+ * Interface for Facet Strategies.
+ * Includes Zod Schema for runtime validation of database results.
+ */
+export interface FacetStrategy<TInput, TOutput> {
+  buildQuery: (ctx: FacetQueryContext<TInput>) => SelectQuery;
+  transformResult: (rows: Array<any>, column: string) => TOutput;
+  /** Schema to validate the transformed result at runtime */
+  resultSchema: z.ZodType<TOutput>;
 }
 
 /**
  * Strategy for fetching unique values from a column.
  * Used for Dropdown/Select filters.
  */
-export const UniqueValuesStrategy: FacetStrategy<Array<unknown>> = {
+export const UniqueValuesStrategy: FacetStrategy<void, Array<unknown>> = {
   buildQuery: (ctx) => {
     let src: string | SelectQuery;
-    // Filters to apply to the OUTER query
     const outerFilters: Array<FilterExpr> = [];
 
     if (typeof ctx.source === 'function') {
-      // 1. Source is a Factory: Pass Primary Filter INNER
-      // This ensures filters on raw columns (e.g. 'dx' in NYC Taxi) are applied
-      // before aggregation/projection hides them.
       src = ctx.source(ctx.primaryFilter);
-
-      // Cascading filters (on table columns) go OUTER
-      // These usually reference columns present in the table view (e.g. 'trip_count')
       if (ctx.cascadingFilters.length > 0) {
         outerFilters.push(...ctx.cascadingFilters);
       }
     } else {
-      // 2. Source is Table Name/Param: Everything goes OUTER
       src = isParam(ctx.source)
         ? (ctx.source.value as string)
         : (ctx.source as string);
@@ -62,12 +60,10 @@ export const UniqueValuesStrategy: FacetStrategy<Array<unknown>> = {
 
     const statement = mSql.Query.from(src).select(ctx.column);
 
-    // Apply accumulated outer filters
     if (outerFilters.length > 0) {
       statement.where(mSql.and(...outerFilters));
     }
 
-    // Add search term filter if present
     if (ctx.searchTerm) {
       const colExpr = createStructAccess(SqlIdentifier.from(ctx.column));
       const pattern = mSql.literal(`%${ctx.searchTerm}%`);
@@ -76,14 +72,12 @@ export const UniqueValuesStrategy: FacetStrategy<Array<unknown>> = {
 
     statement.groupby(ctx.column);
 
-    // Sort Logic
     if (ctx.sortMode === 'count') {
       statement.orderby(mSql.desc(mSql.count()));
     } else {
       statement.orderby(mSql.asc(mSql.column(ctx.column)));
     }
 
-    // Limit Logic
     if (ctx.limit !== undefined) {
       statement.limit(ctx.limit);
     }
@@ -95,7 +89,6 @@ export const UniqueValuesStrategy: FacetStrategy<Array<unknown>> = {
     const values: Array<unknown> = [];
     rows.forEach((row) => {
       let val = row[col];
-      // Handle struct access in result if needed
       if (val === undefined && col.includes('.')) {
         val = col.split('.').reduce((obj: any, k: string) => obj?.[k], row);
       }
@@ -103,78 +96,82 @@ export const UniqueValuesStrategy: FacetStrategy<Array<unknown>> = {
     });
     return values;
   },
+
+  resultSchema: z.array(z.unknown()),
 };
 
 /**
  * Strategy for fetching Min/Max values from a column.
  * Used for Range Sliders.
  */
-export const MinMaxStrategy: FacetStrategy<[number, number] | undefined> = {
-  buildQuery: (ctx) => {
-    let src: string | SelectQuery;
-    const outerFilters: Array<FilterExpr> = [];
+export const MinMaxStrategy: FacetStrategy<void, [number, number] | undefined> =
+  {
+    buildQuery: (ctx) => {
+      let src: string | SelectQuery;
+      const outerFilters: Array<FilterExpr> = [];
 
-    if (typeof ctx.source === 'function') {
-      // Factory: Primary Filter INNER
-      src = ctx.source(ctx.primaryFilter);
-      // Cascading Filters OUTER
-      if (ctx.cascadingFilters.length > 0) {
-        outerFilters.push(...ctx.cascadingFilters);
+      if (typeof ctx.source === 'function') {
+        src = ctx.source(ctx.primaryFilter);
+        if (ctx.cascadingFilters.length > 0) {
+          outerFilters.push(...ctx.cascadingFilters);
+        }
+      } else {
+        src = isParam(ctx.source)
+          ? (ctx.source.value as string)
+          : (ctx.source as string);
+
+        if (ctx.primaryFilter) {
+          outerFilters.push(ctx.primaryFilter);
+        }
+        if (ctx.cascadingFilters.length > 0) {
+          outerFilters.push(...ctx.cascadingFilters);
+        }
       }
-    } else {
-      // String: All OUTER
-      src = isParam(ctx.source)
-        ? (ctx.source.value as string)
-        : (ctx.source as string);
 
-      if (ctx.primaryFilter) {
-        outerFilters.push(ctx.primaryFilter);
+      const col = mSql.column(ctx.column);
+      const statement = mSql.Query.from(src).select({
+        min: mSql.min(col),
+        max: mSql.max(col),
+      });
+
+      if (outerFilters.length > 0) {
+        statement.where(mSql.and(...outerFilters));
       }
-      if (ctx.cascadingFilters.length > 0) {
-        outerFilters.push(...ctx.cascadingFilters);
+
+      return statement;
+    },
+
+    transformResult: (rows) => {
+      if (rows.length > 0) {
+        const row = rows[0];
+        // Basic type coercion for safety before Zod validation
+        const min = Number(row.min);
+        const max = Number(row.max);
+        if (!isNaN(min) && !isNaN(max)) {
+          return [min, max];
+        }
       }
-    }
+      return undefined;
+    },
 
-    const col = mSql.column(ctx.column);
-    const statement = mSql.Query.from(src).select({
-      min: mSql.min(col),
-      max: mSql.max(col),
-    });
-
-    if (outerFilters.length > 0) {
-      statement.where(mSql.and(...outerFilters));
-    }
-
-    return statement;
-  },
-
-  transformResult: (rows) => {
-    if (rows.length > 0) {
-      const row = rows[0];
-      return [row.min, row.max];
-    }
-    return undefined;
-  },
-};
+    resultSchema: z.tuple([z.number(), z.number()]).optional(),
+  };
 
 /**
  * Strategy for fetching the Total Row Count.
  * Used for Pagination in 'split' mode.
  */
-export const TotalCountStrategy: FacetStrategy<number> = {
+export const TotalCountStrategy: FacetStrategy<void, number> = {
   buildQuery: (ctx) => {
     let src: string | SelectQuery;
     const outerFilters: Array<FilterExpr> = [];
 
     if (typeof ctx.source === 'function') {
-      // Factory: Primary Filter INNER
       src = ctx.source(ctx.primaryFilter);
-      // Cascading Filters OUTER
       if (ctx.cascadingFilters.length > 0) {
         outerFilters.push(...ctx.cascadingFilters);
       }
     } else {
-      // String: All OUTER
       src = isParam(ctx.source)
         ? (ctx.source.value as string)
         : (ctx.source as string);
@@ -204,9 +201,11 @@ export const TotalCountStrategy: FacetStrategy<number> = {
     }
     return 0;
   },
+
+  resultSchema: z.number().int().nonnegative(),
 };
 
-export const defaultFacetStrategies: Record<string, FacetStrategy<any>> = {
+export const defaultFacetStrategies: Record<string, FacetStrategy<any, any>> = {
   unique: UniqueValuesStrategy,
   minmax: MinMaxStrategy,
   totalCount: TotalCountStrategy,

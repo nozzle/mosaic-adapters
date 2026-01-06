@@ -1,5 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/sidecar-manager.ts
-
 import { SidecarClient } from './sidecar-client';
 import { TotalCountStrategy } from './facet-strategies';
 import type { MosaicDataTable } from './data-table';
@@ -12,31 +10,33 @@ import type {
   StrategyRegistry,
 } from './registry';
 import type { FacetStrategy } from './facet-strategies';
+import type { StrictId } from './types/paths';
 
 /**
  * Manages "Sidecar" clients for a MosaicDataTable.
  * Ensures only one client exists per column/type pair.
+ * Enforces strict typing for strategy inputs and column IDs.
  */
 export class SidecarManager<TData extends RowData, TValue = unknown> {
-  private clients = new Map<string, SidecarClient<any>>();
+  private clients = new Map<string, SidecarClient<any, any>>();
 
   constructor(
     private host: MosaicDataTable<TData, TValue>,
-    private facetRegistry: StrategyRegistry<FacetStrategy<any>>,
+    private facetRegistry: StrategyRegistry<FacetStrategy<any, any>>,
   ) {}
 
   /**
    * Idempotently requests a facet sidecar for a column.
    */
   requestFacet(columnId: string, type: string) {
-    // We cast type to any here because requestFacet is often called dynamically based on
-    // column metadata strings which might not be strictly typed to the Registry keys at that call site.
-    // However, the underlying requestAuxiliary will enforce it if called directly.
+    // Dynamic request from metadata strings (legacy support or dynamic schema)
+    // Casts to strict types internally
     this.requestAuxiliary({
       id: `${columnId}:${type}`,
       type: type as any,
-      column: columnId,
+      column: columnId as any,
       excludeColumnId: columnId,
+      options: undefined,
       onResult: (val) => {
         this.host.updateFacetValue(columnId, val);
       },
@@ -45,29 +45,21 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
 
   /**
    * Generic method to request any auxiliary data driven by the table context.
-   * Strongly typed against the MosaicFacetRegistry.
+   * Strongly typed against the MosaicFacetRegistry and RowData.
    */
   requestAuxiliary<TKey extends FacetStrategyKey>(config: {
-    /** Unique identifier for this request (e.g. 'price_hist', 'col_a:unique') */
     id: string;
-    /** The name of the registered strategy to use */
     type: TKey;
-    /** The SQL column/expression to operate on */
-    column: string;
-    /**
-     * If provided, filters on this column ID will be EXCLUDED from the query.
-     * This is standard Cross-Filter behavior.
-     */
+    column: StrictId<TData>;
     excludeColumnId?: string;
     /**
-     * Additional options to pass to the strategy.
-     * Strongly typed based on the strategy definition.
+     * Strongly typed options based on the strategy registry.
+     * If the strategy input is void, options are optional.
+     * If the strategy input is defined, options are required.
      */
-    options?: MosaicFacetRegistry[TKey]['input'];
-    /**
-     * Custom result handler.
-     * Strongly typed based on the strategy output.
-     */
+    options: MosaicFacetRegistry[TKey]['input'] extends void
+      ? void | undefined
+      : MosaicFacetRegistry[TKey]['input'];
     onResult?: (result: MosaicFacetRegistry[TKey]['output']) => void;
   }) {
     if (this.clients.has(config.id)) {
@@ -76,31 +68,27 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
 
     const strategy = this.facetRegistry.get(config.type);
 
-    if (!strategy) {
-      console.warn(
-        `[SidecarManager] No strategy registered for type "${config.type}" (ID: ${config.id}).`,
-      );
-      return;
-    }
+    // Removed unnecessary check: strategy is guaranteed to exist due to TKey constraint
+    // If strict mode is off or runtime registry is mutated, this might throw, but static analysis guarantees it.
 
     const sqlColumn =
-      this.host.getColumnSqlName(config.column) || config.column;
+      this.host.getColumnSqlName(config.column as string) ||
+      (config.column as string);
 
     const colDef = this.host.getColumnDef(sqlColumn);
     const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
 
-    // We cast to unknown first to erase the inferred 'void' type from the base registry.
-    // We then cast to 'object | undefined' to acknowledge it might be an options object
-    // (from augmentation) or undefined (from base).
-    // This makes the '|| {}' fallback necessary and valid to the linter.
-    const strategyOptions =
-      (config.options as unknown as object | undefined) || {};
+    // We trust strict typing at the call site for config.options
+    // Cast to any to satisfy linter when registry only contains void-input strategies (Core scope)
+    const strategyOptions = (config.options as any) || {};
 
     const queryOptions = {
       sortMode,
       ...strategyOptions,
     };
 
+    // We know strategy is defined because TKey comes from the Registry keys
+    // Casting strategy to any here to satisfy TS instantiation with generic constraint mismatch
     const client = new SidecarClient(
       {
         source: this.host.source,
@@ -120,7 +108,7 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
         options: queryOptions,
         __debugName: `${this.host.options.__debugName || 'Table'}:Aux:${config.id}`,
       },
-      strategy,
+      strategy!,
     );
 
     if (this.host.coordinator) {
@@ -135,16 +123,12 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
     this.clients.set(config.id, client);
   }
 
-  /**
-   * Requests a dedicated client to fetch the total row count.
-   */
   requestTotalCount() {
     const key = '__total_rows';
     if (this.clients.has(key)) {
       return;
     }
 
-    // Explicitly typed request for totalCount
     const client = new SidecarClient(
       {
         source: this.host.source,

@@ -1,8 +1,10 @@
-// packages/mosaic-tanstack-table-core/src/data-table.ts
-
 /**
  * Orchestrator for the Mosaic and TanStack Table integration.
  * Manages the data-fetching lifecycle, schema mapping, and reactive state synchronization.
+ * Updates:
+ * - Enforces StrictId for column references.
+ * - Updates FacetRegistry generics.
+ * - Strict typing for requestAuxiliary.
  */
 
 import {
@@ -52,6 +54,7 @@ import type {
 import type { FilterStrategy } from './query/filter-factory';
 import type { FacetStrategy } from './facet-strategies';
 import type { FacetStrategyKey, MosaicFacetRegistry } from './registry';
+import type { StrictId } from './types/paths';
 
 let instanceCounter = 0;
 
@@ -81,9 +84,9 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   public sidecarManager: SidecarManager<TData, TValue>;
   public filterRegistry: StrategyRegistry<FilterStrategy>;
-  public facetRegistry: StrategyRegistry<FacetStrategy<any>>;
+  // Fixed: Added second generic argument <any, any> to FacetStrategy
+  public facetRegistry: StrategyRegistry<FacetStrategy<any, any>>;
 
-  // Refactored from 'any' to 'unknown' to enforce safe access
   #facetValues: Map<string, unknown> = new Map();
 
   #rowSelectionManager?: MosaicSelectionManager;
@@ -182,7 +185,8 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     if (options.rowSelection) {
       this.#rowSelectionManager = new MosaicSelectionManager({
         client: this,
-        column: options.rowSelection.column,
+        // Fixed: Cast StrictId to string for the internal manager which expects string keys for now
+        column: options.rowSelection.column as string,
         selection: options.rowSelection.selection,
         columnType: options.rowSelection.columnType,
       });
@@ -275,13 +279,18 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   /**
    * Request auxiliary data (Sidecars) linked to this table's context.
    * Type-safe wrapper around SidecarManager.
+   *
+   * Updates: Now strictly types `column` as StrictId<TData> and options based on registry.
    */
   public requestAuxiliary<TKey extends FacetStrategyKey>(config: {
     id: string;
     type: TKey;
-    column: string;
+    column: StrictId<TData>;
     excludeColumnId?: string;
-    options?: MosaicFacetRegistry[TKey]['input'];
+    // Conditional Logic for Options: same as SidecarManager
+    options: MosaicFacetRegistry[TKey]['input'] extends void
+      ? void | undefined
+      : MosaicFacetRegistry[TKey]['input'];
     onResult?: (result: MosaicFacetRegistry[TKey]['output']) => void;
   }) {
     this.sidecarManager.requestAuxiliary(config);

@@ -1,5 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/types.ts
-
 /**
  * Type definitions for the Mosaic TanStack Table Core adapter.
  * Defines configuration options, store structures, and metadata extensions.
@@ -16,6 +14,10 @@ import type {
 import type { FacetStrategy } from './facet-strategies';
 import type { FilterStrategy } from './query/filter-factory';
 import type { ZodType } from 'zod';
+import type { StrictId } from './types/paths';
+
+// Re-export strict path types
+export type { Path, StrictId } from './types/paths';
 
 export type MosaicDataTableSqlFilterType =
   | 'EQUALS'
@@ -61,16 +63,20 @@ export interface StrictSqlColumnConfig<TType extends SqlType> {
 /**
  * Maps TypeScript data keys to SQL column configurations.
  * Enforces strict compatibility between the JS type (TData[Key]) and the SQL configuration.
+ * Keys must be valid StrictIds (direct keys or nested paths).
  */
-export type MosaicColumnMapping<TData> = {
-  [Key in keyof TData]?: TData[Key] extends number
-    ? StrictSqlColumnConfig<'INTEGER' | 'FLOAT'>
-    : TData[Key] extends Date
-      ? StrictSqlColumnConfig<'DATE' | 'TIMESTAMP'>
-      : TData[Key] extends boolean
-        ? StrictSqlColumnConfig<'BOOLEAN'>
-        : StrictSqlColumnConfig<SqlType>;
-};
+export type MosaicColumnMapping<TData> = Partial<
+  Record<
+    StrictId<TData>,
+    | StrictSqlColumnConfig<'INTEGER'>
+    | StrictSqlColumnConfig<'FLOAT'>
+    | StrictSqlColumnConfig<'DATE'>
+    | StrictSqlColumnConfig<'TIMESTAMP'>
+    | StrictSqlColumnConfig<'BOOLEAN'>
+    | StrictSqlColumnConfig<'VARCHAR'>
+    | StrictSqlColumnConfig<SqlType>
+  >
+>;
 
 export interface SqlColumnConfig {
   sqlColumn: string;
@@ -78,11 +84,19 @@ export interface SqlColumnConfig {
   filterType?: MosaicDataTableSqlFilterType;
 }
 
-export type FilterValue =
-  | { type: 'text'; value: string }
-  | { type: 'select'; value: string | number }
-  | { type: 'range'; value: [number | null, number | null] }
-  | { type: 'date-range'; value: [Date | null, Date | null] };
+/**
+ * Discriminated Union for Filter Inputs.
+ * Strictly enforces the shape of the value based on the filter mode.
+ * Now supports nullable bounds for open-ended ranges.
+ */
+export type FilterInput =
+  | { mode: 'TEXT'; value: string }
+  | { mode: 'MATCH'; value: string | number | boolean }
+  | { mode: 'RANGE'; value: [number | null, number | null] }
+  | { mode: 'DATE_RANGE'; value: [string | null, string | null] } // Enforce ISO Strings
+  | { mode: 'SELECT'; value: string | number | boolean }; // Single select
+
+export type FilterMode = FilterInput['mode'];
 
 export type SelectionSource = object;
 
@@ -163,7 +177,7 @@ export interface MosaicDataTableOptions<
   manualHighlight?: boolean;
   rowSelection?: {
     selection: Selection;
-    column: string;
+    column: StrictId<TData>; // Enforce StrictId
     columnType?: ColumnType;
   };
   tableFilterSelection?: Selection | undefined;
@@ -175,7 +189,7 @@ export interface MosaicDataTableOptions<
   __debugName?: string;
 
   filterStrategies?: Record<string, FilterStrategy>;
-  facetStrategies?: Record<string, FacetStrategy<any>>;
+  facetStrategies?: Record<string, FacetStrategy<any, any>>;
 }
 
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {

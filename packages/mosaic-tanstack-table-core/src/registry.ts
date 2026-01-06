@@ -1,9 +1,10 @@
-// packages/mosaic-tanstack-table-core/src/registry.ts
-
 /**
  * A generic registry for managing named strategies.
  * Used to decouple specific implementations (like Filters or Facets) from the core logic.
+ *
+ * Implements strict type contracts for Inputs and Outputs of strategies.
  */
+
 export class StrategyRegistry<T> {
   private strategies = new Map<string, T>();
 
@@ -56,6 +57,8 @@ export interface FacetStrategyDefinition<TInput = unknown, TOutput = unknown> {
  * The Central Registry for Facet Strategies.
  * This interface is intended to be augmented by consumers (Module Augmentation)
  * to add custom strategies like 'histogram', 'heatmap', etc.
+ *
+ * By default, includes the standard strategies provided by the core.
  */
 export interface MosaicFacetRegistry {
   unique: FacetStrategyDefinition<void, Array<unknown>>;

@@ -346,7 +346,13 @@ function SummaryTable({
     totalRowsMode: 'split',
     rowSelection: {
       selection: topology.cross,
-      column: groupBy,
+      // Fix: Cast groupBy to keyof GroupByRow.
+      // This is necessary because in this "Summary Table" pattern, the local schema uses generic keys ('key', 'metric'),
+      // but we want the Selection to generate SQL for the *actual* database column (e.g. 'phrase'),
+      // which is passed in via the `groupBy` prop.
+      // The core `MosaicSelectionManager` uses this column string to build the SQL, so this cast ensures
+      // strict type checks pass while preserving the advanced logic.
+      column: groupBy as keyof GroupByRow,
       columnType: 'scalar',
     },
     columns: useMemo(
