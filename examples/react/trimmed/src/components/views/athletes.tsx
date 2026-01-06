@@ -30,7 +30,7 @@ const $query = vg.Selection.intersect();
 const $tableFilter = vg.Selection.intersect();
 const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
-// 1. Typescript Interface 
+// 1. Typescript Interface
 interface AthleteRowData {
   id: number;
   name: string;

@@ -87,7 +87,7 @@ export const HistogramStrategy: FacetStrategy<
     }));
   },
 
-  // Required Runtime Validation 
+  // Required Runtime Validation
   validate: (data: unknown) => {
     assertIsArray(data);
     // Basic shape check for the first item if it exists
