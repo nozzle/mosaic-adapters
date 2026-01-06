@@ -5,6 +5,8 @@
  * Implements strict type contracts for Inputs and Outputs of strategies.
  */
 
+import type { StrictId } from './types/paths';
+
 export class StrategyRegistry<T> {
   private strategies = new Map<string, T>();
 
@@ -67,3 +69,23 @@ export interface MosaicFacetRegistry {
 }
 
 export type FacetStrategyKey = keyof MosaicFacetRegistry;
+
+/**
+ * Discriminated Union for Sidecar Requests.
+ * Used by SidecarManager to strictly type requestAuxiliary calls without generic erasure.
+ *
+ * Iterates over the keys of the Registry to build specific request shapes.
+ */
+export type SidecarRequest<TData> = {
+  [K in keyof MosaicFacetRegistry]: {
+    id: string;
+    type: K;
+    column: StrictId<TData>;
+    excludeColumnId?: string;
+    // Conditionally require options if the strategy input is not void
+    options: MosaicFacetRegistry[K]['input'] extends void
+      ? void | undefined
+      : MosaicFacetRegistry[K]['input'];
+    onResult?: (result: MosaicFacetRegistry[K]['output']) => void;
+  };
+}[keyof MosaicFacetRegistry];

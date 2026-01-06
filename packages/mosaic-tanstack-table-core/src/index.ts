@@ -14,3 +14,4 @@ export * from './sidecar-client';
 export * from './sidecar-manager';
 export * from './domain/sql-identifier';
 export * from './schema';
+export * from './schema/factory';

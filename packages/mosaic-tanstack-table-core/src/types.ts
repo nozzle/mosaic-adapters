@@ -26,6 +26,10 @@ export type MosaicDataTableSqlFilterType =
   | 'ILIKE'
   | 'PARTIAL_ILIKE'
   | 'RANGE'
+  | 'DATE_RANGE'
+  | 'MATCH'
+  | 'SELECT'
+  | 'TEXT'
   | (string & {});
 
 export type FacetSortMode = 'alpha' | 'count';
@@ -41,13 +45,21 @@ export type SqlType =
 
 // --- Advanced Mapping Types ---
 
-type FilterCompatibility = {
-  VARCHAR: 'ILIKE' | 'LIKE' | 'EQUALS' | 'PARTIAL_ILIKE' | 'PARTIAL_LIKE';
-  INTEGER: 'RANGE' | 'EQUALS';
-  FLOAT: 'RANGE' | 'EQUALS';
-  DATE: 'RANGE' | 'DATE_RANGE' | 'EQUALS';
-  TIMESTAMP: 'RANGE' | 'DATE_RANGE' | 'EQUALS';
-  BOOLEAN: 'EQUALS';
+export type FilterCompatibility = {
+  VARCHAR:
+    | 'ILIKE'
+    | 'LIKE'
+    | 'EQUALS'
+    | 'PARTIAL_ILIKE'
+    | 'PARTIAL_LIKE'
+    | 'MATCH'
+    | 'TEXT'
+    | 'SELECT';
+  INTEGER: 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
+  FLOAT: 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
+  DATE: 'RANGE' | 'DATE_RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
+  TIMESTAMP: 'RANGE' | 'DATE_RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
+  BOOLEAN: 'EQUALS' | 'MATCH' | 'SELECT';
 };
 
 export interface FilterOptions {
@@ -74,6 +86,9 @@ export interface StrictSqlColumnConfig<TType extends SqlType> {
  * Maps TypeScript data keys to SQL column configurations.
  * Enforces strict compatibility between the JS type (TData[Key]) and the SQL configuration.
  * Keys must be valid StrictIds (direct keys or nested paths).
+ *
+ * NOTE: This type is generally constructed via createMosaicMapping factory
+ * to ensure Zod inference logic is applied.
  */
 export type MosaicColumnMapping<TData> = Partial<
   Record<

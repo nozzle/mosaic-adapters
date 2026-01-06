@@ -6,12 +6,16 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
-import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  createMosaicColumnHelper,
+  useMosaicReactTable,
+} from '@nozzleio/mosaic-tanstack-react-table';
 import { useCoordinator } from '@nozzleio/mosaic-react-core';
-import { mosaicSchemaHelpers } from '@nozzleio/mosaic-tanstack-table-core';
+import {
+  createMosaicMapping,
+  mosaicSchemaHelpers,
+} from '@nozzleio/mosaic-tanstack-table-core';
 import { z } from 'zod';
-import type { MosaicColumnMapping } from '@nozzleio/mosaic-tanstack-table-core';
-import type { ColumnDef } from '@tanstack/react-table';
 import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -38,7 +42,7 @@ const SummarySchema = z.object({
 type SummaryRowData = z.infer<typeof SummarySchema>;
 
 // 2. Mappings
-const TripMapping: MosaicColumnMapping<TripRowData> = {
+const { mapping: TripMapping } = createMosaicMapping(TripSchema, {
   datetime: {
     sqlColumn: 'datetime',
     type: 'TIMESTAMP',
@@ -49,14 +53,14 @@ const TripMapping: MosaicColumnMapping<TripRowData> = {
   },
   vendor_id: { sqlColumn: 'vendor_id', type: 'VARCHAR', filterType: 'EQUALS' },
   fare_amount: { sqlColumn: 'fare_amount', type: 'FLOAT', filterType: 'RANGE' },
-};
+});
 
-const SummaryMapping: MosaicColumnMapping<SummaryRowData> = {
+const { mapping: SummaryMapping } = createMosaicMapping(SummarySchema, {
   zone_x: { sqlColumn: 'zone_x', type: 'INTEGER', filterType: 'EQUALS' },
   zone_y: { sqlColumn: 'zone_y', type: 'INTEGER', filterType: 'EQUALS' },
   trip_count: { sqlColumn: 'trip_count', type: 'INTEGER', filterType: 'RANGE' },
   avg_fare: { sqlColumn: 'avg_fare', type: 'FLOAT', filterType: 'RANGE' },
-};
+});
 
 export function NycTaxiView() {
   const [isPending, setIsPending] = useState(true);
@@ -205,44 +209,41 @@ function TripsDetailTable({
   topology: ReturnType<typeof useNycTaxiTopology>;
 }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
+  const helper = useMemo(() => createMosaicColumnHelper<TripRowData>(), []);
 
   const columns = useMemo(
-    () =>
-      [
-        {
-          accessorKey: 'datetime',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Time" view={view} />
-          ),
-          cell: (props) => props.getValue()?.toLocaleString(),
-          meta: {
-            filterVariant: 'range',
-            rangeFilterType: 'datetime',
-            mosaicDataTable: { facet: 'minmax' },
-          },
+    () => [
+      helper.accessor('datetime', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Time" view={view} />
+        ),
+        cell: (props) => props.getValue()?.toLocaleString(),
+        meta: {
+          filterVariant: 'range',
+          rangeFilterType: 'datetime',
+          mosaicDataTable: { facet: 'minmax' },
         },
-        {
-          accessorKey: 'vendor_id',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Vendor" view={view} />
-          ),
-          meta: {
-            filterVariant: 'select',
-            mosaicDataTable: { facet: 'unique' },
-          },
+      }),
+      helper.accessor('vendor_id', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Vendor" view={view} />
+        ),
+        meta: {
+          filterVariant: 'select',
+          mosaicDataTable: { facet: 'unique' },
         },
-        {
-          accessorKey: 'fare_amount',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Fare" view={view} />
-          ),
-          meta: {
-            filterVariant: 'range',
-            mosaicDataTable: { facet: 'minmax' },
-          },
+      }),
+      helper.accessor('fare_amount', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Fare" view={view} />
+        ),
+        meta: {
+          filterVariant: 'range',
+          mosaicDataTable: { facet: 'minmax' },
         },
-      ] satisfies Array<ColumnDef<TripRowData, any>>,
-    [view],
+      }),
+    ],
+    [view, helper],
   );
 
   const { tableOptions } = useMosaicReactTable({
@@ -270,47 +271,43 @@ function TripsSummaryTable({
   topology: ReturnType<typeof useNycTaxiTopology>;
 }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
+  const helper = useMemo(() => createMosaicColumnHelper<SummaryRowData>(), []);
 
   const columns = useMemo(
-    () =>
-      [
-        {
-          accessorKey: 'zone_x',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Zone X" view={view} />
-          ),
-          meta: { filterVariant: 'text' },
+    () => [
+      helper.accessor('zone_x', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Zone X" view={view} />
+        ),
+        meta: { filterVariant: 'text' },
+      }),
+      helper.accessor('zone_y', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Zone Y" view={view} />
+        ),
+        meta: { filterVariant: 'text' },
+      }),
+      helper.accessor('trip_count', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Count" view={view} />
+        ),
+        meta: {
+          filterVariant: 'range',
+          mosaicDataTable: { facet: 'minmax' },
         },
-        {
-          accessorKey: 'zone_y',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Zone Y" view={view} />
-          ),
-          meta: { filterVariant: 'text' },
+      }),
+      helper.accessor('avg_fare', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Avg Fare" view={view} />
+        ),
+        cell: (p) => p.getValue().toFixed(2),
+        meta: {
+          filterVariant: 'range',
+          mosaicDataTable: { facet: 'minmax' },
         },
-        {
-          accessorKey: 'trip_count',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Count" view={view} />
-          ),
-          meta: {
-            filterVariant: 'range',
-            mosaicDataTable: { facet: 'minmax' },
-          },
-        },
-        {
-          accessorKey: 'avg_fare',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Avg Fare" view={view} />
-          ),
-          cell: (p) => p.getValue().toFixed(2),
-          meta: {
-            filterVariant: 'range',
-            mosaicDataTable: { facet: 'minmax' },
-          },
-        },
-      ] satisfies Array<ColumnDef<SummaryRowData, any>>,
-    [view],
+      }),
+    ],
+    [view, helper],
   );
 
   const { tableOptions } = useMosaicReactTable({

@@ -53,8 +53,7 @@ import type {
 } from './types';
 import type { FilterStrategy } from './query/filter-factory';
 import type { FacetStrategy } from './facet-strategies';
-import type { FacetStrategyKey, MosaicFacetRegistry } from './registry';
-import type { StrictId } from './types/paths';
+import type { SidecarRequest } from './registry';
 
 let instanceCounter = 0;
 
@@ -278,21 +277,9 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   /**
    * Request auxiliary data (Sidecars) linked to this table's context.
-   * Type-safe wrapper around SidecarManager.
-   *
-   * Updates: Now strictly types `column` as StrictId<TData> and options based on registry.
+   * Type-safe wrapper around SidecarManager using Discriminated Union SidecarRequest.
    */
-  public requestAuxiliary<TKey extends FacetStrategyKey>(config: {
-    id: string;
-    type: TKey;
-    column: StrictId<TData>;
-    excludeColumnId?: string;
-    // Conditional Logic for Options: same as SidecarManager
-    options: MosaicFacetRegistry[TKey]['input'] extends void
-      ? void | undefined
-      : MosaicFacetRegistry[TKey]['input'];
-    onResult?: (result: MosaicFacetRegistry[TKey]['output']) => void;
-  }) {
+  public requestAuxiliary(config: SidecarRequest<TData>) {
     this.sidecarManager.requestAuxiliary(config);
   }
 

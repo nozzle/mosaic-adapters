@@ -6,12 +6,16 @@ import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
-import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  createMosaicColumnHelper,
+  useMosaicReactTable,
+} from '@nozzleio/mosaic-tanstack-react-table';
 import { useCoordinator } from '@nozzleio/mosaic-react-core';
-import { mosaicSchemaHelpers } from '@nozzleio/mosaic-tanstack-table-core';
+import {
+  createMosaicMapping,
+  mosaicSchemaHelpers,
+} from '@nozzleio/mosaic-tanstack-table-core';
 import { z } from 'zod';
-import type { MosaicColumnMapping } from '@nozzleio/mosaic-tanstack-table-core';
-import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import { usePaaTopology } from '@/hooks/usePaaTopology';
 import { RenderTable } from '@/components/render-table';
@@ -36,7 +40,7 @@ const PaaSchema = z.object({
 });
 type PaaRowData = z.infer<typeof PaaSchema>;
 
-const PaaMapping: MosaicColumnMapping<PaaRowData> = {
+const { mapping: PaaMapping } = createMosaicMapping(PaaSchema, {
   domain: { sqlColumn: 'domain', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
   paa_question: {
     sqlColumn: 'related_phrase.phrase',
@@ -49,7 +53,7 @@ const PaaMapping: MosaicColumnMapping<PaaRowData> = {
     type: 'VARCHAR',
     filterType: 'PARTIAL_ILIKE',
   },
-};
+});
 
 // --- SUMMARY TABLE SCHEMAS (Generic for GroupBy queries) ---
 // We create specific schemas to satisfy the strict typing requirements
@@ -60,7 +64,7 @@ const GroupBySchema = z.object({
 });
 type GroupByRow = z.infer<typeof GroupBySchema>;
 
-const GroupByMapping: MosaicColumnMapping<GroupByRow> = {
+const { mapping: GroupByMapping } = createMosaicMapping(GroupBySchema, {
   key: { sqlColumn: 'key', type: 'VARCHAR', filterType: 'EQUALS' },
   metric: { sqlColumn: 'metric', type: 'INTEGER', filterType: 'RANGE' },
   __is_highlighted: {
@@ -68,7 +72,7 @@ const GroupByMapping: MosaicColumnMapping<GroupByRow> = {
     type: 'INTEGER',
     filterType: 'EQUALS',
   },
-};
+});
 
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
@@ -338,6 +342,47 @@ function SummaryTable({
     [groupBy, metric, aggFn, where, topology.cross],
   );
 
+  const helper = useMemo(
+    () => createMosaicColumnHelper<GroupByRow>(),
+    [], // empty dep array
+  );
+
+  const columns = useMemo(
+    () => [
+      // Select Box column (Manual definition for non-data column)
+      {
+        id: 'select',
+        header: '',
+        size: 30,
+        enableSorting: false,
+        enableColumnFilter: false,
+        cell: ({ row }: any) => (
+          <div className="flex items-center justify-center">
+            <input
+              type="checkbox"
+              checked={row.getIsSelected()}
+              onChange={row.getToggleSelectedHandler()}
+              onClick={(e) => e.stopPropagation()}
+              className="cursor-pointer size-4"
+            />
+          </div>
+        ),
+      },
+      helper.accessor('key', {
+        id: 'key',
+        header: title,
+        enableColumnFilter: false,
+      }),
+      helper.accessor('metric', {
+        id: 'metric',
+        header: metricLabel,
+        cell: (info) => info.getValue()?.toLocaleString(),
+        enableColumnFilter: false,
+      }),
+    ],
+    [groupBy, title, metricLabel, helper],
+  );
+
   const { tableOptions } = useMosaicReactTable({
     table: queryFactory,
     filterBy: topology.summaryContext,
@@ -355,46 +400,7 @@ function SummaryTable({
       column: groupBy as keyof GroupByRow,
       columnType: 'scalar',
     },
-    columns: useMemo(
-      () => [
-        {
-          id: 'select',
-          header: '',
-          size: 30,
-          enableSorting: false,
-          enableColumnFilter: false,
-          cell: ({ row }: any) => (
-            <div className="flex items-center justify-center">
-              <input
-                type="checkbox"
-                checked={row.getIsSelected()}
-                onChange={row.getToggleSelectedHandler()}
-                onClick={(e) => e.stopPropagation()}
-                className="cursor-pointer size-4"
-              />
-            </div>
-          ),
-        },
-        {
-          // FIX: Explicitly set ID to 'key' to match the AccessorKey and Schema.
-          // Previous use of `id: groupBy` (e.g. 'phrase') caused the Query Builder to alias
-          // the SQL result to 'phrase', while TanStack accessor looked for 'key',
-          // resulting in undefined values, empty columns, and schema mismatch errors.
-          id: 'key',
-          accessorKey: 'key',
-          header: title,
-          enableColumnFilter: false,
-        },
-        {
-          id: 'metric',
-          accessorKey: 'metric',
-          header: metricLabel,
-          cell: (info: any) => info.getValue()?.toLocaleString(),
-          enableColumnFilter: false,
-        },
-      ],
-      [groupBy, title, metricLabel],
-    ),
+    columns,
     // Pass the Generic Schema/Mapping that matches the query alias structure
     schema: GroupBySchema,
     mapping: GroupByMapping,
@@ -434,20 +440,22 @@ function DetailTable({
 }: {
   topology: ReturnType<typeof usePaaTopology>;
 }) {
+  const helper = useMemo(() => createMosaicColumnHelper<PaaRowData>(), []);
+
   const columns = useMemo(
-    () =>
-      [
-        { accessorKey: 'domain', header: 'Domain', size: 150 },
-        {
-          accessorKey: 'paa_question',
-          accessorFn: (row) => row.paa_question,
-          header: 'PAA Question',
-          size: 350,
-        },
-        { accessorKey: 'title', header: 'Answer Title', size: 300 },
-        { accessorKey: 'description', header: 'Answer Description', size: 400 },
-      ] satisfies Array<ColumnDef<PaaRowData, any>>,
-    [],
+    () => [
+      helper.accessor('domain', { header: 'Domain', size: 150 }),
+      helper.accessor('paa_question', {
+        header: 'PAA Question',
+        size: 350,
+      }),
+      helper.accessor('title', { header: 'Answer Title', size: 300 }),
+      helper.accessor('description', {
+        header: 'Answer Description',
+        size: 400,
+      }),
+    ],
+    [helper],
   );
 
   const { tableOptions } = useMosaicReactTable({

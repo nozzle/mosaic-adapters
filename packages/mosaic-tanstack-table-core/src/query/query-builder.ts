@@ -281,10 +281,15 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
         break;
 
       default:
-        logger.warn(
-          'Core',
-          `[QueryBuilder] Unhandled filter coercion for configured type: ${filterType}`,
-        );
+        // Attempt to guess text for unhandled custom types
+        if (typeof rawValue === 'string') {
+          safeInput = { mode: 'TEXT', value: rawValue };
+        } else {
+          logger.warn(
+            'Core',
+            `[QueryBuilder] Unhandled filter coercion for configured type: ${filterType}`,
+          );
+        }
         break;
     }
 
