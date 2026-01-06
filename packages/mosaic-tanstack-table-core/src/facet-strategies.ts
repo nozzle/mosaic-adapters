@@ -7,7 +7,8 @@ import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { MosaicTableSource } from './types';
 
 export interface FacetQueryContext<TInput = any> {
-  source: MosaicTableSource; // The table or subquery
+  /** The table or subquery used as the source for the facet query. */
+  source: MosaicTableSource;
   column: string;
   /** Internal table filters (excluding the facet column itself) */
   cascadingFilters: Array<FilterExpr>;
@@ -25,7 +26,18 @@ export interface FacetQueryContext<TInput = any> {
  * Includes Zod Schema for runtime validation of database results.
  */
 export interface FacetStrategy<TInput, TOutput> {
+  /**
+   * Constructs the SQL query to fetch facet data.
+   * @param ctx - The context containing source, column, filters, and custom options.
+   * @returns A Mosaic SQL SelectQuery object.
+   */
   buildQuery: (ctx: FacetQueryContext<TInput>) => SelectQuery;
+  /**
+   * Transforms the raw database result rows into the expected output shape.
+   * @param rows - The raw array of objects returned by the database driver.
+   * @param column - The column name used in the query (useful for extracting values).
+   * @returns The transformed data matching TOutput.
+   */
   transformResult: (rows: Array<any>, column: string) => TOutput;
   /** Schema to validate the transformed result at runtime */
   resultSchema: z.ZodType<TOutput>;

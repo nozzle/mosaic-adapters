@@ -11,13 +11,12 @@ import type {
   TableOptions,
   TableState,
 } from '@tanstack/table-core';
-import type { FacetStrategy } from './facet-strategies';
-import type { FilterStrategy } from './query/filter-factory';
+import type { FacetStrategy } from '../facet-strategies';
+import type { FilterStrategy } from '../query/filter-factory';
 import type { ZodType } from 'zod';
-import type { StrictId } from './types/paths';
+import type { StrictId } from './paths';
 
 // Re-export strict path types
-export type { Path, StrictId } from './types/paths';
 
 export type MosaicDataTableSqlFilterType =
   | 'EQUALS'

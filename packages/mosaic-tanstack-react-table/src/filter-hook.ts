@@ -9,7 +9,7 @@ import type {
  * React hook to create a stable MosaicFilter instance.
  * Strictly typed with the FilterMode generic to ensure type safety for input values.
  */
-export function useMosaicFilter<TMode extends FilterMode>(
+export function useMosaicTableFilter<TMode extends FilterMode>(
   options: MosaicFilterOptions<TMode>,
 ) {
   const { selection, column, mode, debounceTime, id } = options;

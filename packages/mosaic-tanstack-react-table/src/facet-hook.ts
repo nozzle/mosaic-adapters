@@ -8,7 +8,7 @@ import type { MosaicFacetMenuOptions } from '@nozzleio/mosaic-tanstack-table-cor
  * React hook to manage the state and lifecycle of a Mosaic Facet Menu.
  * Connects a specific column's sidecar client to the UI.
  */
-export function useMosaicFacetMenu(options: MosaicFacetMenuOptions) {
+export function useMosaicTableFacetMenu(options: MosaicFacetMenuOptions) {
   const contextCoordinator = useCoordinator();
   const coordinator = options.coordinator ?? contextCoordinator;
 
