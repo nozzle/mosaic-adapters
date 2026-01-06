@@ -39,7 +39,11 @@ type SummaryRowData = z.infer<typeof SummarySchema>;
 
 // 2. Mappings
 const TripMapping: MosaicColumnMapping<TripRowData> = {
-  datetime: { sqlColumn: 'datetime', type: 'TIMESTAMP', filterType: 'RANGE' },
+  datetime: {
+    sqlColumn: 'datetime',
+    type: 'TIMESTAMP',
+    filterType: 'DATE_RANGE',
+  },
   vendor_id: { sqlColumn: 'vendor_id', type: 'VARCHAR', filterType: 'EQUALS' },
   fare_amount: { sqlColumn: 'fare_amount', type: 'FLOAT', filterType: 'RANGE' },
 };

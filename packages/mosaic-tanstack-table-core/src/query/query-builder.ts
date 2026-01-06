@@ -1,3 +1,10 @@
+/**
+ * Core logic for translating TanStack Table state into Mosaic SQL queries.
+ * This module strictly adheres to configured mappings to prevent ambiguous SQL generation.
+ * It handles the translation of UI state (Pagination, Sorting, Filtering) into
+ * a coherent SQL Select Query AST.
+ */
+
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
 import { createStructAccess, toRangeValue } from '../utils';
@@ -130,7 +137,9 @@ export function buildTableQuery<TData extends RowData, TValue>(
 
 /**
  * Extracts internal filters and converts weak TanStack state to Strong Types (FilterInput).
- * This logic now strictly parses the raw state based on the column's Mapping configuration.
+ * This logic strictly parses the raw state based on the column's Mapping configuration.
+ * Ambiguous inputs without explicit configuration are ignored to ensure type safety.
+ * Handles type coercion from UI inputs (strings, numbers) to strict FilterInputs.
  */
 export function extractInternalFilters<TData extends RowData, TValue>(options: {
   tableState: TableState;
@@ -152,20 +161,19 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
     }
 
     // Resolve Configuration
-    let filterType = 'EQUALS';
-    let mappingConfig;
+    let filterType: string | undefined;
 
     // 1. Try Strict Mapping
     if (options.mapping) {
       const key = filter.id as StrictId<TData>;
-      mappingConfig = options.mapping[key];
+      const mappingConfig = options.mapping[key];
       if (mappingConfig?.filterType) {
         filterType = mappingConfig.filterType;
       }
     }
 
-    if (!mappingConfig) {
-      // 2. Fallback to Meta (Deprecated)
+    // 2. Fallback to Meta (if mapping not present)
+    if (!filterType) {
       const colDef = options.mapper.getColumnDef(sqlColumn.toString());
       const metaType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
       if (metaType) {
@@ -173,8 +181,23 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
       }
     }
 
+    // Strict Mode Enforcement:
+    // We do not fallback to guessing types based on values.
+    // If no filter configuration exists, we warn and skip.
+    if (!filterType) {
+      logger.warn(
+        'Core',
+        `[QueryBuilder] Filter ignored for column "${filter.id}". No 'filterType' defined in mapping or column meta.`,
+      );
+      return;
+    }
+
     const strategy = options.filterRegistry.get(filterType);
     if (!strategy) {
+      logger.warn(
+        'Core',
+        `[QueryBuilder] Unknown filter strategy "${filterType}" for column "${filter.id}".`,
+      );
       return;
     }
 
@@ -182,83 +205,83 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
     const rawValue = filter.value;
     let safeInput: FilterInput | null = null;
 
-    // Strict Mode: Use the configured filterType to dictate parsing logic
-    if (filterType === 'RANGE') {
-      if (Array.isArray(rawValue) && rawValue.length === 2) {
-        const rawMin = toRangeValue(rawValue[0]);
-        const rawMax = toRangeValue(rawValue[1]);
+    switch (filterType) {
+      case 'RANGE':
+        // Numeric Range: Expects [number | null, number | null]
+        if (Array.isArray(rawValue) && rawValue.length === 2) {
+          const rawMin = toRangeValue(rawValue[0]);
+          const rawMax = toRangeValue(rawValue[1]);
 
-        // toRangeValue returns number | Date | null.
-        // We strictly require numbers for the RANGE type.
-        // If we get a Date, we treat it as null (invalid for numeric range).
-        const minNum =
-          typeof rawMin === 'number' && !isNaN(rawMin) ? rawMin : null;
-        const maxNum =
-          typeof rawMax === 'number' && !isNaN(rawMax) ? rawMax : null;
+          const minNum =
+            typeof rawMin === 'number' && !isNaN(rawMin) ? rawMin : null;
+          const maxNum =
+            typeof rawMax === 'number' && !isNaN(rawMax) ? rawMax : null;
 
-        // Valid if at least one bound exists
-        if (minNum !== null || maxNum !== null) {
-          safeInput = {
-            mode: 'RANGE',
-            value: [minNum, maxNum],
-          };
+          if (minNum !== null || maxNum !== null) {
+            safeInput = {
+              mode: 'RANGE',
+              value: [minNum, maxNum],
+            };
+          }
         }
-      }
-    } else if (filterType === 'DATE_RANGE') {
-      // Expect array of ISO strings
-      // We trust the input is strings if the mapping says DATE_RANGE
-      // (toRangeValue converts strings to Dates, so we don't use it here if we want raw ISO)
-      if (
-        Array.isArray(rawValue) &&
-        rawValue.length === 2 &&
-        (typeof rawValue[0] === 'string' || rawValue[0] === null) &&
-        (typeof rawValue[1] === 'string' || rawValue[1] === null)
-      ) {
-        const minStr = rawValue[0] as string | null;
-        const maxStr = rawValue[1] as string | null;
-        if (minStr || maxStr) {
-          safeInput = {
-            mode: 'DATE_RANGE',
-            value: [minStr, maxStr],
-          };
+        break;
+
+      case 'DATE_RANGE':
+        // Date Range: Expects [string | null, string | null] (ISO strings preferred)
+        if (Array.isArray(rawValue) && rawValue.length === 2) {
+          const minVal = rawValue[0];
+          const maxVal = rawValue[1];
+
+          // Coerce valid items to strings, leave nulls/undefined as null.
+          // Explicitly treat empty strings as null to handle browser input behavior.
+          const minStr =
+            minVal !== null && minVal !== undefined && minVal !== ''
+              ? String(minVal)
+              : null;
+          const maxStr =
+            maxVal !== null && maxVal !== undefined && maxVal !== ''
+              ? String(maxVal)
+              : null;
+
+          // Explicit null check required to support single-sided (open) ranges
+          if (minStr !== null || maxStr !== null) {
+            safeInput = {
+              mode: 'DATE_RANGE',
+              value: [minStr, maxStr],
+            };
+          }
         }
-      }
-    } else if (filterType === 'SELECT') {
-      if (
-        typeof rawValue === 'string' ||
-        typeof rawValue === 'number' ||
-        typeof rawValue === 'boolean'
-      ) {
-        safeInput = { mode: 'SELECT', value: rawValue };
-      }
-    } else if (
-      filterType === 'ILIKE' ||
-      filterType === 'LIKE' ||
-      filterType === 'PARTIAL_ILIKE'
-    ) {
-      if (typeof rawValue === 'string') {
-        safeInput = { mode: 'TEXT', value: rawValue };
-      }
-    } else if (filterType === 'EQUALS') {
-      // EQUALS is flexible, maps to MATCH mode
-      if (
-        typeof rawValue === 'string' ||
-        typeof rawValue === 'number' ||
-        typeof rawValue === 'boolean'
-      ) {
-        safeInput = { mode: 'MATCH', value: rawValue };
-      }
-    } else {
-      // Legacy Fallback
-      if (Array.isArray(rawValue) && rawValue.length === 2) {
-        // Assume number range for backward compat if legacy
-        safeInput = {
-          mode: 'RANGE',
-          value: [Number(rawValue[0]) || null, Number(rawValue[1]) || null],
-        };
-      } else if (typeof rawValue === 'string') {
-        safeInput = { mode: 'TEXT', value: rawValue };
-      }
+        break;
+
+      case 'SELECT':
+      case 'MATCH':
+      case 'EQUALS':
+        // Equality checks: Allow primitives
+        if (
+          typeof rawValue === 'string' ||
+          typeof rawValue === 'number' ||
+          typeof rawValue === 'boolean'
+        ) {
+          safeInput = { mode: 'MATCH', value: rawValue };
+        }
+        break;
+
+      case 'ILIKE':
+      case 'LIKE':
+      case 'PARTIAL_ILIKE':
+      case 'PARTIAL_LIKE':
+        // Text Search: Strictly strings
+        if (typeof rawValue === 'string') {
+          safeInput = { mode: 'TEXT', value: rawValue };
+        }
+        break;
+
+      default:
+        logger.warn(
+          'Core',
+          `[QueryBuilder] Unhandled filter coercion for configured type: ${filterType}`,
+        );
+        break;
     }
 
     if (safeInput) {

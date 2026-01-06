@@ -54,10 +54,11 @@ const AthleteMapping: MosaicColumnMapping<AthleteRowData> = {
     filterType: 'EQUALS',
   },
   sex: { sqlColumn: 'sex', type: 'VARCHAR', filterType: 'EQUALS' },
+  // Map date_of_birth to 'DATE_RANGE' to correctly handle string-based date filtering
   date_of_birth: {
     sqlColumn: 'date_of_birth',
     type: 'DATE',
-    filterType: 'RANGE',
+    filterType: 'DATE_RANGE',
   },
   height: { sqlColumn: 'height', type: 'FLOAT', filterType: 'RANGE' },
   weight: { sqlColumn: 'weight', type: 'FLOAT', filterType: 'RANGE' },
@@ -213,6 +214,7 @@ function AthletesTable() {
               ? simpleDateFormatter.format(value)
               : value;
           },
+          // Enable date range filtering in the UI
           meta: { filterVariant: 'range', rangeFilterType: 'date' },
         },
         {
