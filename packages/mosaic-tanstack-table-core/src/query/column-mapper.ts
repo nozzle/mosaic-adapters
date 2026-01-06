@@ -1,17 +1,25 @@
 import { logger } from '../logger';
+import { SqlIdentifier } from '../domain/sql-identifier';
 import type { ColumnDef, RowData } from '@tanstack/table-core';
 import type { FieldInfoRequest } from '@uwdata/mosaic-core';
+import type { MosaicColumnMapping } from '../types';
 
 let mapperIdCounter = 0;
 
 export class ColumnMapper<TData extends RowData, TValue = unknown> {
   public readonly id: number;
-  private idToSqlMap = new Map<string, string>();
+  private idToSqlMap = new Map<string, SqlIdentifier>();
   private sqlToDefMap = new Map<string, ColumnDef<TData, TValue>>();
-  private columnAccessorKeys: Array<string> = [];
+
+  // Store pairs of (Table ID -> SQL Column) for generating the SELECT clause
+  private selectList: Array<{ id: string; sql: SqlIdentifier }> = [];
+
   public shouldSearchAllColumns = false;
 
-  constructor(columnDefs: Array<ColumnDef<TData, TValue>>) {
+  constructor(
+    columnDefs: Array<ColumnDef<TData, TValue>>,
+    private mapping?: MosaicColumnMapping<TData>,
+  ) {
     this.id = ++mapperIdCounter;
     this.parse(columnDefs);
   }
@@ -20,10 +28,9 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
    * Introspects the ColumnDefs to build internal lookup maps.
    */
   private parse(defs: Array<ColumnDef<TData, TValue>>) {
-    // Clear previous state (though currently we create new instances on update)
     this.idToSqlMap.clear();
     this.sqlToDefMap.clear();
-    this.columnAccessorKeys = [];
+    this.selectList = [];
     this.shouldSearchAllColumns = false;
 
     // Filter to queryable columns
@@ -51,116 +58,123 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
     queryableColumns.forEach((def, index) => {
       let columnAccessor: string | undefined = undefined;
 
-      // 1. Check metadata existence FIRST
+      // 1. Try to resolve via Strict Mapping first
+      if (this.mapping && 'accessorKey' in def && def.accessorKey) {
+        const key = def.accessorKey as keyof TData;
+        const config = this.mapping[key];
+        if (config) {
+          columnAccessor = config.sqlColumn;
+        }
+      }
+
+      // 2. Fallback: Check metadata (Deprecated but supported for migration)
       const sqlColumnMeta = def.meta?.mosaicDataTable?.sqlColumn;
 
-      // 2. Handle AccessorKey
+      // 3. Handle AccessorKey Fallbacks
       if ('accessorKey' in def && def.accessorKey) {
         const accessor =
           typeof def.accessorKey === 'string'
             ? def.accessorKey
             : def.accessorKey.toString();
 
-        // If meta is missing, fallback to key (Safe assumption)
-        columnAccessor = sqlColumnMeta || accessor;
+        if (!columnAccessor) {
+          columnAccessor = sqlColumnMeta || accessor;
+        }
 
-        // Validate metadata match if present
-        if (sqlColumnMeta !== undefined && sqlColumnMeta !== accessor) {
+        if (
+          sqlColumnMeta !== undefined &&
+          sqlColumnMeta !== accessor &&
+          !this.mapping
+        ) {
           logger.debug(
             'Core',
             `[ColumnMapper #${this.id}] Column definition accessorKey "${accessor}" differs from mosaicDataTable.sqlColumn "${sqlColumnMeta}". Using metadata.`,
             { def },
           );
         }
+      }
+      // 4. Handle AccessorFn Fallbacks
+      else if ('accessorFn' in def && typeof def.accessorFn === 'function') {
+        if (!columnAccessor && sqlColumnMeta) {
+          columnAccessor = sqlColumnMeta;
+        }
 
         if (!columnAccessor) {
-          this.columnAccessorKeys.push(accessor);
-          columnAccessor = accessor;
-        } else {
-          this.columnAccessorKeys.push(columnAccessor);
-        }
-      }
-      // 3. Handle AccessorFn
-      else if ('accessorFn' in def && typeof def.accessorFn === 'function') {
-        if (!sqlColumnMeta) {
-          // CRITICAL CHANGE: Throw Error instead of warning
           throw new Error(
-            `[Mosaic ColumnMapper #${this.id}] Column at index ${index} uses 'accessorFn' but is missing required metadata.\n` +
-              `You MUST provide 'meta.mosaicDataTable.sqlColumn' so Mosaic knows what to query.\n` +
+            `[Mosaic ColumnMapper #${this.id}] Column at index ${index} uses 'accessorFn' but is missing required mapping or metadata.\n` +
+              `You MUST provide a 'mapping' or 'meta.mosaicDataTable.sqlColumn' so Mosaic knows what to query.\n` +
               `Header: ${typeof def.header === 'string' ? def.header : 'Unknown'}`,
           );
         }
-        this.columnAccessorKeys.push(sqlColumnMeta);
-        columnAccessor = sqlColumnMeta;
       }
 
       if (!columnAccessor) {
-        const message = `[ColumnMapper #${this.id}] Column definition is missing an \`accessorKey\` or valid \`mosaicDataTable.sqlColumn\` metadata to map to a Mosaic Query column. Please provide one of these properties.`;
+        const message = `[ColumnMapper #${this.id}] Column definition is missing an \`accessorKey\` or valid mapping to map to a Mosaic Query column.`;
         logger.error('Core', message, { def });
         throw new Error(message);
       }
 
-      // 4. Validate ID
-      // TanStack Table often auto-generates IDs, but best to be safe
-      const id = def.id || columnAccessor;
+      // 5. Validate ID
+      const id =
+        def.id ||
+        ('accessorKey' in def && typeof def.accessorKey === 'string'
+          ? def.accessorKey
+          : columnAccessor);
       if (!id) {
         const message = `[ColumnMapper #${this.id}] Column definition is missing an \`id\` property and could not be inferred. Please provide an explicit \`id\` or use \`accessorKey\`.`;
         logger.error('Core', message, { def });
         throw new Error(message);
       }
 
-      // Debug Log for Metadata Injection
-      if (def.meta?.mosaicDataTable) {
-        logger.debug(
-          'Core',
-          `[ColumnMapper #${this.id}] Mapped "${id}" -> SQL "${columnAccessor}" with Meta:`,
-          def.meta.mosaicDataTable,
-        );
-      }
-
-      // Store mappings
-      this.idToSqlMap.set(id, columnAccessor);
+      // Store mappings using Safe Identifiers
+      const safeIdentifier = SqlIdentifier.from(columnAccessor);
+      this.idToSqlMap.set(id, safeIdentifier);
       this.sqlToDefMap.set(columnAccessor, def);
+
+      // Keep track of the selection list (ID -> SQL)
+      this.selectList.push({ id, sql: safeIdentifier });
     });
 
-    if (this.columnAccessorKeys.length === 0 && defs.length > 0) {
-      // Fallback only if absolutely no columns were mappable (rare edge case)
+    if (this.selectList.length === 0 && defs.length > 0) {
       this.shouldSearchAllColumns = true;
     }
   }
 
-  /**
-   * Returns the SQL column name for a given TanStack Column ID.
-   */
-  public getSqlColumn(columnId: string): string | undefined {
+  public getSqlColumn(columnId: string): SqlIdentifier | undefined {
     return this.idToSqlMap.get(columnId);
   }
 
-  /**
-   * Returns the original ColumnDef for a given SQL column name.
-   */
+  public getMappingConfig(columnId: string) {
+    if (!this.mapping) {
+      return undefined;
+    }
+    for (const key in this.mapping) {
+      if (key === columnId) {
+        return this.mapping[key];
+      }
+    }
+    return undefined;
+  }
+
   public getColumnDef(sqlColumn: string): ColumnDef<TData, TValue> | undefined {
     return this.sqlToDefMap.get(sqlColumn);
   }
 
-  /**
-   * Generates the array of fields required for the initial Mosaic FieldInfo request.
-   */
   public getMosaicFieldRequests(tableName: string): Array<FieldInfoRequest> {
     if (this.shouldSearchAllColumns) {
       return [{ table: tableName, column: '*' }];
     }
 
-    return this.columnAccessorKeys.map((accessor) => ({
+    return this.selectList.map(({ sql }) => ({
       table: tableName,
-      column: accessor,
+      column: sql.toString(),
     }));
   }
 
   /**
-   * Returns a list of all mapped SQL column names to be used in the SELECT clause.
+   * Returns a list of mappings for the SELECT clause.
    */
-  public getSelectColumns(): Array<string> {
-    return this.columnAccessorKeys;
+  public getSelectColumns(): Array<{ id: string; sql: SqlIdentifier }> {
+    return this.selectList;
   }
 }

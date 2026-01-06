@@ -2,6 +2,7 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { isParam } from '@uwdata/mosaic-core';
 import { createStructAccess } from './utils';
+import { SqlIdentifier } from './domain/sql-identifier';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { MosaicTableSource } from './types';
 
@@ -68,7 +69,7 @@ export const UniqueValuesStrategy: FacetStrategy<Array<unknown>> = {
 
     // Add search term filter if present
     if (ctx.searchTerm) {
-      const colExpr = createStructAccess(ctx.column);
+      const colExpr = createStructAccess(SqlIdentifier.from(ctx.column));
       const pattern = mSql.literal(`%${ctx.searchTerm}%`);
       statement.where(mSql.sql`${colExpr} ILIKE ${pattern}`);
     }

@@ -1,14 +1,15 @@
-// examples/react/trimmed/src/components/views/athletes.tsx
 /**
  * View component for the Athletes dataset.
- * Uses 'window' pagination mode to sync perfectly with the interactive regression plot.
- * DEMO: Uses the new 'requestAuxiliary' API to drive a custom Histogram from the table client.
+ * Features: Type-Safe Table + Interactive vgplot Chart + Sidecar Histogram.
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import { mosaicSchemaHelpers } from '@nozzleio/mosaic-tanstack-table-core';
+import { z } from 'zod';
+import type { MosaicColumnMapping } from '@nozzleio/mosaic-tanstack-table-core';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { HistogramBin } from '@/lib/strategies';
 import { RenderTable } from '@/components/render-table';
@@ -25,19 +26,46 @@ const $query = vg.Selection.intersect();
 const $tableFilter = vg.Selection.intersect();
 const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
-type AthleteRowData = {
-  id: number;
-  name: string;
-  nationality: string;
-  sex: string;
-  date_of_birth: Date | null;
-  height: number | null;
-  weight: number | null;
-  sport: string | null;
-  gold: number | null;
-  silver: number | null;
-  bronze: number | null;
-  info: string | null;
+// 1. Zod Schema
+const AthleteSchema = z.object({
+  id: mosaicSchemaHelpers.number,
+  name: z.string(),
+  nationality: z.string(),
+  sex: z.string(),
+  date_of_birth: mosaicSchemaHelpers.date.nullable(),
+  height: mosaicSchemaHelpers.number.nullable(),
+  weight: mosaicSchemaHelpers.number.nullable(),
+  sport: z.string().nullable(),
+  gold: mosaicSchemaHelpers.number.nullable(),
+  silver: mosaicSchemaHelpers.number.nullable(),
+  bronze: mosaicSchemaHelpers.number.nullable(),
+  info: z.string().nullable(),
+});
+
+type AthleteRowData = z.infer<typeof AthleteSchema>;
+
+// 2. Strict SQL Mapping
+const AthleteMapping: MosaicColumnMapping<AthleteRowData> = {
+  id: { sqlColumn: 'id', type: 'INTEGER', filterType: 'EQUALS' },
+  name: { sqlColumn: 'name', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
+  nationality: {
+    sqlColumn: 'nationality',
+    type: 'VARCHAR',
+    filterType: 'EQUALS',
+  },
+  sex: { sqlColumn: 'sex', type: 'VARCHAR', filterType: 'EQUALS' },
+  date_of_birth: {
+    sqlColumn: 'date_of_birth',
+    type: 'DATE',
+    filterType: 'RANGE',
+  },
+  height: { sqlColumn: 'height', type: 'FLOAT', filterType: 'RANGE' },
+  weight: { sqlColumn: 'weight', type: 'FLOAT', filterType: 'RANGE' },
+  sport: { sqlColumn: 'sport', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
+  gold: { sqlColumn: 'gold', type: 'INTEGER', filterType: 'RANGE' },
+  silver: { sqlColumn: 'silver', type: 'INTEGER', filterType: 'RANGE' },
+  bronze: { sqlColumn: 'bronze', type: 'INTEGER', filterType: 'RANGE' },
+  info: { sqlColumn: 'info', type: 'VARCHAR', filterType: 'ILIKE' },
 };
 
 export function AthletesView() {
@@ -132,41 +160,26 @@ export function AthletesView() {
 
 function AthletesTable() {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
-
-  // State for our custom auxiliary query
   const [histData, setHistData] = useState<Array<HistogramBin>>([]);
 
   const columns = useMemo(
     () =>
       [
         {
-          id: 'id',
+          accessorKey: 'id',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="ID" view={view} />
           ),
-          accessorKey: 'id',
-          enableHiding: false,
-          enableSorting: false,
-          enableMultiSort: false,
-          enableColumnFilter: false,
         },
         {
-          id: 'Name',
+          accessorKey: 'name',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Name" view={view} />
           ),
-          accessorFn: (row) => row.name,
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'name',
-              sqlFilterType: 'PARTIAL_ILIKE',
-            },
-            filterVariant: 'text',
-          },
+          meta: { filterVariant: 'text' },
         },
         {
-          id: 'nationality',
+          accessorKey: 'nationality',
           header: ({ column }) => (
             <RenderTableHeader
               column={column}
@@ -174,175 +187,72 @@ function AthletesTable() {
               view={view}
             />
           ),
-          accessorKey: 'nationality',
-          enableColumnFilter: true,
           meta: {
-            mosaicDataTable: {
-              sqlColumn: 'nationality',
-              sqlFilterType: 'EQUALS',
-              facet: 'unique',
-            },
             filterVariant: 'select',
+            mosaicDataTable: { facet: 'unique' },
           },
         },
         {
-          id: 'Gender',
+          accessorKey: 'sex',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Gender" view={view} />
           ),
-          accessorKey: 'sex',
-          enableColumnFilter: true,
           meta: {
-            mosaicDataTable: {
-              sqlColumn: 'sex',
-              sqlFilterType: 'EQUALS',
-              facet: 'unique',
-            },
             filterVariant: 'select',
+            mosaicDataTable: { facet: 'unique' },
           },
         },
         {
-          id: 'dob',
+          accessorKey: 'date_of_birth',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="DOB" view={view} />
           ),
           cell: (props) => {
             const value = props.getValue();
-            if (value instanceof Date) {
-              return simpleDateFormatter.format(value);
-            }
-            return value;
+            return value instanceof Date
+              ? simpleDateFormatter.format(value)
+              : value;
           },
-          accessorKey: 'date_of_birth',
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'date_of_birth',
-              sqlFilterType: 'RANGE',
-            },
-            filterVariant: 'range',
-            rangeFilterType: 'date',
-          },
+          meta: { filterVariant: 'range', rangeFilterType: 'date' },
         },
         {
-          id: 'Height',
+          accessorKey: 'height',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Height" view={view} />
           ),
-          cell: (props) => {
-            const value = props.getValue();
-            if (typeof value === 'number') {
-              return `${value}m`;
-            }
-            return value;
-          },
-          accessorKey: 'height',
+          cell: (props) => `${props.getValue()}m`,
           meta: {
             filterVariant: 'range',
             rangeFilterType: 'number',
-            mosaicDataTable: {
-              sqlColumn: 'height',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
+            mosaicDataTable: { facet: 'minmax' },
           },
-          enableColumnFilter: true,
         },
         {
-          id: 'Weight',
+          accessorKey: 'weight',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Weight" view={view} />
           ),
-          cell: (props) => {
-            const value = props.getValue();
-            if (typeof value === 'number') {
-              return `${value}kg`;
-            }
-            return value;
-          },
-          accessorKey: 'weight',
-          enableColumnFilter: true,
+          cell: (props) => `${props.getValue()}kg`,
           meta: {
-            mosaicDataTable: {
-              sqlColumn: 'weight',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
             filterVariant: 'range',
+            rangeFilterType: 'number',
+            mosaicDataTable: { facet: 'minmax' },
           },
         },
         {
-          id: 'Sport',
+          accessorKey: 'sport',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Sport" view={view} />
           ),
-          accessorKey: 'sport',
-          enableColumnFilter: true,
           meta: {
-            mosaicDataTable: {
-              sqlColumn: 'sport',
-              sqlFilterType: 'PARTIAL_ILIKE',
-              facet: 'unique',
-            },
             filterVariant: 'select',
+            mosaicDataTable: { facet: 'unique' },
           },
         },
-        {
-          id: 'Gold(s)',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Gold(s)" view={view} />
-          ),
-          accessorKey: 'gold',
-          enableColumnFilter: false,
-        },
-        {
-          id: 'Silver(s)',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Silver(s)" view={view} />
-          ),
-          accessorKey: 'silver',
-          enableColumnFilter: false,
-        },
-        {
-          id: 'Bronze(s)',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Bronze(s)" view={view} />
-          ),
-          accessorKey: 'bronze',
-          enableColumnFilter: false,
-        },
-        {
-          id: 'Info',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Info" view={view} />
-          ),
-          accessorKey: 'info',
-          enableSorting: false,
-          enableColumnFilter: false,
-        },
-        {
-          id: 'actions',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Actions" view={view} />
-          ),
-          cell: ({ row }) => {
-            return (
-              <div>
-                <button
-                  className="px-1 py-0.5 border rounded text-sm opacity-80 hover:opacity-100"
-                  onClick={() => {
-                    console.info('Row:', row.id, row.original);
-                  }}
-                >
-                  console.info(row)
-                </button>
-              </div>
-            );
-          },
-          enableHiding: false,
-          enableSorting: false,
-          enableColumnFilter: false,
-        },
+        { accessorKey: 'gold' },
+        { accessorKey: 'silver' },
+        { accessorKey: 'bronze' },
+        { accessorKey: 'info' },
       ] satisfies Array<ColumnDef<AthleteRowData, any>>,
     [view],
   );
@@ -352,7 +262,9 @@ function AthletesTable() {
     filterBy: $query,
     tableFilterSelection: $tableFilter,
     columns,
-    // Use 'window' mode for Athletes to prevent snapping during map interactions.
+    schema: AthleteSchema,
+    mapping: AthleteMapping,
+    validationMode: 'first',
     totalRowsMode: 'window',
     tableOptions: {
       enableHiding: true,
@@ -360,22 +272,18 @@ function AthletesTable() {
       enableSorting: true,
       enableColumnFilters: true,
     },
-    // REGISTER CUSTOM STRATEGIES HERE
     facetStrategies: {
       histogram: HistogramStrategy,
     },
-    onTableStateChange: 'requestUpdate',
     __debugName: 'AthletesTable',
   });
 
-  // Request the histogram data.
-  // We exclude 'Weight' so the histogram shows the full distribution even if you filter weights in the table.
   useEffect(() => {
     client.requestAuxiliary({
       id: 'weight_hist',
       type: 'histogram',
       column: 'weight',
-      excludeColumnId: 'Weight',
+      excludeColumnId: 'weight',
       options: { binSize: 5 },
       onResult: (data) => setHistData(data),
     });
@@ -391,8 +299,7 @@ function AthletesTable() {
         </h5>
         <div className="text-xs text-slate-500 mb-2">
           This chart is driven by the Table Client via{' '}
-          <code>requestAuxiliary</code>. Filter by "Sport" or "Gender" in the
-          table below to see it update!
+          <code>requestAuxiliary</code>.
         </div>
         <SimpleBarChart data={histData} />
       </div>
@@ -401,9 +308,6 @@ function AthletesTable() {
   );
 }
 
-/**
- * A tiny SVG bar chart to visualize the auxiliary data.
- */
 function SimpleBarChart({ data }: { data: Array<HistogramBin> }) {
   if (!data.length) {
     return (
@@ -412,7 +316,6 @@ function SimpleBarChart({ data }: { data: Array<HistogramBin> }) {
       </div>
     );
   }
-
   const maxCount = Math.max(...data.map((d) => d.count));
   const height = 100;
   const width = 400;

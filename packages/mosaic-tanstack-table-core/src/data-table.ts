@@ -1,4 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/data-table.ts
 /**
  * Orchestrator for the Mosaic and TanStack Table integration.
  * Manages the data-fetching lifecycle, schema mapping, and reactive state synchronization.
@@ -262,7 +261,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         );
       }
 
-      this.#columnMapper = new ColumnMapper(options.columns);
+      this.#columnMapper = new ColumnMapper(options.columns, options.mapping);
       this.#initializeAutoFacets(options.columns);
     }
     // If source changed and we are in dynamic mode (no explicit columns),
@@ -375,6 +374,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           source,
           tableState,
           mapper: mapper,
+          mapping: this.options.mapping,
           totalRowsColumnName: this.#sql_total_rows,
           highlightPredicate: safeHighlightPredicate,
           manualHighlight: this.options.manualHighlight,
@@ -393,6 +393,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       const internalClauses = extractInternalFilters({
         tableState,
         mapper: mapper,
+        mapping: this.options.mapping,
         filterRegistry: this.filterRegistry,
       });
 
@@ -439,6 +440,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return extractInternalFilters({
       tableState: filteredState,
       mapper: mapper,
+      mapping: this.options.mapping,
       filterRegistry: this.filterRegistry,
     });
   }
@@ -455,16 +457,56 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     if (isArrowTable(table)) {
       let totalRows: number | undefined = undefined;
 
-      const rows = table.toArray() as Array<TData>;
+      // FIX: Explicitly type as any[] to avoid strict type mismatch with TData[]
+      // when reassigning after validation/casting.
+      let rows: Array<any> = table.toArray();
+
+      // --- RUNTIME SCHEMA VALIDATION ---
+      const mode = this.options.validationMode ?? 'first';
+      const schema = this.options.schema;
+
+      if (mode !== 'none' && rows.length > 0) {
+        try {
+          if (mode === 'first') {
+            // Validate first row
+            schema.parse(rows[0]);
+            // Trust the rest - cast to TData explicitly
+            rows = rows as unknown as Array<TData>;
+          } else {
+            // mode === 'all' is implicit if not 'first' and not 'none' here
+            // Validate all
+            rows = rows.map((r) => schema.parse(r));
+          }
+        } catch (err) {
+          // --- SOFT FAIL ---
+          // Instead of returning empty rows (which breaks the UI), we warn the developer
+          // but proceed with the "best effort" raw data.
+          // This allows debugging of what actually came back from the DB vs what was expected.
+          logger.warn(
+            'Core',
+            `[MosaicDataTable ${this.debugPrefix}] Schema Mismatch (Soft Fail). Proceeding with raw data.`,
+            {
+              error: err,
+              expectedSchema: schema,
+              receivedRowSample: rows[0],
+            },
+          );
+          // Do NOT clear rows. Proceed with the raw data.
+          // rows = []; // <--- DISABLED HARD FAIL
+        }
+      }
+
+      // Cast to TData array (via unknown first if needed by TS in some contexts)
+      const typedRows = rows as unknown as Array<TData>;
 
       if (
         this.options.totalRowsMode === 'window' &&
-        rows.length > 0 &&
-        rows[0] &&
-        typeof rows[0] === 'object' &&
-        this.#sql_total_rows in rows[0]
+        typedRows.length > 0 &&
+        typedRows[0] &&
+        typeof typedRows[0] === 'object' &&
+        this.#sql_total_rows in typedRows[0]
       ) {
-        const firstRow = rows[0] as Record<string, any>;
+        const firstRow = typedRows[0] as Record<string, any>;
         totalRows = firstRow[this.#sql_total_rows];
       }
 
@@ -472,7 +514,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         this.store.setState((prev) => {
           return {
             ...prev,
-            rows,
+            rows: typedRows,
             // Only overwrite totalRows if we are in window mode or if it's undefined
             totalRows:
               this.options.totalRowsMode === 'window'
@@ -508,6 +550,8 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           accessorKey: s.column,
           id: s.column,
         }));
+        // Note: Inference cannot guess mapping, so we pass undefined.
+        // This is legacy behavior for quick prototypes.
         this.#columnMapper = new ColumnMapper(inferredColumns as any);
       }
     }
@@ -747,7 +791,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   getColumnSqlName(columnId: string): string | undefined {
     const mapper = this.#columnMapper;
-    return mapper?.getSqlColumn(columnId);
+    return mapper?.getSqlColumn(columnId)?.toString();
   }
 
   getColumnDef(sqlColumn: string): ColumnDef<TData, TValue> | undefined {

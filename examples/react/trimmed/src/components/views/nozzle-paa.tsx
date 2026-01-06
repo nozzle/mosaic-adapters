@@ -1,14 +1,16 @@
 /**
  * View component for the Nozzle PAA dataset.
- * Demonstrates 'split' pagination mode and the new Functional Topology pattern.
+ * Features: KPI Cards, Complex Filtering, and Multi-Table Cross-Filtering.
  */
-
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
 import { useCoordinator } from '@nozzleio/mosaic-react-core';
+import { mosaicSchemaHelpers } from '@nozzleio/mosaic-tanstack-table-core';
+import { z } from 'zod';
+import type { MosaicColumnMapping } from '@nozzleio/mosaic-tanstack-table-core';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import { usePaaTopology } from '@/hooks/usePaaTopology';
@@ -24,18 +26,59 @@ import {
 const TABLE_NAME = 'nozzle_paa';
 const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 
+// --- MAIN DETAIL TABLE ---
+// Schema validation relaxed to .nullable() to handle SQL NULLs coming from Parquet/DuckDB
+const PaaSchema = z.object({
+  domain: z.string().nullable(),
+  paa_question: z.string().nullable(),
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+});
+type PaaRowData = z.infer<typeof PaaSchema>;
+
+const PaaMapping: MosaicColumnMapping<PaaRowData> = {
+  domain: { sqlColumn: 'domain', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
+  paa_question: {
+    sqlColumn: 'related_phrase.phrase',
+    type: 'VARCHAR',
+    filterType: 'PARTIAL_ILIKE',
+  },
+  title: { sqlColumn: 'title', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
+  description: {
+    sqlColumn: 'description',
+    type: 'VARCHAR',
+    filterType: 'PARTIAL_ILIKE',
+  },
+};
+
+// --- SUMMARY TABLE SCHEMAS (Generic for GroupBy queries) ---
+// We create specific schemas to satisfy the strict typing requirements
+const GroupBySchema = z.object({
+  key: z.union([z.string(), z.number(), z.null()]),
+  metric: mosaicSchemaHelpers.number.nullable(),
+  __is_highlighted: mosaicSchemaHelpers.number.optional(),
+});
+type GroupByRow = z.infer<typeof GroupBySchema>;
+
+const GroupByMapping: MosaicColumnMapping<GroupByRow> = {
+  key: { sqlColumn: 'key', type: 'VARCHAR', filterType: 'EQUALS' },
+  metric: { sqlColumn: 'metric', type: 'INTEGER', filterType: 'RANGE' },
+  __is_highlighted: {
+    sqlColumn: '__is_highlighted',
+    type: 'INTEGER',
+    filterType: 'EQUALS',
+  },
+};
+
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
   const coordinator = useCoordinator();
-
-  // Functional Topology Hook
   const topology = usePaaTopology();
 
   useEffect(() => {
     async function init() {
       try {
         const parquetUrl = new URL(PARQUET_PATH, window.location.origin).href;
-
         await coordinator.exec([
           `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
         ]);
@@ -50,7 +93,7 @@ export function NozzlePaaView() {
   if (!isReady) {
     return (
       <div className="flex h-64 items-center justify-center text-slate-500 animate-pulse">
-        Initializing DuckDB & Loading PAA Data...
+        Initializing...
       </div>
     );
   }
@@ -64,7 +107,6 @@ export function NozzlePaaView() {
           <div className="text-sm font-bold text-slate-700 mr-2">
             FILTER BY:
           </div>
-
           <SearchableSelectFilter
             label="Domain"
             table={TABLE_NAME}
@@ -180,14 +222,12 @@ function HeaderSection({
     mSql.Query.from(TABLE_NAME)
       .select({ value: mSql.count('phrase').distinct() })
       .where(filter);
-
   const qQuestions = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
       .select({
         value: mSql.count(mSql.sql`"related_phrase"."phrase"`).distinct(),
       })
       .where(filter);
-
   const qDays = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
       .select({ value: mSql.count('requested').distinct() })
@@ -250,8 +290,7 @@ function SummaryTable({
   aggFn: (expression?: any) => AggregateNode;
   where?: FilterExpr;
 }) {
-  const safeId = groupBy.replace(/\./g, '_');
-
+  // Logic to build the dynamic query but map it to our static schema
   const queryFactory = useMemo(
     () => (filter: FilterExpr | null | undefined) => {
       let groupKey;
@@ -263,7 +302,6 @@ function SummaryTable({
       }
 
       const highlightPred = topology.cross.predicate(null);
-
       let highlightCol;
       const hasPred =
         highlightPred &&
@@ -273,7 +311,6 @@ function SummaryTable({
         const safePredicate = Array.isArray(highlightPred)
           ? mSql.and(...highlightPred)
           : highlightPred;
-
         highlightCol = mSql.max(
           mSql.sql`CASE WHEN ${safePredicate} THEN 1 ELSE 0 END`,
         );
@@ -283,7 +320,7 @@ function SummaryTable({
 
       const q = mSql.Query.from(TABLE_NAME)
         .select({
-          [safeId]: groupKey,
+          key: groupKey, // Aliased to 'key' to match Schema
           metric: metric === '*' ? aggFn() : aggFn(metric),
           __is_highlighted: highlightCol,
         })
@@ -298,20 +335,7 @@ function SummaryTable({
 
       return q;
     },
-    [groupBy, metric, aggFn, where, safeId, topology.cross],
-  );
-
-  const baseTableOptions = useMemo(
-    () => ({
-      initialState: {
-        sorting: [{ id: 'metric', desc: true }],
-        pagination: { pageSize: 10 },
-      },
-      getRowId: (row: any) => String(row[safeId]),
-      enableRowSelection: true,
-      enableMultiRowSelection: true,
-    }),
-    [safeId],
+    [groupBy, metric, aggFn, where, topology.cross],
   );
 
   const { tableOptions } = useMosaicReactTable({
@@ -319,7 +343,6 @@ function SummaryTable({
     filterBy: topology.summaryContext,
     highlightBy: topology.cross,
     manualHighlight: true,
-    // Explicitly use 'split' mode for summary grids to keep memory footprint predictable.
     totalRowsMode: 'split',
     rowSelection: {
       selection: topology.cross,
@@ -334,24 +357,25 @@ function SummaryTable({
           size: 30,
           enableSorting: false,
           enableColumnFilter: false,
-          enableHiding: false,
-          cell: ({ row }: any) => {
-            return (
-              <div className="flex items-center justify-center">
-                <input
-                  type="checkbox"
-                  checked={row.getIsSelected()}
-                  onChange={row.getToggleSelectedHandler()}
-                  onClick={(e) => e.stopPropagation()}
-                  className="cursor-pointer size-4"
-                />
-              </div>
-            );
-          },
+          cell: ({ row }: any) => (
+            <div className="flex items-center justify-center">
+              <input
+                type="checkbox"
+                checked={row.getIsSelected()}
+                onChange={row.getToggleSelectedHandler()}
+                onClick={(e) => e.stopPropagation()}
+                className="cursor-pointer size-4"
+              />
+            </div>
+          ),
         },
         {
-          id: groupBy,
-          accessorKey: safeId,
+          // FIX: Explicitly set ID to 'key' to match the AccessorKey and Schema.
+          // Previous use of `id: groupBy` (e.g. 'phrase') caused the Query Builder to alias
+          // the SQL result to 'phrase', while TanStack accessor looked for 'key',
+          // resulting in undefined values, empty columns, and schema mismatch errors.
+          id: 'key',
+          accessorKey: 'key',
           header: title,
           enableColumnFilter: false,
         },
@@ -363,9 +387,21 @@ function SummaryTable({
           enableColumnFilter: false,
         },
       ],
-      [groupBy, title, metricLabel, safeId],
+      [groupBy, title, metricLabel],
     ),
-    tableOptions: baseTableOptions,
+    // Pass the Generic Schema/Mapping that matches the query alias structure
+    schema: GroupBySchema,
+    mapping: GroupByMapping,
+    validationMode: 'first',
+    tableOptions: {
+      initialState: {
+        sorting: [{ id: 'metric', desc: true }],
+        pagination: { pageSize: 10 },
+      },
+      getRowId: (row: any) => String(row.key), // Use the aliased 'key'
+      enableRowSelection: true,
+      enableMultiRowSelection: true,
+    },
     __debugName: `${title}SummaryTable`,
   });
 
@@ -380,20 +416,11 @@ function SummaryTable({
         <RenderTable
           table={table}
           columns={tableOptions.columns}
-          onRowClick={(row) => {
-            row.toggleSelected();
-          }}
+          onRowClick={(row) => row.toggleSelected()}
         />
       </div>
     </div>
   );
-}
-
-interface PaaRowData {
-  domain: string;
-  'related_phrase.phrase': string;
-  title: string;
-  description: string;
 }
 
 function DetailTable({
@@ -404,76 +431,35 @@ function DetailTable({
   const columns = useMemo(
     () =>
       [
+        { accessorKey: 'domain', header: 'Domain', size: 150 },
         {
-          id: 'domain',
-          accessorKey: 'domain',
-          header: 'Domain',
-          size: 150,
-          meta: {
-            mosaicDataTable: topology.getColumnMeta('domain'),
-          },
-        },
-        {
-          id: 'paa_question',
-          accessorFn: (row) => row['related_phrase.phrase'],
+          accessorKey: 'paa_question',
+          accessorFn: (row) => row.paa_question,
           header: 'PAA Question',
           size: 350,
-          meta: {
-            mosaicDataTable: topology.getColumnMeta('paa_question'),
-          },
         },
-        {
-          id: 'title',
-          accessorKey: 'title',
-          header: 'Answer Title',
-          size: 300,
-          meta: {
-            mosaicDataTable: topology.getColumnMeta('title'),
-          },
-        },
-        {
-          id: 'description',
-          accessorKey: 'description',
-          header: 'Answer Description',
-          size: 400,
-          meta: {
-            mosaicDataTable: topology.getColumnMeta('description'),
-          },
-        },
+        { accessorKey: 'title', header: 'Answer Title', size: 300 },
+        { accessorKey: 'description', header: 'Answer Description', size: 400 },
       ] satisfies Array<ColumnDef<PaaRowData, any>>,
-    [topology],
-  );
-
-  const baseTableOptions = useMemo(
-    () => ({
-      initialState: {
-        pagination: { pageSize: 20 },
-      },
-    }),
     [],
   );
 
-  const mosaicOptions = useMemo(
-    () => ({
-      table: TABLE_NAME,
-      filterBy: topology.detailContext,
-      tableFilterSelection: topology.detail,
-      columns,
-      totalRowsColumnName: '__total_rows',
-      // Explicitly use 'split' mode for PAA Detail Table for maximum stability.
-      totalRowsMode: 'split' as const,
-      tableOptions: {
-        ...baseTableOptions,
-        enableColumnFilters: true,
-      },
-      __debugName: 'DetailTable',
-    }),
-    [columns, baseTableOptions, topology],
-  );
-
-  const { tableOptions } = useMosaicReactTable(mosaicOptions);
+  const { tableOptions } = useMosaicReactTable({
+    table: TABLE_NAME,
+    filterBy: topology.detailContext,
+    tableFilterSelection: topology.detail,
+    columns,
+    schema: PaaSchema,
+    mapping: PaaMapping,
+    totalRowsColumnName: '__total_rows',
+    totalRowsMode: 'split',
+    tableOptions: {
+      initialState: { pagination: { pageSize: 20 } },
+      enableColumnFilters: true,
+    },
+    __debugName: 'DetailTable',
+  });
 
   const table = useReactTable(tableOptions);
-
   return <RenderTable table={table} columns={columns} />;
 }

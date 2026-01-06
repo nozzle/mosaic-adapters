@@ -8,6 +8,7 @@ import { createStructAccess } from './utils';
 import { logger } from './logger';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
+import { SqlIdentifier } from './domain/sql-identifier';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ColumnType, IMosaicClient } from './types';
@@ -326,7 +327,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     } = this.options;
 
     const isArray = columnType === 'array' || isArrayColumn === true;
-    const colExpr = createStructAccess(column);
+    const colExpr = createStructAccess(SqlIdentifier.from(column));
 
     let effectiveFilter = filter;
     if (filterBy) {

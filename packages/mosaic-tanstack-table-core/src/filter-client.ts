@@ -1,6 +1,7 @@
 import { MosaicClient } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import { createStructAccess } from './utils';
+import { SqlIdentifier } from './domain/sql-identifier';
 import type { Selection } from '@uwdata/mosaic-core';
 
 export type FilterMode = 'TEXT' | 'MATCH' | 'RANGE' | 'DATE_RANGE';
@@ -90,7 +91,7 @@ export class MosaicFilter extends MosaicClient {
       return null;
     }
 
-    const colExpr = createStructAccess(this.column);
+    const colExpr = createStructAccess(SqlIdentifier.from(this.column));
 
     // 2. Generate SQL based on Mode
     switch (this.mode) {

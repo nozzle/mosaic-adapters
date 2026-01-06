@@ -1,17 +1,17 @@
 /**
  * View component for the NYC Taxi dataset.
- * Demonstrates geospatial features, aggregation, and cross-filtering using Window-mode pagination.
- * REFACTORED: Now uses functional hooks for topology management.
+ * Features: Geospatial Map (vgplot) + Type-Safe Aggregation Bridge.
  */
-
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
 import { useCoordinator } from '@nozzleio/mosaic-react-core';
+import { mosaicSchemaHelpers } from '@nozzleio/mosaic-tanstack-table-core';
+import { z } from 'zod';
+import type { MosaicColumnMapping } from '@nozzleio/mosaic-tanstack-table-core';
 import type { ColumnDef } from '@tanstack/react-table';
-import type { MosaicDataTableOptions } from '@nozzleio/mosaic-tanstack-react-table';
 import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -21,25 +21,40 @@ const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet';
 const tableName = 'trips';
 
-interface TripRowData {
-  datetime: string;
-  fare_amount: number;
-  vendor_id: string;
-}
+// 1. Zod Schemas
+const TripSchema = z.object({
+  datetime: mosaicSchemaHelpers.date,
+  fare_amount: mosaicSchemaHelpers.number,
+  vendor_id: z.string(),
+});
+type TripRowData = z.infer<typeof TripSchema>;
 
-interface SummaryRowData {
-  zone_x: number;
-  zone_y: number;
-  trip_count: number;
-  avg_fare: number;
-}
+const SummarySchema = z.object({
+  zone_x: mosaicSchemaHelpers.number,
+  zone_y: mosaicSchemaHelpers.number,
+  trip_count: mosaicSchemaHelpers.number,
+  avg_fare: mosaicSchemaHelpers.number,
+});
+type SummaryRowData = z.infer<typeof SummarySchema>;
+
+// 2. Mappings
+const TripMapping: MosaicColumnMapping<TripRowData> = {
+  datetime: { sqlColumn: 'datetime', type: 'TIMESTAMP', filterType: 'RANGE' },
+  vendor_id: { sqlColumn: 'vendor_id', type: 'VARCHAR', filterType: 'EQUALS' },
+  fare_amount: { sqlColumn: 'fare_amount', type: 'FLOAT', filterType: 'RANGE' },
+};
+
+const SummaryMapping: MosaicColumnMapping<SummaryRowData> = {
+  zone_x: { sqlColumn: 'zone_x', type: 'INTEGER', filterType: 'EQUALS' },
+  zone_y: { sqlColumn: 'zone_y', type: 'INTEGER', filterType: 'EQUALS' },
+  trip_count: { sqlColumn: 'trip_count', type: 'INTEGER', filterType: 'RANGE' },
+  avg_fare: { sqlColumn: 'avg_fare', type: 'FLOAT', filterType: 'RANGE' },
+};
 
 export function NycTaxiView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
   const coordinator = useCoordinator();
-
-  // Use the new functional topology hook
   const topology = useNycTaxiTopology();
 
   useEffect(() => {
@@ -188,72 +203,51 @@ function TripsDetailTable({
     () =>
       [
         {
-          id: 'datetime',
           accessorKey: 'datetime',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Time" view={view} />
           ),
           cell: (props) => props.getValue()?.toLocaleString(),
-          enableColumnFilter: true,
           meta: {
             filterVariant: 'range',
             rangeFilterType: 'datetime',
-            mosaicDataTable: {
-              sqlColumn: 'datetime',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
+            mosaicDataTable: { facet: 'minmax' },
           },
         },
         {
-          id: 'vendor_id',
           accessorKey: 'vendor_id',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Vendor" view={view} />
           ),
-          enableColumnFilter: true,
           meta: {
             filterVariant: 'select',
-            mosaicDataTable: {
-              sqlColumn: 'vendor_id',
-              sqlFilterType: 'EQUALS',
-              facet: 'unique',
-            },
+            mosaicDataTable: { facet: 'unique' },
           },
         },
         {
-          id: 'fare_amount',
           accessorKey: 'fare_amount',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Fare" view={view} />
           ),
-          enableColumnFilter: true,
           meta: {
             filterVariant: 'range',
-            mosaicDataTable: {
-              sqlColumn: 'fare_amount',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
+            mosaicDataTable: { facet: 'minmax' },
           },
         },
       ] satisfies Array<ColumnDef<TripRowData, any>>,
     [view],
   );
 
-  const mosaicOptions: MosaicDataTableOptions<TripRowData> = useMemo(
-    () => ({
-      table: tableName,
-      filterBy: topology.detailContext,
-      tableFilterSelection: topology.detailFilter,
-      columns,
-      totalRowsMode: 'window',
-      tableOptions: { enableColumnFilters: true },
-    }),
-    [columns, topology],
-  );
-
-  const { tableOptions } = useMosaicReactTable(mosaicOptions);
+  const { tableOptions } = useMosaicReactTable({
+    table: tableName,
+    filterBy: topology.detailContext,
+    tableFilterSelection: topology.detailFilter,
+    columns,
+    schema: TripSchema,
+    mapping: TripMapping,
+    totalRowsMode: 'window',
+    tableOptions: { enableColumnFilters: true },
+  });
 
   const table = useReactTable(tableOptions);
   return (
@@ -274,86 +268,57 @@ function TripsSummaryTable({
     () =>
       [
         {
-          id: 'zone_x',
           accessorKey: 'zone_x',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Zone X" view={view} />
           ),
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'zone_x',
-              sqlFilterType: 'EQUALS',
-            },
-            filterVariant: 'text',
-          },
+          meta: { filterVariant: 'text' },
         },
         {
-          id: 'zone_y',
           accessorKey: 'zone_y',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Zone Y" view={view} />
           ),
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'zone_y',
-              sqlFilterType: 'EQUALS',
-            },
-            filterVariant: 'text',
-          },
+          meta: { filterVariant: 'text' },
         },
         {
-          id: 'trip_count',
           accessorKey: 'trip_count',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Count" view={view} />
           ),
           meta: {
-            mosaicDataTable: {
-              sqlColumn: 'trip_count',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
             filterVariant: 'range',
+            mosaicDataTable: { facet: 'minmax' },
           },
         },
         {
-          id: 'avg_fare',
           accessorKey: 'avg_fare',
           header: ({ column }) => (
             <RenderTableHeader column={column} title="Avg Fare" view={view} />
           ),
           cell: (p) => p.getValue().toFixed(2),
           meta: {
-            mosaicDataTable: {
-              sqlColumn: 'avg_fare',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
             filterVariant: 'range',
+            mosaicDataTable: { facet: 'minmax' },
           },
         },
       ] satisfies Array<ColumnDef<SummaryRowData, any>>,
     [view],
   );
 
-  const mosaicOptions: MosaicDataTableOptions<SummaryRowData> = useMemo(
-    () => ({
-      table: topology.summaryQueryFactory,
-      filterBy: topology.summaryContext,
-      tableFilterSelection: topology.summaryFilter,
-      columns,
-      totalRowsMode: 'window',
-      tableOptions: {
-        enableColumnFilters: true,
-        initialState: { sorting: [{ id: 'trip_count', desc: true }] },
-      },
-    }),
-    [columns, topology],
-  );
-
-  const { tableOptions } = useMosaicReactTable(mosaicOptions);
+  const { tableOptions } = useMosaicReactTable({
+    table: topology.summaryQueryFactory,
+    filterBy: topology.summaryContext,
+    tableFilterSelection: topology.summaryFilter,
+    columns,
+    schema: SummarySchema,
+    mapping: SummaryMapping,
+    totalRowsMode: 'window',
+    tableOptions: {
+      enableColumnFilters: true,
+      initialState: { sorting: [{ id: 'trip_count', desc: true }] },
+    },
+  });
 
   const table = useReactTable(tableOptions);
   return (

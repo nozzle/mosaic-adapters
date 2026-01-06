@@ -4,6 +4,7 @@
 
 import * as mSql from '@uwdata/mosaic-sql';
 import type { RowData, TableOptions, TableState } from '@tanstack/table-core';
+import type { SqlIdentifier } from './domain/sql-identifier';
 
 /**
  * Utility to handle functional or direct value updates.
@@ -154,11 +155,13 @@ export type MosaicSQLExpression =
  * Constructs a Mosaic SQL expression for a struct column access.
  * Uses the Mosaic AST to safely compose column references.
  *
- * Input: "related_phrase.phrase"
+ * Input: SqlIdentifier("related_phrase.phrase")
  * Output: sql`${column("related_phrase")}.${column("phrase")}`
  * SQL Result: "related_phrase"."phrase"
  */
-export function createStructAccess(columnPath: string): MosaicSQLExpression {
+export function createStructAccess(column: SqlIdentifier): MosaicSQLExpression {
+  const columnPath = column.toString();
+
   // If it's a simple column, just return the column node
   if (!columnPath.includes('.')) {
     return mSql.column(columnPath);
