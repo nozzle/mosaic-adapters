@@ -10,7 +10,7 @@ import {
   createMosaicColumnHelper,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { useCoordinator } from '@nozzleio/mosaic-react-core';
+import { useCoordinator } from '@nozzleio/react-mosaic';
 import {
   createMosaicMapping,
   mosaicSchemaHelpers,

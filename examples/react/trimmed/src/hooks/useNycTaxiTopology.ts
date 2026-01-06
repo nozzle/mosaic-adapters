@@ -6,7 +6,7 @@
 import { useEffect, useMemo } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
-import { useMosaicSelection } from '@nozzleio/mosaic-react-core';
+import { useMosaicSelection } from '@nozzleio/react-mosaic';
 import { AggregationBridge } from '@nozzleio/mosaic-tanstack-react-table';
 
 export function useNycTaxiTopology() {

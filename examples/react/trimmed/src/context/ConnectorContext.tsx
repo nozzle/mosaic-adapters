@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
-import { MosaicContext } from '@nozzleio/mosaic-react-core';
+import { MosaicContext } from '@nozzleio/react-mosaic';
 import { socketConnector, wasmConnector } from '@uwdata/mosaic-core';
 
 type ConnectorMode = 'wasm' | 'remote';

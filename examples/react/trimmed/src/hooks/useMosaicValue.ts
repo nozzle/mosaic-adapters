@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { isArrowTable } from '@uwdata/mosaic-core';
-import { useCoordinator } from '@nozzleio/mosaic-react-core';
+import { useCoordinator } from '@nozzleio/react-mosaic';
 import type { Selection } from '@uwdata/mosaic-core';
 
 /**

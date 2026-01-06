@@ -9,7 +9,7 @@ export default defineConfig({
   optimizeDeps: {
     // Exclude workspace packages from pre-bundling to ensure changes are picked up immediately
     exclude: [
-      '@nozzleio/mosaic-react-core',
+      '@nozzleio/react-mosaic',
       '@nozzleio/mosaic-tanstack-react-table',
       '@nozzleio/mosaic-tanstack-table-core',
     ],

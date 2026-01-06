@@ -1,5 +1,3 @@
-// packages/mosaic-tanstack-react-table/src/utils.ts
-
 import type { ColumnDef, RowData } from '@tanstack/react-table';
 
 type UnwrapNullable<T> = T extends null | undefined

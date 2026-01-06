@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-core';
 import { useStore } from '@tanstack/react-store';
-import { useCoordinator } from '@nozzleio/mosaic-react-core';
+import { useCoordinator } from '@nozzleio/react-mosaic';
 import type {
   MosaicColumnMapping,
   MosaicDataTable,

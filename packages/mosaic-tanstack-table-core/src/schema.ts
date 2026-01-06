@@ -1,5 +1,3 @@
-// packages/mosaic-tanstack-table-core/src/schema.ts
-
 import { z } from 'zod';
 
 /**

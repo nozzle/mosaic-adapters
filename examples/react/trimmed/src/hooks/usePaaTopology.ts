@@ -7,7 +7,7 @@ import * as vg from '@uwdata/vgplot';
 import {
   useMosaicSelection,
   useSelectionListener,
-} from '@nozzleio/mosaic-react-core';
+} from '@nozzleio/react-mosaic';
 import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
 
 export function usePaaTopology() {
