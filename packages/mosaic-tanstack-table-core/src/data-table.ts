@@ -1,3 +1,5 @@
+// packages/mosaic-tanstack-table-core/src/data-table.ts
+
 /**
  * Orchestrator for the Mosaic and TanStack Table integration.
  * Manages the data-fetching lifecycle, schema mapping, and reactive state synchronization.
@@ -49,17 +51,10 @@ import type {
 } from './types';
 import type { FilterStrategy } from './query/filter-factory';
 import type { FacetStrategy } from './facet-strategies';
+import type { FacetStrategyKey, MosaicFacetRegistry } from './registry';
 
 let instanceCounter = 0;
 
-/**
- * Factory function to create a MosaicDataTable client.
- *
- * @typeParam `TData` The row data type used in TanStack Table.
- * @typeParam `TValue` The cell value type used in TanStack Table.
- * @param options Options to be passed into the constructor of the MosaicDataTable.
- * @returns A new instance of the MosaicDataTable client.
- */
 export function createMosaicDataTableClient<
   TData extends RowData,
   TValue = unknown,
@@ -68,9 +63,6 @@ export function createMosaicDataTableClient<
   return client;
 }
 
-/**
- * A Mosaic Client that provides the coordination logic to drive TanStack Table.
- */
 export class MosaicDataTable<TData extends RowData, TValue = unknown>
   extends MosaicClient
   implements IMosaicClient
@@ -91,7 +83,8 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   public filterRegistry: StrategyRegistry<FilterStrategy>;
   public facetRegistry: StrategyRegistry<FacetStrategy<any>>;
 
-  #facetValues: Map<string, any> = new Map();
+  // Refactored from 'any' to 'unknown' to enforce safe access
+  #facetValues: Map<string, unknown> = new Map();
 
   #rowSelectionManager?: MosaicSelectionManager;
 
@@ -103,7 +96,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     this.options = options;
     this.source = options.table;
 
-    // Initialize Registries
     this.filterRegistry = new StrategyRegistry({
       ...defaultFilterStrategies,
       ...options.filterStrategies,
@@ -114,7 +106,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       ...options.facetStrategies,
     });
 
-    // Initialize Sidecar Manager with reference to this host and the registry
     this.sidecarManager = new SidecarManager(this, this.facetRegistry);
 
     logger.debug(
@@ -144,10 +135,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     this.lifecycle.disconnect(this.coordinator);
   }
 
-  /**
-   * Safe wrapper for requestQuery.
-   * Uses super.requestQuery to ensure the library's client-coordinator handshake is preserved.
-   */
   override requestQuery(query?: any): Promise<any> | null {
     if (!this.coordinator) {
       return Promise.resolve();
@@ -160,12 +147,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this;
   }
 
-  /**
-   * Updates internal state and store when options change.
-   * @param options The updated options.
-   */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
-    // Detect if the table source has changed to trigger re-preparation
     const sourceChanged = this.source !== options.table;
 
     this.options = options;
@@ -176,7 +158,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
     this.source = options.table;
 
-    // Re-register custom strategies if they changed (overwriting existing ones)
     if (options.filterStrategies) {
       Object.entries(options.filterStrategies).forEach(([k, v]) =>
         this.filterRegistry.register(k, v),
@@ -192,7 +173,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.sidecarManager.updateSource(options.table);
     }
 
-    // Guaranteed initialization: uses provided selection, or falls back to an internal default.
     const currentSelection = (this as any).tableFilterSelection as
       | Selection
       | undefined;
@@ -218,7 +198,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
     type ResolvedStore = MosaicDataTableStore<TData, TValue>;
 
-    // Type cast to check if the private store is initialized yet
     const currentStore = (this as any).#store as
       | Store<ResolvedStore>
       | undefined;
@@ -237,7 +216,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         _facetsUpdateCount: 0,
       });
     } else {
-      // If we have explicit columns, update them immediately.
       if (options.columns !== undefined) {
         this.#store.setState((prev) => ({
           ...prev,
@@ -246,14 +224,11 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       }
     }
 
-    // Split Mode Logic: Spin up a sidecar for total counts
     if (options.totalRowsMode === 'split') {
       this.sidecarManager.requestTotalCount();
     }
 
-    // If explicit columns are provided, initialize the mapper immediately
     if (options.columns) {
-      // Diagnostic Log
       if (options.__debugName?.includes('DetailTable')) {
         logger.debug(
           'Core',
@@ -263,18 +238,9 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
       this.#columnMapper = new ColumnMapper(options.columns, options.mapping);
       this.#initializeAutoFacets(options.columns);
-    }
-    // If source changed and we are in dynamic mode (no explicit columns),
-    // clear the old schema and re-prepare
-    else if (sourceChanged) {
+    } else if (sourceChanged) {
       this.schema = [];
-
-      // CRITICAL FIX: Reset the column mapper immediately.
-      // This prevents the client from generating queries using the OLD schema against the NEW table
-      // (which causes "Binder Error: Referenced column not found" errors).
       this.#columnMapper = undefined;
-
-      // Also reset the store to prevent the UI from rendering stale columns
       this.#store.setState((prev) => ({
         ...prev,
         columnDefs: [],
@@ -282,7 +248,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       }));
 
       if (this.isConnected) {
-        // Re-run the preparation phase to infer new schema
         this.prepare().then(() => {
           this.requestUpdate();
         });
@@ -290,17 +255,9 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     }
   }
 
-  /**
-   * Initializes facet sidecars based on column metadata.
-   */
   #initializeAutoFacets(columns: Array<ColumnDef<TData, TValue>>) {
     columns.forEach((col) => {
       const facetType = col.meta?.mosaicDataTable?.facet;
-
-      // FIX: Robust ID Resolution
-      // Raw column definitions might not have an 'id'.
-      // We must fallback to 'accessorKey' just like TanStack Table does,
-      // otherwise we fail to register facets for columns defined with only accessorKey.
       const colId =
         col.id ||
         ('accessorKey' in col && typeof col.accessorKey === 'string'
@@ -317,22 +274,19 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   /**
    * Request auxiliary data (Sidecars) linked to this table's context.
-   * Useful for generating Histograms, Heatmaps, or other aggregates driven by the table's filters.
+   * Type-safe wrapper around SidecarManager.
    */
-  public requestAuxiliary(config: {
+  public requestAuxiliary<TKey extends FacetStrategyKey>(config: {
     id: string;
-    type: string;
+    type: TKey;
     column: string;
     excludeColumnId?: string;
-    options?: Record<string, any>;
-    onResult?: (result: any) => void;
+    options?: MosaicFacetRegistry[TKey]['input'];
+    onResult?: (result: MosaicFacetRegistry[TKey]['output']) => void;
   }) {
     this.sidecarManager.requestAuxiliary(config);
   }
 
-  /**
-   * Resolves the polymorphic data source into a SQL string or query object.
-   */
   resolveSource(filter?: FilterExpr | null): string | SelectQuery {
     if (typeof this.source === 'function') {
       return this.source(filter);
@@ -375,7 +329,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
     const tableState = this.store.state.tableState;
 
-    // Use current mapper if initialized, otherwise generate raw select.
     const mapper = this.#columnMapper;
 
     const statement = mapper
@@ -419,10 +372,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return statement;
   }
 
-  /**
-   * Generates filters for cascading selection logic.
-   * If excludeColumnId is omitted, returns all filters (used for Total Count).
-   */
   public getCascadingFilters(options?: {
     excludeColumnId?: string;
   }): Array<mSql.FilterExpr> {
@@ -439,7 +388,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         }
       : tableState;
 
-    // Cast to check if mapper is ready
     const mapper = this.#columnMapper;
 
     if (!mapper) {
@@ -466,31 +414,29 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     if (isArrowTable(table)) {
       let totalRows: number | undefined = undefined;
 
-      // FIX: Explicitly type as any[] to avoid strict type mismatch with TData[]
-      // when reassigning after validation/casting.
-      let rows: Array<any> = table.toArray();
+      // Changed from any[] to unknown[] to allow stricter checking
+      let rows: Array<unknown> = table.toArray();
 
-      // --- RUNTIME SCHEMA VALIDATION ---
       const mode = this.options.validationMode ?? 'first';
       const schema = this.options.schema;
+
+      if (mode === 'none') {
+        if (process.env.NODE_ENV !== 'production') {
+          logger.warn(
+            'Core',
+            `[MosaicDataTable ${this.debugPrefix}] ValidationMode 'none' is unsafe.`,
+          );
+        }
+      }
 
       if (mode !== 'none' && rows.length > 0) {
         try {
           if (mode === 'first') {
-            // Validate first row
             schema.parse(rows[0]);
-            // Trust the rest - cast to TData explicitly
-            rows = rows as unknown as Array<TData>;
           } else {
-            // mode === 'all' is implicit if not 'first' and not 'none' here
-            // Validate all
             rows = rows.map((r) => schema.parse(r));
           }
         } catch (err) {
-          // --- SOFT FAIL ---
-          // Instead of returning empty rows (which breaks the UI), we warn the developer
-          // but proceed with the "best effort" raw data.
-          // This allows debugging of what actually came back from the DB vs what was expected.
           logger.warn(
             'Core',
             `[MosaicDataTable ${this.debugPrefix}] Schema Mismatch (Soft Fail). Proceeding with raw data.`,
@@ -500,20 +446,17 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
               receivedRowSample: rows[0],
             },
           );
-          // Do NOT clear rows. Proceed with the raw data.
-          // rows = []; // <--- DISABLED HARD FAIL
         }
       }
 
-      // Cast to TData array (via unknown first if needed by TS in some contexts)
-      const typedRows = rows as unknown as Array<TData>;
+      const typedRows = rows as Array<TData>;
 
       if (
         this.options.totalRowsMode === 'window' &&
         typedRows.length > 0 &&
         typedRows[0] &&
         typeof typedRows[0] === 'object' &&
-        this.#sql_total_rows in typedRows[0]
+        this.#sql_total_rows in (typedRows[0] as Record<string, any>)
       ) {
         const firstRow = typedRows[0] as Record<string, any>;
         totalRows = firstRow[this.#sql_total_rows];
@@ -524,7 +467,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           return {
             ...prev,
             rows: typedRows,
-            // Only overwrite totalRows if we are in window mode or if it's undefined
             totalRows:
               this.options.totalRowsMode === 'window'
                 ? totalRows
@@ -550,17 +492,13 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       const schema = await queryFieldInfo(this.coordinator!, this.fields());
       this.schema = schema;
 
-      // Access private field via any to check initialization
       const mapper = this.#columnMapper;
 
-      // Initialize inferred mapper if we have no column definitions and no existing mapper
       if (schema.length > 0 && this.options.columns === undefined && !mapper) {
         const inferredColumns = schema.map((s) => ({
           accessorKey: s.column,
           id: s.column,
         }));
-        // Note: Inference cannot guess mapping, so we pass undefined.
-        // This is legacy behavior for quick prototypes.
         this.#columnMapper = new ColumnMapper(inferredColumns as any);
       }
     }
@@ -654,9 +592,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     this.sidecarManager.clear();
   }
 
-  /**
-   * Defines the fields to be queried by Mosaic.
-   */
   fields(): Array<FieldInfoRequest> {
     const source = this.resolveSource();
 
@@ -668,7 +603,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       return [];
     }
 
-    // Access mapper via any to check initialization
     const mapper = this.#columnMapper;
 
     if (!mapper) {
@@ -678,9 +612,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return mapper.getMosaicFieldRequests(source);
   }
 
-  /**
-   * Produces TanStack Table options from internal store state.
-   */
   getTableOptions(
     state: Store<MosaicDataTableStore<TData, TValue>>['state'],
   ): TableOptions<TData> {
@@ -759,7 +690,10 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   ) => () => Map<any, number> {
     return (_table, columnId) => {
       return () => {
-        const values = this.getFacets().get(columnId);
+        const values = this.getFacetValue<Array<unknown>>(
+          columnId,
+          Array.isArray,
+        );
         if (!values) {
           return new Map<any, number>();
         }
@@ -781,7 +715,10 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   ) => () => [any, any] | undefined {
     return (_table, columnId) => {
       return () => {
-        const values = this.getFacets().get(columnId);
+        const values = this.getFacetValue<Array<unknown>>(
+          columnId,
+          Array.isArray,
+        );
         if (Array.isArray(values) && values.length === 2) {
           return values as [number, number];
         }
@@ -794,21 +731,35 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this.#store;
   }
 
-  getFacets(): Map<string, any> {
+  // --- Facet Accessors ---
+
+  getFacets(): Map<string, unknown> {
     return this.#facetValues;
   }
 
-  getColumnSqlName(columnId: string): string | undefined {
-    const mapper = this.#columnMapper;
-    return mapper?.getSqlColumn(columnId)?.toString();
+  /**
+   * Retrieves a facet value with optional type guarding.
+   */
+  getFacetValue<T>(
+    columnId: string,
+    guard?: (val: unknown) => val is T,
+  ): T | undefined {
+    const val = this.#facetValues.get(columnId);
+
+    if (val === undefined) {
+      return undefined;
+    }
+
+    if (guard && !guard(val)) {
+      logger.error('Core', `Facet type mismatch for column ${columnId}`);
+      return undefined;
+    }
+
+    // Cast as unknown then T to bypass 'unknown not assignable to T' check
+    return val as unknown as T;
   }
 
-  getColumnDef(sqlColumn: string): ColumnDef<TData, TValue> | undefined {
-    const mapper = this.#columnMapper;
-    return mapper?.getColumnDef(sqlColumn);
-  }
-
-  updateFacetValue(columnId: string, value: any) {
+  updateFacetValue(columnId: string, value: unknown) {
     this.#facetValues.set(columnId, value);
     batch(() => {
       this.store.setState((prev) => ({
@@ -825,6 +776,16 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         totalRows: count,
       }));
     });
+  }
+
+  getColumnSqlName(columnId: string): string | undefined {
+    const mapper = this.#columnMapper;
+    return mapper?.getSqlColumn(columnId)?.toString();
+  }
+
+  getColumnDef(sqlColumn: string): ColumnDef<TData, TValue> | undefined {
+    const mapper = this.#columnMapper;
+    return mapper?.getColumnDef(sqlColumn);
   }
 
   get isEnabled() {

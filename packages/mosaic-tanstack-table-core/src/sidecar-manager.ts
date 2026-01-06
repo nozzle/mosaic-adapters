@@ -1,11 +1,16 @@
 // packages/mosaic-tanstack-table-core/src/sidecar-manager.ts
+
 import { SidecarClient } from './sidecar-client';
 import { TotalCountStrategy } from './facet-strategies';
 import type { MosaicDataTable } from './data-table';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type { RowData } from '@tanstack/table-core';
 import type { MosaicTableSource } from './types';
-import type { StrategyRegistry } from './registry';
+import type {
+  FacetStrategyKey,
+  MosaicFacetRegistry,
+  StrategyRegistry,
+} from './registry';
 import type { FacetStrategy } from './facet-strategies';
 
 /**
@@ -24,17 +29,14 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
    * Idempotently requests a facet sidecar for a column.
    */
   requestFacet(columnId: string, type: string) {
-    // Facets are just a specific type of auxiliary query, keyed by column
+    // We cast type to any here because requestFacet is often called dynamically based on
+    // column metadata strings which might not be strictly typed to the Registry keys at that call site.
+    // However, the underlying requestAuxiliary will enforce it if called directly.
     this.requestAuxiliary({
       id: `${columnId}:${type}`,
-      type,
+      type: type as any,
       column: columnId,
-      // For standard facets, we exclude the column itself from the filters
       excludeColumnId: columnId,
-      // CRITICAL FIX: Explicitly map the result to the columnId.
-      // The host table expects to find the facet values under 'columnId'
-      // to satisfy TanStack Table's getFacetedUniqueValues() API.
-      // This overrides the default behavior which would store it under 'id' (columnId:type).
       onResult: (val) => {
         this.host.updateFacetValue(columnId, val);
       },
@@ -43,24 +45,30 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
 
   /**
    * Generic method to request any auxiliary data driven by the table context.
-   * Useful for Sidebars, Histograms, or Custom Widgets.
+   * Strongly typed against the MosaicFacetRegistry.
    */
-  requestAuxiliary(config: {
+  requestAuxiliary<TKey extends FacetStrategyKey>(config: {
     /** Unique identifier for this request (e.g. 'price_hist', 'col_a:unique') */
     id: string;
     /** The name of the registered strategy to use */
-    type: string;
+    type: TKey;
     /** The SQL column/expression to operate on */
     column: string;
     /**
      * If provided, filters on this column ID will be EXCLUDED from the query.
-     * This is standard Cross-Filter behavior (Multi-Selects shouldn't filter themselves).
+     * This is standard Cross-Filter behavior.
      */
     excludeColumnId?: string;
-    /** Additional options to pass to the strategy (e.g. bins, limits) */
-    options?: Record<string, any>;
-    /** Optional custom result handler. Defaults to host.updateFacetValue(id, val) */
-    onResult?: (result: any) => void;
+    /**
+     * Additional options to pass to the strategy.
+     * Strongly typed based on the strategy definition.
+     */
+    options?: MosaicFacetRegistry[TKey]['input'];
+    /**
+     * Custom result handler.
+     * Strongly typed based on the strategy output.
+     */
+    onResult?: (result: MosaicFacetRegistry[TKey]['output']) => void;
   }) {
     if (this.clients.has(config.id)) {
       return;
@@ -75,18 +83,22 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
       return;
     }
 
-    // Resolve SQL column if it's a known table column, otherwise pass raw
     const sqlColumn =
       this.host.getColumnSqlName(config.column) || config.column;
 
-    // Determine sort mode if applicable (heuristic from schema)
     const colDef = this.host.getColumnDef(sqlColumn);
     const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
 
-    // Merge options
+    // We cast to unknown first to erase the inferred 'void' type from the base registry.
+    // We then cast to 'object | undefined' to acknowledge it might be an options object
+    // (from augmentation) or undefined (from base).
+    // This makes the '|| {}' fallback necessary and valid to the linter.
+    const strategyOptions =
+      (config.options as unknown as object | undefined) || {};
+
     const queryOptions = {
       sortMode,
-      ...config.options,
+      ...strategyOptions,
     };
 
     const client = new SidecarClient(
@@ -94,7 +106,6 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
         source: this.host.source,
         column: sqlColumn,
         filterBy: this.host.filterBy,
-        // Dynamic Callback to get current table state
         getFilters: () =>
           this.host.getCascadingFilters({
             excludeColumnId: config.excludeColumnId,
@@ -112,12 +123,10 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
       strategy,
     );
 
-    // Sync coordinator
     if (this.host.coordinator) {
       client.setCoordinator(this.host.coordinator);
     }
 
-    // Auto-connect if the host table is already active
     if (this.host.isEnabled) {
       client.connect();
       client.requestUpdate();
@@ -128,7 +137,6 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
 
   /**
    * Requests a dedicated client to fetch the total row count.
-   * This respects all current filters on the table.
    */
   requestTotalCount() {
     const key = '__total_rows';
@@ -136,12 +144,12 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
       return;
     }
 
+    // Explicitly typed request for totalCount
     const client = new SidecarClient(
       {
         source: this.host.source,
         column: key,
         filterBy: this.host.filterBy,
-        // Get ALL filters (no exclusions) for the total count
         getFilters: () => this.host.getCascadingFilters(),
         onResult: (count: number) => this.host.updateTotalRows(count),
         __debugName: `${this.host.options.__debugName || 'Table'}:TotalCount`,
@@ -161,47 +169,28 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
     this.clients.set(key, client);
   }
 
-  /**
-   * Updates the source for all active sidecars.
-   * Essential when switching tables or changing the base query.
-   */
   updateSource(source: MosaicTableSource) {
     this.clients.forEach((client) => {
       client.updateSource(source);
     });
   }
 
-  /**
-   * Propagates a new coordinator to all sidecars.
-   */
   updateCoordinators(newCoordinator: Coordinator) {
     this.clients.forEach((c) => c.setCoordinator(newCoordinator));
   }
 
-  /**
-   * Connects all sidecars to the coordinator.
-   */
   connectAll() {
     this.clients.forEach((c) => c.connect());
   }
 
-  /**
-   * Refreshes all sidecars (e.g. when filters change).
-   */
   refreshAll() {
     this.clients.forEach((c) => c.requestUpdate());
   }
 
-  /**
-   * Disconnects all sidecars.
-   */
   disconnectAll() {
     this.clients.forEach((c) => c.disconnect());
   }
 
-  /**
-   * Clears all clients.
-   */
   clear() {
     this.disconnectAll();
     this.clients.clear();

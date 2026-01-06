@@ -1,3 +1,4 @@
+// packages/mosaic-tanstack-table-core/src/query/query-builder.ts
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
 import { createStructAccess, toRangeValue } from '../utils';
@@ -40,7 +41,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
   // 1. Select Columns
   // UPDATED: We now use 'alias' from the mapper instead of 'id'.
   // This allows the ID (used for state/filtering) to differ from the Accessor (used for data reading).
-  const selectColumns = mapper.getSelectColumns().map(({ id, sql, alias }) => {
+  const selectColumns = mapper.getSelectColumns().map(({ sql, alias }) => {
     const colStr = sql.toString();
 
     // Struct access: SELECT "a"."b" AS "alias"

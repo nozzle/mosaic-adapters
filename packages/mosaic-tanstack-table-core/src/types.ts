@@ -1,3 +1,5 @@
+// packages/mosaic-tanstack-table-core/src/types.ts
+
 /**
  * Type definitions for the Mosaic TanStack Table Core adapter.
  * Defines configuration options, store structures, and metadata extensions.
@@ -22,7 +24,7 @@ export type MosaicDataTableSqlFilterType =
   | 'ILIKE'
   | 'PARTIAL_ILIKE'
   | 'RANGE'
-  | (string & {}); // Allow custom string types
+  | (string & {});
 
 export type FacetSortMode = 'alpha' | 'count';
 
@@ -35,46 +37,55 @@ export type SqlType =
   | 'TIMESTAMP'
   | 'BOOLEAN';
 
+// --- Advanced Mapping Types ---
+
+type FilterCompatibility = {
+  VARCHAR: 'ILIKE' | 'LIKE' | 'EQUALS' | 'PARTIAL_ILIKE' | 'PARTIAL_LIKE';
+  INTEGER: 'RANGE' | 'EQUALS';
+  FLOAT: 'RANGE' | 'EQUALS';
+  DATE: 'RANGE' | 'EQUALS';
+  TIMESTAMP: 'RANGE' | 'EQUALS';
+  BOOLEAN: 'EQUALS';
+};
+
 /**
  * Configuration for a specific SQL column mapping.
+ * Enforces type compatibility between the SQL Type and the Filter Type.
  */
-export interface SqlColumnConfig {
-  /** The physical database column name (e.g. "user_id" or "meta.created_at") */
+export interface StrictSqlColumnConfig<TType extends SqlType> {
   sqlColumn: string;
-  /** The SQL data type, used to inform filter coercion logic */
-  type: SqlType;
-  /** The strategy to use when filtering this column */
-  filterType?: MosaicDataTableSqlFilterType;
+  type: TType;
+  filterType?: FilterCompatibility[TType] | (string & {});
 }
 
 /**
  * Maps TypeScript data keys to SQL column configurations.
- * Enforces that mappings exist for known keys.
+ * Enforces strict compatibility between the JS type (TData[Key]) and the SQL configuration.
  */
 export type MosaicColumnMapping<TData> = {
-  [Key in keyof TData]?: SqlColumnConfig;
+  [Key in keyof TData]?: TData[Key] extends number
+    ? StrictSqlColumnConfig<'INTEGER' | 'FLOAT'>
+    : TData[Key] extends Date
+      ? StrictSqlColumnConfig<'DATE' | 'TIMESTAMP'>
+      : TData[Key] extends boolean
+        ? StrictSqlColumnConfig<'BOOLEAN'>
+        : StrictSqlColumnConfig<SqlType>;
 };
 
-/**
- * Discriminated Union for Filter Values.
- * Ensures that strategies receive explicitly typed inputs, not 'unknown'.
- * Range values allow nulls to support open-ended ranges (e.g. "> 5").
- */
+export interface SqlColumnConfig {
+  sqlColumn: string;
+  type: SqlType;
+  filterType?: MosaicDataTableSqlFilterType;
+}
+
 export type FilterValue =
   | { type: 'text'; value: string }
   | { type: 'select'; value: string | number }
   | { type: 'range'; value: [number | null, number | null] }
   | { type: 'date-range'; value: [Date | null, Date | null] };
 
-/**
- * Represents the identity source for a selection update.
- */
 export type SelectionSource = object;
 
-/**
- * Interface describing the common API surface for Mosaic Clients
- * managed within this library.
- */
 export interface IMosaicClient {
   readonly isConnected: boolean;
   connect: () => () => void;
@@ -84,17 +95,13 @@ export interface IMosaicClient {
   __onDisconnect?: () => void;
 }
 
-/**
- * Internal hooks used by the lifecycle manager.
- */
 export interface IMosaicLifecycleHooks {
   __onConnect?: () => void;
   __onDisconnect?: () => void;
 }
 
 /**
- * Deprecated: Metadata extensions are being replaced by strict mappings,
- * but kept for backward compatibility during migration if needed.
+ * Deprecated: Metadata extensions are being replaced by strict mappings.
  */
 export type MosaicDataTableColumnDefMetaOptions = {
   mosaicDataTable?: {
@@ -105,9 +112,6 @@ export type MosaicDataTableColumnDefMetaOptions = {
   };
 };
 
-/**
- * Interface for Models/Controllers that wish to provide metadata to a MosaicDataTable.
- */
 export interface MosaicTableDataProvider {
   getColumnMeta: (
     columnId: string,
@@ -138,8 +142,6 @@ export interface MosaicDataTableOptions<
   table: MosaicTableSource;
   /**
    * Runtime schema validator.
-   * REQUIRED for strict type safety to prevent runtime crashes from data mismatches.
-   * Accepts any input type (from DB) as long as it produces TData.
    */
   schema: ZodType<TData, any, any>;
   /**
@@ -149,10 +151,9 @@ export interface MosaicDataTableOptions<
 
   /**
    * Validation strategy for incoming data.
-   * 'first': Validate only row 0 (O(1) performance). Good for Production.
-   * 'all': Validate every row (O(N) performance). Good for Dev/Debugging.
-   * 'none': Trust the DB (Unsafe).
-   * @default 'first'
+   * 'first': Validate only row 0 (O(1) performance).
+   * 'all': Validate every row (O(N) performance).
+   * @deprecated 'none' is unsafe and should be avoided.
    */
   validationMode?: 'first' | 'all' | 'none';
 
@@ -168,28 +169,12 @@ export interface MosaicDataTableOptions<
   tableFilterSelection?: Selection | undefined;
   columns?: Array<ColumnDef<TData, TValue>>;
   tableOptions?: Partial<SubsetTableOptions<TData>>;
-  /**
-   * The column name to use for the total rows count returned from the query.
-   * @default '__total_rows'
-   */
   totalRowsColumnName?: string;
-  /**
-   * Strategy for calculating total row count.
-   * - 'split': (Default) Separate async query. Best for massive datasets (100M+).
-   * - 'window': Uses COUNT(*) OVER() in the main query. Best for interactive dashboards (Atomic updates).
-   */
   totalRowsMode?: 'split' | 'window';
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
   __debugName?: string;
 
-  /**
-   * Custom filter strategies to register for this table instance.
-   */
   filterStrategies?: Record<string, FilterStrategy>;
-
-  /**
-   * Custom facet strategies to register for this table instance.
-   */
   facetStrategies?: Record<string, FacetStrategy<any>>;
 }
 
