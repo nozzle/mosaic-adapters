@@ -50,6 +50,15 @@ type FilterCompatibility = {
   BOOLEAN: 'EQUALS';
 };
 
+export interface FilterOptions {
+  /**
+   * If true, input strings (likely from local datetime inputs) will be converted
+   * to UTC ISO strings before being sent to the database.
+   * Use this when your database stores UTC timestamps but users input Local time.
+   */
+  convertToUTC?: boolean;
+}
+
 /**
  * Configuration for a specific SQL column mapping.
  * Enforces type compatibility between the SQL Type and the Filter Type.
@@ -58,6 +67,7 @@ export interface StrictSqlColumnConfig<TType extends SqlType> {
   sqlColumn: string;
   type: TType;
   filterType?: FilterCompatibility[TType] | (string & {});
+  filterOptions?: FilterOptions;
 }
 
 /**

@@ -43,6 +43,9 @@ const TripMapping: MosaicColumnMapping<TripRowData> = {
     sqlColumn: 'datetime',
     type: 'TIMESTAMP',
     filterType: 'DATE_RANGE',
+    filterOptions: {
+      convertToUTC: true, // NYC Taxi data is stored as UTC, but user inputs Local Time. This shifts input +5 hrs.
+    },
   },
   vendor_id: { sqlColumn: 'vendor_id', type: 'VARCHAR', filterType: 'EQUALS' },
   fare_amount: { sqlColumn: 'fare_amount', type: 'FLOAT', filterType: 'RANGE' },

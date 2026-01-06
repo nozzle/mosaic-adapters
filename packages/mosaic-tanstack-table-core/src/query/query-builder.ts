@@ -162,6 +162,7 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
 
     // Resolve Configuration
     let filterType: string | undefined;
+    let filterOptions;
 
     // 1. Try Strict Mapping
     if (options.mapping) {
@@ -169,6 +170,9 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
       const mappingConfig = options.mapping[key];
       if (mappingConfig?.filterType) {
         filterType = mappingConfig.filterType;
+      }
+      if (mappingConfig?.filterOptions) {
+        filterOptions = mappingConfig.filterOptions;
       }
     }
 
@@ -289,6 +293,7 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
         columnAccessor: sqlColumn,
         input: safeInput,
         columnId: filter.id,
+        filterOptions,
       });
 
       if (clause) {

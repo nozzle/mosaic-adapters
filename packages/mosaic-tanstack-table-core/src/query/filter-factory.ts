@@ -2,7 +2,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { createStructAccess, escapeSqlLikePattern } from '../utils';
 import type { SqlIdentifier } from '../domain/sql-identifier';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
-import type { FilterInput } from '../types';
+import type { FilterInput, FilterOptions } from '../types';
 
 /**
  * A strictly typed filter strategy function.
@@ -13,6 +13,7 @@ export type FilterStrategy = (options: {
   columnAccessor: SqlIdentifier;
   input: FilterInput;
   columnId?: string;
+  filterOptions?: FilterOptions;
 }) => FilterExpr | undefined;
 
 const strategies: Record<string, FilterStrategy> = {
@@ -36,7 +37,7 @@ const strategies: Record<string, FilterStrategy> = {
     return undefined;
   },
 
-  DATE_RANGE: ({ columnAccessor, input }) => {
+  DATE_RANGE: ({ columnAccessor, input, filterOptions }) => {
     // Discriminated union match for Temporal types
     if (input.mode !== 'DATE_RANGE') {
       return undefined;
@@ -50,30 +51,45 @@ const strategies: Record<string, FilterStrategy> = {
     const max = maxVal !== null && maxVal !== '' ? String(maxVal) : null;
 
     const colExpr = createStructAccess(columnAccessor);
+    const convertToUTC = filterOptions?.convertToUTC;
 
-    // FIX: Remove invalid explicit type mSql.SQLExpression
     let finalMin = null;
     let finalMax = null;
 
+    // Helper to convert Local String -> UTC ISO String
+    const toUTC = (val: string) => {
+      // If it contains T (e.g. 2023-01-01T12:00), parsing creates Local Date.
+      // toISOString() converts that Local Date to UTC.
+      const d = new Date(val);
+      return !isNaN(d.getTime()) ? d.toISOString() : val;
+    };
+
     // Process min value
     if (min !== null) {
-      // DuckDB's TIMESTAMP type typically expects UTC if no timezone is specified.
-      // We check the RAW value (minVal) for Date instance, as 'min' is already coerced to string.
-      if ((minVal as unknown) instanceof Date) {
+      // Priority 1: Convert to UTC if flag is enabled (Handles Local -> UTC shift)
+      if (convertToUTC && min.includes('T')) {
+        finalMin = mSql.literal(toUTC(min));
+      }
+      // Priority 2: Handle raw Date objects (Legacy path)
+      else if ((minVal as unknown) instanceof Date) {
         finalMin = mSql.literal(
           (minVal as unknown as Date).toISOString().split('T')[0] ?? '',
-        ); // Just the date part
-      } else {
+        );
+      }
+      // Priority 3: Raw string
+      else {
         finalMin = mSql.literal(min);
       }
     }
 
     // Process max value
     if (max !== null) {
-      if ((maxVal as unknown) instanceof Date) {
+      if (convertToUTC && max.includes('T')) {
+        finalMax = mSql.literal(toUTC(max));
+      } else if ((maxVal as unknown) instanceof Date) {
         finalMax = mSql.literal(
           (maxVal as unknown as Date).toISOString().split('T')[0] ?? '',
-        ); // Just the date part
+        );
       } else {
         finalMax = mSql.literal(max);
       }
