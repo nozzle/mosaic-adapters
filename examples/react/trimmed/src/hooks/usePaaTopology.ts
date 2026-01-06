@@ -21,8 +21,13 @@ export function usePaaTopology() {
     return {
       // External: The "Rest of the World" from the perspective of the Input Layer.
       externalContext: vg.Selection.intersect({ include: [detail, cross] }),
-      // Summary: Respect Inputs AND Detail Table Filters. Use cross for highlighting.
-      summaryContext: vg.Selection.intersect({ include: [input, detail] }),
+      // Summary: Respect Inputs AND Detail Table Filters AND Cross clicks.
+      // We include 'cross' here so that when one summary table is clicked,
+      // the OTHER summary tables filter down (Drill-down behavior).
+      // The source table is protected from self-filtering because 'cross' is a CrossFilterSelection.
+      summaryContext: vg.Selection.intersect({
+        include: [input, detail, cross],
+      }),
       // Detail: Respect Inputs AND Summary Table Clicks. Generates detail filter.
       detailContext: vg.Selection.intersect({ include: [input, cross] }),
       // Global: Intersection of everything (for KPIs)

@@ -296,7 +296,16 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   #initializeAutoFacets(columns: Array<ColumnDef<TData, TValue>>) {
     columns.forEach((col) => {
       const facetType = col.meta?.mosaicDataTable?.facet;
-      const colId = col.id;
+
+      // FIX: Robust ID Resolution
+      // Raw column definitions might not have an 'id'.
+      // We must fallback to 'accessorKey' just like TanStack Table does,
+      // otherwise we fail to register facets for columns defined with only accessorKey.
+      const colId =
+        col.id ||
+        ('accessorKey' in col && typeof col.accessorKey === 'string'
+          ? col.accessorKey
+          : undefined);
 
       if (!facetType || !colId) {
         return;

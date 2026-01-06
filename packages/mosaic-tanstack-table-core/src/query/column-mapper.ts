@@ -6,13 +6,19 @@ import type { MosaicColumnMapping } from '../types';
 
 let mapperIdCounter = 0;
 
+export interface SelectColumnInfo {
+  id: string; // The Table State ID (used for filtering/sorting)
+  sql: SqlIdentifier; // The Source SQL Column
+  alias: string; // The Output Alias (used for matching Accessor/Schema)
+}
+
 export class ColumnMapper<TData extends RowData, TValue = unknown> {
   public readonly id: number;
   private idToSqlMap = new Map<string, SqlIdentifier>();
   private sqlToDefMap = new Map<string, ColumnDef<TData, TValue>>();
 
   // Store pairs of (Table ID -> SQL Column) for generating the SELECT clause
-  private selectList: Array<{ id: string; sql: SqlIdentifier }> = [];
+  private selectList: Array<SelectColumnInfo> = [];
 
   public shouldSearchAllColumns = false;
 
@@ -126,13 +132,27 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
         throw new Error(message);
       }
 
+      // 6. Determine Select Alias
+      // If accessorKey is provided and is a simple string, it is the safest alias
+      // because TanStack Table will try to read from it.
+      // If we alias to 'id' but accessorKey is different, TanStack will read undefined.
+      let alias = id;
+      if (
+        'accessorKey' in def &&
+        typeof def.accessorKey === 'string' &&
+        def.accessorKey.trim().length > 0 &&
+        !def.accessorKey.includes('.') // Avoid aliasing to paths like "a.b" which might be invalid output keys or imply nesting
+      ) {
+        alias = def.accessorKey;
+      }
+
       // Store mappings using Safe Identifiers
       const safeIdentifier = SqlIdentifier.from(columnAccessor);
       this.idToSqlMap.set(id, safeIdentifier);
       this.sqlToDefMap.set(columnAccessor, def);
 
       // Keep track of the selection list (ID -> SQL)
-      this.selectList.push({ id, sql: safeIdentifier });
+      this.selectList.push({ id, sql: safeIdentifier, alias });
     });
 
     if (this.selectList.length === 0 && defs.length > 0) {
@@ -174,7 +194,7 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
   /**
    * Returns a list of mappings for the SELECT clause.
    */
-  public getSelectColumns(): Array<{ id: string; sql: SqlIdentifier }> {
+  public getSelectColumns(): Array<SelectColumnInfo> {
     return this.selectList;
   }
 }

@@ -38,18 +38,20 @@ export function buildTableQuery<TData extends RowData, TValue>(
   const { pagination, sorting } = tableState;
 
   // 1. Select Columns
-  const selectColumns = mapper.getSelectColumns().map(({ id, sql }) => {
+  // UPDATED: We now use 'alias' from the mapper instead of 'id'.
+  // This allows the ID (used for state/filtering) to differ from the Accessor (used for data reading).
+  const selectColumns = mapper.getSelectColumns().map(({ id, sql, alias }) => {
     const colStr = sql.toString();
 
-    // Struct access: SELECT "a"."b" AS "id"
+    // Struct access: SELECT "a"."b" AS "alias"
     if (colStr.includes('.')) {
       const structExpr = createStructAccess(sql);
-      return { [id]: structExpr };
+      return { [alias]: structExpr };
     }
 
-    // Simple column aliasing: SELECT "sql_col" AS "id"
-    if (id !== colStr) {
-      return { [id]: mSql.column(colStr) };
+    // Simple column aliasing: SELECT "sql_col" AS "alias"
+    if (alias !== colStr) {
+      return { [alias]: mSql.column(colStr) };
     }
 
     // Direct match: SELECT "id"
