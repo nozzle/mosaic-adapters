@@ -1,5 +1,6 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { createStructAccess } from './utils';
+import { SqlIdentifier } from './domain/sql-identifier';
 import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { ColumnType } from './types';
@@ -95,7 +96,7 @@ export class MosaicSelectionManager {
     let predicate: FilterExpr | null = null;
 
     if (values && values.length > 0) {
-      const colExpr = createStructAccess(this.column);
+      const colExpr = createStructAccess(SqlIdentifier.from(this.column));
 
       if (this.columnType === 'array') {
         // list_has_any(col, ['val1', 'val2'])

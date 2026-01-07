@@ -29,7 +29,8 @@
     "@tanstack/table-core": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
-    "@uwdata/vgplot": "catalog:"
+    "@uwdata/vgplot": "catalog:",
+    "@nozzleio/react-mosaic": "workspace:*"
   },
   "peerDependencies": {
     "@tanstack/react-table": ">=8.17.3",

@@ -399,13 +399,17 @@ function DebouncedRangeFilter({
   const columnFilterValue = column.getFilterValue();
   const minMax = column.getFacetedMinMaxValues();
 
-  // Determine the HTML Input type
+  // Determine the HTML Input type and Step
   let inputType = 'number';
+  let step: string | undefined = undefined;
+
   if (type === 'date') {
     inputType = 'date';
   }
   if (type === 'datetime') {
     inputType = 'datetime-local';
+    // Enable seconds selection in the browser picker
+    step = '1';
   }
 
   // Determine how to format the value for the input
@@ -445,6 +449,7 @@ function DebouncedRangeFilter({
     <div className="flex gap-1">
       <DebouncedInput
         type={inputType}
+        step={step}
         value={currentMin}
         onChange={(value) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -457,6 +462,7 @@ function DebouncedRangeFilter({
       />
       <DebouncedInput
         type={inputType}
+        step={step}
         value={currentMax}
         onChange={(value) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition

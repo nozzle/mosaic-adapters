@@ -6,6 +6,14 @@ import react from '@vitejs/plugin-react';
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [tsconfigPaths(), react(), tailwindcss()],
+  optimizeDeps: {
+    // Exclude workspace packages from pre-bundling to ensure changes are picked up immediately
+    exclude: [
+      '@nozzleio/react-mosaic',
+      '@nozzleio/mosaic-tanstack-react-table',
+      '@nozzleio/mosaic-tanstack-table-core',
+    ],
+  },
   server: {
     proxy: {
       // Proxy to bypass CORS on fastopendata.org

@@ -1,155 +1,198 @@
 import * as mSql from '@uwdata/mosaic-sql';
-import {
-  createStructAccess,
-  escapeSqlLikePattern,
-  toRangeValue,
-} from '../utils';
-import { logger } from '../logger';
+import { createStructAccess, escapeSqlLikePattern } from '../utils';
+import type { SqlIdentifier } from '../domain/sql-identifier';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
-import type { MosaicDataTableSqlFilterType } from '../types';
+import type { FilterInput, FilterOptions } from '../types';
 
-type FilterStrategy = (options: {
-  columnAccessor: string;
-  value: unknown;
+/**
+ * A strictly typed filter strategy function.
+ * Receives the Discriminated Union `FilterInput`.
+ * Converts specific inputs into Mosaic SQL Expression Nodes.
+ */
+export type FilterStrategy = (options: {
+  columnAccessor: SqlIdentifier;
+  input: FilterInput;
   columnId?: string;
+  filterOptions?: FilterOptions;
 }) => FilterExpr | undefined;
 
-const DEFAULT_SQL_FILTER_TYPE: MosaicDataTableSqlFilterType = 'EQUALS';
-
-const strategies: Record<MosaicDataTableSqlFilterType, FilterStrategy> = {
-  RANGE: ({ columnAccessor, value, columnId }) => {
-    // Only handle Range Filters (Array values for Min/Max)
-    if (!Array.isArray(value)) {
-      logger.warn(
-        'Core',
-        `[FilterFactory] Column "${columnId}" has a non-array value but filterType is "range". Skipping to avoid invalid SQL.`,
-      );
+const strategies: Record<string, FilterStrategy> = {
+  RANGE: ({ columnAccessor, input }) => {
+    // Discriminated union match
+    if (input.mode !== 'RANGE') {
       return undefined;
     }
 
-    const [rawMin, rawMax] = value as [unknown, unknown];
-    const min = toRangeValue(rawMin);
-    const max = toRangeValue(rawMax);
-
-    // If both are null, we have no filter to apply
-    if (min === null && max === null) {
-      return undefined;
-    }
-
-    let clause: FilterExpr | undefined = undefined;
-
-    // Use createStructAccess for struct columns in Range filters
+    const [min, max] = input.value;
     const colExpr = createStructAccess(columnAccessor);
 
-    // Build SQL clauses using Mosaic literals to handle type safety
-    if (max === null && min !== null) {
-      // GREATER THAN OR EQUAL TO min
-      clause = mSql.gte(colExpr, mSql.literal(min));
-    } else if (min === null && max !== null) {
-      // LESS THAN OR EQUAL TO max
-      clause = mSql.lte(colExpr, mSql.literal(max));
-    } else if (min !== null && max !== null) {
-      // BETWEEN min AND max
-      clause = mSql.isBetween(colExpr, [mSql.literal(min), mSql.literal(max)]);
+    // SQL Generation for Numbers (Handle Open Ranges)
+    if (min !== null && max !== null) {
+      return mSql.isBetween(colExpr, [mSql.literal(min), mSql.literal(max)]);
+    } else if (min !== null) {
+      return mSql.gte(colExpr, mSql.literal(min));
+    } else if (max !== null) {
+      return mSql.lte(colExpr, mSql.literal(max));
     }
-
-    return clause;
+    return undefined;
   },
 
-  ILIKE: ({ columnAccessor, value, columnId }) => {
+  DATE_RANGE: ({ columnAccessor, input, filterOptions }) => {
+    // Discriminated union match for Temporal types
+    if (input.mode !== 'DATE_RANGE') {
+      return undefined;
+    }
+
+    // Treat empty strings as null for open-ended ranges
+    const minVal = input.value[0];
+    const maxVal = input.value[1];
+
+    const min = minVal !== null && minVal !== '' ? String(minVal) : null;
+    const max = maxVal !== null && maxVal !== '' ? String(maxVal) : null;
+
+    const colExpr = createStructAccess(columnAccessor);
+    const convertToUTC = filterOptions?.convertToUTC;
+
+    let finalMin = null;
+    let finalMax = null;
+
+    // Helper to convert Local String -> UTC ISO String
+    const toUTC = (val: string) => {
+      // If it contains T (e.g. 2023-01-01T12:00), parsing creates Local Date.
+      // toISOString() converts that Local Date to UTC.
+      const d = new Date(val);
+      return !isNaN(d.getTime()) ? d.toISOString() : val;
+    };
+
+    // Process min value
+    if (min !== null) {
+      // Priority 1: Convert to UTC if flag is enabled (Handles Local -> UTC shift)
+      if (convertToUTC && min.includes('T')) {
+        finalMin = mSql.literal(toUTC(min));
+      }
+      // Priority 2: Handle raw Date objects (Legacy path)
+      else if ((minVal as unknown) instanceof Date) {
+        finalMin = mSql.literal(
+          (minVal as unknown as Date).toISOString().split('T')[0] ?? '',
+        );
+      }
+      // Priority 3: Raw string
+      else {
+        finalMin = mSql.literal(min);
+      }
+    }
+
+    // Process max value
+    if (max !== null) {
+      if (convertToUTC && max.includes('T')) {
+        finalMax = mSql.literal(toUTC(max));
+      } else if ((maxVal as unknown) instanceof Date) {
+        finalMax = mSql.literal(
+          (maxVal as unknown as Date).toISOString().split('T')[0] ?? '',
+        );
+      } else {
+        finalMax = mSql.literal(max);
+      }
+    }
+
+    // SQL Generation for Dates/Strings
+    if (finalMin !== null && finalMax !== null) {
+      return mSql.isBetween(colExpr, [finalMin, finalMax]);
+    } else if (finalMin !== null) {
+      return mSql.gte(colExpr, finalMin);
+    } else if (finalMax !== null) {
+      return mSql.lte(colExpr, finalMax);
+    }
+    return undefined;
+  },
+
+  ILIKE: ({ columnAccessor, input }) => {
+    if (input.mode !== 'TEXT') {
+      return undefined;
+    }
     return handleLike({
       columnAccessor,
-      value,
-      columnId,
+      value: input.value,
       operator: 'ILIKE',
       isPartial: false,
     });
   },
-  LIKE: ({ columnAccessor, value, columnId }) => {
+
+  LIKE: ({ columnAccessor, input }) => {
+    if (input.mode !== 'TEXT') {
+      return undefined;
+    }
     return handleLike({
       columnAccessor,
-      value,
-      columnId,
+      value: input.value,
       operator: 'LIKE',
       isPartial: false,
     });
   },
-  PARTIAL_LIKE: ({ columnAccessor, value, columnId }) => {
+
+  PARTIAL_LIKE: ({ columnAccessor, input }) => {
+    if (input.mode !== 'TEXT') {
+      return undefined;
+    }
     return handleLike({
       columnAccessor,
-      value,
-      columnId,
+      value: input.value,
       operator: 'LIKE',
       isPartial: true,
     });
   },
-  PARTIAL_ILIKE: ({ columnAccessor, value, columnId }) => {
+
+  PARTIAL_ILIKE: ({ columnAccessor, input }) => {
+    if (input.mode !== 'TEXT') {
+      return undefined;
+    }
     return handleLike({
       columnAccessor,
-      value,
-      columnId,
+      value: input.value,
       operator: 'ILIKE',
       isPartial: true,
     });
   },
 
-  EQUALS: ({ columnAccessor, value, columnId: _unused }) => {
-    // HARDENING: Reject Arrays. EQUALS strategy cannot handle Range/List value arrays.
-    // This prevents crashes if a Range Filter accidentally falls back to EQUALS strategy.
-    if (Array.isArray(value)) {
-      // Optional: logger.warn('Core', `[FilterFactory] EQUALS strategy received an array value for column "${columnId}". Ignoring to prevent SQL errors.`);
+  EQUALS: ({ columnAccessor, input }) => {
+    // Supports TEXT, MATCH, SELECT modes
+    if (
+      input.mode !== 'TEXT' &&
+      input.mode !== 'MATCH' &&
+      input.mode !== 'SELECT'
+    ) {
       return undefined;
     }
 
-    // Allow 0, false, but reject null, undefined, empty string
-    if (value === null || value === undefined || value === '') {
-      // Don't warn for empty strings as this is common in UI state (cleared filter)
-      // logger.warn('Core', ...);
+    if (input.value === '') {
       return undefined;
     }
 
-    // Use createStructAccess for struct columns in Equals filters
-    const clause = mSql.eq(
+    return mSql.eq(
       createStructAccess(columnAccessor),
-      mSql.literal(value),
+      mSql.literal(input.value),
     );
-
-    return clause;
   },
 };
 
 function handleLike(options: {
-  columnAccessor: string;
-  value: unknown;
-  columnId: string | undefined;
+  columnAccessor: SqlIdentifier;
+  value: string;
   operator: 'LIKE' | 'ILIKE';
   isPartial: boolean;
 }): FilterExpr | undefined {
-  // Safe coercion to string to ensure even numeric inputs (ids) are handled if they ended up here.
-  // Using String() handles null/undefined as "null"/"undefined", so we check existence first.
-  if (options.value === null || options.value === undefined) {
+  if (options.value.length === 0) {
     return undefined;
   }
 
-  const valStr = String(options.value);
-  if (valStr.length === 0) {
-    // Empty search string = no filter
-    return undefined;
-  }
-
-  let pattern = valStr;
+  let pattern = options.value;
   if (options.isPartial) {
-    // Hardening: Escape wildcards so "100%" means literal 100%, not "100[anything]"
-    pattern = `%${escapeSqlLikePattern(valStr)}%`;
-  } else {
-    pattern = valStr;
+    pattern = `%${escapeSqlLikePattern(options.value)}%`;
   }
 
-  // Use createStructAccess for struct columns in Like filters
   const colExpr = createStructAccess(options.columnAccessor);
   const patternLiteral = mSql.literal(pattern);
 
-  // Explicitly construct the SQL based on the operator type.
   if (options.operator === 'ILIKE') {
     return mSql.sql`${colExpr} ILIKE ${patternLiteral}`;
   } else {
@@ -157,17 +200,4 @@ function handleLike(options: {
   }
 }
 
-export function createFilterClause(options: {
-  sqlColumn: string;
-  value: unknown;
-  filterType?: MosaicDataTableSqlFilterType;
-  columnId?: string;
-}): FilterExpr | undefined {
-  const filterType = options.filterType || DEFAULT_SQL_FILTER_TYPE;
-  const strategy = strategies[filterType];
-  return strategy({
-    columnAccessor: options.sqlColumn,
-    value: options.value,
-    columnId: options.columnId,
-  });
-}
+export const defaultFilterStrategies = strategies;

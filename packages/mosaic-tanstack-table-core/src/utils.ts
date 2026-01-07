@@ -3,7 +3,13 @@
  */
 
 import * as mSql from '@uwdata/mosaic-sql';
-import type { RowData, TableOptions, TableState } from '@tanstack/table-core';
+import type {
+  ColumnDef,
+  RowData,
+  TableOptions,
+  TableState,
+} from '@tanstack/table-core';
+import type { SqlIdentifier } from './domain/sql-identifier';
 
 /**
  * Utility to handle functional or direct value updates.
@@ -154,11 +160,13 @@ export type MosaicSQLExpression =
  * Constructs a Mosaic SQL expression for a struct column access.
  * Uses the Mosaic AST to safely compose column references.
  *
- * Input: "related_phrase.phrase"
+ * Input: SqlIdentifier("related_phrase.phrase")
  * Output: sql`${column("related_phrase")}.${column("phrase")}`
  * SQL Result: "related_phrase"."phrase"
  */
-export function createStructAccess(columnPath: string): MosaicSQLExpression {
+export function createStructAccess(column: SqlIdentifier): MosaicSQLExpression {
+  const columnPath = column.toString();
+
   // If it's a simple column, just return the column node
   if (!columnPath.includes('.')) {
     return mSql.column(columnPath);
@@ -182,4 +190,61 @@ export function createStructAccess(columnPath: string): MosaicSQLExpression {
     },
     mSql.column(first) as MosaicSQLExpression,
   );
+}
+
+// --- Column Helper Utilities ---
+
+type UnwrapNullable<T> = T extends null | undefined
+  ? never
+  : T extends Array<infer U>
+    ? U
+    : T;
+
+type FilterVariantFor<TValue> =
+  UnwrapNullable<TValue> extends number
+    ? 'range' | 'select'
+    : UnwrapNullable<TValue> extends Date
+      ? 'range' /* date range */
+      : 'text' | 'select';
+
+/**
+ * Type-safe column helper factory for Mosaic Tables.
+ *
+ * This utility infers the `TValue` of the column based on the accessor key of `TData`.
+ * It eliminates the need to manually pass `any` or strict types to `ColumnDef`.
+ *
+ * It also restricts `meta` options based on the inferred type of the column.
+ *
+ * @example
+ * const helper = createMosaicColumnHelper<User>();
+ * const columns = [
+ *   helper.accessor('name', { header: 'Full Name' }),
+ *   helper.accessor('age', { header: 'Age', cell: info => info.getValue().toFixed(0) }) // getValue() is number
+ * ];
+ */
+export function createMosaicColumnHelper<TData extends RowData>() {
+  return {
+    accessor: <TKey extends keyof TData>(
+      key: TKey,
+      // TData[TKey] is inferred as the value type
+      def: Omit<ColumnDef<TData, TData[TKey]>, 'meta'> & {
+        meta?: {
+          mosaicDataTable?: {
+            // Constrain the filterVariant based on TData[TKey]
+            filterVariant?: FilterVariantFor<TData[TKey]>;
+            // Ensure facet type matches data type (Allow minmax for Number or Date)
+            facet?: UnwrapNullable<TData[TKey]> extends number | Date
+              ? 'minmax' | 'unique'
+              : 'unique';
+            sqlColumn?: string;
+          };
+        } & Record<string, any>;
+      } = {},
+    ): ColumnDef<TData, TData[TKey]> => {
+      return {
+        accessorKey: key as string,
+        ...def,
+      } as ColumnDef<TData, TData[TKey]>;
+    },
+  };
 }

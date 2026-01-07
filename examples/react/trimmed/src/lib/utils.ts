@@ -15,27 +15,38 @@ export const simpleDateFormatter = new Intl.DateTimeFormat('en-US', {
 
 /**
  * Converts a Date object or ISO string to the format required by HTML <input type="datetime-local" />
- * Format: "YYYY-MM-DDTHH:mm" (seconds optional)
+ * Format: "YYYY-MM-DDTHH:mm:ss" (Includes seconds for precision)
+ *
+ * This function handles strict idempotency for strings to prevent re-parsing drift
+ * and uses UTC methods for Date objects to ensure database values (often UTC)
+ * do not shift based on the user's local timezone.
  */
 export function toDateTimeInputString(value: unknown): string {
   if (!value) {
     return '';
   }
+
+  // Idempotency check: if it's already a string, assume it's in the correct format or safe to return.
+  if (typeof value === 'string') {
+    return value;
+  }
+
   const date = value instanceof Date ? value : new Date(String(value));
   if (isNaN(date.getTime())) {
     return '';
   }
 
-  // Get local ISO string parts
-  // We manually construct to avoid timezone shifting issues with toISOString() (which is UTC)
   const pad = (n: number) => n.toString().padStart(2, '0');
-  const yyyy = date.getFullYear();
-  const MM = pad(date.getMonth() + 1);
-  const dd = pad(date.getDate());
-  const hh = pad(date.getHours());
-  const mm = pad(date.getMinutes());
 
-  return `${yyyy}-${MM}-${dd}T${hh}:${mm}`;
+  // Use UTC methods to align with standard database storage of timestamps.
+  const yyyy = date.getUTCFullYear();
+  const MM = pad(date.getUTCMonth() + 1);
+  const dd = pad(date.getUTCDate());
+  const hh = pad(date.getUTCHours());
+  const mm = pad(date.getUTCMinutes());
+  const ss = pad(date.getUTCSeconds());
+
+  return `${yyyy}-${MM}-${dd}T${hh}:${mm}:${ss}`;
 }
 
 /**
@@ -46,26 +57,29 @@ export function toDateInputString(value: unknown): string {
   if (!value) {
     return '';
   }
+
+  // Idempotency check to prevent drift
+  if (typeof value === 'string') {
+    // Ensure we only return the Date part if it happens to be an ISO timestamp string
+    // TS-Fix: Add fallback ?? '' to satisfy noUncheckedIndexedAccess
+    return value.split('T')[0] ?? '';
+  }
+
   const date = value instanceof Date ? value : new Date(String(value));
   if (isNaN(date.getTime())) {
     return '';
   }
 
   const pad = (n: number) => n.toString().padStart(2, '0');
-  const yyyy = date.getFullYear();
-  const MM = pad(date.getMonth() + 1);
-  const dd = pad(date.getDate());
+
+  // Use UTC methods to ignore local timezone offsets
+  const yyyy = date.getUTCFullYear();
+  const MM = pad(date.getUTCMonth() + 1);
+  const dd = pad(date.getUTCDate());
 
   return `${yyyy}-${MM}-${dd}`;
 }
 
-/**
- * Checks if a table row is currently highlighted.
- * This encapsulates the Mosaic `__is_highlighted` SQL column logic.
- *
- * @param row - The TanStack Table row object
- * @returns true if the row is highlighted (or if no highlight filter is active), false if it is dimmed.
- */
 export function isRowHighlighted<TData>(row: Row<TData>): boolean {
   // @ts-expect-error __is_highlighted is dynamically injected by Mosaic SQL logic
   const val = row.original.__is_highlighted;

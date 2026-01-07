@@ -2,8 +2,8 @@ import * as React from 'react';
 import { useState } from 'react';
 import { Check, ChevronDown, X } from 'lucide-react';
 import {
-  useMosaicFacetMenu,
-  useMosaicFilter,
+  useMosaicTableFacetMenu,
+  useMosaicTableFilter,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import type { Selection } from '@uwdata/mosaic-core';
 
@@ -69,7 +69,7 @@ export function SearchableSelectFilter({
 
   // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
   const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
-    useMosaicFacetMenu({
+    useMosaicTableFacetMenu({
       table,
       column,
       selection,
@@ -195,7 +195,7 @@ export function SelectFilter({
   const [isOpen, setIsOpen] = useState(false);
 
   // OPTIMIZATION: Use local isOpen state for the Radix Select
-  const { displayOptions, toggle, selectedValues } = useMosaicFacetMenu({
+  const { displayOptions, toggle, selectedValues } = useMosaicTableFacetMenu({
     table,
     column,
     selection,
@@ -255,7 +255,7 @@ export function ArraySelectFilter({
 
   // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
   const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
-    useMosaicFacetMenu({
+    useMosaicTableFacetMenu({
       table,
       column,
       selection,
@@ -375,7 +375,7 @@ export function ArraySelectFilter({
 }
 
 export function TextFilter({ label, column, selection }: FilterProps) {
-  const filter = useMosaicFilter({
+  const filter = useMosaicTableFilter({
     selection,
     column,
     mode: 'TEXT',
@@ -406,7 +406,7 @@ export function TextFilter({ label, column, selection }: FilterProps) {
 }
 
 export function DateRangeFilter({ label, column, selection }: FilterProps) {
-  const filter = useMosaicFilter({
+  const filter = useMosaicTableFilter({
     selection,
     column,
     mode: 'DATE_RANGE',

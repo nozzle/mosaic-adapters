@@ -8,6 +8,7 @@ import { createStructAccess } from './utils';
 import { logger } from './logger';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
+import { SqlIdentifier } from './domain/sql-identifier';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ColumnType, IMosaicClient } from './types';
@@ -55,15 +56,13 @@ export interface MosaicFacetMenuState {
   selectedValues: Array<FacetValue>;
 }
 
-let instanceCounter = 0;
-
 /**
  * A "Sidecar" Client for fetching metadata (unique values) independent of the main table query.
  */
 export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   public options: MosaicFacetMenuOptions;
   readonly store: Store<MosaicFacetMenuState>;
-  readonly id: number;
+  readonly id: string;
 
   private selectionManager: MosaicSelectionManager;
   private _searchTerm = '';
@@ -74,7 +73,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   constructor(options: MosaicFacetMenuOptions) {
     super(options.filterBy);
     this.options = options;
-    this.id = ++instanceCounter;
+    this.id = Math.random().toString(36).substring(2, 9);
     this.coordinator = options.coordinator || defaultCoordinator();
 
     this.store = new Store<MosaicFacetMenuState>({
@@ -326,7 +325,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     } = this.options;
 
     const isArray = columnType === 'array' || isArrayColumn === true;
-    const colExpr = createStructAccess(column);
+    const colExpr = createStructAccess(SqlIdentifier.from(column));
 
     let effectiveFilter = filter;
     if (filterBy) {

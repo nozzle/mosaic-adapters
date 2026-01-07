@@ -323,13 +323,17 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
   const columnFilterValue = column.getFilterValue() as [any, any] | undefined;
   const minMax = column.getFacetedMinMaxValues();
 
-  // Determine the HTML Input type
+  // Determine the HTML Input type and step
   let inputType = 'number';
+  let step: string | undefined = undefined;
+
   if (type === 'date') {
     inputType = 'date';
   }
   if (type === 'datetime') {
     inputType = 'datetime-local';
+    // Enable seconds in browser picker
+    step = '1';
   }
 
   // Determine how to format the value for the input
@@ -365,6 +369,7 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
     <div className="flex gap-1 mt-1">
       <DebouncedInput
         type={inputType}
+        step={step}
         value={currentMin}
         onChange={(value) =>
           column.setFilterValue((old: [any, any] | undefined) => [
@@ -378,6 +383,7 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
       />
       <DebouncedInput
         type={inputType}
+        step={step}
         value={currentMax}
         onChange={(value) =>
           column.setFilterValue((old: [any, any] | undefined) => [

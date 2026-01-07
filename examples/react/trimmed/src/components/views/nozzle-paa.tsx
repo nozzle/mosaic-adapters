@@ -1,20 +1,21 @@
 /**
  * View component for the Nozzle PAA dataset.
- * Uses 'split' pagination mode to ensure memory safety on potentially large SEO datasets.
+ * Features: KPI Cards, Complex Filtering, and Multi-Table Cross-Filtering.
  */
-
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
 import {
+  coerceNumber,
+  createMosaicColumnHelper,
+  createMosaicMapping,
   useMosaicReactTable,
-  useMosaicViewModel,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { PaaDashboardModel } from './paa-model';
+import { useCoordinator } from '@nozzleio/react-mosaic';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
+import { usePaaTopology } from '@/hooks/usePaaTopology';
 import { RenderTable } from '@/components/render-table';
 import { useMosaicValue } from '@/hooks/useMosaicValue';
 import {
@@ -27,108 +28,141 @@ import {
 const TABLE_NAME = 'nozzle_paa';
 const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
 
+// --- MAIN DETAIL TABLE ---
+interface PaaRowData {
+  domain: string | null;
+  paa_question: string | null;
+  title: string | null;
+  description: string | null;
+}
+
+const PaaMapping = createMosaicMapping<PaaRowData>({
+  domain: { sqlColumn: 'domain', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
+  paa_question: {
+    sqlColumn: 'related_phrase.phrase',
+    type: 'VARCHAR',
+    filterType: 'PARTIAL_ILIKE',
+  },
+  title: { sqlColumn: 'title', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
+  description: {
+    sqlColumn: 'description',
+    type: 'VARCHAR',
+    filterType: 'PARTIAL_ILIKE',
+  },
+});
+
+// --- SUMMARY TABLE SCHEMAS (Generic for GroupBy queries) ---
+interface GroupByRow {
+  key: string | number | null;
+  metric: number | null;
+  __is_highlighted?: number;
+}
+
+const GroupByMapping = createMosaicMapping<GroupByRow>({
+  key: { sqlColumn: 'key', type: 'VARCHAR', filterType: 'EQUALS' },
+  metric: { sqlColumn: 'metric', type: 'INTEGER', filterType: 'RANGE' },
+  __is_highlighted: {
+    sqlColumn: '__is_highlighted',
+    type: 'INTEGER',
+    filterType: 'EQUALS',
+  },
+});
+
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
-
-  const model = useMosaicViewModel<PaaDashboardModel>(
-    (c) => new PaaDashboardModel(c),
-    vg.coordinator(),
-  );
+  const coordinator = useCoordinator();
+  const topology = usePaaTopology();
 
   useEffect(() => {
     async function init() {
       try {
         const parquetUrl = new URL(PARQUET_PATH, window.location.origin).href;
-
-        await vg
-          .coordinator()
-          .exec([
-            `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
-          ]);
+        await coordinator.exec([
+          `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
+        ]);
         setIsReady(true);
       } catch (err) {
         console.warn('NozzlePaaView init interrupted or failed:', err);
       }
     }
     init();
-  }, []);
+  }, [coordinator]);
 
   if (!isReady) {
     return (
       <div className="flex h-64 items-center justify-center text-slate-500 animate-pulse">
-        Initializing DuckDB & Loading PAA Data...
+        Initializing...
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-6 bg-slate-50/50 min-h-screen pb-10">
-      <HeaderSection model={model} />
+      <HeaderSection topology={topology} />
 
       <div className="px-6 -mt-8 relative z-10">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">
           <div className="text-sm font-bold text-slate-700 mr-2">
             FILTER BY:
           </div>
-
           <SearchableSelectFilter
             label="Domain"
             table={TABLE_NAME}
             column="domain"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-            externalContext={model.selections.externalContext}
+            selection={topology.input}
+            filterBy={topology.input}
+            externalContext={topology.externalContext}
           />
           <TextFilter
             label="Phrase"
             table={TABLE_NAME}
             column="phrase"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
+            selection={topology.input}
+            filterBy={topology.input}
           />
           <ArraySelectFilter
             label="Keyword Group"
             table={TABLE_NAME}
             column="keyword_groups"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-            externalContext={model.selections.externalContext}
+            selection={topology.input}
+            filterBy={topology.input}
+            externalContext={topology.externalContext}
           />
           <TextFilter
             label="Answer Contains"
             table={TABLE_NAME}
             column="description"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
+            selection={topology.input}
+            filterBy={topology.input}
           />
           <DateRangeFilter
             label="Requested Date"
             table={TABLE_NAME}
             column="requested"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
+            selection={topology.input}
+            filterBy={topology.input}
           />
           <SearchableSelectFilter
             label="Device"
             table={TABLE_NAME}
             column="device"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
-            externalContext={model.selections.externalContext}
+            selection={topology.input}
+            filterBy={topology.input}
+            externalContext={topology.externalContext}
           />
           <TextFilter
             label="Question Contains"
             table={TABLE_NAME}
             column="related_phrase.phrase"
-            selection={model.selections.input}
-            filterBy={model.selections.input}
+            selection={topology.input}
+            filterBy={topology.input}
           />
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 px-6">
         <SummaryTable
-          model={model}
+          topology={topology}
           title="Keyword Phrase"
           groupBy="phrase"
           metric="search_volume"
@@ -136,7 +170,7 @@ export function NozzlePaaView() {
           aggFn={mSql.max}
         />
         <SummaryTable
-          model={model}
+          topology={topology}
           title="PAA Questions"
           groupBy="related_phrase.phrase"
           metric="*"
@@ -144,7 +178,7 @@ export function NozzlePaaView() {
           aggFn={mSql.count}
         />
         <SummaryTable
-          model={model}
+          topology={topology}
           title="Domain"
           groupBy="domain"
           metric="*"
@@ -153,7 +187,7 @@ export function NozzlePaaView() {
           where={mSql.sql`domain IS NOT NULL`}
         />
         <SummaryTable
-          model={model}
+          topology={topology}
           title="URL"
           groupBy="url"
           metric="*"
@@ -169,7 +203,7 @@ export function NozzlePaaView() {
             Detailed Breakdown
           </div>
           <div className="flex-1 overflow-auto p-0">
-            <DetailTable model={model} />
+            <DetailTable topology={topology} />
           </div>
         </div>
       </div>
@@ -177,33 +211,29 @@ export function NozzlePaaView() {
   );
 }
 
-function HeaderSection({ model }: { model: PaaDashboardModel }) {
+function HeaderSection({
+  topology,
+}: {
+  topology: ReturnType<typeof usePaaTopology>;
+}) {
   const qPhrases = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
       .select({ value: mSql.count('phrase').distinct() })
       .where(filter);
-
   const qQuestions = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
       .select({
         value: mSql.count(mSql.sql`"related_phrase"."phrase"`).distinct(),
       })
       .where(filter);
-
   const qDays = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
       .select({ value: mSql.count('requested').distinct() })
       .where(filter);
 
-  const valPhrases = useMosaicValue(
-    qPhrases,
-    model.selections.globalContext as any,
-  );
-  const valQuestions = useMosaicValue(
-    qQuestions,
-    model.selections.globalContext as any,
-  );
-  const valDays = useMosaicValue(qDays, model.selections.globalContext as any);
+  const valPhrases = useMosaicValue(qPhrases, topology.globalContext);
+  const valQuestions = useMosaicValue(qQuestions, topology.globalContext);
+  const valDays = useMosaicValue(qDays, topology.globalContext);
 
   return (
     <div className="bg-[#0e7490] text-white pt-8 pb-12 px-6">
@@ -239,7 +269,7 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
 }
 
 function SummaryTable({
-  model,
+  topology,
   title,
   groupBy,
   metric,
@@ -247,7 +277,7 @@ function SummaryTable({
   aggFn,
   where,
 }: {
-  model: PaaDashboardModel;
+  topology: ReturnType<typeof usePaaTopology>;
   title: string;
   groupBy: string;
   metric: string;
@@ -255,8 +285,7 @@ function SummaryTable({
   aggFn: (expression?: any) => AggregateNode;
   where?: FilterExpr;
 }) {
-  const safeId = groupBy.replace(/\./g, '_');
-
+  // Logic to build the dynamic query but map it to our static schema
   const queryFactory = useMemo(
     () => (filter: FilterExpr | null | undefined) => {
       let groupKey;
@@ -267,8 +296,7 @@ function SummaryTable({
         groupKey = mSql.column(groupBy);
       }
 
-      const highlightPred = model.selections.cross.predicate(null);
-
+      const highlightPred = topology.cross.predicate(null);
       let highlightCol;
       const hasPred =
         highlightPred &&
@@ -278,7 +306,6 @@ function SummaryTable({
         const safePredicate = Array.isArray(highlightPred)
           ? mSql.and(...highlightPred)
           : highlightPred;
-
         highlightCol = mSql.max(
           mSql.sql`CASE WHEN ${safePredicate} THEN 1 ELSE 0 END`,
         );
@@ -288,7 +315,7 @@ function SummaryTable({
 
       const q = mSql.Query.from(TABLE_NAME)
         .select({
-          [safeId]: groupKey,
+          key: groupKey, // Aliased to 'key' to match Schema
           metric: metric === '*' ? aggFn() : aggFn(metric),
           __is_highlighted: highlightCol,
         })
@@ -303,74 +330,91 @@ function SummaryTable({
 
       return q;
     },
-    [groupBy, metric, aggFn, where, safeId, model.selections.cross],
+    [groupBy, metric, aggFn, where, topology.cross],
   );
 
-  const baseTableOptions = useMemo(
-    () => ({
+  const helper = useMemo(
+    () => createMosaicColumnHelper<GroupByRow>(),
+    [], // empty dep array
+  );
+
+  const columns = useMemo(
+    () => [
+      // Select Box column (Manual definition for non-data column)
+      {
+        id: 'select',
+        header: '',
+        size: 30,
+        enableSorting: false,
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-center">
+            <input
+              type="checkbox"
+              checked={row.getIsSelected()}
+              onChange={row.getToggleSelectedHandler()}
+              onClick={(e) => e.stopPropagation()}
+              className="cursor-pointer size-4"
+            />
+          </div>
+        ),
+      } as ColumnDef<GroupByRow, unknown>,
+      helper.accessor('key', {
+        id: 'key',
+        header: title,
+        enableColumnFilter: false,
+      }),
+      helper.accessor('metric', {
+        id: 'metric',
+        header: metricLabel,
+        cell: (info) => info.getValue()?.toLocaleString(),
+        enableColumnFilter: false,
+      }),
+      // We must explicitly add the hidden column so it survives the outer QueryBuilder wrapper
+      helper.accessor('__is_highlighted', {
+        id: '__is_highlighted',
+        header: '',
+        meta: {
+          mosaicDataTable: {
+            sqlColumn: '__is_highlighted',
+          },
+        },
+      }),
+    ],
+    [groupBy, title, metricLabel, helper],
+  );
+
+  const { tableOptions } = useMosaicReactTable<GroupByRow>({
+    table: queryFactory,
+    filterBy: topology.summaryContext,
+    highlightBy: topology.cross,
+    manualHighlight: true,
+    totalRowsMode: 'split',
+    rowSelection: {
+      selection: topology.cross,
+      // Fix: Cast groupBy to keyof GroupByRow.
+      column: groupBy as keyof GroupByRow,
+      columnType: 'scalar',
+    },
+    columns,
+    mapping: GroupByMapping,
+    converter: (row) =>
+      ({
+        ...row,
+        metric: coerceNumber(row.metric),
+        __is_highlighted: coerceNumber(row.__is_highlighted),
+      }) as GroupByRow,
+    tableOptions: {
       initialState: {
         sorting: [{ id: 'metric', desc: true }],
         pagination: { pageSize: 10 },
+        // Hide the logic column
+        columnVisibility: { __is_highlighted: false },
       },
-      getRowId: (row: any) => String(row[safeId]),
+      getRowId: (row) => String(row.key), // Use the aliased 'key'
       enableRowSelection: true,
       enableMultiRowSelection: true,
-    }),
-    [safeId],
-  );
-
-  const { tableOptions } = useMosaicReactTable({
-    table: queryFactory,
-    filterBy: model.selections.summaryContext,
-    highlightBy: model.selections.cross,
-    manualHighlight: true,
-    // Explicitly use 'split' mode for summary grids to keep memory footprint predictable.
-    totalRowsMode: 'split',
-    rowSelection: {
-      selection: model.selections.cross,
-      column: groupBy,
-      columnType: 'scalar',
     },
-    columns: useMemo(
-      () => [
-        {
-          id: 'select',
-          header: '',
-          size: 30,
-          enableSorting: false,
-          enableColumnFilter: false,
-          enableHiding: false,
-          cell: ({ row }: any) => {
-            return (
-              <div className="flex items-center justify-center">
-                <input
-                  type="checkbox"
-                  checked={row.getIsSelected()}
-                  onChange={row.getToggleSelectedHandler()}
-                  onClick={(e) => e.stopPropagation()}
-                  className="cursor-pointer size-4"
-                />
-              </div>
-            );
-          },
-        },
-        {
-          id: groupBy,
-          accessorKey: safeId,
-          header: title,
-          enableColumnFilter: false,
-        },
-        {
-          id: 'metric',
-          accessorKey: 'metric',
-          header: metricLabel,
-          cell: (info: any) => info.getValue()?.toLocaleString(),
-          enableColumnFilter: false,
-        },
-      ],
-      [groupBy, title, metricLabel, safeId],
-    ),
-    tableOptions: baseTableOptions,
     __debugName: `${title}SummaryTable`,
   });
 
@@ -385,96 +429,51 @@ function SummaryTable({
         <RenderTable
           table={table}
           columns={tableOptions.columns}
-          onRowClick={(row) => {
-            row.toggleSelected();
-          }}
+          onRowClick={(row) => row.toggleSelected()}
         />
       </div>
     </div>
   );
 }
 
-interface PaaRowData {
-  domain: string;
-  'related_phrase.phrase': string;
-  title: string;
-  description: string;
-}
+function DetailTable({
+  topology,
+}: {
+  topology: ReturnType<typeof usePaaTopology>;
+}) {
+  const helper = useMemo(() => createMosaicColumnHelper<PaaRowData>(), []);
 
-function DetailTable({ model }: { model: PaaDashboardModel }) {
   const columns = useMemo(
-    () =>
-      [
-        {
-          id: 'domain',
-          accessorKey: 'domain',
-          header: 'Domain',
-          size: 150,
-          meta: {
-            mosaicDataTable: model.getColumnMeta('domain'),
-          },
-        },
-        {
-          id: 'paa_question',
-          accessorFn: (row) => row['related_phrase.phrase'],
-          header: 'PAA Question',
-          size: 350,
-          meta: {
-            mosaicDataTable: model.getColumnMeta('paa_question'),
-          },
-        },
-        {
-          id: 'title',
-          accessorKey: 'title',
-          header: 'Answer Title',
-          size: 300,
-          meta: {
-            mosaicDataTable: model.getColumnMeta('title'),
-          },
-        },
-        {
-          id: 'description',
-          accessorKey: 'description',
-          header: 'Answer Description',
-          size: 400,
-          meta: {
-            mosaicDataTable: model.getColumnMeta('description'),
-          },
-        },
-      ] satisfies Array<ColumnDef<PaaRowData, any>>,
-    [model],
+    () => [
+      helper.accessor('domain', { header: 'Domain', size: 150 }),
+      helper.accessor('paa_question', {
+        header: 'PAA Question',
+        size: 350,
+      }),
+      helper.accessor('title', { header: 'Answer Title', size: 300 }),
+      helper.accessor('description', {
+        header: 'Answer Description',
+        size: 400,
+      }),
+    ],
+    [helper],
   );
 
-  const baseTableOptions = useMemo(
-    () => ({
-      initialState: {
-        pagination: { pageSize: 20 },
-      },
-    }),
-    [],
-  );
-
-  const mosaicOptions = useMemo(
-    () => ({
-      table: TABLE_NAME,
-      filterBy: model.selections.detailContext,
-      tableFilterSelection: model.selections.detail,
-      columns,
-      totalRowsColumnName: '__total_rows',
-      // Explicitly use 'split' mode for PAA Detail Table for maximum stability.
-      totalRowsMode: 'split' as const,
-      tableOptions: {
-        ...baseTableOptions,
-        enableColumnFilters: true,
-      },
-      __debugName: 'DetailTable',
-    }),
-    [columns, baseTableOptions, model],
-  );
-
-  const { tableOptions } = useMosaicReactTable(mosaicOptions);
+  const { tableOptions } = useMosaicReactTable<PaaRowData>({
+    table: TABLE_NAME,
+    filterBy: topology.detailContext,
+    tableFilterSelection: topology.detail,
+    columns,
+    mapping: PaaMapping,
+    totalRowsColumnName: '__total_rows',
+    totalRowsMode: 'split',
+    tableOptions: {
+      initialState: { pagination: { pageSize: 20 } },
+      enableColumnFilters: true,
+    },
+    __debugName: 'DetailTable',
+  });
 
   const table = useReactTable(tableOptions);
-
   return <RenderTable table={table} columns={columns} />;
 }

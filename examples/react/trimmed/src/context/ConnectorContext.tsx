@@ -1,8 +1,9 @@
 // Context provider for managing the Mosaic Coordinator connection mode (WASM vs Remote)
-// Handles switching connectors and tracking connection status to prevent race conditions.
+// Handles switching connectors and tracking connection status.
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
+import { MosaicContext } from '@nozzleio/react-mosaic';
 import { socketConnector, wasmConnector } from '@uwdata/mosaic-core';
 
 type ConnectorMode = 'wasm' | 'remote';
@@ -17,12 +18,10 @@ const ConnectorContext = createContext<ConnectorContextType | null>(null);
 
 export function ConnectorProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<ConnectorMode>('wasm');
-  // Initialize as 'connecting' so the UI waits for the useEffect to configure the coordinator
   const [status, setStatus] = useState<'connected' | 'connecting'>(
     'connecting',
   );
 
-  // Wrapper to set status to 'connecting' immediately when mode changes.
   const setMode = (newMode: ConnectorMode) => {
     if (newMode === mode) {
       return;
@@ -33,12 +32,11 @@ export function ConnectorProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function switchConnector() {
-      // 1. Clear existing client state/cache in the coordinator
+      // 1. Clear existing client state
       vg.coordinator().clear();
 
       if (mode === 'remote') {
         console.log('Switching to Remote (Go) Connector...');
-        // We cast to any to bypass TS definition mismatch (expecting object vs string)
         const connector = socketConnector('ws://localhost:3000/' as any);
         vg.coordinator().databaseConnector(connector);
       } else {
@@ -52,9 +50,15 @@ export function ConnectorProvider({ children }: { children: React.ReactNode }) {
     switchConnector();
   }, [mode]);
 
+  // We provide the global coordinator instance to the MosaicContext.
+  // This allows all child hooks to access it implicitly.
+  const coordinator = vg.coordinator();
+
   return (
     <ConnectorContext.Provider value={{ mode, setMode, status }}>
-      {children}
+      <MosaicContext.Provider value={coordinator}>
+        {children}
+      </MosaicContext.Provider>
     </ConnectorContext.Provider>
   );
 }

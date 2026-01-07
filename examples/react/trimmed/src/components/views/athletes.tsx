@@ -1,13 +1,18 @@
 /**
  * View component for the Athletes dataset.
- * Uses 'window' pagination mode to sync perfectly with the interactive regression plot.
+ * Features: Type-Safe Table + Interactive vgplot Chart.
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
-import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
-import type { ColumnDef } from '@tanstack/react-table';
+import {
+  coerceDate,
+  coerceNumber,
+  createMosaicColumnHelper,
+  createMosaicMapping,
+  useMosaicReactTable,
+} from '@nozzleio/mosaic-tanstack-react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { simpleDateFormatter } from '@/lib/utils';
@@ -21,7 +26,8 @@ const $query = vg.Selection.intersect();
 const $tableFilter = vg.Selection.intersect();
 const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
 
-type AthleteRowData = {
+// 1. Typescript Interface
+interface AthleteRowData {
   id: number;
   name: string;
   nationality: string;
@@ -34,7 +40,33 @@ type AthleteRowData = {
   silver: number | null;
   bronze: number | null;
   info: string | null;
-};
+}
+
+// 2. Strict SQL Mapping
+// We pass the generic type to ensure keys match AthleteRowData
+const AthleteMapping = createMosaicMapping<AthleteRowData>({
+  id: { sqlColumn: 'id', type: 'INTEGER', filterType: 'EQUALS' },
+  name: { sqlColumn: 'name', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
+  nationality: {
+    sqlColumn: 'nationality',
+    type: 'VARCHAR',
+    filterType: 'EQUALS',
+  },
+  sex: { sqlColumn: 'sex', type: 'VARCHAR', filterType: 'EQUALS' },
+  // Map date_of_birth to 'DATE_RANGE' to correctly handle string-based date filtering
+  date_of_birth: {
+    sqlColumn: 'date_of_birth',
+    type: 'DATE',
+    filterType: 'DATE_RANGE',
+  },
+  height: { sqlColumn: 'height', type: 'FLOAT', filterType: 'RANGE' },
+  weight: { sqlColumn: 'weight', type: 'FLOAT', filterType: 'RANGE' },
+  sport: { sqlColumn: 'sport', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
+  gold: { sqlColumn: 'gold', type: 'INTEGER', filterType: 'RANGE' },
+  silver: { sqlColumn: 'silver', type: 'INTEGER', filterType: 'RANGE' },
+  bronze: { sqlColumn: 'bronze', type: 'INTEGER', filterType: 'RANGE' },
+  info: { sqlColumn: 'info', type: 'VARCHAR', filterType: 'ILIKE' },
+});
 
 export function AthletesView() {
   const [isPending, setIsPending] = useState(true);
@@ -129,215 +161,91 @@ export function AthletesView() {
 function AthletesTable() {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
+  const columnHelper = useMemo(
+    () => createMosaicColumnHelper<AthleteRowData>(),
+    [],
+  );
+
   const columns = useMemo(
-    () =>
-      [
-        {
-          id: 'id',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="ID" view={view} />
-          ),
-          accessorKey: 'id',
-          enableHiding: false,
-          enableSorting: false,
-          enableMultiSort: false,
-          enableColumnFilter: false,
+    () => [
+      columnHelper.accessor('id', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="ID" view={view} />
+        ),
+      }),
+      columnHelper.accessor('name', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Name" view={view} />
+        ),
+        meta: { filterVariant: 'text' },
+      }),
+      columnHelper.accessor('nationality', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Nationality" view={view} />
+        ),
+        meta: {
+          filterVariant: 'select',
+          mosaicDataTable: { facet: 'unique' },
         },
-        {
-          id: 'Name',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Name" view={view} />
-          ),
-          accessorFn: (row) => row.name,
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'name',
-              sqlFilterType: 'PARTIAL_ILIKE',
-            },
-            filterVariant: 'text',
-          },
+      }),
+      columnHelper.accessor('sex', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Gender" view={view} />
+        ),
+        meta: {
+          filterVariant: 'select',
+          mosaicDataTable: { facet: 'unique' },
         },
-        {
-          id: 'nationality',
-          header: ({ column }) => (
-            <RenderTableHeader
-              column={column}
-              title="Nationality"
-              view={view}
-            />
-          ),
-          accessorKey: 'nationality',
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'nationality',
-              sqlFilterType: 'EQUALS',
-              facet: 'unique',
-            },
-            filterVariant: 'select',
-          },
+      }),
+      columnHelper.accessor('date_of_birth', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="DOB" view={view} />
+        ),
+        cell: (props) => {
+          const value = props.getValue();
+          return value instanceof Date
+            ? simpleDateFormatter.format(value)
+            : value;
         },
-        {
-          id: 'Gender',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Gender" view={view} />
-          ),
-          accessorKey: 'sex',
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'sex',
-              sqlFilterType: 'EQUALS',
-              facet: 'unique',
-            },
-            filterVariant: 'select',
-          },
+        meta: { filterVariant: 'range', rangeFilterType: 'date' },
+      }),
+      columnHelper.accessor('height', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Height" view={view} />
+        ),
+        cell: (props) => `${props.getValue()}m`,
+        meta: {
+          filterVariant: 'range',
+          rangeFilterType: 'number',
+          mosaicDataTable: { facet: 'minmax' },
         },
-        {
-          id: 'dob',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="DOB" view={view} />
-          ),
-          cell: (props) => {
-            const value = props.getValue();
-            if (value instanceof Date) {
-              return simpleDateFormatter.format(value);
-            }
-            return value;
-          },
-          accessorKey: 'date_of_birth',
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'date_of_birth',
-              sqlFilterType: 'RANGE',
-            },
-            filterVariant: 'range',
-            rangeFilterType: 'date',
-          },
+      }),
+      columnHelper.accessor('weight', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Weight" view={view} />
+        ),
+        cell: (props) => `${props.getValue()}kg`,
+        meta: {
+          filterVariant: 'range',
+          rangeFilterType: 'number',
+          mosaicDataTable: { facet: 'minmax' },
         },
-        {
-          id: 'Height',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Height" view={view} />
-          ),
-          cell: (props) => {
-            const value = props.getValue();
-            if (typeof value === 'number') {
-              return `${value}m`;
-            }
-            return value;
-          },
-          accessorKey: 'height',
-          meta: {
-            filterVariant: 'range',
-            rangeFilterType: 'number',
-            mosaicDataTable: {
-              sqlColumn: 'height',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
-          },
-          enableColumnFilter: true,
+      }),
+      columnHelper.accessor('sport', {
+        header: ({ column }) => (
+          <RenderTableHeader column={column} title="Sport" view={view} />
+        ),
+        meta: {
+          filterVariant: 'select',
+          mosaicDataTable: { facet: 'unique' },
         },
-        {
-          id: 'Weight',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Weight" view={view} />
-          ),
-          cell: (props) => {
-            const value = props.getValue();
-            if (typeof value === 'number') {
-              return `${value}kg`;
-            }
-            return value;
-          },
-          accessorKey: 'weight',
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'weight',
-              sqlFilterType: 'RANGE',
-              facet: 'minmax',
-            },
-            filterVariant: 'range',
-          },
-        },
-        {
-          id: 'Sport',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Sport" view={view} />
-          ),
-          accessorKey: 'sport',
-          enableColumnFilter: true,
-          meta: {
-            mosaicDataTable: {
-              sqlColumn: 'sport',
-              sqlFilterType: 'PARTIAL_ILIKE',
-              facet: 'unique',
-            },
-            filterVariant: 'select',
-          },
-        },
-        {
-          id: 'Gold(s)',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Gold(s)" view={view} />
-          ),
-          accessorKey: 'gold',
-          enableColumnFilter: false,
-        },
-        {
-          id: 'Silver(s)',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Silver(s)" view={view} />
-          ),
-          accessorKey: 'silver',
-          enableColumnFilter: false,
-        },
-        {
-          id: 'Bronze(s)',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Bronze(s)" view={view} />
-          ),
-          accessorKey: 'bronze',
-          enableColumnFilter: false,
-        },
-        {
-          id: 'Info',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Info" view={view} />
-          ),
-          accessorKey: 'info',
-          enableSorting: false,
-          enableColumnFilter: false,
-        },
-        {
-          id: 'actions',
-          header: ({ column }) => (
-            <RenderTableHeader column={column} title="Actions" view={view} />
-          ),
-          cell: ({ row }) => {
-            return (
-              <div>
-                <button
-                  className="px-1 py-0.5 border rounded text-sm opacity-80 hover:opacity-100"
-                  onClick={() => {
-                    console.info('Row:', row.id, row.original);
-                  }}
-                >
-                  console.info(row)
-                </button>
-              </div>
-            );
-          },
-          enableHiding: false,
-          enableSorting: false,
-          enableColumnFilter: false,
-        },
-      ] satisfies Array<ColumnDef<AthleteRowData, any>>,
-    [view],
+      }),
+      columnHelper.accessor('gold', {}),
+      columnHelper.accessor('silver', {}),
+      columnHelper.accessor('bronze', {}),
+      columnHelper.accessor('info', {}),
+    ],
+    [view, columnHelper],
   );
 
   const { tableOptions } = useMosaicReactTable<AthleteRowData>({
@@ -345,7 +253,19 @@ function AthletesTable() {
     filterBy: $query,
     tableFilterSelection: $tableFilter,
     columns,
-    // Use 'window' mode for Athletes to prevent snapping during map interactions.
+    mapping: AthleteMapping,
+    // Optional converter to ensure data types (esp. Dates)
+    converter: (row) =>
+      ({
+        ...row,
+        // Coerce fields that might come as strings/numbers from raw SQL
+        date_of_birth: coerceDate(row.date_of_birth),
+        height: coerceNumber(row.height),
+        weight: coerceNumber(row.weight),
+        gold: coerceNumber(row.gold),
+        silver: coerceNumber(row.silver),
+        bronze: coerceNumber(row.bronze),
+      }) as AthleteRowData,
     totalRowsMode: 'window',
     tableOptions: {
       enableHiding: true,
@@ -353,10 +273,14 @@ function AthletesTable() {
       enableSorting: true,
       enableColumnFilters: true,
     },
-    onTableStateChange: 'requestUpdate',
+    __debugName: 'AthletesTable',
   });
 
   const table = useReactTable(tableOptions);
 
-  return <RenderTable table={table} columns={table.options.columns} />;
+  return (
+    <div className="space-y-4">
+      <RenderTable table={table} columns={table.options.columns} />
+    </div>
+  );
 }
