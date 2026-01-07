@@ -5,7 +5,7 @@
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
-import { useReactTable, type ColumnDef } from '@tanstack/react-table';
+import { useReactTable } from '@tanstack/react-table';
 import {
   coerceNumber,
   createMosaicColumnHelper,
@@ -13,6 +13,7 @@ import {
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useCoordinator } from '@nozzleio/react-mosaic';
+import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import { usePaaTopology } from '@/hooks/usePaaTopology';
 import { RenderTable } from '@/components/render-table';
