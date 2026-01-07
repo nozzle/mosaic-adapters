@@ -39,7 +39,6 @@
     "@nozzleio/react-mosaic": "workspace:*"
   },
   "devDependencies": {
-    "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@tailwindcss/vite": "^4.1.17",
     "@types/d3": "^7.4.3",
     "@types/react": "^18.3.26",

@@ -372,6 +372,16 @@ function SummaryTable({
         cell: (info) => info.getValue()?.toLocaleString(),
         enableColumnFilter: false,
       }),
+      // We must explicitly add the hidden column so it survives the outer QueryBuilder wrapper
+      helper.accessor('__is_highlighted', {
+        id: '__is_highlighted',
+        header: '',
+        meta: {
+          mosaicDataTable: {
+            sqlColumn: '__is_highlighted',
+          },
+        },
+      }),
     ],
     [groupBy, title, metricLabel, helper],
   );
@@ -400,6 +410,8 @@ function SummaryTable({
       initialState: {
         sorting: [{ id: 'metric', desc: true }],
         pagination: { pageSize: 10 },
+        // Hide the logic column
+        columnVisibility: { __is_highlighted: false },
       },
       getRowId: (row: any) => String(row.key), // Use the aliased 'key'
       enableRowSelection: true,

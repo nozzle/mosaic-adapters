@@ -1,6 +1,6 @@
 /**
  * View component for the Athletes dataset.
- * Features: Type-Safe Table + Interactive vgplot Chart + Sidecar Histogram.
+ * Features: Type-Safe Table + Interactive vgplot Chart.
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -13,12 +13,10 @@ import {
   createMosaicMapping,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import type { HistogramBin } from '@/lib/strategies';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
-import { HistogramStrategy } from '@/lib/strategies';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
@@ -162,7 +160,6 @@ export function AthletesView() {
 
 function AthletesTable() {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
-  const [histData, setHistData] = useState<Array<HistogramBin>>([]);
 
   const columnHelper = useMemo(
     () => createMosaicColumnHelper<AthleteRowData>(),
@@ -251,7 +248,7 @@ function AthletesTable() {
     [view, columnHelper],
   );
 
-  const { tableOptions, client } = useMosaicReactTable<AthleteRowData>({
+  const { tableOptions } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
     filterBy: $query,
     tableFilterSelection: $tableFilter,
@@ -276,73 +273,14 @@ function AthletesTable() {
       enableSorting: true,
       enableColumnFilters: true,
     },
-    facetStrategies: {
-      histogram: HistogramStrategy,
-    },
     __debugName: 'AthletesTable',
   });
-
-  useEffect(() => {
-    client.requestAuxiliary({
-      id: 'weight_hist',
-      type: 'histogram',
-      column: 'weight',
-      excludeColumnId: 'weight',
-      options: { binSize: 5 },
-      onResult: (data) => setHistData(data),
-    });
-  }, [client]);
 
   const table = useReactTable(tableOptions);
 
   return (
     <div className="space-y-4">
-      <div className="p-4 border rounded bg-slate-50">
-        <h5 className="text-sm font-semibold mb-2 text-slate-600">
-          Weight Distribution (Linked Sidecar)
-        </h5>
-        <div className="text-xs text-slate-500 mb-2">
-          This chart is driven by the Table Client via{' '}
-          <code>requestAuxiliary</code>.
-        </div>
-        <SimpleBarChart data={histData} />
-      </div>
       <RenderTable table={table} columns={table.options.columns} />
     </div>
-  );
-}
-
-function SimpleBarChart({ data }: { data: Array<HistogramBin> }) {
-  if (!data.length) {
-    return (
-      <div className="h-24 flex items-center justify-center text-slate-400">
-        No Data
-      </div>
-    );
-  }
-  const maxCount = Math.max(...data.map((d) => d.count));
-  const height = 100;
-  const width = 400;
-  const barWidth = width / data.length;
-
-  return (
-    <svg width={width} height={height} className="overflow-visible">
-      {data.map((d, i) => {
-        const barHeight = (d.count / maxCount) * height;
-        return (
-          <g key={d.bin0} transform={`translate(${i * barWidth}, 0)`}>
-            <rect
-              y={height - barHeight}
-              width={barWidth - 1}
-              height={barHeight}
-              className="fill-blue-500 hover:fill-blue-600 transition-all"
-            />
-            <title>
-              {d.bin0}-{d.bin0 + 5}kg: {d.count}
-            </title>
-          </g>
-        );
-      })}
-    </svg>
   );
 }
