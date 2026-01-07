@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@nozzleio/mosaic-tanstack-react-table": "workspace:*",
+    "@nozzleio/react-mosaic": "workspace:*",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
@@ -35,8 +36,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tailwind-merge": "^3.3.1",
-    "tailwindcss": "^4.1.17",
-    "@nozzleio/react-mosaic": "workspace:*"
+    "tailwindcss": "^4.1.17"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.17",
