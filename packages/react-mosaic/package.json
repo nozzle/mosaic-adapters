@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@eslint-react/eslint-plugin": "catalog:",
-    "@tanstack/config": "^0.22.0",
+    "@tanstack/config": "^0.22.2",
     "@types/react": "^18.2.0",
     "@vitejs/plugin-react": "catalog:",
     "eslint": "catalog:",
