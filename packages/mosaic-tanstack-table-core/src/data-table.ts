@@ -177,7 +177,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     if (options.rowSelection) {
       this.#rowSelectionManager = new MosaicSelectionManager({
         client: this,
-        column: options.rowSelection.column as string,
+        column: options.rowSelection.column,
         selection: options.rowSelection.selection,
         columnType: options.rowSelection.columnType,
       });

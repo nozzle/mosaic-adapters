@@ -13,9 +13,6 @@ import type {
 } from '@tanstack/table-core';
 import type { FacetStrategy } from '../facet-strategies';
 import type { FilterStrategy } from '../query/filter-factory';
-import type { StrictId } from './paths';
-
-// Re-export strict path types
 
 export type MosaicDataTableSqlFilterType =
   | 'EQUALS'
@@ -82,11 +79,11 @@ export interface StrictSqlColumnConfig<TType extends SqlType> {
 
 /**
  * Maps TypeScript data keys to SQL column configurations.
- * Keys must be valid StrictIds (direct keys or nested paths).
+ * Keys are simple strings representing the column ID or path.
  */
 export type MosaicColumnMapping<TData> = Partial<
   Record<
-    StrictId<TData>,
+    string,
     | StrictSqlColumnConfig<'INTEGER'>
     | StrictSqlColumnConfig<'FLOAT'>
     | StrictSqlColumnConfig<'DATE'>
@@ -187,7 +184,7 @@ export interface MosaicDataTableOptions<
   manualHighlight?: boolean;
   rowSelection?: {
     selection: Selection;
-    column: StrictId<TData>;
+    column: string;
     columnType?: ColumnType;
   };
   tableFilterSelection?: Selection | undefined;

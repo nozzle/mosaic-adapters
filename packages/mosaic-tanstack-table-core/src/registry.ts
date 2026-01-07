@@ -5,8 +5,6 @@
  * Implements strict type contracts for Inputs and Outputs of strategies.
  */
 
-import type { StrictId } from './types/paths';
-
 export class StrategyRegistry<T> {
   private strategies = new Map<string, T>();
 
@@ -80,7 +78,7 @@ export type SidecarRequest<TData> = {
   [K in keyof MosaicFacetRegistry]: {
     id: string;
     type: K;
-    column: StrictId<TData>;
+    column: string;
     excludeColumnId?: string;
     // Conditionally require options if the strategy input is not void
     options: MosaicFacetRegistry[K]['input'] extends void

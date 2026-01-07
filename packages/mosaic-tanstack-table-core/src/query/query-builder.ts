@@ -15,7 +15,6 @@ import type { ColumnMapper } from './column-mapper';
 import type { StrategyRegistry } from '../registry';
 import type { FilterStrategy } from './filter-factory';
 import type { FilterInput, MosaicColumnMapping } from '../types';
-import type { StrictId } from '../types/paths';
 
 export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   source: string | SelectQuery;
@@ -166,7 +165,7 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
 
     // 1. Try Strict Mapping
     if (options.mapping) {
-      const key = filter.id as StrictId<TData>;
+      const key = filter.id;
       const mappingConfig = options.mapping[key];
       if (mappingConfig?.filterType) {
         filterType = mappingConfig.filterType;

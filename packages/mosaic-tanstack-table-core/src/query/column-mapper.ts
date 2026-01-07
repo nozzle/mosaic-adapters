@@ -3,7 +3,6 @@ import { SqlIdentifier } from '../domain/sql-identifier';
 import type { ColumnDef, RowData } from '@tanstack/table-core';
 import type { FieldInfoRequest } from '@uwdata/mosaic-core';
 import type { MosaicColumnMapping } from '../types';
-import type { StrictId } from '../types/paths';
 
 export interface SelectColumnInfo {
   id: string; // The Table State ID (used for filtering/sorting)
@@ -66,8 +65,7 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
 
       // 1. Try to resolve via Strict Mapping first
       if (this.mapping && 'accessorKey' in def && def.accessorKey) {
-        // Fixed: Cast accessorKey to StrictId to allow indexing into the typed mapping record
-        const key = def.accessorKey as StrictId<TData>;
+        const key = def.accessorKey as string;
         const config = this.mapping[key];
         if (config) {
           columnAccessor = config.sqlColumn;
@@ -166,8 +164,7 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
     if (!this.mapping) {
       return undefined;
     }
-    // Fixed: Cast columnId to strict ID for lookup
-    const key = columnId as StrictId<TData>;
+    const key = columnId;
     return this.mapping[key];
   }
 

@@ -58,8 +58,7 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
     }
 
     const sqlColumn =
-      this.host.getColumnSqlName(config.column as string) ||
-      (config.column as string);
+      this.host.getColumnSqlName(config.column) || config.column;
 
     const colDef = this.host.getColumnDef(sqlColumn);
     const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
