@@ -32,7 +32,7 @@
   "devDependencies": {
     "@eslint-react/eslint-plugin": "catalog:",
     "@tanstack/config": "^0.22.0",
-    "@types/react": "^18.2.0",
+    "@types/react": "^19.2.7",
     "@vitejs/plugin-react": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
