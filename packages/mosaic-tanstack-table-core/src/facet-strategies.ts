@@ -6,7 +6,7 @@ import { assertIsArray, assertIsNumber } from './validation';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { MosaicTableSource } from './types';
 
-export interface FacetQueryContext<TInput = any> {
+export interface FacetQueryContext<TInput = unknown> {
   /** The table or subquery used as the source for the facet query. */
   source: MosaicTableSource;
   column: string;
@@ -25,7 +25,7 @@ export interface FacetQueryContext<TInput = any> {
  * Interface for Facet Strategies.
  * Uses manual validation instead of schema libraries to ensure runtime safety.
  */
-export interface FacetStrategy<TInput, TOutput> {
+export interface FacetStrategy<TInput = unknown, TOutput = unknown> {
   /**
    * Constructs the SQL query to fetch facet data.
    * @param ctx - The context containing source, column, filters, and custom options.

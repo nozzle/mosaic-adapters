@@ -48,7 +48,8 @@ interface AthleteRowData {
 
 // 2. Strict SQL Mapping
 // We pass the generic type to ensure keys match AthleteRowData
-const { mapping: AthleteMapping } = createMosaicMapping<AthleteRowData>({
+// FIX: Removed incorrect destructuring. createMosaicMapping returns the object directly.
+const AthleteMapping = createMosaicMapping<AthleteRowData>({
   id: { sqlColumn: 'id', type: 'INTEGER', filterType: 'EQUALS' },
   name: { sqlColumn: 'name', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
   nationality: {

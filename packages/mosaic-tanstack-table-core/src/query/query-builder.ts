@@ -21,7 +21,7 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   source: string | SelectQuery;
   tableState: TableState;
   mapper: ColumnMapper<TData, TValue>;
-  mapping?: MosaicColumnMapping<TData>;
+  mapping: MosaicColumnMapping<TData> | undefined; // Enforce explicit undefined if missing
   totalRowsColumnName: string;
   totalRowsMode?: 'split' | 'window';
   excludeColumnId?: string; // For cascading facets
@@ -144,7 +144,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
 export function extractInternalFilters<TData extends RowData, TValue>(options: {
   tableState: TableState;
   mapper: ColumnMapper<TData, TValue>;
-  mapping?: MosaicColumnMapping<TData>;
+  mapping: MosaicColumnMapping<TData> | undefined; // Enforce explicit undefined if missing
   filterRegistry: StrategyRegistry<FilterStrategy>;
   excludeColumnId?: string;
 }): Array<mSql.FilterExpr> {

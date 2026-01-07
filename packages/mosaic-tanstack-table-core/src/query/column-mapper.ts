@@ -5,8 +5,6 @@ import type { FieldInfoRequest } from '@uwdata/mosaic-core';
 import type { MosaicColumnMapping } from '../types';
 import type { StrictId } from '../types/paths';
 
-let mapperIdCounter = 0;
-
 export interface SelectColumnInfo {
   id: string; // The Table State ID (used for filtering/sorting)
   sql: SqlIdentifier; // The Source SQL Column
@@ -14,7 +12,7 @@ export interface SelectColumnInfo {
 }
 
 export class ColumnMapper<TData extends RowData, TValue = unknown> {
-  public readonly id: number;
+  public readonly id: string;
   private idToSqlMap = new Map<string, SqlIdentifier>();
   private sqlToDefMap = new Map<string, ColumnDef<TData, TValue>>();
 
@@ -27,7 +25,8 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
     columnDefs: Array<ColumnDef<TData, TValue>>,
     private mapping?: MosaicColumnMapping<TData>,
   ) {
-    this.id = ++mapperIdCounter;
+    // Generate stateless ID for debug logs without relying on global module state
+    this.id = Math.random().toString(36).substring(2, 9);
     this.parse(columnDefs);
   }
 

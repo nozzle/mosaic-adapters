@@ -1,6 +1,14 @@
 /**
  * Recursive type definitions for generating strict dot-notation paths from object schemas.
  * Used to enforce type safety for SQL column references in deeply nested structures (e.g. Parquet).
+ *
+ * ARCHITECTURAL NOTE:
+ * We use recursive types here instead of Branded Types to provide IDE Autocomplete (DX)
+ * for the `mapping` configuration object. Branded types provide runtime safety provenance,
+ * but do not allow a developer to see a list of valid nested keys (e.g., "user.address.zip")
+ * while typing.
+ *
+ * The recursion depth is capped via `Prev` tuple to prevent compiler performance issues.
  */
 
 /**

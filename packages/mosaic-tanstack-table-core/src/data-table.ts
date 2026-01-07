@@ -51,8 +51,6 @@ import type { FilterStrategy } from './query/filter-factory';
 import type { FacetStrategy } from './facet-strategies';
 import type { SidecarRequest } from './registry';
 
-let instanceCounter = 0;
-
 export function createMosaicDataTableClient<
   TData extends RowData,
   TValue = unknown,
@@ -65,7 +63,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
   extends MosaicClient
   implements IMosaicClient
 {
-  public readonly id: number;
+  public readonly id: string;
   source: MosaicTableSource;
   schema: Array<FieldInfo> = [];
   tableFilterSelection!: Selection;
@@ -89,7 +87,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   constructor(options: MosaicDataTableOptions<TData, TValue>) {
     super(options.filterBy);
-    this.id = ++instanceCounter;
+    this.id = Math.random().toString(36).substring(2, 9);
     this.options = options;
     this.source = options.table;
 

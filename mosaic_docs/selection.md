@@ -1,10 +1,7 @@
 # Selection API
 
-/\*
-
 - Selections manage SQL predicates and coordinate filtering across
 - multiple interactive components.
-  \*/
 
 A `Selection` is a specialized `Param` that stores one or more SQL clauses. It is the primary tool for building "Linked Views" and "Cross-filtering."
 

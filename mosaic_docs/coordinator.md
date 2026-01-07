@@ -1,10 +1,8 @@
 # Coordinator API
 
-/\*
-
 - The Coordinator manages the lifecycle of queries and the synchronization
 - of reactive components within the Mosaic ecosystem.
-  \*/
+
 
 The `Coordinator` is the central message bus. It ensures that queries are executed efficiently and that UI components stay in sync with the underlying data.
 

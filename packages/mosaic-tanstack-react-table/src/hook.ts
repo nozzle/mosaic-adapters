@@ -3,9 +3,8 @@ import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-cor
 import { useStore } from '@tanstack/react-store';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import type {
-  MosaicColumnMapping,
   MosaicDataTable,
-  MosaicDataTableOptions,
+  StrictMosaicDataTableOptions,
 } from '@nozzleio/mosaic-tanstack-table-core';
 import type { RowData, TableOptions } from '@tanstack/react-table';
 
@@ -18,10 +17,7 @@ export type * from '@nozzleio/mosaic-tanstack-table-core';
  * NOW REQUIRED: 'mapping' and 'schema' for type safety.
  */
 export function useMosaicReactTable<TData extends RowData, TValue = any>(
-  options: MosaicDataTableOptions<TData, TValue> & {
-    // Explicitly require mapping in the React Hook API to enforce safety in UI layer
-    mapping: MosaicColumnMapping<TData>;
-  },
+  options: StrictMosaicDataTableOptions<TData, TValue>,
 ): {
   tableOptions: TableOptions<TData>;
   client: MosaicDataTable<TData, TValue>;

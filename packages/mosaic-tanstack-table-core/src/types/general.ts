@@ -202,6 +202,17 @@ export interface MosaicDataTableOptions<
   facetStrategies?: Record<string, FacetStrategy<any, any>>;
 }
 
+/**
+ * Extended options interface for framework adapters (React, Vue, etc.)
+ * that requires the strict mapping to be present.
+ */
+export interface StrictMosaicDataTableOptions<
+  TData extends RowData,
+  TValue = unknown,
+> extends MosaicDataTableOptions<TData, TValue> {
+  mapping: MosaicColumnMapping<TData>;
+}
+
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   columnDefs: Array<ColumnDef<TData, TValue>>;
   tableState: TableState;

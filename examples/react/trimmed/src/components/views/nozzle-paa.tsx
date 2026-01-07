@@ -37,7 +37,8 @@ interface PaaRowData {
   description: string | null;
 }
 
-const { mapping: PaaMapping } = createMosaicMapping<PaaRowData>({
+// FIX: Removed incorrect destructuring
+const PaaMapping = createMosaicMapping<PaaRowData>({
   domain: { sqlColumn: 'domain', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
   paa_question: {
     sqlColumn: 'related_phrase.phrase',
@@ -59,7 +60,8 @@ interface GroupByRow {
   __is_highlighted?: number;
 }
 
-const { mapping: GroupByMapping } = createMosaicMapping<GroupByRow>({
+// FIX: Removed incorrect destructuring
+const GroupByMapping = createMosaicMapping<GroupByRow>({
   key: { sqlColumn: 'key', type: 'VARCHAR', filterType: 'EQUALS' },
   metric: { sqlColumn: 'metric', type: 'INTEGER', filterType: 'RANGE' },
   __is_highlighted: {

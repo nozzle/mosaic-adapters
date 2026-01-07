@@ -40,7 +40,8 @@ interface SummaryRowData {
 }
 
 // 2. Mappings
-const { mapping: TripMapping } = createMosaicMapping<TripRowData>({
+// FIX: Removed incorrect destructuring
+const TripMapping = createMosaicMapping<TripRowData>({
   datetime: {
     sqlColumn: 'datetime',
     type: 'TIMESTAMP',
@@ -53,7 +54,8 @@ const { mapping: TripMapping } = createMosaicMapping<TripRowData>({
   fare_amount: { sqlColumn: 'fare_amount', type: 'FLOAT', filterType: 'RANGE' },
 });
 
-const { mapping: SummaryMapping } = createMosaicMapping<SummaryRowData>({
+// FIX: Removed incorrect destructuring
+const SummaryMapping = createMosaicMapping<SummaryRowData>({
   zone_x: { sqlColumn: 'zone_x', type: 'INTEGER', filterType: 'EQUALS' },
   zone_y: { sqlColumn: 'zone_y', type: 'INTEGER', filterType: 'EQUALS' },
   trip_count: { sqlColumn: 'trip_count', type: 'INTEGER', filterType: 'RANGE' },

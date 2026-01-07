@@ -56,15 +56,13 @@ export interface MosaicFacetMenuState {
   selectedValues: Array<FacetValue>;
 }
 
-let instanceCounter = 0;
-
 /**
  * A "Sidecar" Client for fetching metadata (unique values) independent of the main table query.
  */
 export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   public options: MosaicFacetMenuOptions;
   readonly store: Store<MosaicFacetMenuState>;
-  readonly id: number;
+  readonly id: string;
 
   private selectionManager: MosaicSelectionManager;
   private _searchTerm = '';
@@ -75,7 +73,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   constructor(options: MosaicFacetMenuOptions) {
     super(options.filterBy);
     this.options = options;
-    this.id = ++instanceCounter;
+    this.id = Math.random().toString(36).substring(2, 9);
     this.coordinator = options.coordinator || defaultCoordinator();
 
     this.store = new Store<MosaicFacetMenuState>({
