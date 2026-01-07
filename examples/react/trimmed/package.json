@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@nozzleio/mosaic-tanstack-react-table": "workspace:*",
-    "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
@@ -40,6 +39,7 @@
     "@nozzleio/react-mosaic": "workspace:*"
   },
   "devDependencies": {
+    "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@tailwindcss/vite": "^4.1.17",
     "@types/d3": "^7.4.3",
     "@types/react": "^18.3.26",

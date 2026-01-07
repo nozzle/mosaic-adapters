@@ -7,14 +7,12 @@ import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
 import {
+  coerceNumber,
   createMosaicColumnHelper,
+  createMosaicMapping,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useCoordinator } from '@nozzleio/react-mosaic';
-import {
-  coerceNumber,
-  createMosaicMapping,
-} from '@nozzleio/mosaic-tanstack-table-core';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import { usePaaTopology } from '@/hooks/usePaaTopology';
 import { RenderTable } from '@/components/render-table';
@@ -37,7 +35,6 @@ interface PaaRowData {
   description: string | null;
 }
 
-// FIX: Removed incorrect destructuring
 const PaaMapping = createMosaicMapping<PaaRowData>({
   domain: { sqlColumn: 'domain', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
   paa_question: {
@@ -60,7 +57,6 @@ interface GroupByRow {
   __is_highlighted?: number;
 }
 
-// FIX: Removed incorrect destructuring
 const GroupByMapping = createMosaicMapping<GroupByRow>({
   key: { sqlColumn: 'key', type: 'VARCHAR', filterType: 'EQUALS' },
   metric: { sqlColumn: 'metric', type: 'INTEGER', filterType: 'RANGE' },

@@ -7,15 +7,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import {
+  coerceNumber,
+  coerceSafeTimestamp,
   createMosaicColumnHelper,
+  createMosaicMapping,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useCoordinator } from '@nozzleio/react-mosaic';
-import {
-  coerceNumber,
-  coerceSafeTimestamp,
-  createMosaicMapping,
-} from '@nozzleio/mosaic-tanstack-table-core';
 import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -40,7 +38,6 @@ interface SummaryRowData {
 }
 
 // 2. Mappings
-// FIX: Removed incorrect destructuring
 const TripMapping = createMosaicMapping<TripRowData>({
   datetime: {
     sqlColumn: 'datetime',
@@ -54,7 +51,6 @@ const TripMapping = createMosaicMapping<TripRowData>({
   fare_amount: { sqlColumn: 'fare_amount', type: 'FLOAT', filterType: 'RANGE' },
 });
 
-// FIX: Removed incorrect destructuring
 const SummaryMapping = createMosaicMapping<SummaryRowData>({
   zone_x: { sqlColumn: 'zone_x', type: 'INTEGER', filterType: 'EQUALS' },
   zone_y: { sqlColumn: 'zone_y', type: 'INTEGER', filterType: 'EQUALS' },

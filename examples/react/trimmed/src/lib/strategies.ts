@@ -1,10 +1,10 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { isParam } from '@uwdata/mosaic-core';
-// Import validation helpers from the core package
+// Import validation helpers from the react-table wrapper, which re-exports from core
 import {
   assertIsArray,
   assertIsNumber,
-} from '@nozzleio/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-react-table';
 import type {
   FacetQueryContext,
   FacetStrategy,

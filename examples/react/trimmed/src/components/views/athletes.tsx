@@ -7,14 +7,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import {
-  createMosaicColumnHelper,
-  useMosaicReactTable,
-} from '@nozzleio/mosaic-tanstack-react-table';
-import {
   coerceDate,
   coerceNumber,
+  createMosaicColumnHelper,
   createMosaicMapping,
-} from '@nozzleio/mosaic-tanstack-table-core';
+  useMosaicReactTable,
+} from '@nozzleio/mosaic-tanstack-react-table';
 import type { HistogramBin } from '@/lib/strategies';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -48,7 +46,6 @@ interface AthleteRowData {
 
 // 2. Strict SQL Mapping
 // We pass the generic type to ensure keys match AthleteRowData
-// FIX: Removed incorrect destructuring. createMosaicMapping returns the object directly.
 const AthleteMapping = createMosaicMapping<AthleteRowData>({
   id: { sqlColumn: 'id', type: 'INTEGER', filterType: 'EQUALS' },
   name: { sqlColumn: 'name', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
