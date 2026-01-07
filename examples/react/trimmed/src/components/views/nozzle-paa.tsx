@@ -5,7 +5,7 @@
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
-import { useReactTable } from '@tanstack/react-table';
+import { useReactTable, type ColumnDef } from '@tanstack/react-table';
 import {
   coerceNumber,
   createMosaicColumnHelper,
@@ -230,12 +230,9 @@ function HeaderSection({
       .select({ value: mSql.count('requested').distinct() })
       .where(filter);
 
-  const valPhrases = useMosaicValue(qPhrases, topology.globalContext as any);
-  const valQuestions = useMosaicValue(
-    qQuestions,
-    topology.globalContext as any,
-  );
-  const valDays = useMosaicValue(qDays, topology.globalContext as any);
+  const valPhrases = useMosaicValue(qPhrases, topology.globalContext);
+  const valQuestions = useMosaicValue(qQuestions, topology.globalContext);
+  const valDays = useMosaicValue(qDays, topology.globalContext);
 
   return (
     <div className="bg-[#0e7490] text-white pt-8 pb-12 px-6">
@@ -349,7 +346,7 @@ function SummaryTable({
         size: 30,
         enableSorting: false,
         enableColumnFilter: false,
-        cell: ({ row }: any) => (
+        cell: ({ row }) => (
           <div className="flex items-center justify-center">
             <input
               type="checkbox"
@@ -360,7 +357,7 @@ function SummaryTable({
             />
           </div>
         ),
-      },
+      } as ColumnDef<GroupByRow, unknown>,
       helper.accessor('key', {
         id: 'key',
         header: title,
@@ -413,7 +410,7 @@ function SummaryTable({
         // Hide the logic column
         columnVisibility: { __is_highlighted: false },
       },
-      getRowId: (row: any) => String(row.key), // Use the aliased 'key'
+      getRowId: (row) => String(row.key), // Use the aliased 'key'
       enableRowSelection: true,
       enableMultiRowSelection: true,
     },
