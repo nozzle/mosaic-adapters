@@ -17,6 +17,7 @@ import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
+import { useRegisterSelections } from '@/hooks/useRegisterSelections';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
@@ -71,6 +72,9 @@ const AthleteMapping = createMosaicMapping<AthleteRowData>({
 export function AthletesView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
+
+  // Register active selections for global reset
+  useRegisterSelections([$query, $tableFilter, $combined]);
 
   useEffect(() => {
     if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {

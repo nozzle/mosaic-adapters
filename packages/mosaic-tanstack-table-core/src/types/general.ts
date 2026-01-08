@@ -81,6 +81,7 @@ export interface StrictSqlColumnConfig<TType extends SqlType> {
  * Maps TypeScript data keys to SQL column configurations.
  * Keys are simple strings representing the column ID or path.
  */
+// eslint-disable-next-line unused-imports/no-unused-vars
 export type MosaicColumnMapping<TData> = Partial<
   Record<
     string,

@@ -9,12 +9,16 @@ import {
   useSelectionListener,
 } from '@nozzleio/react-mosaic';
 import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
+import { useRegisterSelections } from '@/hooks/useRegisterSelections';
 
 export function usePaaTopology() {
   // 1. Instantiate Selections
   const input = useMosaicSelection('crossfilter');
   const detail = useMosaicSelection('intersect');
   const cross = useMosaicSelection('crossfilter');
+
+  // Register selections with the global reset context
+  useRegisterSelections([input, detail, cross]);
 
   // 2. Define Derived Contexts
   const contexts = useMemo(() => {

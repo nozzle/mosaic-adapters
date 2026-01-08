@@ -1,6 +1,7 @@
 import {
   MosaicClient,
   coordinator as defaultCoordinator,
+  isParam,
 } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import { Store } from '@tanstack/store';
@@ -11,12 +12,13 @@ import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SqlIdentifier } from './domain/sql-identifier';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
-import type { ColumnType, IMosaicClient } from './types';
+import type { ColumnType, IMosaicClient, MosaicTableSource } from './types';
 
 export type FacetValue = string | number | boolean | Date | null;
 
 export interface MosaicFacetMenuOptions {
-  table: string;
+  // FIX: Updated type to MosaicTableSource to allow functions/Params
+  table: MosaicTableSource;
   column: string;
   selection: Selection;
   filterBy?: Selection;
@@ -303,10 +305,27 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     return super.requestQuery(query);
   }
 
+  /**
+   * Helper to resolve the table/source into a string or Query object.
+   * Handles string, Param<string>, or Function.
+   */
+  private resolveSource(
+    effectiveFilter?: FilterExpr | null,
+  ): string | SelectQuery | null {
+    const { table } = this.options;
+
+    if (typeof table === 'function') {
+      return table(effectiveFilter);
+    }
+    if (isParam(table)) {
+      return table.value as string;
+    }
+    return table as string;
+  }
+
   override query(filter?: FilterExpr): SelectQuery | null {
     if (
       this.options.enabled === false ||
-      !this.options.table ||
       (typeof this.options.table === 'string' &&
         this.options.table.trim() === '')
     ) {
@@ -314,7 +333,6 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     }
 
     const {
-      table,
       column,
       limit = 50,
       sortMode = 'count',
@@ -323,9 +341,6 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       additionalContext,
       filterBy,
     } = this.options;
-
-    const isArray = columnType === 'array' || isArrayColumn === true;
-    const colExpr = createStructAccess(SqlIdentifier.from(column));
 
     let effectiveFilter = filter;
     if (filterBy) {
@@ -341,10 +356,19 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       }
     }
 
+    // FIX: Resolve the source before using it in Query.from()
+    const resolvedSource = this.resolveSource(effectiveFilter);
+    if (!resolvedSource) {
+      return null;
+    }
+
+    const isArray = columnType === 'array' || isArrayColumn === true;
+    const colExpr = createStructAccess(SqlIdentifier.from(column));
+
     let query: SelectQuery;
 
     if (isArray) {
-      const innerQuery = mSql.Query.from(table).select({
+      const innerQuery = mSql.Query.from(resolvedSource).select({
         tag: mSql.unnest(colExpr),
       });
 
@@ -364,7 +388,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       query.orderby(mSql.asc('tag'));
     } else {
       const selection = column.includes('.') ? { [column]: colExpr } : column;
-      query = mSql.Query.from(table).select(selection);
+      query = mSql.Query.from(resolvedSource).select(selection);
 
       if (effectiveFilter) {
         query.where(effectiveFilter);

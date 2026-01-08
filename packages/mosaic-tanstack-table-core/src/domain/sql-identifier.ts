@@ -1,19 +1,23 @@
 /**
  * Value Object for SQL Identifiers.
  * Ensures that any string used as a column or table name in generated SQL
- * adheres to strict safety rules, preventing accidental injection or invalid syntax.
+ * adheres to safety rules to prevent injection, while allowing flexible
+ * real-world schema names (e.g. Socrata's ":id", spaces, dashes).
  */
 export class SqlIdentifier {
   // Brand property to ensure nominal typing.
-  // We use void to verify shape without runtime overhead or static restrictions.
   declare private _brand: void;
 
   private constructor(public readonly raw: string) {}
 
   /**
    * Validates and creates a SqlIdentifier.
-   * Allowed characters: Alphanumeric, underscores, and dots (for struct access `table.col`).
-   * Must start with a letter or underscore.
+   *
+   * RELAXED VALIDATION STRATEGY:
+   * Instead of a strict whitelist (Alphanumeric only), we now use a Blacklist.
+   * We reject known SQL injection vectors and structure-breaking characters,
+   * but accept almost anything else (including colons, spaces, starting numbers)
+   * because the downstream SQL generator will wrap these in double quotes.
    */
   static from(input: string): SqlIdentifier {
     if (typeof input !== 'string') {
@@ -27,11 +31,19 @@ export class SqlIdentifier {
       throw new Error('[SqlIdentifier] Identifier cannot be empty.');
     }
 
-    // Strict whitelist regex to prevent SQL injection
-    // Matches: "column", "table.column", "_private", "data.nested.value"
-    if (!/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(trimmed)) {
+    // BLOCKLIST:
+    // 1. Double Quotes ("): Would break out of "column_name" wrapping.
+    // 2. Semicolons (;): Statement termination injection.
+    // 3. Comments (-- or /*): Hiding query parts.
+    // 4. Null Bytes / Control Chars: binary corruption.
+    // Note: We allow dots (.) as they are used for struct access paths.
+
+    // eslint-disable-next-line no-control-regex
+    const unsafePattern = /["\0\x08\x09\x1a\n\r;]|(--)|(\/\*)/;
+
+    if (unsafePattern.test(trimmed)) {
       throw new Error(
-        `[SqlIdentifier] Unsafe or invalid SQL Identifier: "${trimmed}"`,
+        `[SqlIdentifier] Unsafe SQL Identifier detected. Contains prohibited characters: "${trimmed}"`,
       );
     }
 

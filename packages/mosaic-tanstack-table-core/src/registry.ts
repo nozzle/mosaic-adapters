@@ -74,6 +74,7 @@ export type FacetStrategyKey = keyof MosaicFacetRegistry;
  *
  * Iterates over the keys of the Registry to build specific request shapes.
  */
+// eslint-disable-next-line unused-imports/no-unused-vars
 export type SidecarRequest<TData> = {
   [K in keyof MosaicFacetRegistry]: {
     id: string;

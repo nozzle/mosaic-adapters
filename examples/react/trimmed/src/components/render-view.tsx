@@ -7,6 +7,8 @@ import { NozzlePaaView } from '@/components/views/nozzle-paa';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 import { ConnectorProvider, useConnector } from '@/context/ConnectorContext';
 import { ConnectorToggle } from '@/components/connector-toggle';
+import { SelectionRegistryProvider } from '@/context/SelectionRegistryContext';
+import { GlobalResetButton } from '@/components/global-reset-button';
 
 const views = new Map([
   [
@@ -45,7 +47,9 @@ type ViewConfig = ViewMap extends Map<infer _K, infer V> ? V : never;
 export function RenderView() {
   return (
     <ConnectorProvider>
-      <RenderViewContent />
+      <SelectionRegistryProvider>
+        <RenderViewContent />
+      </SelectionRegistryProvider>
     </ConnectorProvider>
   );
 }
@@ -61,7 +65,7 @@ function RenderViewContent() {
     <>
       <div className="flex justify-between items-start mb-4">
         <div className="grid gap-2">
-          <div className="flex border bg-neutral-100 rounded-lg px-1.5 py-1">
+          <div className="flex border bg-neutral-100 rounded-lg px-1.5 py-1 gap-2 items-center">
             {Array.from(views.entries()).map(([id, { title }]) => (
               <Button
                 key={`${id}-button`}
@@ -72,6 +76,8 @@ function RenderViewContent() {
                 {title}
               </Button>
             ))}
+            <div className="h-4 w-px bg-slate-300 mx-1" />
+            <GlobalResetButton />
           </div>
           <TableStyleSwitcher />
         </div>
