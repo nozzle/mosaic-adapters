@@ -209,11 +209,30 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   private _selectionListener = () => {
     // Check if the update is external (i.e. not triggered by this client)
     const active = this.options.selection.active;
-    if (active.source === this) {
+
+    // Ensure active exists before checking source (Global Reset sets active to undefined/null)
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (active && active.source === this) {
       return;
     }
-    // Sync store with the new external selection state
-    this._syncStoreFromManager();
+
+    // Detect Global Reset Signal
+    // If source is null AND value is null, this is the explicit signal from SelectionRegistry.resetAll()
+    // that indicates all filters should be wiped.
+    // We must proactively clear our own local selection manager because the fallback reset mechanism
+    // for Intersect/Crossfilter selections often fails to remove specific client clauses.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    const isGlobalReset =
+      active && active.source === null && active.value === null;
+
+    if (isGlobalReset) {
+      // Force clear local state.
+      // This will trigger a self-update on the selection (removing our clause) and then sync the store.
+      this.selectionManager.select(null);
+    } else {
+      // Standard behavior: Sync store with the new external selection state
+      this._syncStoreFromManager();
+    }
   };
 
   get debugPrefix() {

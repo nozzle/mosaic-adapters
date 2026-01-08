@@ -81,6 +81,14 @@ export function SearchableSelectFilter({
       __debugName: `Facet:${label}`,
     });
 
+  // Clear search state when selection is cleared (e.g. Global Reset)
+  useEffect(() => {
+    if (selectedValues.length === 0 && searchValue !== '') {
+      setSearchValue('');
+      setSearchTerm('');
+    }
+  }, [selectedValues, searchValue, setSearchTerm]);
+
   const handleSearchChange = (val: string) => {
     setSearchValue(val);
     setSearchTerm(val);
@@ -267,6 +275,14 @@ export function ArraySelectFilter({
       enabled: isOpen,
       __debugName: `FacetArray:${label}`,
     });
+
+  // Clear search state when selection is cleared (e.g. Global Reset)
+  useEffect(() => {
+    if (selectedValues.length === 0 && searchValue !== '') {
+      setSearchValue('');
+      setSearchTerm('');
+    }
+  }, [selectedValues, searchValue, setSearchTerm]);
 
   const handleSearchChange = (val: string) => {
     setSearchValue(val);
