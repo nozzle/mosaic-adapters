@@ -38,6 +38,41 @@ export type SqlType =
   | 'TIMESTAMP'
   | 'BOOLEAN';
 
+// --- Type Safety Utilities ---
+
+type UnwrapNullable<T> = T extends null | undefined
+  ? never
+  : T extends Array<infer U>
+    ? U
+    : T;
+
+/**
+ * Maps a TypeScript Value to allowed SQL Filter Types.
+ * This enforces that you cannot use text filters on number columns, etc.
+ */
+export type AllowedFilterTypeFor<TValue> =
+  UnwrapNullable<TValue> extends number
+    ? 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT'
+    : UnwrapNullable<TValue> extends Date
+      ? 'DATE_RANGE' | 'RANGE' | 'EQUALS'
+      : UnwrapNullable<TValue> extends boolean
+        ? 'EQUALS' | 'MATCH' | 'SELECT'
+        : // Strings / Default
+            | 'ILIKE'
+            | 'LIKE'
+            | 'PARTIAL_ILIKE'
+            | 'PARTIAL_LIKE'
+            | 'EQUALS'
+            | 'MATCH'
+            | 'TEXT'
+            | 'SELECT';
+
+/**
+ * Maps a TypeScript Value to allowed Facet Types.
+ */
+export type AllowedFacetTypeFor<TValue> =
+  UnwrapNullable<TValue> extends number | Date ? 'minmax' | 'unique' : 'unique';
+
 // --- Advanced Mapping Types ---
 
 export type FilterCompatibility = {
@@ -130,12 +165,24 @@ export interface IMosaicLifecycleHooks {
   __onDisconnect?: () => void;
 }
 
-export type MosaicDataTableColumnDefMetaOptions = {
+/**
+ * Metadata definition for ColumnDefs.
+ * Now Generic on TValue to enforce strict typing of SQL properties.
+ */
+export type MosaicDataTableColumnDefMetaOptions<TValue = unknown> = {
   mosaicDataTable?: {
     sqlColumn?: string;
-    sqlFilterType?: MosaicDataTableSqlFilterType;
+    /**
+     * The SQL Filter Type.
+     * STRICTLY TYPED based on the column's data type (TValue).
+     */
+    sqlFilterType?: AllowedFilterTypeFor<TValue> | (string & {});
     facetSortMode?: FacetSortMode;
-    facet?: 'unique' | 'minmax' | (string & {});
+    /**
+     * The Facet Type.
+     * STRICTLY TYPED based on the column's data type (TValue).
+     */
+    facet?: AllowedFacetTypeFor<TValue> | (string & {});
   };
 };
 

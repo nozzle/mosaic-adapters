@@ -10,6 +10,7 @@ import type {
   TableState,
 } from '@tanstack/table-core';
 import type { SqlIdentifier } from './domain/sql-identifier';
+import type { MosaicDataTableColumnDefMetaOptions } from './types';
 
 /**
  * Utility to handle functional or direct value updates.
@@ -228,15 +229,10 @@ export function createMosaicColumnHelper<TData extends RowData>() {
       key: TKey,
       // TData[TKey] is inferred as the value type
       def: Omit<ColumnDef<TData, TData[TKey]>, 'meta'> & {
-        meta?: {
+        meta?: MosaicDataTableColumnDefMetaOptions<TData[TKey]> & {
           mosaicDataTable?: {
             // Constrain the filterVariant based on TData[TKey]
             filterVariant?: FilterVariantFor<TData[TKey]>;
-            // Ensure facet type matches data type (Allow minmax for Number or Date)
-            facet?: UnwrapNullable<TData[TKey]> extends number | Date
-              ? 'minmax' | 'unique'
-              : 'unique';
-            sqlColumn?: string;
           };
         } & Record<string, any>;
       } = {},
