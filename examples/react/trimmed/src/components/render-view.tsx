@@ -2,6 +2,7 @@ import * as React from 'react';
 import { TableStyleSwitcher } from './render-table';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
+import { AthletesViewSimple } from '@/components/views/athletes-simple';
 import { NycTaxiView } from '@/components/views/nyc-taxi';
 import { NozzlePaaView } from '@/components/views/nozzle-paa';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
@@ -16,6 +17,13 @@ const views = new Map([
     {
       title: 'Athletes Dashboard',
       Component: AthletesView,
+    },
+  ],
+  [
+    'athletes-simple',
+    {
+      title: 'Athletes (No Helper)',
+      Component: AthletesViewSimple,
     },
   ],
   [
@@ -65,7 +73,7 @@ function RenderViewContent() {
     <>
       <div className="flex justify-between items-start mb-4">
         <div className="grid gap-2">
-          <div className="flex border bg-neutral-100 rounded-lg px-1.5 py-1 gap-2 items-center">
+          <div className="flex border bg-neutral-100 rounded-lg px-1.5 py-1 gap-2 items-center flex-wrap">
             {Array.from(views.entries()).map(([id, { title }]) => (
               <Button
                 key={`${id}-button`}
