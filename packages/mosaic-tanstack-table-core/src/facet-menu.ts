@@ -17,7 +17,6 @@ import type { ColumnType, IMosaicClient, MosaicTableSource } from './types';
 export type FacetValue = string | number | boolean | Date | null;
 
 export interface MosaicFacetMenuOptions {
-  // FIX: Updated type to MosaicTableSource to allow functions/Params
   table: MosaicTableSource;
   column: string;
   selection: Selection;
@@ -346,15 +345,6 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   // --- QUERY LOGIC ---
 
   override requestQuery(query?: any): Promise<any> | null {
-    // CRITICAL FIX:
-    // If enabled=false, we MUST NOT let the query proceed to the Coordinator.
-    // The Coordinator treats 'null' return from query() as "No Query", but if
-    // this method proceeds to super.requestQuery(), the Coordinator might enqueue
-    // a request that eventually resolves to null (via query() below), and in some
-    // adapters, sending "null" as SQL causes a parser error.
-    //
-    // By short-circuiting here with a resolved Promise, we simulate a successful
-    // "no-op" query, satisfying the async loop without hitting the DB.
     if (this.options.enabled === false) {
       return Promise.resolve();
     }
@@ -362,7 +352,23 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     if (!this.coordinator) {
       return Promise.resolve();
     }
-    return super.requestQuery(query);
+
+    // Defensive Check:
+    // We explicitly calculate the query here to verify it is valid (non-null).
+    // The base MosaicClient.requestQuery() will typically call this.query() internally if no argument is passed,
+    // but it might pass the result directly to the coordinator even if it is null.
+    // If a null query reaches the connector, it gets stringified to "null", causing a SQL Parser Error.
+    const queryToRun = query || this.query();
+
+    if (!queryToRun) {
+      logger.warn(
+        'Core',
+        `${this.debugPrefix} requestQuery: Generated query is NULL. Skipping execution to prevent DB error.`,
+      );
+      return Promise.resolve();
+    }
+
+    return super.requestQuery(queryToRun);
   }
 
   /**
@@ -384,14 +390,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   }
 
   override query(filter?: FilterExpr): SelectQuery | null {
-    // Secondary check, though requestQuery should catch it first.
-    if (
-      this.options.enabled === false ||
-      (typeof this.options.table === 'string' &&
-        this.options.table.trim() === '')
-    ) {
-      return null;
-    }
+    const debugId = `${this.debugPrefix} query()`;
 
     const {
       column,
@@ -401,7 +400,23 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       isArrayColumn,
       additionalContext,
       filterBy,
+      enabled,
+      table,
     } = this.options;
+
+    // 1. Safety Check: If Disabled or Invalid Source, return a No-Op query.
+    // We CANNOT return null because the Coordinator executes "null" as SQL.
+    // We return "SELECT * FROM (SELECT 1) WHERE 1=0" to safely return empty results.
+    const isTableInvalid = typeof table === 'string' && table.trim() === '';
+
+    if (enabled === false || isTableInvalid) {
+      // Attempt to resolve source to keep schema if possible, otherwise use dummy
+      const dummySource =
+        this.resolveSource(null) || mSql.sql`(SELECT 1) AS _dummy`;
+      return mSql.Query.from(dummySource)
+        .select('*')
+        .where(mSql.sql`1=0`);
+    }
 
     let effectiveFilter = filter;
     if (filterBy) {
@@ -417,10 +432,17 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       }
     }
 
-    // FIX: Resolve the source before using it in Query.from()
+    // Fix: Resolve the source before using it in Query.from()
     const resolvedSource = this.resolveSource(effectiveFilter);
     if (!resolvedSource) {
-      return null;
+      logger.warn(
+        'Core',
+        `${debugId} - resolveSource returned null. Returning No-Op query to prevent crash. Table options:`,
+        this.options.table,
+      );
+      return mSql.Query.from(mSql.sql`(SELECT 1) AS _dummy`).where(
+        mSql.sql`1=0`,
+      );
     }
 
     const isArray = columnType === 'array' || isArrayColumn === true;
@@ -524,6 +546,23 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   }
 
   override queryError(error: Error) {
+    // Suppress known "null" syntax errors that happen during race conditions
+    // This happens when the Coordinator executes a null query despite our guards,
+    // or if an update was in flight during a reset.
+    if (error.message.includes('syntax error at or near "null"')) {
+      logger.warn(
+        'Core',
+        `${this.debugPrefix} Suppressed "null" query error (Race Condition) detected.`,
+      );
+      this.store.setState((s) => ({ ...s, loading: false }));
+      return this;
+    }
+
+    logger.error('Core', `${this.debugPrefix} Query Error Details`, {
+      error,
+      message: error.message,
+      stack: error.stack,
+    });
     handleQueryError(`MosaicFacetMenu #${this.id}`, error);
     this.store.setState((s) => ({ ...s, loading: false }));
     return this;
