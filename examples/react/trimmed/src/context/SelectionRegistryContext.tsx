@@ -15,6 +15,10 @@ interface SelectionRegistryContextType {
 const SelectionRegistryContext =
   createContext<SelectionRegistryContextType | null>(null);
 
+// Define a stable source identity for Global Resets
+// This allows clients to distinguish between "Someone cleared their filter" vs "Global Reset"
+const RESET_SOURCE = { id: 'GlobalReset' };
+
 export function SelectionRegistryProvider({
   children,
 }: {
@@ -43,13 +47,15 @@ export function SelectionRegistryProvider({
         return;
       }
 
-      // 2. Fallback: Try to force update with nulls.
-      // This sets the value for the "null" source, which effectively clears
-      // simple selections but may just append a null clause to complex Intersect selections.
+      // 2. Fallback: Force update with empty values.
+      // We use RESET_SOURCE to signal to listeners that this is a global event.
+      // We use predicate: undefined (instead of null) to ensure the Query Builder
+      // ignores this clause, preventing "WHERE null" syntax errors in DuckDB.
       selection.update({
-        source: null,
+        source: RESET_SOURCE,
         value: null,
-        predicate: null,
+        // @ts-expect-error - Force undefined to ensure "No Predicate" behavior in query generation
+        predicate: undefined,
       });
     });
   };

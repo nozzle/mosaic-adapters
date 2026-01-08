@@ -217,11 +217,14 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     }
 
     // Detect Global Reset Signal
-    // We cast source to any because strict types say it can't be null,
-    // but at runtime we explicitly set it to null during resetAll().
+    // We check for RESET_SOURCE (standard) or null (legacy/fallback)
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    const src = active ? (active.source as any) : null;
     const isGlobalReset =
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      active && (active.source as any) === null && active.value === null;
+      active &&
+      active.value === null &&
+      (src === null || src?.id === 'GlobalReset');
 
     if (isGlobalReset) {
       // Force clear local selection state (removes the clause)
@@ -260,7 +263,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       );
     }
 
-    // Listen to our own selection to react to global resets
+    // Subscribe to selection to handle Global Resets (or other external changes)
     this.options.selection.addEventListener('value', this._selectionListener);
   }
 
@@ -343,14 +346,16 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   // --- QUERY LOGIC ---
 
   override requestQuery(query?: any): Promise<any> | null {
-    // Safety Check: If disabled or table source is missing, do not query.
-    // This prevents the Coordinator from receiving 'null' as a query and executing it as SQL,
-    // which causes "Parser Error: syntax error at or near 'null'".
-    if (
-      this.options.enabled === false ||
-      (typeof this.options.table === 'string' &&
-        this.options.table.trim() === '')
-    ) {
+    // CRITICAL FIX:
+    // If enabled=false, we MUST NOT let the query proceed to the Coordinator.
+    // The Coordinator treats 'null' return from query() as "No Query", but if
+    // this method proceeds to super.requestQuery(), the Coordinator might enqueue
+    // a request that eventually resolves to null (via query() below), and in some
+    // adapters, sending "null" as SQL causes a parser error.
+    //
+    // By short-circuiting here with a resolved Promise, we simulate a successful
+    // "no-op" query, satisfying the async loop without hitting the DB.
+    if (this.options.enabled === false) {
       return Promise.resolve();
     }
 
@@ -379,6 +384,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   }
 
   override query(filter?: FilterExpr): SelectQuery | null {
+    // Secondary check, though requestQuery should catch it first.
     if (
       this.options.enabled === false ||
       (typeof this.options.table === 'string' &&
