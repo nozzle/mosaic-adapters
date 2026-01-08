@@ -3,8 +3,8 @@
  * Handles registration on mount and unregistration on unmount.
  */
 import { useEffect } from 'react';
+import { useSelectionRegistry } from '../selection-registry';
 import type { Selection } from '@uwdata/mosaic-core';
-import { useSelectionRegistry } from '@/context/SelectionRegistryContext';
 
 export function useRegisterSelections(selections: Array<Selection>) {
   const { register, unregister } = useSelectionRegistry();

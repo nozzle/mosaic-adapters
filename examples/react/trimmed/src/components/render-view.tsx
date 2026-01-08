@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { SelectionRegistryProvider } from '@nozzleio/react-mosaic';
 import { TableStyleSwitcher } from './render-table';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
@@ -8,7 +9,6 @@ import { NozzlePaaView } from '@/components/views/nozzle-paa';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 import { ConnectorProvider, useConnector } from '@/context/ConnectorContext';
 import { ConnectorToggle } from '@/components/connector-toggle';
-import { SelectionRegistryProvider } from '@/context/SelectionRegistryContext';
 import { GlobalResetButton } from '@/components/global-reset-button';
 
 const views = new Map([

@@ -3,8 +3,8 @@
  * Triggers the resetAll method from the SelectionRegistryContext.
  */
 import { RotateCcw } from 'lucide-react';
+import { useSelectionRegistry } from '@nozzleio/react-mosaic';
 import { Button } from '@/components/ui/button';
-import { useSelectionRegistry } from '@/context/SelectionRegistryContext';
 
 export function GlobalResetButton() {
   const { resetAll } = useSelectionRegistry();

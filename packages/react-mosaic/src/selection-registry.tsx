@@ -1,12 +1,12 @@
 /**
  * Context provider for the Selection Registry.
  * Maintains a set of active Mosaic Selections and provides methods to register, unregister, and reset them.
- * This registry acts as the central point for the "Global Reset" functionality.
+ * This acts as the central point for "Global Reset" functionality.
  */
 import React, { createContext, useContext, useRef } from 'react';
 import type { Selection } from '@uwdata/mosaic-core';
 
-interface SelectionRegistryContextType {
+export interface SelectionRegistryContextType {
   register: (selections: Array<Selection>) => void;
   unregister: (selections: Array<Selection>) => void;
   resetAll: () => void;

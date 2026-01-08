@@ -6,9 +6,11 @@
 import { useEffect, useMemo } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
-import { useMosaicSelection } from '@nozzleio/react-mosaic';
+import {
+  useMosaicSelection,
+  useRegisterSelections,
+} from '@nozzleio/react-mosaic';
 import { AggregationBridge } from '@nozzleio/mosaic-tanstack-react-table';
-import { useRegisterSelections } from '@/hooks/useRegisterSelections';
 
 export function useNycTaxiTopology() {
   // 1. Instantiate Selections (Stable Identitites)

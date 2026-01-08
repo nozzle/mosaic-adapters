@@ -6,10 +6,10 @@ import { useMemo } from 'react';
 import * as vg from '@uwdata/vgplot';
 import {
   useMosaicSelection,
+  useRegisterSelections,
   useSelectionListener,
 } from '@nozzleio/react-mosaic';
 import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
-import { useRegisterSelections } from '@/hooks/useRegisterSelections';
 
 export function usePaaTopology() {
   // 1. Instantiate Selections
