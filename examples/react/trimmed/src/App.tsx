@@ -1,4 +1,3 @@
-// Refactored layout to include a footer for debug buttons, preventing overlap
 import { logger } from '@nozzleio/mosaic-tanstack-react-table';
 import { RenderView } from '@/components/render-view';
 

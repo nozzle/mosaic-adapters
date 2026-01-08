@@ -67,7 +67,7 @@ export function SearchableSelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
+  // Pass enabled: isOpen to suppress background queries when the menu is closed
   const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
     useMosaicTableFacetMenu({
       table,
@@ -202,7 +202,7 @@ export function SelectFilter({
 }: FilterProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // OPTIMIZATION: Use local isOpen state for the Radix Select
+  // Use local isOpen state for the Radix Select
   const { displayOptions, toggle, selectedValues } = useMosaicTableFacetMenu({
     table,
     column,
@@ -261,7 +261,7 @@ export function ArraySelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
+  // Pass enabled: isOpen to suppress background queries when the menu is closed
   const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
     useMosaicTableFacetMenu({
       table,

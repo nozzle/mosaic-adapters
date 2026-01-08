@@ -432,7 +432,6 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       }
     }
 
-    // Fix: Resolve the source before using it in Query.from()
     const resolvedSource = this.resolveSource(effectiveFilter);
     if (!resolvedSource) {
       logger.warn(

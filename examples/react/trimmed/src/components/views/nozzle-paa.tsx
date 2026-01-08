@@ -167,7 +167,7 @@ export function NozzlePaaView() {
           groupBy="phrase"
           metric="search_volume"
           metricLabel="Search Vol"
-          aggFn={mSql.max}
+          aggFn={(e) => mSql.max(e)}
           filterBy={topology.phraseContext}
           selection={topology.selections.phrase}
         />
@@ -273,6 +273,8 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+type AggregationFactory = (expression?: any) => AggregateNode;
+
 function SummaryTable({
   title,
   groupBy,
@@ -287,7 +289,7 @@ function SummaryTable({
   groupBy: string;
   metric: string;
   metricLabel: string;
-  aggFn: (expression?: any) => AggregateNode;
+  aggFn: AggregationFactory;
   where?: FilterExpr;
   filterBy: Selection;
   selection: Selection;
@@ -405,7 +407,6 @@ function SummaryTable({
     // Bind the row clicks to the specific output selection
     rowSelection: {
       selection: selection,
-      // Fix: Cast groupBy to keyof GroupByRow.
       column: groupBy as keyof GroupByRow,
       columnType: 'scalar',
     },
