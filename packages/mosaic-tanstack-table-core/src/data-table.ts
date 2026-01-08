@@ -1,6 +1,7 @@
 /**
  * Orchestrator for the Mosaic and TanStack Table integration.
  * Manages the data-fetching lifecycle, schema mapping, and reactive state synchronization.
+ * Handles bidirectional state management between TanStack (local state) and Mosaic (Selections).
  */
 
 import {
@@ -501,6 +502,41 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.requestUpdate();
     };
 
+    // Internal filter listener (Handles Global Resets)
+    const internalFilterCb = () => {
+      const active = this.tableFilterSelection.active;
+      // If the active update source is this table, ignore (we triggered it)
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (active && active.source === this) {
+        return;
+      }
+
+      // External Update detected (e.g., Global Reset)
+      const val = this.tableFilterSelection.value;
+      const isEmpty = !val || (Array.isArray(val) && val.length === 0);
+
+      if (isEmpty) {
+        batch(() => {
+          this.store.setState((prev) => ({
+            ...prev,
+            tableState: {
+              ...prev.tableState,
+              columnFilters: [],
+              // Reset Pagination on global reset
+              pagination: {
+                ...prev.tableState.pagination,
+                pageIndex: 0,
+              },
+              // Reset Sorting on global reset
+              sorting: [],
+            },
+          }));
+        });
+        // Request update to reflect the cleared filters in the query
+        this.requestUpdate();
+      }
+    };
+
     const rowSelectionCb = () => {
       if (!this.#rowSelectionManager) {
         return;
@@ -526,6 +562,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
     this.filterBy?.addEventListener('value', selectionCb);
     this.options.highlightBy?.addEventListener('value', selectionCb);
+    this.tableFilterSelection.addEventListener('value', internalFilterCb);
 
     if (this.options.rowSelection?.selection) {
       this.options.rowSelection.selection.addEventListener(
@@ -539,6 +576,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.enabled = false;
       this.filterBy?.removeEventListener('value', selectionCb);
       this.options.highlightBy?.removeEventListener('value', selectionCb);
+      this.tableFilterSelection.removeEventListener('value', internalFilterCb);
       this.options.rowSelection?.selection.removeEventListener(
         'value',
         rowSelectionCb,

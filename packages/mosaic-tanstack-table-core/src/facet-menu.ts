@@ -206,6 +206,16 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     this.requestUpdate();
   };
 
+  private _selectionListener = () => {
+    // Check if the update is external (i.e. not triggered by this client)
+    const active = this.options.selection.active;
+    if (active.source === this) {
+      return;
+    }
+    // Sync store with the new external selection state
+    this._syncStoreFromManager();
+  };
+
   get debugPrefix() {
     const name = this.options.__debugName || `Facet:${this.options.column}`;
     return `[MosaicFacetMenu] ${name}`;
@@ -222,6 +232,9 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
         this._additionalContextListener,
       );
     }
+
+    // Listen to our own selection to react to global resets
+    this.options.selection.addEventListener('value', this._selectionListener);
   }
 
   public __onDisconnect() {
@@ -231,6 +244,10 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
         this._additionalContextListener,
       );
     }
+    this.options.selection.removeEventListener(
+      'value',
+      this._selectionListener,
+    );
   }
 
   /**

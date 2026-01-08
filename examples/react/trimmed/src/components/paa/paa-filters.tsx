@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, ChevronDown, X } from 'lucide-react';
 import {
   useMosaicTableFacetMenu,
@@ -384,6 +384,24 @@ export function TextFilter({ label, column, selection }: FilterProps) {
 
   const [val, setVal] = useState('');
 
+  useEffect(() => {
+    const onSelectionChange = () => {
+      // Robust check for "Empty Selection"
+      const v = selection.value;
+      const isEmpty =
+        v === null || v === undefined || (Array.isArray(v) && v.length === 0);
+
+      if (isEmpty) {
+        setVal('');
+        // Note: We don't need to call filter.setValue('') here because
+        // the Selection state is already cleared by the registry.
+      }
+    };
+
+    selection.addEventListener('value', onSelectionChange);
+    return () => selection.removeEventListener('value', onSelectionChange);
+  }, [selection]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setVal(value);
@@ -415,7 +433,24 @@ export function DateRangeFilter({ label, column, selection }: FilterProps) {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
 
+  useEffect(() => {
+    const onSelectionChange = () => {
+      // Robust check for "Empty Selection"
+      const v = selection.value;
+      const isEmpty =
+        v === null || v === undefined || (Array.isArray(v) && v.length === 0);
+
+      if (isEmpty) {
+        setStart('');
+        setEnd('');
+      }
+    };
+    selection.addEventListener('value', onSelectionChange);
+    return () => selection.removeEventListener('value', onSelectionChange);
+  }, [selection]);
+
   React.useEffect(() => {
+    // Only update if one of them has a value or if explicitly clearing
     filter.setValue([start || null, end || null]);
   }, [start, end, filter]);
 

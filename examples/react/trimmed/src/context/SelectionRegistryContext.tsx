@@ -1,6 +1,7 @@
 /**
  * Context provider for the Selection Registry.
  * Maintains a set of active Mosaic Selections and provides methods to register, unregister, and reset them.
+ * This registry acts as the central point for the "Global Reset" functionality.
  */
 import React, { createContext, useContext, useRef } from 'react';
 import type { Selection } from '@uwdata/mosaic-core';
@@ -32,21 +33,24 @@ export function SelectionRegistryProvider({
 
   const resetAll = () => {
     registry.current.forEach((selection) => {
-      // 1. Try standard Mosaic update to clear.
-      // We explicitly set source to null so it mimics an external reset event.
-      selection.update({
-        source: null,
-        value: null,
-        predicate: null,
-      });
-
-      // 2. Check for a specific reset method on the instance if available in newer versions.
+      // 1. Prioritize standard .reset() method if available.
+      // This wipes all clauses from all sources, ensuring a true "clean slate".
       if (
         'reset' in selection &&
         typeof (selection as any).reset === 'function'
       ) {
         (selection as any).reset();
+        return;
       }
+
+      // 2. Fallback: Try to force update with nulls.
+      // This sets the value for the "null" source, which effectively clears
+      // simple selections but may just append a null clause to complex Intersect selections.
+      selection.update({
+        source: null,
+        value: null,
+        predicate: null,
+      });
     });
   };
 

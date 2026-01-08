@@ -5,7 +5,6 @@ import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanst
 // This extends the core TanStack definitions to support Mosaic-specific metadata
 // required for filter variants, facet types, and SQL column mapping.
 declare module '@tanstack/react-table' {
-  // eslint-disable-next-line unused-imports/no-unused-vars
   interface ColumnMeta<
     TData extends RowData,
     TValue,
