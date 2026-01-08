@@ -25,6 +25,7 @@ export type MosaicDataTableSqlFilterType =
   | 'MATCH'
   | 'SELECT'
   | 'TEXT'
+  | 'CONDITION'
   | (string & {});
 
 export type FacetSortMode = 'alpha' | 'count';
@@ -37,6 +38,21 @@ export type SqlType =
   | 'DATE'
   | 'TIMESTAMP'
   | 'BOOLEAN';
+
+export type FilterOperator =
+  | 'eq'
+  | 'neq'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'contains'
+  | 'not_contains'
+  | 'starts_with'
+  | 'ends_with'
+  | 'is_null'
+  | 'not_null'
+  | 'between';
 
 // --- Type Safety Utilities ---
 
@@ -52,11 +68,11 @@ type UnwrapNullable<T> = T extends null | undefined
  */
 export type AllowedFilterTypeFor<TValue> =
   UnwrapNullable<TValue> extends number
-    ? 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT'
+    ? 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION'
     : UnwrapNullable<TValue> extends Date
-      ? 'DATE_RANGE' | 'RANGE' | 'EQUALS'
+      ? 'DATE_RANGE' | 'RANGE' | 'EQUALS' | 'CONDITION'
       : UnwrapNullable<TValue> extends boolean
-        ? 'EQUALS' | 'MATCH' | 'SELECT'
+        ? 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION'
         : // Strings / Default
             | 'ILIKE'
             | 'LIKE'
@@ -65,7 +81,8 @@ export type AllowedFilterTypeFor<TValue> =
             | 'EQUALS'
             | 'MATCH'
             | 'TEXT'
-            | 'SELECT';
+            | 'SELECT'
+            | 'CONDITION';
 
 /**
  * Maps a TypeScript Value to allowed Facet Types.
@@ -84,12 +101,19 @@ export type FilterCompatibility = {
     | 'PARTIAL_LIKE'
     | 'MATCH'
     | 'TEXT'
-    | 'SELECT';
-  INTEGER: 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
-  FLOAT: 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
-  DATE: 'RANGE' | 'DATE_RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
-  TIMESTAMP: 'RANGE' | 'DATE_RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
-  BOOLEAN: 'EQUALS' | 'MATCH' | 'SELECT';
+    | 'SELECT'
+    | 'CONDITION';
+  INTEGER: 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION';
+  FLOAT: 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION';
+  DATE: 'RANGE' | 'DATE_RANGE' | 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION';
+  TIMESTAMP:
+    | 'RANGE'
+    | 'DATE_RANGE'
+    | 'EQUALS'
+    | 'MATCH'
+    | 'SELECT'
+    | 'CONDITION';
+  BOOLEAN: 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION';
 };
 
 export interface FilterOptions {
@@ -145,7 +169,14 @@ export type FilterInput =
   | { mode: 'MATCH'; value: string | number | boolean }
   | { mode: 'RANGE'; value: [number | null, number | null] }
   | { mode: 'DATE_RANGE'; value: [string | null, string | null] }
-  | { mode: 'SELECT'; value: string | number | boolean };
+  | { mode: 'SELECT'; value: string | number | boolean }
+  | {
+      mode: 'CONDITION';
+      operator: FilterOperator;
+      value: any;
+      valueTo?: any;
+      dataType?: 'string' | 'number' | 'date' | 'boolean';
+    };
 
 export type FilterMode = FilterInput['mode'];
 

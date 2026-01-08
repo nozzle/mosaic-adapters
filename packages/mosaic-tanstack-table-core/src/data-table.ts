@@ -640,25 +640,40 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       getFacetedMinMaxValues: this.getFacetedMinMaxValues(),
       state: state.tableState,
       onStateChange: (updater) => {
-        const hashedOldState = JSON.stringify(this.store.state.tableState);
-        const tableState = functionalUpdate(
-          updater,
-          this.store.state.tableState,
-        );
+        const oldState = this.store.state.tableState;
+        const newState = functionalUpdate(updater, oldState);
+
+        // Detect silent rejections by TanStack table
+        // We calculate hashes of the filters to detect changes
+        const hashedOldFilters = JSON.stringify(oldState.columnFilters);
+        const hashedNewFilters = JSON.stringify(newState.columnFilters);
+        const hasFiltersChanged = hashedOldFilters !== hashedNewFilters;
+
+        // Trace logging for debugging rejected updates
+        if (!hasFiltersChanged && typeof updater === 'function') {
+          console.debug(
+            `[MosaicDataTable] ⚠️ State update received but ignored. Input might have been rejected by Table Core.`,
+            {
+              prevFilters: oldState.columnFilters,
+              newFilters: newState.columnFilters,
+            },
+          );
+        }
 
         this.store.setState((prev) => ({
           ...prev,
-          tableState,
+          tableState: newState,
         }));
 
-        const hashedNewState = JSON.stringify(tableState);
-        if (hashedOldState !== hashedNewState) {
-          const oldFilters = JSON.stringify(
-            JSON.parse(hashedOldState).columnFilters,
-          );
-          const newFilters = JSON.stringify(tableState.columnFilters);
+        const hashedOldState = JSON.stringify(oldState);
+        const hashedNewState = JSON.stringify(newState);
 
-          if (oldFilters !== newFilters) {
+        if (hashedOldState !== hashedNewState) {
+          if (hasFiltersChanged) {
+            console.log(`[MosaicDataTable] Filter Change Applied`, {
+              from: JSON.parse(hashedOldFilters),
+              to: newState.columnFilters,
+            });
             this.sidecarManager.refreshAll();
           }
 

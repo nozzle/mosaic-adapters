@@ -156,7 +156,47 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
 
     const sqlColumn = options.mapper.getSqlColumn(filter.id);
     if (!sqlColumn) {
+      // TRACE: Log skipped filters to debug ID mismatch
+      console.warn(
+        `[QueryBuilder] Skipping filter for ID "${filter.id}". No matching SQL column found in mapper.`,
+      );
       return;
+    }
+
+    const rawValue = filter.value;
+
+    // DYNAMIC OVERRIDE:
+    // If the UI passed a full FilterInput object (which has a 'mode'), use that mode
+    // to determine the strategy, ignoring the static column config.
+    if (
+      typeof rawValue === 'object' &&
+      rawValue !== null &&
+      'mode' in rawValue
+    ) {
+      const dynamicMode = (rawValue as any).mode;
+      const strategy = options.filterRegistry.get(dynamicMode);
+
+      if (strategy) {
+        // TRACE: Confirm strategy execution
+        console.log(
+          `[QueryBuilder] Executing Dynamic Strategy: ${dynamicMode} for ${filter.id}`,
+          rawValue,
+        );
+
+        const clause = strategy({
+          columnAccessor: sqlColumn,
+          input: rawValue as FilterInput,
+          columnId: filter.id,
+        });
+        if (clause) {
+          clauses.push(clause);
+        }
+        return; // Continue to next filter
+      } else {
+        console.warn(
+          `[QueryBuilder] Dynamic Strategy NOT FOUND: ${dynamicMode}`,
+        );
+      }
     }
 
     // Resolve Configuration
@@ -205,7 +245,6 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
     }
 
     // TYPE COERCION LAYER: Convert Unknown -> Strict FilterInput
-    const rawValue = filter.value;
     let safeInput: FilterInput | null = null;
 
     switch (filterType) {

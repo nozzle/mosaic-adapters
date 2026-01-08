@@ -193,6 +193,29 @@ export function createStructAccess(column: SqlIdentifier): MosaicSQLExpression {
   );
 }
 
+/**
+ * Creates a typed SQL accessor expression using DuckDB's TRY_CAST.
+ * This allows flexible filtering (e.g. numeric filter on string column) without
+ * crashing query execution on invalid data.
+ *
+ * It acts as a Just-In-Time schema correction mechanism for user queries.
+ */
+export function createTypedAccess(
+  colExpr: any,
+  targetType: 'string' | 'number' | 'date' | 'boolean',
+) {
+  if (targetType === 'number') {
+    // DuckDB specific syntax for safe casting.
+    // Returns NULL if the conversion fails (e.g. casting "abc" to DOUBLE)
+    return mSql.sql`TRY_CAST(${colExpr} AS DOUBLE)`;
+  }
+  if (targetType === 'date') {
+    return mSql.sql`TRY_CAST(${colExpr} AS TIMESTAMP)`;
+  }
+  // Default: Return as is (implicit casting or raw string)
+  return colExpr;
+}
+
 // --- Column Helper Utilities ---
 
 type UnwrapNullable<T> = T extends null | undefined
