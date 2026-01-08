@@ -217,18 +217,26 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     }
 
     // Detect Global Reset Signal
-    // If source is null AND value is null, this is the explicit signal from SelectionRegistry.resetAll()
-    // that indicates all filters should be wiped.
-    // We must proactively clear our own local selection manager because the fallback reset mechanism
-    // for Intersect/Crossfilter selections often fails to remove specific client clauses.
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    // We cast source to any because strict types say it can't be null,
+    // but at runtime we explicitly set it to null during resetAll().
     const isGlobalReset =
-      active && active.source === null && active.value === null;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      active && (active.source as any) === null && active.value === null;
 
     if (isGlobalReset) {
-      // Force clear local state.
-      // This will trigger a self-update on the selection (removing our clause) and then sync the store.
+      // Force clear local selection state (removes the clause)
       this.selectionManager.select(null);
+
+      // Reset internal search term
+      if (this._searchTerm !== '') {
+        this._searchTerm = '';
+        this.store.setState((s) => ({ ...s, searchTerm: '' }));
+        // Request update to refresh the options list without the search filter
+        this.requestUpdate();
+      }
+
+      // Sync store to reflect the cleared selection in the UI
+      this._syncStoreFromManager();
     } else {
       // Standard behavior: Sync store with the new external selection state
       this._syncStoreFromManager();
@@ -335,6 +343,17 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   // --- QUERY LOGIC ---
 
   override requestQuery(query?: any): Promise<any> | null {
+    // Safety Check: If disabled or table source is missing, do not query.
+    // This prevents the Coordinator from receiving 'null' as a query and executing it as SQL,
+    // which causes "Parser Error: syntax error at or near 'null'".
+    if (
+      this.options.enabled === false ||
+      (typeof this.options.table === 'string' &&
+        this.options.table.trim() === '')
+    ) {
+      return Promise.resolve();
+    }
+
     if (!this.coordinator) {
       return Promise.resolve();
     }
