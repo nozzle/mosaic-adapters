@@ -152,12 +152,12 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
     });
 
     // TRACE: Log the map to debug ID mismatch issues
-    console.log(
-      `[ColumnMapper #${this.id}] ID Mapping Table:`,
-      Array.from(this.idToSqlMap.entries()).map(
+    // Changed from console.log to logger.debug to respect log levels (hidden by default)
+    logger.debug('Core', `[ColumnMapper #${this.id}] ID Mapping Table:`, {
+      map: Array.from(this.idToSqlMap.entries()).map(
         ([id, sql]) => `${id} -> ${sql.toString()}`,
       ),
-    );
+    });
 
     if (this.selectList.length === 0 && defs.length > 0) {
       this.shouldSearchAllColumns = true;

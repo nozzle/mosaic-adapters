@@ -325,11 +325,8 @@ function AthletesTable() {
     filterBy: $query,
     tableFilterSelection: $tableFilter,
     columns,
-    // BYPASS: Pass an empty object cast as any.
-    // The core adapter will fail to find configuration in this object
-    // and will fallback to inspecting the `mosaicDataTable` metadata
-    // defined in the columns array above.
-    mapping: {} as any,
+    // Note: 'mapping' is omitted here as we are using the 'first principles' approach
+    // where configuration is defined in column.meta.mosaicDataTable
     converter: (row) =>
       ({
         ...row,

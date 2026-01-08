@@ -4,7 +4,7 @@ import { useStore } from '@tanstack/react-store';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import type {
   MosaicDataTable,
-  StrictMosaicDataTableOptions,
+  MosaicDataTableOptions,
 } from '@nozzleio/mosaic-tanstack-table-core';
 import type { RowData, TableOptions } from '@tanstack/react-table';
 
@@ -14,10 +14,10 @@ export type * from '@nozzleio/mosaic-tanstack-table-core';
  * React hook to instantiate and manage a MosaicDataTable client.
  * Provides integration between Mosaic's coordinator and TanStack Table's state management.
  *
- * NOW REQUIRED: 'mapping' and 'schema' for type safety.
+ * NOTE: 'mapping' is recommended for type safety but optional if using metadata.
  */
 export function useMosaicReactTable<TData extends RowData, TValue = any>(
-  options: StrictMosaicDataTableOptions<TData, TValue>,
+  options: MosaicDataTableOptions<TData, TValue>,
 ): {
   tableOptions: TableOptions<TData>;
   client: MosaicDataTable<TData, TValue>;
