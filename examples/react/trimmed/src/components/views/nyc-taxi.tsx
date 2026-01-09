@@ -86,8 +86,17 @@ export function NycTaxiView() {
   const coordinator = useCoordinator();
   const topology = useNycTaxiTopology();
 
+  // Create a constrained hover selection that respects the current topology context.
+  // This ensures that when hovering a zone, we only show dots that are ALSO inside
+  // the active brush/filter, rather than all dots for that zone globally.
+  const $hoverZoneConstrained = useMemo(() => {
+    return vg.Selection.intersect({
+      include: [$hoverZone, topology.summaryContext],
+    });
+  }, [topology.summaryContext]);
+
   // Register hover selections alongside the topology selections (which are registered in the hook)
-  useRegisterSelections([$hoverDetail, $hoverZone]);
+  useRegisterSelections([$hoverDetail, $hoverZone, $hoverZoneConstrained]);
 
   // Ensure hover state is reset to "empty" on mount/unmount to clear any stale state
   useEffect(() => {
@@ -175,12 +184,12 @@ export function NycTaxiView() {
             stroke: 'black',
             strokeWidth: 1,
           }),
-          // Hover Zone Overlay: All pickups corresponding to the selected Dropoff Zone
-          vg.dot(vg.from(tableName, { filterBy: $hoverZone }), {
+          // Hover Zone Overlay: Pickups for the selected zone, constrained by current brush
+          vg.dot(vg.from(tableName, { filterBy: $hoverZoneConstrained }), {
             x: 'px',
             y: 'py',
             r: 1.5,
-            fill: 'white',
+            fill: 'yellow',
             opacity: 0.3,
           }),
           vg.intervalXY({ as: topology.brush }),
@@ -211,12 +220,12 @@ export function NycTaxiView() {
             stroke: 'black',
             strokeWidth: 1,
           }),
-          // Hover Zone Overlay: All dropoffs corresponding to the selected Dropoff Zone
-          vg.dot(vg.from(tableName, { filterBy: $hoverZone }), {
+          // Hover Zone Overlay: Dropoffs for the selected zone, constrained by current brush
+          vg.dot(vg.from(tableName, { filterBy: $hoverZoneConstrained }), {
             x: 'dx',
             y: 'dy',
             r: 1.5,
-            fill: 'white',
+            fill: 'yellow',
             opacity: 0.3,
           }),
           vg.intervalXY({ as: topology.brush }),
@@ -253,7 +262,7 @@ export function NycTaxiView() {
     }
 
     setup();
-  }, [coordinator, topology]);
+  }, [coordinator, topology, $hoverZoneConstrained]);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6">
@@ -358,18 +367,21 @@ function TripsDetailTable({
             });
             return;
           }
-          const { vendor_id, datetime } = row.original;
+          const { vendor_id, datetime, fare_amount } = row.original;
           // Ensure we pass a string that matches DuckDB Timestamp logic
           const ts =
             datetime instanceof Date ? datetime.toISOString() : datetime;
 
-          // Composite key predicate: vendor_id AND datetime
+          // Composite key predicate: vendor_id AND datetime AND fare_amount
+          // Adding fare_amount increases uniqueness to prevent multiple trips (4 dots)
+          // from showing up if vendor and time match exactly.
           $hoverDetail.update({
             source: HOVER_SOURCE,
-            value: [vendor_id, ts],
+            value: [vendor_id, ts, fare_amount],
             predicate: mSql.and(
               mSql.eq(mSql.column('vendor_id'), mSql.literal(vendor_id)),
               mSql.eq(mSql.column('datetime'), mSql.literal(ts)),
+              mSql.eq(mSql.column('fare_amount'), mSql.literal(fare_amount)),
             ),
           });
         }}
@@ -468,14 +480,8 @@ function TripsSummaryTable({
             source: HOVER_SOURCE,
             value: [zone_x, zone_y],
             predicate: mSql.and(
-              mSql.eq(
-                mSql.sql`round(dx / ${ZONE_SIZE})`,
-                mSql.literal(zone_x),
-              ),
-              mSql.eq(
-                mSql.sql`round(dy / ${ZONE_SIZE})`,
-                mSql.literal(zone_y),
-              ),
+              mSql.eq(mSql.sql`round(dx / ${ZONE_SIZE})`, mSql.literal(zone_x)),
+              mSql.eq(mSql.sql`round(dy / ${ZONE_SIZE})`, mSql.literal(zone_y)),
             ),
           });
         }}

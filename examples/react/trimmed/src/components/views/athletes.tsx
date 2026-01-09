@@ -15,11 +15,11 @@ import {
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useRegisterSelections } from '@nozzleio/react-mosaic';
+import type { Row } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
-import type { Row } from '@tanstack/react-table';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
