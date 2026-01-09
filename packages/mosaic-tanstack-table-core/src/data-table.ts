@@ -649,17 +649,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         const hashedNewFilters = JSON.stringify(newState.columnFilters);
         const hasFiltersChanged = hashedOldFilters !== hashedNewFilters;
 
-        // Trace logging for debugging rejected updates
-        if (!hasFiltersChanged && typeof updater === 'function') {
-          console.debug(
-            `[MosaicDataTable] ⚠️ State update received but ignored. Input might have been rejected by Table Core.`,
-            {
-              prevFilters: oldState.columnFilters,
-              newFilters: newState.columnFilters,
-            },
-          );
-        }
-
         this.store.setState((prev) => ({
           ...prev,
           tableState: newState,
