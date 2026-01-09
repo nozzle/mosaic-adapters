@@ -82,7 +82,8 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   #facetValues: Map<string, unknown> = new Map();
 
-  #rowSelectionManager?: MosaicSelectionManager;
+  // Typed selection manager for row IDs (string or number)
+  #rowSelectionManager?: MosaicSelectionManager<string | number>;
 
   private lifecycle = createLifecycleManager(this);
 
@@ -176,7 +177,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       options.tableFilterSelection ?? currentSelection ?? new Selection();
 
     if (options.rowSelection) {
-      this.#rowSelectionManager = new MosaicSelectionManager({
+      this.#rowSelectionManager = new MosaicSelectionManager<string | number>({
         client: this,
         column: options.rowSelection.column,
         selection: options.rowSelection.selection,
@@ -693,6 +694,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         if (this.#rowSelectionManager) {
           const selectedValues = Object.keys(newState);
           const valueToSend = selectedValues.length > 0 ? selectedValues : null;
+          // select expects array of TValue (string | number) or null
           this.#rowSelectionManager.select(valueToSend);
         }
       },

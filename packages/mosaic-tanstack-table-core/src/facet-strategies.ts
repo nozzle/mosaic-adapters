@@ -23,7 +23,7 @@ export interface FacetQueryContext<TInput = unknown> {
 
 /**
  * Interface for Facet Strategies.
- * Uses manual validation instead of schema libraries to ensure runtime safety.
+ * Uses strict typing for rows to avoid 'any'.
  */
 export interface FacetStrategy<TInput = unknown, TOutput = unknown> {
   /**
@@ -39,7 +39,10 @@ export interface FacetStrategy<TInput = unknown, TOutput = unknown> {
    * @param column - The column name used in the query (useful for extracting values).
    * @returns The transformed data matching TOutput.
    */
-  transformResult: (rows: Array<any>, column: string) => TOutput;
+  transformResult: (
+    rows: Array<Record<string, unknown>>,
+    column: string,
+  ) => TOutput;
 
   /**
    * Validates the transformed result at runtime.
@@ -106,6 +109,7 @@ export const UniqueValuesStrategy: FacetStrategy<void, Array<unknown>> = {
     const values: Array<unknown> = [];
     rows.forEach((row) => {
       let val = row[col];
+      // Handle struct access in results (e.g. "struct.field")
       if (val === undefined && col.includes('.')) {
         val = col.split('.').reduce((obj: any, k: string) => obj?.[k], row);
       }
@@ -162,10 +166,14 @@ export const MinMaxStrategy: FacetStrategy<void, [number, number] | undefined> =
     },
 
     transformResult: (rows) => {
-      if (rows.length > 0) {
-        const row = rows[0];
-        const min = Number(row.min);
-        const max = Number(row.max);
+      // Fix: Add explicit null check for rows[0] due to strict indexed access
+      const row = rows.length > 0 ? rows[0] : undefined;
+      if (row) {
+        // Ensure properties exist before accessing
+        const minVal = row['min'];
+        const maxVal = row['max'];
+        const min = Number(minVal);
+        const max = Number(maxVal);
         if (!isNaN(min) && !isNaN(max)) {
           return [min, max];
         }
@@ -226,8 +234,11 @@ export const TotalCountStrategy: FacetStrategy<void, number> = {
   },
 
   transformResult: (rows) => {
-    if (rows.length > 0) {
-      return Number(rows[0].count) || 0;
+    // Fix: Add explicit null check for rows[0]
+    const row = rows.length > 0 ? rows[0] : undefined;
+    if (row) {
+      // Safely access count property
+      return Number(row['count']) || 0;
     }
     return 0;
   },

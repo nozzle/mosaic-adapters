@@ -68,7 +68,8 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   readonly store: Store<MosaicFacetMenuState>;
   readonly id: string;
 
-  private selectionManager: MosaicSelectionManager;
+  // Use the Generic Manager, typing it to FacetValue
+  private selectionManager: MosaicSelectionManager<FacetValue>;
   private _searchTerm = '';
   private _currentLimit: number;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -93,8 +94,8 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       hasMore: true,
     });
 
-    // Initialize Manager
-    this.selectionManager = new MosaicSelectionManager({
+    // Initialize Manager with strict typing
+    this.selectionManager = new MosaicSelectionManager<FacetValue>({
       selection: options.selection,
       client: this,
       column: options.column,
@@ -187,7 +188,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       oldOptions.columnType !== newOptions.columnType ||
       oldOptions.isArrayColumn !== newOptions.isArrayColumn
     ) {
-      this.selectionManager = new MosaicSelectionManager({
+      this.selectionManager = new MosaicSelectionManager<FacetValue>({
         selection: newOptions.selection,
         client: this,
         column: newOptions.column,
