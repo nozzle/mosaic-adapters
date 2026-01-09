@@ -10,6 +10,7 @@ import { logger } from './logger';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SqlIdentifier } from './domain/sql-identifier';
+import { GLOBAL_RESET_ID } from './constants';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ColumnType, IMosaicClient, MosaicTableSource } from './types';
@@ -226,7 +227,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       active &&
       active.value === null &&
-      (src === null || src?.id === 'GlobalReset');
+      (src === null || src?.id === GLOBAL_RESET_ID);
 
     if (isGlobalReset) {
       this.selectionManager.select(null);
