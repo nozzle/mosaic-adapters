@@ -89,8 +89,10 @@ export function AthletesView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
-  // Register active selections for global reset
-  useRegisterSelections([$query, $tableFilter, $combined, $hover]);
+  // Register active selections for global reset.
+  // Note: We exclude $hover because its default state is "1=0" (empty),
+  // whereas Global Reset sets selections to null (all).
+  useRegisterSelections([$query, $tableFilter, $combined]);
 
   // Ensure hover state is reset to "empty" on mount/unmount
   useEffect(() => {

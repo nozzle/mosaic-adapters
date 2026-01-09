@@ -14,7 +14,7 @@ import {
   createMosaicMapping,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { useCoordinator, useRegisterSelections } from '@nozzleio/react-mosaic';
+import { useCoordinator } from '@nozzleio/react-mosaic';
 import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -95,8 +95,9 @@ export function NycTaxiView() {
     });
   }, [topology.summaryContext]);
 
-  // Register hover selections alongside the topology selections (which are registered in the hook)
-  useRegisterSelections([$hoverDetail, $hoverZone, $hoverZoneConstrained]);
+  // Note: Hover selections ($hoverDetail, $hoverZone) are NOT registered with useRegisterSelections.
+  // They are transient and default to "1=0" (empty). Global Reset defaults selections to "All",
+  // which would incorrectly highlight everything.
 
   // Ensure hover state is reset to "empty" on mount/unmount to clear any stale state
   useEffect(() => {

@@ -1,3 +1,9 @@
+/**
+ * Manages "Sidecar" clients for a MosaicDataTable.
+ * Ensures only one client exists per column/type pair and handles the automatic
+ * teardown of these clients when the host table's context changes.
+ * Orchestrates metadata fetching for facets and total counts.
+ */
 import { SidecarClient } from './sidecar-client';
 import { TotalCountStrategy } from './facet-strategies';
 import type { MosaicDataTable } from './data-table';
@@ -7,11 +13,6 @@ import type { MosaicTableSource } from './types';
 import type { SidecarRequest, StrategyRegistry } from './registry';
 import type { FacetStrategy } from './facet-strategies';
 
-/**
- * Manages "Sidecar" clients for a MosaicDataTable.
- * Ensures only one client exists per column/type pair.
- * Enforces strict typing for strategy inputs and column IDs using Discriminated Unions.
- */
 export class SidecarManager<TData extends RowData, TValue = unknown> {
   private clients = new Map<string, SidecarClient<any, any>>();
 
@@ -20,13 +21,7 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
     private facetRegistry: StrategyRegistry<FacetStrategy<any, any>>,
   ) {}
 
-  /**
-   * Idempotently requests a facet sidecar for a column.
-   */
   requestFacet(columnId: string, type: string) {
-    // Dynamic request from metadata strings.
-    // We cast to SidecarRequest<TData> because metadata strings are runtime-defined
-    // and cannot be strictly checked at compile time here, but requestAuxiliary enforces safety internally.
     this.requestAuxiliary({
       id: `${columnId}:${type}`,
       type: type as any,
@@ -39,23 +34,14 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
     } as SidecarRequest<TData>);
   }
 
-  /**
-   * Generic method to request any auxiliary data driven by the table context.
-   * Uses Discriminated Union SidecarRequest to strictly enforce options matching the type.
-   */
   requestAuxiliary(config: SidecarRequest<TData>) {
     if (this.clients.has(config.id)) {
       return;
     }
 
-    const strategy = this.facetRegistry.get(config.type);
-
-    if (!strategy) {
-      console.warn(
-        `[SidecarManager] Strategy '${config.type}' not found in registry.`,
-      );
-      return;
-    }
+    // Retrieve strategy from registry. Discriminated unions in SidecarRequest
+    // ensure that config.type matches an available strategy in the registry.
+    const strategy = this.facetRegistry.get(config.type)!;
 
     const sqlColumn =
       this.host.getColumnSqlName(config.column) || config.column;
@@ -63,11 +49,12 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
     const colDef = this.host.getColumnDef(sqlColumn);
     const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
 
-    // TS knows config.options matches the strategy because of the discriminated union.
-    // We cast to any for the queryOptions merge because 'sortMode' is an extra base property
-    // not present in the strict input type of the specific strategy.
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    const strategyOptions = config.options || {};
+    // We cast to any here because config.options is strictly typed based on the current
+    // strategies in the registry. If all current strategies have void input, TS infers
+    // this as always undefined, making the OR check "unnecessary".
+    // However, since the registry is extensible via module augmentation, we must
+    // handle cases where options are provided.
+    const strategyOptions = (config.options as any) || {};
     const queryOptions = {
       sortMode,
       ...strategyOptions,
@@ -137,10 +124,10 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
     this.clients.set(key, client);
   }
 
-  updateSource(source: MosaicTableSource) {
-    this.clients.forEach((client) => {
-      client.updateSource(source);
-    });
+  updateSource(_source: MosaicTableSource) {
+    // When the data source changes, all existing sidecars (facets) are
+    // invalidated and must be cleared immediately.
+    this.clear();
   }
 
   updateCoordinators(newCoordinator: Coordinator) {

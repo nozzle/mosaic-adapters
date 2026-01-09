@@ -2,6 +2,7 @@
  * Orchestrator for the Mosaic and TanStack Table integration.
  * Manages the data-fetching lifecycle, schema mapping, and reactive state synchronization.
  * Handles bidirectional state management between TanStack (local state) and Mosaic (Selections).
+ * Automatically resets internal state when the underlying data source changes.
  */
 
 import {
@@ -148,12 +149,11 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     const sourceChanged = this.source !== options.table;
 
     this.options = options;
+    this.source = options.table;
 
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
     }
-
-    this.source = options.table;
 
     if (options.filterStrategies) {
       Object.entries(options.filterStrategies).forEach(([k, v]) =>
@@ -173,8 +173,33 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     const currentSelection = (this as any).tableFilterSelection as
       | Selection
       | undefined;
+
     this.tableFilterSelection =
       options.tableFilterSelection ?? currentSelection ?? new Selection();
+
+    if (sourceChanged) {
+      logger.debug(
+        'Core',
+        `[MosaicDataTable] Table source changed to ${this.source}. Performing atomic state reset.`,
+      );
+
+      batch(() => {
+        this.#store.setState((prev) => ({
+          ...prev,
+          tableState: seedInitialTableState<TData>(
+            options.tableOptions?.initialState,
+          ),
+          rows: [],
+          totalRows: undefined,
+        }));
+      });
+
+      this.tableFilterSelection.update({
+        source: this,
+        value: [],
+        predicate: null,
+      });
+    }
 
     if (options.rowSelection) {
       this.#rowSelectionManager = new MosaicSelectionManager<string | number>({
@@ -654,7 +679,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         if (!hasFiltersChanged && typeof updater === 'function') {
           logger.debug(
             'Core',
-            `[MosaicDataTable] ⚠️ State update received but ignored. Input might have been rejected by Table Core.`,
+            `[MosaicDataTable] State update received but ignored. Input might have been rejected by Table Core.`,
             {
               prevFilters: oldState.columnFilters,
               newFilters: newState.columnFilters,
