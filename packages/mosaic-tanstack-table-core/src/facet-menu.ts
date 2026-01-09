@@ -1,6 +1,7 @@
 import {
   MosaicClient,
   coordinator as defaultCoordinator,
+  isParam,
 } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import { Store } from '@tanstack/store';
@@ -11,12 +12,12 @@ import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SqlIdentifier } from './domain/sql-identifier';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
-import type { ColumnType, IMosaicClient } from './types';
+import type { ColumnType, IMosaicClient, MosaicTableSource } from './types';
 
 export type FacetValue = string | number | boolean | Date | null;
 
 export interface MosaicFacetMenuOptions {
-  table: string;
+  table: MosaicTableSource;
   column: string;
   selection: Selection;
   filterBy?: Selection;
@@ -204,6 +205,47 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     this.requestUpdate();
   };
 
+  private _selectionListener = () => {
+    // Check if the update is external (i.e. not triggered by this client)
+    const active = this.options.selection.active;
+
+    // Ensure active exists before checking source (Global Reset sets active to undefined/null)
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (active && active.source === this) {
+      return;
+    }
+
+    // Detect Global Reset Signal
+    // We check for RESET_SOURCE (standard) or null (legacy/fallback)
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    const src = active ? (active.source as any) : null;
+    const isGlobalReset =
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      active &&
+      active.value === null &&
+      // TODO @SeanCassiere this should either be configurable, use a constant, or use a tagged identifier like a Symbol
+      (src === null || src?.id === 'GlobalReset');
+
+    if (isGlobalReset) {
+      // Force clear local selection state (removes the clause)
+      this.selectionManager.select(null);
+
+      // Reset internal search term
+      if (this._searchTerm !== '') {
+        this._searchTerm = '';
+        this.store.setState((s) => ({ ...s, searchTerm: '' }));
+        // Request update to refresh the options list without the search filter
+        this.requestUpdate();
+      }
+
+      // Sync store to reflect the cleared selection in the UI
+      this._syncStoreFromManager();
+    } else {
+      // Standard behavior: Sync store with the new external selection state
+      this._syncStoreFromManager();
+    }
+  };
+
   get debugPrefix() {
     const name = this.options.__debugName || `Facet:${this.options.column}`;
     return `[MosaicFacetMenu] ${name}`;
@@ -220,6 +262,9 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
         this._additionalContextListener,
       );
     }
+
+    // Subscribe to selection to handle Global Resets (or other external changes)
+    this.options.selection.addEventListener('value', this._selectionListener);
   }
 
   public __onDisconnect() {
@@ -229,6 +274,10 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
         this._additionalContextListener,
       );
     }
+    this.options.selection.removeEventListener(
+      'value',
+      this._selectionListener,
+    );
   }
 
   /**
@@ -297,24 +346,54 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   // --- QUERY LOGIC ---
 
   override requestQuery(query?: any): Promise<any> | null {
+    if (this.options.enabled === false) {
+      return Promise.resolve();
+    }
+
     if (!this.coordinator) {
       return Promise.resolve();
     }
-    return super.requestQuery(query);
+
+    // Defensive Check:
+    // We explicitly calculate the query here to verify it is valid (non-null).
+    // The base MosaicClient.requestQuery() will typically call this.query() internally if no argument is passed,
+    // but it might pass the result directly to the coordinator even if it is null.
+    // If a null query reaches the connector, it gets stringified to "null", causing a SQL Parser Error.
+    const queryToRun = query || this.query();
+
+    if (!queryToRun) {
+      logger.warn(
+        'Core',
+        `${this.debugPrefix} requestQuery: Generated query is NULL. Skipping execution to prevent DB error.`,
+      );
+      return Promise.resolve();
+    }
+
+    return super.requestQuery(queryToRun);
+  }
+
+  /**
+   * Helper to resolve the table/source into a string or Query object.
+   * Handles string, Param<string>, or Function.
+   */
+  private resolveSource(
+    effectiveFilter?: FilterExpr | null,
+  ): string | SelectQuery | null {
+    const { table } = this.options;
+
+    if (typeof table === 'function') {
+      return table(effectiveFilter);
+    }
+    if (isParam(table)) {
+      return table.value as string;
+    }
+    return table as string;
   }
 
   override query(filter?: FilterExpr): SelectQuery | null {
-    if (
-      this.options.enabled === false ||
-      !this.options.table ||
-      (typeof this.options.table === 'string' &&
-        this.options.table.trim() === '')
-    ) {
-      return null;
-    }
+    const debugId = `${this.debugPrefix} query()`;
 
     const {
-      table,
       column,
       limit = 50,
       sortMode = 'count',
@@ -322,10 +401,23 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       isArrayColumn,
       additionalContext,
       filterBy,
+      enabled,
+      table,
     } = this.options;
 
-    const isArray = columnType === 'array' || isArrayColumn === true;
-    const colExpr = createStructAccess(SqlIdentifier.from(column));
+    // 1. Safety Check: If Disabled or Invalid Source, return a No-Op query.
+    // We CANNOT return null because the Coordinator executes "null" as SQL.
+    // We return "SELECT * FROM (SELECT 1) WHERE 1=0" to safely return empty results.
+    const isTableInvalid = typeof table === 'string' && table.trim() === '';
+
+    if (enabled === false || isTableInvalid) {
+      // Attempt to resolve source to keep schema if possible, otherwise use dummy
+      const dummySource =
+        this.resolveSource(null) || mSql.sql`(SELECT 1) AS _dummy`;
+      return mSql.Query.from(dummySource)
+        .select('*')
+        .where(mSql.sql`1=0`);
+    }
 
     let effectiveFilter = filter;
     if (filterBy) {
@@ -341,10 +433,25 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       }
     }
 
+    const resolvedSource = this.resolveSource(effectiveFilter);
+    if (!resolvedSource) {
+      logger.warn(
+        'Core',
+        `${debugId} - resolveSource returned null. Returning No-Op query to prevent crash. Table options:`,
+        this.options.table,
+      );
+      return mSql.Query.from(mSql.sql`(SELECT 1) AS _dummy`).where(
+        mSql.sql`1=0`,
+      );
+    }
+
+    const isArray = columnType === 'array' || isArrayColumn === true;
+    const colExpr = createStructAccess(SqlIdentifier.from(column));
+
     let query: SelectQuery;
 
     if (isArray) {
-      const innerQuery = mSql.Query.from(table).select({
+      const innerQuery = mSql.Query.from(resolvedSource).select({
         tag: mSql.unnest(colExpr),
       });
 
@@ -364,7 +471,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       query.orderby(mSql.asc('tag'));
     } else {
       const selection = column.includes('.') ? { [column]: colExpr } : column;
-      query = mSql.Query.from(table).select(selection);
+      query = mSql.Query.from(resolvedSource).select(selection);
 
       if (effectiveFilter) {
         query.where(effectiveFilter);
@@ -439,6 +546,23 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   }
 
   override queryError(error: Error) {
+    // Suppress known "null" syntax errors that happen during race conditions
+    // This happens when the Coordinator executes a null query despite our guards,
+    // or if an update was in flight during a reset.
+    if (error.message.includes('syntax error at or near "null"')) {
+      logger.warn(
+        'Core',
+        `${this.debugPrefix} Suppressed "null" query error (Race Condition) detected.`,
+      );
+      this.store.setState((s) => ({ ...s, loading: false }));
+      return this;
+    }
+
+    logger.error('Core', `${this.debugPrefix} Query Error Details`, {
+      error,
+      message: error.message,
+      stack: error.stack,
+    });
     handleQueryError(`MosaicFacetMenu #${this.id}`, error);
     this.store.setState((s) => ({ ...s, loading: false }));
     return this;

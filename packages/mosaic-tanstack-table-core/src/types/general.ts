@@ -25,6 +25,7 @@ export type MosaicDataTableSqlFilterType =
   | 'MATCH'
   | 'SELECT'
   | 'TEXT'
+  | 'CONDITION'
   | (string & {});
 
 export type FacetSortMode = 'alpha' | 'count';
@@ -38,6 +39,57 @@ export type SqlType =
   | 'TIMESTAMP'
   | 'BOOLEAN';
 
+export type FilterOperator =
+  | 'eq'
+  | 'neq'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'contains'
+  | 'not_contains'
+  | 'starts_with'
+  | 'ends_with'
+  | 'is_null'
+  | 'not_null'
+  | 'between';
+
+// --- Type Safety Utilities ---
+
+type UnwrapNullable<T> = T extends null | undefined
+  ? never
+  : T extends Array<infer U>
+    ? U
+    : T;
+
+/**
+ * Maps a TypeScript Value to allowed SQL Filter Types.
+ * This enforces that you cannot use text filters on number columns, etc.
+ */
+export type AllowedFilterTypeFor<TValue> =
+  UnwrapNullable<TValue> extends number
+    ? 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION'
+    : UnwrapNullable<TValue> extends Date
+      ? 'DATE_RANGE' | 'RANGE' | 'EQUALS' | 'CONDITION'
+      : UnwrapNullable<TValue> extends boolean
+        ? 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION'
+        : // Strings / Default
+            | 'ILIKE'
+            | 'LIKE'
+            | 'PARTIAL_ILIKE'
+            | 'PARTIAL_LIKE'
+            | 'EQUALS'
+            | 'MATCH'
+            | 'TEXT'
+            | 'SELECT'
+            | 'CONDITION';
+
+/**
+ * Maps a TypeScript Value to allowed Facet Types.
+ */
+export type AllowedFacetTypeFor<TValue> =
+  UnwrapNullable<TValue> extends number | Date ? 'minmax' | 'unique' : 'unique';
+
 // --- Advanced Mapping Types ---
 
 export type FilterCompatibility = {
@@ -49,12 +101,19 @@ export type FilterCompatibility = {
     | 'PARTIAL_LIKE'
     | 'MATCH'
     | 'TEXT'
-    | 'SELECT';
-  INTEGER: 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
-  FLOAT: 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
-  DATE: 'RANGE' | 'DATE_RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
-  TIMESTAMP: 'RANGE' | 'DATE_RANGE' | 'EQUALS' | 'MATCH' | 'SELECT';
-  BOOLEAN: 'EQUALS' | 'MATCH' | 'SELECT';
+    | 'SELECT'
+    | 'CONDITION';
+  INTEGER: 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION';
+  FLOAT: 'RANGE' | 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION';
+  DATE: 'RANGE' | 'DATE_RANGE' | 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION';
+  TIMESTAMP:
+    | 'RANGE'
+    | 'DATE_RANGE'
+    | 'EQUALS'
+    | 'MATCH'
+    | 'SELECT'
+    | 'CONDITION';
+  BOOLEAN: 'EQUALS' | 'MATCH' | 'SELECT' | 'CONDITION';
 };
 
 export interface FilterOptions {
@@ -81,6 +140,7 @@ export interface StrictSqlColumnConfig<TType extends SqlType> {
  * Maps TypeScript data keys to SQL column configurations.
  * Keys are simple strings representing the column ID or path.
  */
+// eslint-disable-next-line unused-imports/no-unused-vars
 export type MosaicColumnMapping<TData> = Partial<
   Record<
     string,
@@ -109,7 +169,14 @@ export type FilterInput =
   | { mode: 'MATCH'; value: string | number | boolean }
   | { mode: 'RANGE'; value: [number | null, number | null] }
   | { mode: 'DATE_RANGE'; value: [string | null, string | null] }
-  | { mode: 'SELECT'; value: string | number | boolean };
+  | { mode: 'SELECT'; value: string | number | boolean }
+  | {
+      mode: 'CONDITION';
+      operator: FilterOperator;
+      value: any;
+      valueTo?: any;
+      dataType?: 'string' | 'number' | 'date' | 'boolean';
+    };
 
 export type FilterMode = FilterInput['mode'];
 
@@ -129,12 +196,24 @@ export interface IMosaicLifecycleHooks {
   __onDisconnect?: () => void;
 }
 
-export type MosaicDataTableColumnDefMetaOptions = {
+/**
+ * Metadata definition for ColumnDefs.
+ * Now Generic on TValue to enforce strict typing of SQL properties.
+ */
+export type MosaicDataTableColumnDefMetaOptions<TValue = unknown> = {
   mosaicDataTable?: {
     sqlColumn?: string;
-    sqlFilterType?: MosaicDataTableSqlFilterType;
+    /**
+     * The SQL Filter Type.
+     * STRICTLY TYPED based on the column's data type (TValue).
+     */
+    sqlFilterType?: AllowedFilterTypeFor<TValue> | (string & {});
     facetSortMode?: FacetSortMode;
-    facet?: 'unique' | 'minmax' | (string & {});
+    /**
+     * The Facet Type.
+     * STRICTLY TYPED based on the column's data type (TValue).
+     */
+    facet?: AllowedFacetTypeFor<TValue> | (string & {});
   };
 };
 

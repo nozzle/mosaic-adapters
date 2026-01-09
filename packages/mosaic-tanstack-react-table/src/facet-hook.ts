@@ -26,12 +26,13 @@ export function useMosaicTableFacetMenu(options: MosaicFacetMenuOptions) {
   const state = useStore(client.store);
 
   // 4. Connect/Disconnect lifecycle
+  // We ALWAYS connect the client, even if enabled=false (closed).
+  // This ensures the client listens to "Global Reset" signals from other components.
+  // The client itself prevents expensive queries when enabled=false via requestQuery guard.
   React.useEffect(() => {
-    if (options.enabled !== false) {
-      const cleanup = client.connect();
-      return () => cleanup();
-    }
-  }, [client, options.enabled, coordinator]);
+    const cleanup = client.connect();
+    return () => cleanup();
+  }, [client, coordinator]);
 
   return {
     options: state.options,

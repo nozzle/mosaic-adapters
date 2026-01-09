@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, ChevronDown, X } from 'lucide-react';
 import {
   useMosaicTableFacetMenu,
@@ -67,7 +67,7 @@ export function SearchableSelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
+  // Pass enabled: isOpen to suppress background queries when the menu is closed
   const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
     useMosaicTableFacetMenu({
       table,
@@ -80,6 +80,14 @@ export function SearchableSelectFilter({
       enabled: isOpen,
       __debugName: `Facet:${label}`,
     });
+
+  // Clear search state when selection is cleared (e.g. Global Reset)
+  useEffect(() => {
+    if (selectedValues.length === 0 && searchValue !== '') {
+      setSearchValue('');
+      setSearchTerm('');
+    }
+  }, [selectedValues, searchValue, setSearchTerm]);
 
   const handleSearchChange = (val: string) => {
     setSearchValue(val);
@@ -194,7 +202,7 @@ export function SelectFilter({
 }: FilterProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // OPTIMIZATION: Use local isOpen state for the Radix Select
+  // Use local isOpen state for the Radix Select
   const { displayOptions, toggle, selectedValues } = useMosaicTableFacetMenu({
     table,
     column,
@@ -253,7 +261,7 @@ export function ArraySelectFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
 
-  // OPTIMIZATION: Pass enabled: isOpen to suppress background queries
+  // Pass enabled: isOpen to suppress background queries when the menu is closed
   const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
     useMosaicTableFacetMenu({
       table,
@@ -267,6 +275,14 @@ export function ArraySelectFilter({
       enabled: isOpen,
       __debugName: `FacetArray:${label}`,
     });
+
+  // Clear search state when selection is cleared (e.g. Global Reset)
+  useEffect(() => {
+    if (selectedValues.length === 0 && searchValue !== '') {
+      setSearchValue('');
+      setSearchTerm('');
+    }
+  }, [selectedValues, searchValue, setSearchTerm]);
 
   const handleSearchChange = (val: string) => {
     setSearchValue(val);
@@ -384,6 +400,24 @@ export function TextFilter({ label, column, selection }: FilterProps) {
 
   const [val, setVal] = useState('');
 
+  useEffect(() => {
+    const onSelectionChange = () => {
+      // Robust check for "Empty Selection"
+      const v = selection.value;
+      const isEmpty =
+        v === null || v === undefined || (Array.isArray(v) && v.length === 0);
+
+      if (isEmpty) {
+        setVal('');
+        // Note: We don't need to call filter.setValue('') here because
+        // the Selection state is already cleared by the registry.
+      }
+    };
+
+    selection.addEventListener('value', onSelectionChange);
+    return () => selection.removeEventListener('value', onSelectionChange);
+  }, [selection]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setVal(value);
@@ -415,7 +449,24 @@ export function DateRangeFilter({ label, column, selection }: FilterProps) {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
 
+  useEffect(() => {
+    const onSelectionChange = () => {
+      // Robust check for "Empty Selection"
+      const v = selection.value;
+      const isEmpty =
+        v === null || v === undefined || (Array.isArray(v) && v.length === 0);
+
+      if (isEmpty) {
+        setStart('');
+        setEnd('');
+      }
+    };
+    selection.addEventListener('value', onSelectionChange);
+    return () => selection.removeEventListener('value', onSelectionChange);
+  }, [selection]);
+
   React.useEffect(() => {
+    // Only update if one of them has a value or if explicitly clearing
     filter.setValue([start || null, end || null]);
   }, [start, end, filter]);
 

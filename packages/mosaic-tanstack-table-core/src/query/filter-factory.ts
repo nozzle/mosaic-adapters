@@ -1,5 +1,9 @@
 import * as mSql from '@uwdata/mosaic-sql';
-import { createStructAccess, escapeSqlLikePattern } from '../utils';
+import {
+  createStructAccess,
+  createTypedAccess,
+  escapeSqlLikePattern,
+} from '../utils';
 import type { SqlIdentifier } from '../domain/sql-identifier';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { FilterInput, FilterOptions } from '../types';
@@ -17,6 +21,115 @@ export type FilterStrategy = (options: {
 }) => FilterExpr | undefined;
 
 const strategies: Record<string, FilterStrategy> = {
+  CONDITION: ({ columnAccessor, input, columnId }) => {
+    if (input.mode !== 'CONDITION') {
+      return undefined;
+    }
+
+    const { operator, value, valueTo, dataType = 'string' } = input;
+
+    // TRACE: Always log to console to debug missing filters
+    console.log(
+      `[FilterStrategy:CONDITION] Building filter for ${columnId}. DataType: ${dataType}`,
+      input,
+    );
+
+    // 1. Get Base Column Expression
+    const rawCol = createStructAccess(columnAccessor);
+
+    // 2. Apply "Just-In-Time" Casting via TRY_CAST logic in utils
+    // This allows robust filtering even if the underlying table schema is incorrect (e.g. numbers stored as text)
+    const col = createTypedAccess(rawCol, dataType);
+
+    // 3. Prepare Value Literal (Handle Dates, etc.)
+    // SAFETY: Explicitly check for null/undefined/empty string to allow 0 (number) or false (boolean) as valid values.
+    const isValidVal = value !== null && value !== undefined && value !== '';
+    const isValidTo =
+      valueTo !== null && valueTo !== undefined && valueTo !== '';
+
+    // Create literals only if valid.
+    // Note: mSql.literal() handles boolean/number/string correctly.
+    const val = isValidVal ? mSql.literal(value) : null;
+    const valTo = isValidTo ? mSql.literal(valueTo) : null;
+
+    let expr: FilterExpr | undefined;
+
+    switch (operator) {
+      // Unary
+      case 'is_null':
+        expr = mSql.sql`${rawCol} IS NULL`; // No cast needed for null check
+        break;
+      case 'not_null':
+        expr = mSql.sql`${rawCol} IS NOT NULL`;
+        break;
+
+      // Binary
+      case 'eq':
+        expr = val ? mSql.eq(col, val) : undefined;
+        break;
+      case 'neq':
+        expr = val ? mSql.sql`${col} != ${val}` : undefined;
+        break;
+      case 'gt':
+        expr = val ? mSql.gt(col, val) : undefined;
+        break;
+      case 'gte':
+        expr = val ? mSql.gte(col, val) : undefined;
+        break;
+      case 'lt':
+        expr = val ? mSql.lt(col, val) : undefined;
+        break;
+      case 'lte':
+        expr = val ? mSql.lte(col, val) : undefined;
+        break;
+
+      // String specific (Likely ignored if dataType is number, but handled safely)
+      case 'contains':
+        // For contains, we likely want to search against the raw string or cast back to string
+        expr = val
+          ? mSql.sql`${rawCol} ILIKE ${mSql.literal(`%${value}%`)}`
+          : undefined;
+        break;
+      case 'not_contains':
+        expr = val
+          ? mSql.sql`${rawCol} NOT ILIKE ${mSql.literal(`%${value}%`)}`
+          : undefined;
+        break;
+      case 'starts_with':
+        expr = val
+          ? mSql.sql`${rawCol} ILIKE ${mSql.literal(`${value}%`)}`
+          : undefined;
+        break;
+      case 'ends_with':
+        expr = val
+          ? mSql.sql`${rawCol} ILIKE ${mSql.literal(`%${value}`)}`
+          : undefined;
+        break;
+
+      // Ternary
+      case 'between':
+        if (val && valTo) {
+          expr = mSql.isBetween(col, [val, valTo]);
+        }
+        break;
+
+      default:
+        expr = undefined;
+    }
+
+    if (expr) {
+      // TRACE: Log Success
+      console.log(
+        `[FilterStrategy:CONDITION] Generated SQL: ${expr.toString()}`,
+      );
+    } else {
+      // TRACE: Log Failure
+      console.warn(`[FilterStrategy:CONDITION] Failed to generate SQL.`, input);
+    }
+
+    return expr;
+  },
+
   RANGE: ({ columnAccessor, input }) => {
     // Discriminated union match
     if (input.mode !== 'RANGE') {
@@ -24,7 +137,9 @@ const strategies: Record<string, FilterStrategy> = {
     }
 
     const [min, max] = input.value;
-    const colExpr = createStructAccess(columnAccessor);
+    // For range filters, we assume numeric intent if using this mode
+    const rawCol = createStructAccess(columnAccessor);
+    const colExpr = createTypedAccess(rawCol, 'number');
 
     // SQL Generation for Numbers (Handle Open Ranges)
     if (min !== null && max !== null) {
@@ -50,7 +165,10 @@ const strategies: Record<string, FilterStrategy> = {
     const min = minVal !== null && minVal !== '' ? String(minVal) : null;
     const max = maxVal !== null && maxVal !== '' ? String(maxVal) : null;
 
-    const colExpr = createStructAccess(columnAccessor);
+    const rawCol = createStructAccess(columnAccessor);
+    // Force temporal casting for date ranges
+    const colExpr = createTypedAccess(rawCol, 'date');
+
     const convertToUTC = filterOptions?.convertToUTC;
 
     let finalMin = null;

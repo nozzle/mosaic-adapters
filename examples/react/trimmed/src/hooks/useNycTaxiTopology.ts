@@ -6,7 +6,10 @@
 import { useEffect, useMemo } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
-import { useMosaicSelection } from '@nozzleio/react-mosaic';
+import {
+  useMosaicSelection,
+  useRegisterSelections,
+} from '@nozzleio/react-mosaic';
 import { AggregationBridge } from '@nozzleio/mosaic-tanstack-react-table';
 
 export function useNycTaxiTopology() {
@@ -16,6 +19,15 @@ export function useNycTaxiTopology() {
   const summaryFilter = useMosaicSelection('intersect');
   const vendorFilter = useMosaicSelection('intersect');
   const zoneFilter = useMosaicSelection('intersect'); // Output of the bridge
+
+  // Register selections with the global reset context
+  useRegisterSelections([
+    brush,
+    detailFilter,
+    summaryFilter,
+    vendorFilter,
+    zoneFilter,
+  ]);
 
   // 2. Define Contexts (Derived Selections)
   // We use vg.Selection.intersect({ include: [] }) pattern from vgplot

@@ -15,6 +15,7 @@ import {
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
+import type { Selection } from '@uwdata/mosaic-core';
 import { usePaaTopology } from '@/hooks/usePaaTopology';
 import { RenderTable } from '@/components/render-table';
 import { useMosaicValue } from '@/hooks/useMosaicValue';
@@ -162,38 +163,42 @@ export function NozzlePaaView() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 px-6">
         <SummaryTable
-          topology={topology}
           title="Keyword Phrase"
           groupBy="phrase"
           metric="search_volume"
           metricLabel="Search Vol"
-          aggFn={mSql.max}
+          aggFn={(e) => mSql.max(e)}
+          filterBy={topology.phraseContext}
+          selection={topology.selections.phrase}
         />
         <SummaryTable
-          topology={topology}
           title="PAA Questions"
           groupBy="related_phrase.phrase"
           metric="*"
           metricLabel="SERP Appears"
           aggFn={mSql.count}
+          filterBy={topology.questionContext}
+          selection={topology.selections.question}
         />
         <SummaryTable
-          topology={topology}
           title="Domain"
           groupBy="domain"
           metric="*"
           metricLabel="# of Answers"
           aggFn={mSql.count}
           where={mSql.sql`domain IS NOT NULL`}
+          filterBy={topology.domainContext}
+          selection={topology.selections.domain}
         />
         <SummaryTable
-          topology={topology}
           title="URL"
           groupBy="url"
           metric="*"
           metricLabel="# of Answers"
           aggFn={mSql.count}
           where={mSql.sql`url IS NOT NULL`}
+          filterBy={topology.urlContext}
+          selection={topology.selections.url}
         />
       </div>
 
@@ -268,22 +273,26 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+type AggregationFactory = (expression?: any) => AggregateNode;
+
 function SummaryTable({
-  topology,
   title,
   groupBy,
   metric,
   metricLabel,
   aggFn,
   where,
+  filterBy,
+  selection,
 }: {
-  topology: ReturnType<typeof usePaaTopology>;
   title: string;
   groupBy: string;
   metric: string;
   metricLabel: string;
-  aggFn: (expression?: any) => AggregateNode;
+  aggFn: AggregationFactory;
   where?: FilterExpr;
+  filterBy: Selection;
+  selection: Selection;
 }) {
   // Logic to build the dynamic query but map it to our static schema
   const queryFactory = useMemo(
@@ -296,7 +305,11 @@ function SummaryTable({
         groupKey = mSql.column(groupBy);
       }
 
-      const highlightPred = topology.cross.predicate(null);
+      // Highlight Logic:
+      // We check the specific 'selection' passed to this table.
+      // If a row in this table is selected, we want it to have __is_highlighted = 1.
+      // We pass 'null' to predicate() to get the pure SQL clause for this selection.
+      const highlightPred = selection.predicate(null);
       let highlightCol;
       const hasPred =
         highlightPred &&
@@ -330,7 +343,7 @@ function SummaryTable({
 
       return q;
     },
-    [groupBy, metric, aggFn, where, topology.cross],
+    [groupBy, metric, aggFn, where, selection],
   );
 
   const helper = useMemo(
@@ -386,13 +399,14 @@ function SummaryTable({
 
   const { tableOptions } = useMosaicReactTable<GroupByRow>({
     table: queryFactory,
-    filterBy: topology.summaryContext,
-    highlightBy: topology.cross,
+    // Use the Context that EXCLUDES this table's own selection
+    // so that other rows do not disappear when one is clicked.
+    filterBy: filterBy,
     manualHighlight: true,
     totalRowsMode: 'split',
+    // Bind the row clicks to the specific output selection
     rowSelection: {
-      selection: topology.cross,
-      // Fix: Cast groupBy to keyof GroupByRow.
+      selection: selection,
       column: groupBy as keyof GroupByRow,
       columnType: 'scalar',
     },
@@ -461,6 +475,7 @@ function DetailTable({
 
   const { tableOptions } = useMosaicReactTable<PaaRowData>({
     table: TABLE_NAME,
+    // Detail table listens to everything (Inputs + All Summary selections)
     filterBy: topology.detailContext,
     tableFilterSelection: topology.detail,
     columns,

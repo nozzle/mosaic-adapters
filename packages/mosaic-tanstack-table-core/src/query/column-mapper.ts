@@ -151,6 +151,14 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
       this.selectList.push({ id, sql: safeIdentifier, alias });
     });
 
+    // TRACE: Log the map to debug ID mismatch issues
+    // Changed from console.log to logger.debug to respect log levels (hidden by default)
+    logger.debug('Core', `[ColumnMapper #${this.id}] ID Mapping Table:`, {
+      map: Array.from(this.idToSqlMap.entries()).map(
+        ([id, sql]) => `${id} -> ${sql.toString()}`,
+      ),
+    });
+
     if (this.selectList.length === 0 && defs.length > 0) {
       this.shouldSearchAllColumns = true;
     }

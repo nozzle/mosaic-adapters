@@ -80,7 +80,7 @@ export class AggregationBridge {
     outputSelection.update({
       source: source as any,
       value: 'custom', // Arbitrary value, we rely on the predicate
-      // Cast to the derived Mosaic type to satisfy strict typing
+      // Casting to unknown first then to the derived Mosaic type to strict-ify the type
       predicate: resultPredicate as unknown as MosaicSelectionPredicate,
     });
   };

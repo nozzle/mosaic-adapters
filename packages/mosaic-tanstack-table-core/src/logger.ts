@@ -91,7 +91,7 @@ class LogManager {
     ) {
       const textToCheck = meta.error?.message || meta.sql;
       // Look for "something.something" pattern which indicates incorrect quoting
-      // Fix: Exclude dot from the first character set to prevent polynomial backtracking ReDoS
+      // Exclude dot from the first character set to prevent polynomial backtracking ReDoS
       const structErrorRegex = /"[^".]+\.[^"]+"/;
       const match = textToCheck.match(structErrorRegex);
 
