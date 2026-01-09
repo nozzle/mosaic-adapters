@@ -16,5 +16,11 @@ updates:
     groups:
       dev-deps:
         dependency-type: 'development'
+        update-types:
+          - patch
+          - minor
       prod-deps:
         dependency-type: 'production'
+        update-types:
+          - patch
+          - minor
