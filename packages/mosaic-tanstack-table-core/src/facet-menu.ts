@@ -223,6 +223,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       active &&
       active.value === null &&
+      // TODO @SeanCassiere this should either be configurable, use a constant, or use a tagged identifier like a Symbol
       (src === null || src?.id === 'GlobalReset');
 
     if (isGlobalReset) {
