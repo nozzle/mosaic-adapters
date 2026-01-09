@@ -24,3 +24,17 @@ updates:
         update-types:
           - patch
           - minor
+
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: quarterly
+    groups:
+      dev-deps:
+        dependency-type: 'development'
+        update-types:
+          - major
+      prod-deps:
+        dependency-type: 'production'
+        update-types:
+          - major
