@@ -156,8 +156,9 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
 
     const sqlColumn = options.mapper.getSqlColumn(filter.id);
     if (!sqlColumn) {
-      // TRACE: Log skipped filters to debug ID mismatch
-      console.warn(
+      // Use logger instead of console.warn to lower noise level
+      logger.warn(
+        'Core',
         `[QueryBuilder] Skipping filter for ID "${filter.id}". No matching SQL column found in mapper.`,
       );
       return;
@@ -177,8 +178,8 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
       const strategy = options.filterRegistry.get(dynamicMode);
 
       if (strategy) {
-        // TRACE: Confirm strategy execution
-        console.log(
+        logger.debug(
+          'Core',
           `[QueryBuilder] Executing Dynamic Strategy: ${dynamicMode} for ${filter.id}`,
           rawValue,
         );
@@ -193,7 +194,8 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
         }
         return; // Continue to next filter
       } else {
-        console.warn(
+        logger.warn(
+          'Core',
           `[QueryBuilder] Dynamic Strategy NOT FOUND: ${dynamicMode}`,
         );
       }

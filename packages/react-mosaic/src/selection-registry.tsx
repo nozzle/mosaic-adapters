@@ -33,7 +33,9 @@ export function SelectionRegistryProvider({
 
   const resetAll = () => {
     registry.current.forEach((selection) => {
-      // Standard reset method wipes all clauses from all sources, ensuring a true "clean slate".
+      // Use standard reset() to wipe all clauses from all sources.
+      // This emits an update with source=null, which MosaicFacetMenu correctly
+      // interprets as a Global Reset signal (clearing search terms/internal state).
       selection.reset();
     });
   };

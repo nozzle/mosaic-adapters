@@ -9,10 +9,15 @@ const items = [
   { id: 'bare', name: 'Bare table', Component: BareTable },
 ];
 
+/**
+ * Main component for rendering tables with swappable views (Shadcn vs Bare).
+ * Supports row click and row hover interactions.
+ */
 export function RenderTable<TData extends RowData, TValue>(props: {
   table: Table<TData>;
   columns: Array<ColumnDef<TData, TValue>>;
   onRowClick?: (row: Row<TData>) => void;
+  onRowHover?: (row: Row<TData> | null) => void;
 }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
@@ -25,6 +30,7 @@ export function RenderTable<TData extends RowData, TValue>(props: {
             table={props.table}
             columns={props.columns}
             onRowClick={props.onRowClick}
+            onRowHover={props.onRowHover}
           />
         ) : null,
       )}

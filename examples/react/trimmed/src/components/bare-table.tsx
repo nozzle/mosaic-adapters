@@ -14,12 +14,17 @@ import {
   toDateTimeInputString,
 } from '@/lib/utils';
 
+/**
+ * A minimalistic "bare bones" table implementation.
+ * Supports row clicks and row hover events alongside standard table features.
+ */
 export function BareTable<TData extends RowData, TValue>(props: {
   table: Table<TData>;
   columns: Array<ColumnDef<TData, TValue>>;
   onRowClick?: (row: Row<TData>) => void;
+  onRowHover?: (row: Row<TData> | null) => void;
 }) {
-  const { table, onRowClick } = props;
+  const { table, onRowClick, onRowHover } = props;
 
   return (
     <div className="grid gap-4 overflow-scroll">
@@ -63,6 +68,8 @@ export function BareTable<TData extends RowData, TValue>(props: {
                   isDimmed && 'opacity-30 grayscale',
                 )}
                 onClick={() => onRowClick?.(row)}
+                onMouseEnter={() => onRowHover?.(row)}
+                onMouseLeave={() => onRowHover?.(null)}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="text-nowrap px-2">

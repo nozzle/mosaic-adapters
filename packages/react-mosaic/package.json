@@ -37,6 +37,7 @@
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
     "rimraf": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite": "catalog:"
   }
 }

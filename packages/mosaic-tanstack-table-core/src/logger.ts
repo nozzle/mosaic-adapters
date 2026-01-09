@@ -1,6 +1,8 @@
 /**
  * A structured logging utility that separates console output from stored logs.
  * Includes capabilities for sanitizing console output and heuristic error detection.
+ * Governs the verbosity of the application based on global configuration and
+ * provides diagnostic tools for debugging SQL generation and state transitions.
  */
 
 import type { Coordinator } from '@uwdata/mosaic-core';
@@ -64,8 +66,8 @@ class LogManager {
   private maxLogs = 2000;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  // Configuration: Console is quiet (INFO+), Storage is loud (DEBUG+)
-  private consoleLevel = 1; // 0=Debug, 1=Info, 2=Warn, 3=Error
+  // Configuration: Console defaults to WARN level to suppress noise.
+  private consoleLevel = 2; // 0=Debug, 1=Info, 2=Warn, 3=Error
   private storageLevel = 0;
 
   private levelMap: Record<LogLevel, number> = {
@@ -74,6 +76,16 @@ class LogManager {
     warn: 2,
     error: 3,
   };
+
+  constructor() {
+    // Check for environment-driven debug overrides if available in the metadata
+    if (
+      typeof import.meta !== 'undefined' &&
+      (import.meta as any).env?.VITE_DEBUG_MODE === 'true'
+    ) {
+      this.consoleLevel = 0;
+    }
+  }
 
   private add(
     level: LogLevel,
@@ -205,10 +217,9 @@ class LogManager {
     const data = {
       generatedAt: new Date().toISOString(),
       environment:
-        typeof process !== 'undefined' &&
-        'env' in process &&
-        typeof process.env.NODE_ENV !== 'undefined'
-          ? process.env.NODE_ENV
+        typeof globalThis !== 'undefined' &&
+        (globalThis as any).process?.env?.NODE_ENV
+          ? (globalThis as any).process.env.NODE_ENV
           : 'unknown',
       userAgent:
         typeof window !== 'undefined' ? window.navigator.userAgent : 'node',

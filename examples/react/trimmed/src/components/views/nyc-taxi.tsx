@@ -1,11 +1,12 @@
 /**
  * View component for the NYC Taxi dataset.
- * Features: Geospatial Map (vgplot) + Type-Safe Aggregation Bridge.
+ * Features: Geospatial Map (vgplot) + Type-Safe Aggregation Bridge + Hover Interactions.
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
+import * as mSql from '@uwdata/mosaic-sql';
 import {
   coerceNumber,
   coerceSafeTimestamp,
@@ -22,6 +23,27 @@ import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet';
 const tableName = 'trips';
+
+// Constants for Hover Logic
+const HOVER_SOURCE = { id: 'hover' };
+// Predicate to ensure queries return 0 rows when no selection is active
+const NO_SELECTION_PREDICATE = mSql.sql`1 = 0`;
+
+// Transient selections for hover interactions
+// We initialize them with the "No Selection" predicate so overlay layers start empty.
+const $hoverDetail = vg.Selection.single();
+$hoverDetail.update({
+  source: HOVER_SOURCE,
+  value: null,
+  predicate: NO_SELECTION_PREDICATE,
+});
+
+const $hoverZone = vg.Selection.single();
+$hoverZone.update({
+  source: HOVER_SOURCE,
+  value: null,
+  predicate: NO_SELECTION_PREDICATE,
+});
 
 // 1. Interfaces
 interface TripRowData {
@@ -63,6 +85,45 @@ export function NycTaxiView() {
   const chartDivRef = useRef<HTMLDivElement | null>(null);
   const coordinator = useCoordinator();
   const topology = useNycTaxiTopology();
+
+  // Create a constrained hover selection that respects the current topology context.
+  // This ensures that when hovering a zone, we only show dots that are ALSO inside
+  // the active brush/filter, rather than all dots for that zone globally.
+  const $hoverZoneConstrained = useMemo(() => {
+    return vg.Selection.intersect({
+      include: [$hoverZone, topology.summaryContext],
+    });
+  }, [topology.summaryContext]);
+
+  // Note: Hover selections ($hoverDetail, $hoverZone) are NOT registered with useRegisterSelections.
+  // They are transient and default to "1=0" (empty). Global Reset defaults selections to "All",
+  // which would incorrectly highlight everything.
+
+  // Ensure hover state is reset to "empty" on mount/unmount to clear any stale state
+  useEffect(() => {
+    $hoverDetail.update({
+      source: HOVER_SOURCE,
+      value: null,
+      predicate: NO_SELECTION_PREDICATE,
+    });
+    $hoverZone.update({
+      source: HOVER_SOURCE,
+      value: null,
+      predicate: NO_SELECTION_PREDICATE,
+    });
+    return () => {
+      $hoverDetail.update({
+        source: HOVER_SOURCE,
+        value: null,
+        predicate: NO_SELECTION_PREDICATE,
+      });
+      $hoverZone.update({
+        source: HOVER_SOURCE,
+        value: null,
+        predicate: NO_SELECTION_PREDICATE,
+      });
+    };
+  }, []);
 
   useEffect(() => {
     if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {
@@ -115,6 +176,23 @@ export function NycTaxiView() {
             y: 'py',
             bandwidth: 0,
           }),
+          // Hover Detail Overlay: Exact pickup point
+          vg.dot(vg.from(tableName, { filterBy: $hoverDetail }), {
+            x: 'px',
+            y: 'py',
+            r: 5,
+            fill: 'yellow',
+            stroke: 'black',
+            strokeWidth: 1,
+          }),
+          // Hover Zone Overlay: Pickups for the selected zone, constrained by current brush
+          vg.dot(vg.from(tableName, { filterBy: $hoverZoneConstrained }), {
+            x: 'px',
+            y: 'py',
+            r: 1.5,
+            fill: 'yellow',
+            opacity: 0.3,
+          }),
           vg.intervalXY({ as: topology.brush }),
           vg.text([{ label: 'Pickups' }], {
             dx: 10,
@@ -133,6 +211,23 @@ export function NycTaxiView() {
             x: 'dx',
             y: 'dy',
             bandwidth: 0,
+          }),
+          // Hover Detail Overlay: Exact dropoff point
+          vg.dot(vg.from(tableName, { filterBy: $hoverDetail }), {
+            x: 'dx',
+            y: 'dy',
+            r: 5,
+            fill: 'yellow',
+            stroke: 'black',
+            strokeWidth: 1,
+          }),
+          // Hover Zone Overlay: Dropoffs for the selected zone, constrained by current brush
+          vg.dot(vg.from(tableName, { filterBy: $hoverZoneConstrained }), {
+            x: 'dx',
+            y: 'dy',
+            r: 1.5,
+            fill: 'yellow',
+            opacity: 0.3,
           }),
           vg.intervalXY({ as: topology.brush }),
           vg.text([{ label: 'Dropoffs' }], {
@@ -168,7 +263,7 @@ export function NycTaxiView() {
     }
 
     setup();
-  }, [coordinator, topology]);
+  }, [coordinator, topology, $hoverZoneConstrained]);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6">
@@ -261,7 +356,37 @@ function TripsDetailTable({
   const table = useReactTable(tableOptions);
   return (
     <div className="max-h-[400px] overflow-auto border rounded">
-      <RenderTable table={table} columns={columns} />
+      <RenderTable
+        table={table}
+        columns={columns}
+        onRowHover={(row) => {
+          if (!row) {
+            $hoverDetail.update({
+              source: HOVER_SOURCE,
+              value: null,
+              predicate: NO_SELECTION_PREDICATE,
+            });
+            return;
+          }
+          const { vendor_id, datetime, fare_amount } = row.original;
+          // Ensure we pass a string that matches DuckDB Timestamp logic
+          const ts =
+            datetime instanceof Date ? datetime.toISOString() : datetime;
+
+          // Composite key predicate: vendor_id AND datetime AND fare_amount
+          // Adding fare_amount increases uniqueness to prevent multiple trips (4 dots)
+          // from showing up if vendor and time match exactly.
+          $hoverDetail.update({
+            source: HOVER_SOURCE,
+            value: [vendor_id, ts, fare_amount],
+            predicate: mSql.and(
+              mSql.eq(mSql.column('vendor_id'), mSql.literal(vendor_id)),
+              mSql.eq(mSql.column('datetime'), mSql.literal(ts)),
+              mSql.eq(mSql.column('fare_amount'), mSql.literal(fare_amount)),
+            ),
+          });
+        }}
+      />
     </div>
   );
 }
@@ -335,7 +460,33 @@ function TripsSummaryTable({
   const table = useReactTable(tableOptions);
   return (
     <div className="max-h-[400px] overflow-auto border rounded">
-      <RenderTable table={table} columns={columns} />
+      <RenderTable
+        table={table}
+        columns={columns}
+        onRowHover={(row) => {
+          if (!row) {
+            $hoverZone.update({
+              source: HOVER_SOURCE,
+              value: null,
+              predicate: NO_SELECTION_PREDICATE,
+            });
+            return;
+          }
+          const { zone_x, zone_y } = row.original;
+          const ZONE_SIZE = 1000;
+
+          // Filter raw trips based on the calculated zone bucket logic used in aggregation.
+          // This highlights all individual trips that contributed to this summary row.
+          $hoverZone.update({
+            source: HOVER_SOURCE,
+            value: [zone_x, zone_y],
+            predicate: mSql.and(
+              mSql.eq(mSql.sql`round(dx / ${ZONE_SIZE})`, mSql.literal(zone_x)),
+              mSql.eq(mSql.sql`round(dy / ${ZONE_SIZE})`, mSql.literal(zone_y)),
+            ),
+          });
+        }}
+      />
     </div>
   );
 }

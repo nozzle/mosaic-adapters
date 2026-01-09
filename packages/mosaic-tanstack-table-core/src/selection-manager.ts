@@ -22,8 +22,10 @@ export interface SelectionManagerOptions {
 /**
  * Manages the lifecycle of a Mosaic Selection for a specific client and column.
  * Handles reading current state, toggling values, and generating the correct SQL predicates.
+ *
+ * @template TValue - The type of value being managed (e.g., string, number, Date).
  */
-export class MosaicSelectionManager {
+export class MosaicSelectionManager<TValue = unknown> {
   private selection: Selection;
   private client: MosaicClient;
   private column: string;
@@ -42,7 +44,7 @@ export class MosaicSelectionManager {
    * - If value exists, removes it.
    * - If value is new, adds it.
    */
-  public toggle(value: any): void {
+  public toggle(value: TValue | null): void {
     if (value === null) {
       this.update(null);
       return;
@@ -51,7 +53,7 @@ export class MosaicSelectionManager {
     const current = this.getCurrentValues();
     const newValues = [...current];
 
-    // Simple existence check (can be expanded for objects later)
+    // Simple existence check (can be expanded for objects later if TValue requires it)
     const idx = newValues.indexOf(value);
 
     if (idx >= 0) {
@@ -66,7 +68,7 @@ export class MosaicSelectionManager {
   /**
    * Sets the selection to a specific set of values.
    */
-  public select(values: Array<any> | any | null): void {
+  public select(values: Array<TValue> | TValue | null): void {
     if (values === null) {
       this.update(null);
       return;
@@ -78,13 +80,13 @@ export class MosaicSelectionManager {
   /**
    * Reads the current selection state from the Mosaic Core.
    */
-  public getCurrentValues(): Array<any> {
+  public getCurrentValues(): Array<TValue> {
     const raw = this.selection.valueFor(this.client);
     if (Array.isArray(raw)) {
-      return raw;
+      return raw as Array<TValue>;
     }
     if (raw !== null && raw !== undefined) {
-      return [raw];
+      return [raw as TValue];
     }
     return [];
   }
@@ -92,7 +94,7 @@ export class MosaicSelectionManager {
   /**
    * Internal method to generate SQL and push update.
    */
-  private update(values: Array<any> | null): void {
+  private update(values: Array<TValue> | null): void {
     let predicate: FilterExpr | null = null;
 
     if (values && values.length > 0) {
@@ -101,21 +103,28 @@ export class MosaicSelectionManager {
       if (this.columnType === 'array') {
         // list_has_any(col, ['val1', 'val2'])
         // Manually construct the comma-separated list expression via reduce.
-        const listContent = values.slice(1).reduce((acc, v) => {
-          return mSql.sql`${acc}, ${mSql.literal(v)}`;
-        }, mSql.literal(values[0]));
+
+        // Fix: Explicitly type reduce<any> because the accumulator changes from
+        // LiteralNode (initial) to FragmentNode (result of mSql.sql).
+        // This prevents TS from inferring the accumulator as TValue.
+        const listContent = values.slice(1).reduce<any>(
+          (acc, v) => {
+            return mSql.sql`${acc}, ${mSql.literal(v as any)}`;
+          },
+          mSql.literal(values[0] as any),
+        );
 
         const listLiteral = mSql.sql`[${listContent}]`;
         predicate = mSql.listHasAny(colExpr, listLiteral);
       } else {
         if (values.length === 1) {
           // col = 'val'
-          predicate = mSql.eq(colExpr, mSql.literal(values[0]));
+          predicate = mSql.eq(colExpr, mSql.literal(values[0] as any));
         } else {
           // col IN ('val1', 'val2')
           predicate = mSql.isIn(
             colExpr,
-            values.map((v) => mSql.literal(v)),
+            values.map((v) => mSql.literal(v as any)),
           );
         }
       }

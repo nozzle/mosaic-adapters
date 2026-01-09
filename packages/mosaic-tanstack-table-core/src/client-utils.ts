@@ -83,7 +83,21 @@ export function createLifecycleManager(
 
 /**
  * Standardized error handling for Mosaic queries.
+ * Aggressively filters out non-fatal SQL errors related to user input
+ * or transient schema state to keep the console noise low.
  */
 export function handleQueryError(clientName: string, error: Error) {
-  logger.error('Core', `[${clientName}] Query Error`, { error });
+  const msg = error.message;
+
+  const isTransientOrUserInput =
+    msg.includes('Conversion Error') ||
+    msg.includes('Binder Error') ||
+    msg.includes('Referenced column') ||
+    msg.includes('not found in FROM clause');
+
+  if (isTransientOrUserInput) {
+    logger.debug('SQL', `[${clientName}] Suppressed expected error: ${msg}`);
+  } else {
+    logger.error('Core', `[${clientName}] Critical Query Error`, { error });
+  }
 }
