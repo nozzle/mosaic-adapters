@@ -201,7 +201,7 @@ export function createStructAccess(column: SqlIdentifier): MosaicSQLExpression {
  * It acts as a Just-In-Time schema correction mechanism for user queries.
  */
 export function createTypedAccess(
-  colExpr: any, // TODO: @SeanCassiere this needs to be typed
+  colExpr: any,
   targetType: 'string' | 'number' | 'date' | 'boolean',
 ) {
   if (targetType === 'number') {

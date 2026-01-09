@@ -7,6 +7,8 @@ import type { MosaicFacetMenuOptions } from '@nozzleio/mosaic-tanstack-table-cor
 /**
  * React hook to manage the state and lifecycle of a Mosaic Facet Menu.
  * Connects a specific column's sidecar client to the UI.
+ *
+ * UPDATE: Exposes `loadMore` and `hasMore` for infinite scroll.
  */
 export function useMosaicTableFacetMenu(options: MosaicFacetMenuOptions) {
   const contextCoordinator = useCoordinator();
@@ -26,9 +28,6 @@ export function useMosaicTableFacetMenu(options: MosaicFacetMenuOptions) {
   const state = useStore(client.store);
 
   // 4. Connect/Disconnect lifecycle
-  // We ALWAYS connect the client, even if enabled=false (closed).
-  // This ensures the client listens to "Global Reset" signals from other components.
-  // The client itself prevents expensive queries when enabled=false via requestQuery guard.
   React.useEffect(() => {
     const cleanup = client.connect();
     return () => cleanup();
@@ -39,9 +38,11 @@ export function useMosaicTableFacetMenu(options: MosaicFacetMenuOptions) {
     displayOptions: state.displayOptions,
     loading: state.loading,
     selectedValues: state.selectedValues,
+    hasMore: state.hasMore,
     setSearchTerm: (term: string) => client.setSearchTerm(term),
     toggle: (value: string | number | null) => client.toggle(value),
     select: (value: string | null) => client.toggle(value),
+    loadMore: () => client.loadMore(),
     client,
   };
 }

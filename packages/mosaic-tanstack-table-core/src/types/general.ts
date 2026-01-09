@@ -49,10 +49,14 @@ export type FilterOperator =
   | 'contains'
   | 'not_contains'
   | 'starts_with'
+  | 'not_starts_with' // Added
   | 'ends_with'
+  | 'not_ends_with' // Added
   | 'is_null'
   | 'not_null'
-  | 'between';
+  | 'between'
+  | 'in'
+  | 'not_in';
 
 // --- Type Safety Utilities ---
 

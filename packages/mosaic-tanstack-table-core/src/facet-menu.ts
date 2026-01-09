@@ -55,6 +55,8 @@ export interface MosaicFacetMenuState {
   /** The active search term used for the last query */
   searchTerm: string;
   selectedValues: Array<FacetValue>;
+  /** Total number of available options matching the search (if known) */
+  hasMore: boolean;
 }
 
 /**
@@ -67,6 +69,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
 
   private selectionManager: MosaicSelectionManager;
   private _searchTerm = '';
+  private _currentLimit: number;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   private lifecycle = createLifecycleManager(this);
@@ -77,12 +80,16 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     this.id = Math.random().toString(36).substring(2, 9);
     this.coordinator = options.coordinator || defaultCoordinator();
 
+    // Initialize dynamic limit
+    this._currentLimit = options.limit || 50;
+
     this.store = new Store<MosaicFacetMenuState>({
       options: [],
       displayOptions: [],
       loading: false,
       searchTerm: '',
       selectedValues: [],
+      hasMore: true,
     });
 
     // Initialize Manager
@@ -131,6 +138,14 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     const oldOptions = this.options;
     this.options = newOptions;
 
+    // Reset limit if column changes
+    if (
+      oldOptions.column !== newOptions.column ||
+      oldOptions.table !== newOptions.table
+    ) {
+      this._currentLimit = newOptions.limit || 50;
+    }
+
     // Update coordinator if changed
     const nextCoordinator =
       newOptions.coordinator || this.coordinator || defaultCoordinator();
@@ -138,10 +153,6 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
 
     // 1. Handle Primary Filter (filterBy) changes
     if (oldOptions.filterBy !== newOptions.filterBy) {
-      logger.debug(
-        'Core',
-        `${this.debugPrefix} filterBy changed. Requesting update.`,
-      );
       this.requestUpdate();
     }
 
@@ -198,50 +209,36 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   }
 
   private _additionalContextListener = () => {
-    logger.debug(
-      'Core',
-      `${this.debugPrefix} (#${this.id}) additionalContext updated`,
-    );
     this.requestUpdate();
   };
 
   private _selectionListener = () => {
-    // Check if the update is external (i.e. not triggered by this client)
     const active = this.options.selection.active;
-
-    // Ensure active exists before checking source (Global Reset sets active to undefined/null)
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (active && active.source === this) {
       return;
     }
 
     // Detect Global Reset Signal
-    // We check for RESET_SOURCE (standard) or null (legacy/fallback)
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const src = active ? (active.source as any) : null;
     const isGlobalReset =
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       active &&
       active.value === null &&
-      // TODO @SeanCassiere this should either be configurable, use a constant, or use a tagged identifier like a Symbol
       (src === null || src?.id === 'GlobalReset');
 
     if (isGlobalReset) {
-      // Force clear local selection state (removes the clause)
       this.selectionManager.select(null);
-
-      // Reset internal search term
       if (this._searchTerm !== '') {
         this._searchTerm = '';
         this.store.setState((s) => ({ ...s, searchTerm: '' }));
-        // Request update to refresh the options list without the search filter
+        // Reset limit on clear
+        this._currentLimit = this.options.limit || 50;
         this.requestUpdate();
       }
-
-      // Sync store to reflect the cleared selection in the UI
       this._syncStoreFromManager();
     } else {
-      // Standard behavior: Sync store with the new external selection state
       this._syncStoreFromManager();
     }
   };
@@ -263,7 +260,6 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       );
     }
 
-    // Subscribe to selection to handle Global Resets (or other external changes)
     this.options.selection.addEventListener('value', this._selectionListener);
   }
 
@@ -280,10 +276,6 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     );
   }
 
-  /**
-   * Sets the search term with built-in debouncing.
-   * @param term The new search string
-   */
   setSearchTerm(term: string) {
     if (this._debounceTimer) {
       clearTimeout(this._debounceTimer);
@@ -294,31 +286,41 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     this._debounceTimer = setTimeout(() => {
       if (this._searchTerm !== term) {
         this._searchTerm = term;
+        // Reset limit when search changes to ensure we get relevant top results
+        this._currentLimit = this.options.limit || 50;
         this.store.setState((s) => ({ ...s, searchTerm: term }));
         this.requestUpdate();
       }
     }, delay);
   }
 
-  /**
-   * Toggles the selection of a value.
-   */
   toggle(value: FacetValue) {
     this.selectionManager.toggle(value);
     this._syncStoreFromManager();
   }
 
-  /**
-   * Clears the current selection (Select All/None).
-   */
   clear() {
     this.selectionManager.select(null);
     this._syncStoreFromManager();
   }
 
   /**
-   * Helper to keep the reactive store in sync with the Manager's state.
+   * Increases the fetch limit and requests an update.
    */
+  loadMore() {
+    if (this.store.state.loading || !this.store.state.hasMore) {
+      return;
+    }
+
+    const increment = 50;
+    this._currentLimit += increment;
+    logger.debug(
+      'Core',
+      `${this.debugPrefix} Loading more. New limit: ${this._currentLimit}`,
+    );
+    this.requestUpdate();
+  }
+
   private _syncStoreFromManager() {
     const values = this.selectionManager.getCurrentValues();
     const currentOptions = this.store.state.options;
@@ -331,9 +333,6 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     }));
   }
 
-  /**
-   * Merges database options with selected values.
-   */
   private _mergeDisplayOptions(
     dbOptions: Array<FacetValue>,
     selected: Array<FacetValue>,
@@ -354,28 +353,15 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       return Promise.resolve();
     }
 
-    // Defensive Check:
-    // We explicitly calculate the query here to verify it is valid (non-null).
-    // The base MosaicClient.requestQuery() will typically call this.query() internally if no argument is passed,
-    // but it might pass the result directly to the coordinator even if it is null.
-    // If a null query reaches the connector, it gets stringified to "null", causing a SQL Parser Error.
     const queryToRun = query || this.query();
 
     if (!queryToRun) {
-      logger.warn(
-        'Core',
-        `${this.debugPrefix} requestQuery: Generated query is NULL. Skipping execution to prevent DB error.`,
-      );
       return Promise.resolve();
     }
 
     return super.requestQuery(queryToRun);
   }
 
-  /**
-   * Helper to resolve the table/source into a string or Query object.
-   * Handles string, Param<string>, or Function.
-   */
   private resolveSource(
     effectiveFilter?: FilterExpr | null,
   ): string | SelectQuery | null {
@@ -391,11 +377,8 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
   }
 
   override query(filter?: FilterExpr): SelectQuery | null {
-    const debugId = `${this.debugPrefix} query()`;
-
     const {
       column,
-      limit = 50,
       sortMode = 'count',
       columnType,
       isArrayColumn,
@@ -405,13 +388,9 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       table,
     } = this.options;
 
-    // 1. Safety Check: If Disabled or Invalid Source, return a No-Op query.
-    // We CANNOT return null because the Coordinator executes "null" as SQL.
-    // We return "SELECT * FROM (SELECT 1) WHERE 1=0" to safely return empty results.
     const isTableInvalid = typeof table === 'string' && table.trim() === '';
 
     if (enabled === false || isTableInvalid) {
-      // Attempt to resolve source to keep schema if possible, otherwise use dummy
       const dummySource =
         this.resolveSource(null) || mSql.sql`(SELECT 1) AS _dummy`;
       return mSql.Query.from(dummySource)
@@ -435,11 +414,6 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
 
     const resolvedSource = this.resolveSource(effectiveFilter);
     if (!resolvedSource) {
-      logger.warn(
-        'Core',
-        `${debugId} - resolveSource returned null. Returning No-Op query to prevent crash. Table options:`,
-        this.options.table,
-      );
       return mSql.Query.from(mSql.sql`(SELECT 1) AS _dummy`).where(
         mSql.sql`1=0`,
       );
@@ -492,19 +466,8 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       }
     }
 
-    query.limit(limit);
-
-    logger.debounce(
-      `facet-query-${this.id}`,
-      300,
-      'debug',
-      'SQL',
-      `Facet Query (${this.options.__debugName})`,
-      {
-        sql: query.toString(),
-        filters: effectiveFilter ? effectiveFilter.toString() : 'None',
-      },
-    );
+    // Use dynamic limit for infinite scrolling
+    query.limit(this._currentLimit + 1); // Fetch +1 to detect if there are more results
 
     return query;
   }
@@ -520,8 +483,20 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     const values: Array<FacetValue> = [];
     const key = isArray ? 'tag' : column;
 
+    let hasMore = false;
+
     if (data && typeof data.toArray === 'function') {
       const rows = data.toArray();
+
+      // Check if we got more rows than the limit
+      if (rows.length > this._currentLimit) {
+        hasMore = true;
+        // Remove the extra probe row
+        rows.pop();
+      } else {
+        hasMore = false;
+      }
+
       for (const row of rows) {
         let val = row[key];
         if (val === undefined && key.includes('.')) {
@@ -541,28 +516,17 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       options: values,
       displayOptions: merged,
       loading: false,
+      hasMore,
     }));
     return this;
   }
 
   override queryError(error: Error) {
-    // Suppress known "null" syntax errors that happen during race conditions
-    // This happens when the Coordinator executes a null query despite our guards,
-    // or if an update was in flight during a reset.
     if (error.message.includes('syntax error at or near "null"')) {
-      logger.warn(
-        'Core',
-        `${this.debugPrefix} Suppressed "null" query error (Race Condition) detected.`,
-      );
       this.store.setState((s) => ({ ...s, loading: false }));
       return this;
     }
 
-    logger.error('Core', `${this.debugPrefix} Query Error Details`, {
-      error,
-      message: error.message,
-      stack: error.stack,
-    });
     handleQueryError(`MosaicFacetMenu #${this.id}`, error);
     this.store.setState((s) => ({ ...s, loading: false }));
     return this;

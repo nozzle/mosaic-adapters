@@ -1,4 +1,5 @@
 import * as mSql from '@uwdata/mosaic-sql';
+import { logger } from '../logger';
 import {
   createStructAccess,
   createTypedAccess,
@@ -28,8 +29,9 @@ const strategies: Record<string, FilterStrategy> = {
 
     const { operator, value, valueTo, dataType = 'string' } = input;
 
-    // TRACE: Always log to console to debug missing filters
-    console.log(
+    // Use logger instead of console.log for debug traceability
+    logger.debug(
+      'Core',
       `[FilterStrategy:CONDITION] Building filter for ${columnId}. DataType: ${dataType}`,
       input,
     );
@@ -38,17 +40,14 @@ const strategies: Record<string, FilterStrategy> = {
     const rawCol = createStructAccess(columnAccessor);
 
     // 2. Apply "Just-In-Time" Casting via TRY_CAST logic in utils
-    // This allows robust filtering even if the underlying table schema is incorrect (e.g. numbers stored as text)
     const col = createTypedAccess(rawCol, dataType);
 
-    // 3. Prepare Value Literal (Handle Dates, etc.)
-    // SAFETY: Explicitly check for null/undefined/empty string to allow 0 (number) or false (boolean) as valid values.
+    // 3. Prepare Value Literal
     const isValidVal = value !== null && value !== undefined && value !== '';
     const isValidTo =
       valueTo !== null && valueTo !== undefined && valueTo !== '';
 
     // Create literals only if valid.
-    // Note: mSql.literal() handles boolean/number/string correctly.
     const val = isValidVal ? mSql.literal(value) : null;
     const valTo = isValidTo ? mSql.literal(valueTo) : null;
 
@@ -83,9 +82,8 @@ const strategies: Record<string, FilterStrategy> = {
         expr = val ? mSql.lte(col, val) : undefined;
         break;
 
-      // String specific (Likely ignored if dataType is number, but handled safely)
+      // String specific
       case 'contains':
-        // For contains, we likely want to search against the raw string or cast back to string
         expr = val
           ? mSql.sql`${rawCol} ILIKE ${mSql.literal(`%${value}%`)}`
           : undefined;
@@ -100,9 +98,19 @@ const strategies: Record<string, FilterStrategy> = {
           ? mSql.sql`${rawCol} ILIKE ${mSql.literal(`${value}%`)}`
           : undefined;
         break;
+      case 'not_starts_with':
+        expr = val
+          ? mSql.sql`${rawCol} NOT ILIKE ${mSql.literal(`${value}%`)}`
+          : undefined;
+        break;
       case 'ends_with':
         expr = val
           ? mSql.sql`${rawCol} ILIKE ${mSql.literal(`%${value}`)}`
+          : undefined;
+        break;
+      case 'not_ends_with':
+        expr = val
+          ? mSql.sql`${rawCol} NOT ILIKE ${mSql.literal(`%${value}`)}`
           : undefined;
         break;
 
@@ -113,18 +121,39 @@ const strategies: Record<string, FilterStrategy> = {
         }
         break;
 
+      // List (Array) Operations
+      case 'in':
+        if (Array.isArray(value) && value.length > 0) {
+          expr = mSql.isIn(
+            col,
+            value.map((v) => mSql.literal(v)),
+          );
+        }
+        break;
+      case 'not_in':
+        if (Array.isArray(value) && value.length > 0) {
+          const list = value.map((v) => mSql.literal(v));
+          // NOT IN logic
+          const listSql = mSql.sql`(${list.join(', ')})`;
+          expr = mSql.sql`${col} NOT IN ${listSql}`;
+        }
+        break;
+
       default:
         expr = undefined;
     }
 
     if (expr) {
-      // TRACE: Log Success
-      console.log(
+      logger.debug(
+        'SQL',
         `[FilterStrategy:CONDITION] Generated SQL: ${expr.toString()}`,
       );
     } else {
-      // TRACE: Log Failure
-      console.warn(`[FilterStrategy:CONDITION] Failed to generate SQL.`, input);
+      logger.debug(
+        'Core',
+        `[FilterStrategy:CONDITION] Skipped SQL generation (invalid inputs).`,
+        input,
+      );
     }
 
     return expr;
@@ -153,12 +182,10 @@ const strategies: Record<string, FilterStrategy> = {
   },
 
   DATE_RANGE: ({ columnAccessor, input, filterOptions }) => {
-    // Discriminated union match for Temporal types
     if (input.mode !== 'DATE_RANGE') {
       return undefined;
     }
 
-    // Treat empty strings as null for open-ended ranges
     const minVal = input.value[0];
     const maxVal = input.value[1];
 
@@ -166,7 +193,6 @@ const strategies: Record<string, FilterStrategy> = {
     const max = maxVal !== null && maxVal !== '' ? String(maxVal) : null;
 
     const rawCol = createStructAccess(columnAccessor);
-    // Force temporal casting for date ranges
     const colExpr = createTypedAccess(rawCol, 'date');
 
     const convertToUTC = filterOptions?.convertToUTC;
@@ -174,33 +200,23 @@ const strategies: Record<string, FilterStrategy> = {
     let finalMin = null;
     let finalMax = null;
 
-    // Helper to convert Local String -> UTC ISO String
     const toUTC = (val: string) => {
-      // If it contains T (e.g. 2023-01-01T12:00), parsing creates Local Date.
-      // toISOString() converts that Local Date to UTC.
       const d = new Date(val);
       return !isNaN(d.getTime()) ? d.toISOString() : val;
     };
 
-    // Process min value
     if (min !== null) {
-      // Priority 1: Convert to UTC if flag is enabled (Handles Local -> UTC shift)
       if (convertToUTC && min.includes('T')) {
         finalMin = mSql.literal(toUTC(min));
-      }
-      // Priority 2: Handle raw Date objects (Legacy path)
-      else if ((minVal as unknown) instanceof Date) {
+      } else if ((minVal as unknown) instanceof Date) {
         finalMin = mSql.literal(
           (minVal as unknown as Date).toISOString().split('T')[0] ?? '',
         );
-      }
-      // Priority 3: Raw string
-      else {
+      } else {
         finalMin = mSql.literal(min);
       }
     }
 
-    // Process max value
     if (max !== null) {
       if (convertToUTC && max.includes('T')) {
         finalMax = mSql.literal(toUTC(max));
@@ -213,7 +229,6 @@ const strategies: Record<string, FilterStrategy> = {
       }
     }
 
-    // SQL Generation for Dates/Strings
     if (finalMin !== null && finalMax !== null) {
       return mSql.isBetween(colExpr, [finalMin, finalMax]);
     } else if (finalMin !== null) {
@@ -273,7 +288,6 @@ const strategies: Record<string, FilterStrategy> = {
   },
 
   EQUALS: ({ columnAccessor, input }) => {
-    // Supports TEXT, MATCH, SELECT modes
     if (
       input.mode !== 'TEXT' &&
       input.mode !== 'MATCH' &&
