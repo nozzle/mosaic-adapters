@@ -153,6 +153,10 @@ export function toRangeValue(value: unknown): number | Date | null {
   return isFinite(num) ? num : null;
 }
 
+/**
+ * Represents a valid AST node used in Mosaic SQL generation.
+ * Can be a standard SQL template literal or a Column reference.
+ */
 export type MosaicSQLExpression =
   | ReturnType<typeof mSql.sql>
   | ReturnType<typeof mSql.column>;
@@ -201,7 +205,7 @@ export function createStructAccess(column: SqlIdentifier): MosaicSQLExpression {
  * It acts as a Just-In-Time schema correction mechanism for user queries.
  */
 export function createTypedAccess(
-  colExpr: any, // TODO: @SeanCassiere this needs to be typed
+  colExpr: MosaicSQLExpression,
   targetType: 'string' | 'number' | 'date' | 'boolean',
 ) {
   if (targetType === 'number') {

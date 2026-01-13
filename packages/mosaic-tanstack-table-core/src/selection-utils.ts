@@ -2,7 +2,7 @@ import { MosaicSelectionManager } from './selection-manager';
 import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
 import type { ColumnType } from './types';
 
-export interface ToggleSelectionOptions {
+export interface ToggleSelectionOptions<TValue = unknown> {
   /**
    * The Mosaic Selection instance to update.
    */
@@ -20,7 +20,7 @@ export interface ToggleSelectionOptions {
    * The value to toggle.
    * Pass `null` to clear the selection for this client.
    */
-  value: any;
+  value: TValue | null;
   /**
    * The type of the column.
    * @default 'scalar'
@@ -38,9 +38,11 @@ export interface ToggleSelectionOptions {
  * - Handling nested column paths (struct access)
  * - dispatching updates with the correct `clients` set for cross-filtering
  */
-export function toggleMosaicSelection(options: ToggleSelectionOptions): void {
+export function toggleMosaicSelection<TValue = unknown>(
+  options: ToggleSelectionOptions<TValue>,
+): void {
   // Ephemeral manager to handle the toggle logic via the standard class
-  const manager = new MosaicSelectionManager({
+  const manager = new MosaicSelectionManager<TValue>({
     selection: options.selection,
     client: options.client,
     column: options.column,

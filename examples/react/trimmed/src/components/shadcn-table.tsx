@@ -55,12 +55,17 @@ import {
   NativeSelectOption,
 } from '@/components/ui/native-select';
 
+/**
+ * A Shadcn UI implementation of the TanStack table.
+ * Supports sorting, filtering, pagination, column visibility, row click, and row hover interactions.
+ */
 export function ShadcnTable<TData extends RowData, TValue>(props: {
   table: TanStackTable<TData>;
   columns: Array<ColumnDef<TData, TValue>>;
   onRowClick?: (row: Row<TData>) => void;
+  onRowHover?: (row: Row<TData> | null) => void;
 }) {
-  const { table, columns, onRowClick } = props;
+  const { table, columns, onRowClick, onRowHover } = props;
 
   return (
     <div className="grid gap-2">
@@ -107,6 +112,8 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
                     key={row.id}
                     data-state={row.getIsSelected() && 'selected'}
                     onClick={() => onRowClick?.(row)}
+                    onMouseEnter={() => onRowHover?.(row)}
+                    onMouseLeave={() => onRowHover?.(null)}
                     className={cn(
                       // Interactive cursor if clickable
                       onRowClick && 'cursor-pointer transition-opacity',

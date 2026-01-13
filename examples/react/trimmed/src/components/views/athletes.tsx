@@ -1,11 +1,12 @@
 /**
  * View component for the Athletes dataset.
- * Features: Type-Safe Table + Interactive vgplot Chart.
+ * Features: Type-Safe Table + Interactive vgplot Chart + Hover Interactions.
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
+import * as mSql from '@uwdata/mosaic-sql';
 import {
   coerceDate,
   coerceNumber,
@@ -14,6 +15,7 @@ import {
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useRegisterSelections } from '@nozzleio/react-mosaic';
+import type { Row } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { simpleDateFormatter } from '@/lib/utils';
@@ -23,9 +25,23 @@ const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
 const tableName = 'athletes';
 
+// Constants for Hover Logic
+const HOVER_SOURCE = { id: 'hover' };
+// Predicate to ensure queries return 0 rows when no selection is active
+const NO_SELECTION_PREDICATE = mSql.sql`1 = 0`;
+
 const $query = vg.Selection.intersect();
 const $tableFilter = vg.Selection.intersect();
 const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
+
+// Transient selection for high-frequency hover interactions (Last-writer wins)
+// We initialize it with the "No Selection" predicate so the overlay layer starts empty.
+const $hover = vg.Selection.single();
+$hover.update({
+  source: HOVER_SOURCE,
+  value: null,
+  predicate: NO_SELECTION_PREDICATE,
+});
 
 // 1. Typescript Interface
 interface AthleteRowData {
@@ -73,8 +89,26 @@ export function AthletesView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
-  // Register active selections for global reset
+  // Register active selections for global reset.
+  // Note: We exclude $hover because its default state is "1=0" (empty),
+  // whereas Global Reset sets selections to null (all).
   useRegisterSelections([$query, $tableFilter, $combined]);
+
+  // Ensure hover state is reset to "empty" on mount/unmount
+  useEffect(() => {
+    $hover.update({
+      source: HOVER_SOURCE,
+      value: null,
+      predicate: NO_SELECTION_PREDICATE,
+    });
+    return () => {
+      $hover.update({
+        source: HOVER_SOURCE,
+        value: null,
+        predicate: NO_SELECTION_PREDICATE,
+      });
+    };
+  }, []);
 
   useEffect(() => {
     if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {
@@ -120,6 +154,16 @@ export function AthletesView() {
             fill: 'sex',
             r: 2,
             opacity: 0.05,
+          }),
+          // Hover Overlay: Shows a specific dot when hovering the table row
+          // Starts empty due to NO_SELECTION_PREDICATE
+          vg.dot(vg.from(tableName, { filterBy: $hover }), {
+            x: 'weight',
+            y: 'height',
+            fill: 'none',
+            stroke: 'firebrick',
+            strokeWidth: 2,
+            r: 6,
           }),
           vg.regressionY(vg.from(tableName, { filterBy: $combined }), {
             x: 'weight',
@@ -282,9 +326,29 @@ function AthletesTable() {
 
   const table = useReactTable(tableOptions);
 
+  const handleRowHover = (row: Row<AthleteRowData> | null) => {
+    if (row) {
+      $hover.update({
+        source: HOVER_SOURCE,
+        value: row.original.id,
+        predicate: mSql.eq(mSql.column('id'), mSql.literal(row.original.id)),
+      });
+    } else {
+      $hover.update({
+        source: HOVER_SOURCE,
+        value: null,
+        predicate: NO_SELECTION_PREDICATE,
+      });
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <RenderTable table={table} columns={table.options.columns} />
+      <RenderTable
+        table={table}
+        columns={table.options.columns}
+        onRowHover={handleRowHover}
+      />
     </div>
   );
 }
