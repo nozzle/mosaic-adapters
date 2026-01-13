@@ -15,26 +15,20 @@ updates:
       interval: monthly
     groups:
       dev-deps:
-        dependency-type: 'development'
+        dependency-type: development
         update-types:
           - patch
           - minor
       prod-deps:
-        dependency-type: 'production'
+        dependency-type: production
         update-types:
           - patch
           - minor
-
-  - package-ecosystem: npm
-    directory: '/'
-    schedule:
-      interval: quarterly
-    groups:
-      dev-deps:
-        dependency-type: 'development'
+      major-dev:
+        dependency-type: development
         update-types:
           - major
-      prod-deps:
-        dependency-type: 'production'
+      major-prod:
+        dependency-type: production
         update-types:
           - major
