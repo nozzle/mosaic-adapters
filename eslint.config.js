@@ -1,4 +1,4 @@
-import { tanstackConfig } from '@tanstack/config/eslint';
+import { tanstackConfig } from '@tanstack/eslint-config';
 import { defineConfig } from 'eslint/config';
 import unusedImports from 'eslint-plugin-unused-imports';
 

@@ -1,5 +1,5 @@
 import { defineConfig, mergeConfig } from 'vite';
-import { tanstackViteConfig } from '@tanstack/config/vite';
+import { tanstackViteConfig } from '@tanstack/vite-config';
 
 const packageConfig = defineConfig({});
 
