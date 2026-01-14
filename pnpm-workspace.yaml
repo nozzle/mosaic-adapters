@@ -16,10 +16,12 @@ catalog:
   eslint: ^9.39.0
   eslint-plugin-react-hooks: ^7.0.1
   eslint-plugin-unused-imports: ^4.3.0
+  jsdom: ^27.4.0
   rimraf: ^6.1.0
   typescript: ^5.9.3
   typescript-eslint: ^8.46.2
   vite: ^7.1.12
+  vitest: ^4.0.17
 
 onlyBuiltDependencies:
   - esbuild

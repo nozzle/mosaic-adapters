@@ -14,6 +14,7 @@
     "test:types": "nx run-many --target=test:types",
     "test:build": "nx run-many --target=test:build",
     "test:lint": "nx affected --target=test:lint",
+    "test:lib": "nx affected --target=test:lib",
     "test:pr": "nx affected --targets=test:lint,test:types,test:build",
     "build": "pnpm run build:packages",
     "build:packages": "nx affected --target=build --exclude=examples/**",
@@ -28,11 +29,13 @@
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
     "eslint-plugin-unused-imports": "catalog:",
+    "jsdom": "catalog:",
     "nx": "^22.0.2",
     "prettier": "^3.6.2",
     "rimraf": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

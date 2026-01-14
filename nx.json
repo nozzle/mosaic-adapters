@@ -31,6 +31,12 @@
         "{projectRoot}/eslint.config.js"
       ]
     },
+    "test:lib": {
+      "cache": true,
+      "dependsOn": ["build"],
+      "inputs": ["default", "^production"],
+      "outputs": ["{projectRoot}/coverage"]
+    },
     "test:build": {
       "cache": true,
       "dependsOn": ["build"],
