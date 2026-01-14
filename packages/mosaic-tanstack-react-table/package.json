@@ -21,6 +21,7 @@
     "lint": "eslint ./src",
     "test:types": "pnpm run typecheck",
     "test:build": "pnpm run build",
+    "test:lib": "vitest",
     "test:lint": "pnpm run lint"
   },
   "dependencies": {
