@@ -15,6 +15,7 @@
     "test:build": "nx run-many --target=test:build",
     "test:lint": "nx affected --target=test:lint",
     "test:lib": "nx affected --target=test:lib",
+    "test:e2e": "nx affected --target=test:e2e",
     "test:pr": "nx affected --targets=test:lint,test:types,test:lib,test:build",
     "build": "pnpm run build:packages",
     "build:packages": "nx affected --target=build --exclude=examples/**",
