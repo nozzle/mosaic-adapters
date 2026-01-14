@@ -52,6 +52,11 @@
       "dependsOn": ["^build"],
       "inputs": ["production", "^production"],
       "outputs": ["{projectRoot}/build", "{projectRoot}/dist"]
+    },
+    "test:e2e": {
+      "cache": false,
+      "dependsOn": ["build"],
+      "inputs": ["default", "^production"]
     }
   }
 }
