@@ -25,6 +25,7 @@
     "dev": "pnpm run watch"
   },
   "devDependencies": {
+    "@playwright/test": "catalog:",
     "@tanstack/eslint-config": "catalog:",
     "@tanstack/vite-config": "catalog:",
     "eslint": "catalog:",
