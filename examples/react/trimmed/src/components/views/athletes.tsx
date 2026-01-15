@@ -20,6 +20,7 @@ import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
+import { HistogramFilter } from '@/components/histogram-filter';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
@@ -30,9 +31,35 @@ const HOVER_SOURCE = { id: 'hover' };
 // Predicate to ensure queries return 0 rows when no selection is active
 const NO_SELECTION_PREDICATE = mSql.sql`1 = 0`;
 
+// --- Topology Definition ---
+// 1. Inputs (Menu, Search, Chart Brush)
 const $query = vg.Selection.intersect();
+// 2. Table Headers
 const $tableFilter = vg.Selection.intersect();
-const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
+// 3. Histogram Brushes
+const $weight = vg.Selection.intersect();
+const $height = vg.Selection.intersect();
+
+// --- Derived Contexts ---
+// Weight Histogram Context: Everything EXCEPT Weight
+const $ctxWeight = vg.Selection.intersect({
+  include: [$query, $tableFilter, $height],
+});
+
+// Height Histogram Context: Everything EXCEPT Height
+const $ctxHeight = vg.Selection.intersect({
+  include: [$query, $tableFilter, $weight],
+});
+
+// Table Context: Everything EXCEPT Table Filters (handled internally by table prop)
+const $tableContext = vg.Selection.intersect({
+  include: [$query, $weight, $height],
+});
+
+// Global Combined: The Intersection of All Filters (Used for the Chart points)
+const $combined = vg.Selection.intersect({
+  include: [$query, $tableFilter, $weight, $height],
+});
 
 // Transient selection for high-frequency hover interactions (Last-writer wins)
 // We initialize it with the "No Selection" predicate so the overlay layer starts empty.
@@ -90,9 +117,8 @@ export function AthletesView() {
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
   // Register active selections for global reset.
-  // Note: We exclude $hover because its default state is "1=0" (empty),
-  // whereas Global Reset sets selections to null (all).
-  useRegisterSelections([$query, $tableFilter, $combined]);
+  // We register the roots so that resetAll() clears them.
+  useRegisterSelections([$query, $tableFilter, $weight, $height]);
 
   // Ensure hover state is reset to "empty" on mount/unmount
   useEffect(() => {
@@ -191,18 +217,49 @@ export function AthletesView() {
   }, []);
 
   return (
-    <>
-      <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
-      {isPending && <div className="italic">Loading data...</div>}
-      <div ref={chartDivRef} />
-      <hr className="my-4" />
-      <h4 className="text-lg mb-2 font-medium">Table area</h4>
-      {isPending ? (
-        <div className="italic">Loading data...</div>
-      ) : (
-        <AthletesTable />
-      )}
-    </>
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div>
+          <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
+          {isPending && <div className="italic">Loading data...</div>}
+          <div ref={chartDivRef} />
+        </div>
+        <div className="flex flex-col gap-4 border-l pl-4">
+          <h4 className="text-lg font-medium">Filters</h4>
+          {/* 
+              Histogram Filter Configuration:
+              - selection: Writes to the specific selection (e.g. $weight)
+              - filterBy: Reads from the specific Context (e.g. $ctxWeight), 
+                which includes everything EXCEPT $weight.
+          */}
+          <HistogramFilter
+            table={tableName}
+            column="weight"
+            step={5}
+            selection={$weight}
+            filterBy={$ctxWeight}
+          />
+          <HistogramFilter
+            table={tableName}
+            column="height"
+            step={0.05}
+            selection={$height}
+            filterBy={$ctxHeight}
+          />
+        </div>
+      </div>
+
+      <hr />
+
+      <div>
+        <h4 className="text-lg mb-2 font-medium">Table area</h4>
+        {isPending ? (
+          <div className="italic">Loading data...</div>
+        ) : (
+          <AthletesTable />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -298,7 +355,10 @@ function AthletesTable() {
 
   const { tableOptions } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
-    filterBy: $query,
+    // The Table should be filtered by everything EXCEPT its own column filters.
+    // $tableContext = Inputs + Weight + Height.
+    // $tableFilter is passed separately to tableFilterSelection.
+    filterBy: $tableContext,
     tableFilterSelection: $tableFilter,
     columns,
     mapping: AthleteMapping,
