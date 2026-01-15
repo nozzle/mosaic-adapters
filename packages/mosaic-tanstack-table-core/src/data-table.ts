@@ -259,7 +259,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       }
 
       this.#columnMapper = new ColumnMapper(options.columns, options.mapping);
-      this.#initializeAutoFacets(options.columns);
     } else if (sourceChanged) {
       this.schema = [];
       this.#columnMapper = undefined;
@@ -275,23 +274,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         });
       }
     }
-  }
-
-  #initializeAutoFacets(columns: Array<ColumnDef<TData, TValue>>) {
-    columns.forEach((col) => {
-      const facetType = col.meta?.mosaicDataTable?.facet;
-      const colId =
-        col.id ||
-        ('accessorKey' in col && typeof col.accessorKey === 'string'
-          ? col.accessorKey
-          : undefined);
-
-      if (!facetType || !colId) {
-        return;
-      }
-
-      this.sidecarManager.requestFacet(colId, facetType);
-    });
   }
 
   public requestAuxiliary(config: SidecarRequest<TData>) {
@@ -327,11 +309,20 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       highlightPredicate = this.options.highlightBy.predicate(null) ?? null;
     }
 
-    let effectiveFilter = hardFilter;
+    // Combine filters avoiding unsafe conditionals
+    const filtersToApply: Array<FilterExpr> = [];
+    if (hardFilter) {
+      filtersToApply.push(hardFilter);
+    }
     if (crossFilterPredicate) {
-      effectiveFilter = effectiveFilter
-        ? mSql.and(effectiveFilter, crossFilterPredicate)
-        : crossFilterPredicate;
+      filtersToApply.push(crossFilterPredicate);
+    }
+
+    let effectiveFilter: FilterExpr | null = null;
+    if (filtersToApply.length > 1) {
+      effectiveFilter = mSql.and(...filtersToApply);
+    } else if (filtersToApply.length === 1) {
+      effectiveFilter = filtersToApply[0]!;
     }
 
     const safeHighlightPredicate = crossFilterPredicate
@@ -342,21 +333,35 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
     const mapper = this.#columnMapper;
 
-    const statement = mapper
-      ? buildTableQuery({
-          source,
-          tableState,
-          mapper: mapper,
-          mapping: this.options.mapping,
-          totalRowsColumnName: this.#sql_total_rows,
-          highlightPredicate: safeHighlightPredicate,
-          manualHighlight: this.options.manualHighlight,
-          totalRowsMode: this.options.totalRowsMode,
-          filterRegistry: this.filterRegistry,
-        })
-      : mSql.Query.from(source).select('*', {
-          [this.#sql_total_rows]: mSql.sql`COUNT(*) OVER()`,
-        });
+    // Use QueryBuilder if mapper exists.
+    // If NO mapper (initial discovery state), use a lightweight fallback.
+    // Updated: Fallback no longer forces COUNT(*) OVER() unless explicitly requested.
+    let statement: SelectQuery;
+
+    if (mapper) {
+      statement = buildTableQuery({
+        source,
+        tableState,
+        mapper: mapper,
+        mapping: this.options.mapping,
+        totalRowsColumnName: this.#sql_total_rows,
+        highlightPredicate: safeHighlightPredicate,
+        manualHighlight: this.options.manualHighlight,
+        totalRowsMode: this.options.totalRowsMode,
+        filterRegistry: this.filterRegistry,
+      });
+    } else {
+      // Fallback Path (Introspection Pending)
+      const selects: Record<string, any> = { '*': mSql.column('*') };
+
+      // Only inject the heavy Window Function if explicitly in 'window' mode.
+      // This prevents the "Death Window" (OOM) on initial load for large datasets.
+      if (this.options.totalRowsMode === 'window') {
+        selects[this.#sql_total_rows] = mSql.sql`COUNT(*) OVER()`;
+      }
+
+      statement = mSql.Query.from(source).select(selects);
+    }
 
     if (effectiveFilter && typeof this.source === 'string') {
       statement.where(effectiveFilter);
@@ -378,6 +383,9 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         value: tableState.columnFilters,
         predicate: predicate,
       });
+    } else {
+      // Apply simple limit to fallback query to ensure it's lightweight
+      statement.limit(tableState.pagination.pageSize || 50);
     }
 
     return statement;
@@ -493,6 +501,15 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           id: s.column,
         }));
         this.#columnMapper = new ColumnMapper(inferredColumns as any);
+      }
+
+      // CRITICAL FIX: Re-run sidecars (TotalCount, Facets) now that the schema is known.
+      // This ensures that filters from the URL (state) can be correctly translated
+      // to SQL because the ColumnMapper is now populated.
+      // Without this, sidecars run with empty filters (TotalCount = All rows),
+      // because getCascadingFilters() returns [] when the mapper is missing.
+      if (this.schema.length > 0) {
+        this.sidecarManager.refreshAll();
       }
     }
     return Promise.resolve();

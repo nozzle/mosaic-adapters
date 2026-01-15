@@ -1,7 +1,5 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { isParam } from '@uwdata/mosaic-core';
-import { createStructAccess } from './utils';
-import { SqlIdentifier } from './domain/sql-identifier';
 import { assertIsArray, assertIsNumber } from './validation';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { MosaicTableSource } from './types';
@@ -51,6 +49,12 @@ export interface FacetStrategy<TInput = unknown, TOutput = unknown> {
   validate: (data: unknown) => TOutput;
 }
 
+export interface HistogramInput {
+  step: number;
+}
+
+export type HistogramOutput = Array<{ bin: number; count: number }>;
+
 /**
  * Strategy for fetching unique values from a column.
  * Used for Dropdown/Select filters.
@@ -85,9 +89,9 @@ export const UniqueValuesStrategy: FacetStrategy<void, Array<unknown>> = {
     }
 
     if (ctx.searchTerm) {
-      const colExpr = createStructAccess(SqlIdentifier.from(ctx.column));
+      // Simple ILIKE match for search
       const pattern = mSql.literal(`%${ctx.searchTerm}%`);
-      statement.where(mSql.sql`${colExpr} ILIKE ${pattern}`);
+      statement.where(mSql.sql`${mSql.column(ctx.column)} ILIKE ${pattern}`);
     }
 
     statement.groupby(ctx.column);
@@ -166,10 +170,8 @@ export const MinMaxStrategy: FacetStrategy<void, [number, number] | undefined> =
     },
 
     transformResult: (rows) => {
-      // Fix: Add explicit null check for rows[0] due to strict indexed access
       const row = rows.length > 0 ? rows[0] : undefined;
       if (row) {
-        // Ensure properties exist before accessing
         const minVal = row['min'];
         const maxVal = row['max'];
         const min = Number(minVal);
@@ -234,10 +236,8 @@ export const TotalCountStrategy: FacetStrategy<void, number> = {
   },
 
   transformResult: (rows) => {
-    // Fix: Add explicit null check for rows[0]
     const row = rows.length > 0 ? rows[0] : undefined;
     if (row) {
-      // Safely access count property
       return Number(row['count']) || 0;
     }
     return 0;
@@ -249,8 +249,76 @@ export const TotalCountStrategy: FacetStrategy<void, number> = {
   },
 };
 
+/**
+ * Strategy for fetching Binned Histogram data.
+ * Used for Histogram Bar Charts.
+ */
+export const HistogramStrategy: FacetStrategy<HistogramInput, HistogramOutput> =
+  {
+    buildQuery: (ctx) => {
+      // Step is required for this strategy
+      const { step } = ctx.options!;
+
+      let src: string | SelectQuery;
+      const outerFilters: Array<FilterExpr> = [];
+
+      if (typeof ctx.source === 'function') {
+        src = ctx.source(ctx.primaryFilter);
+        if (ctx.cascadingFilters.length > 0) {
+          outerFilters.push(...ctx.cascadingFilters);
+        }
+      } else {
+        src = isParam(ctx.source)
+          ? (ctx.source.value as string)
+          : (ctx.source as string);
+
+        if (ctx.primaryFilter) {
+          outerFilters.push(ctx.primaryFilter);
+        }
+        if (ctx.cascadingFilters.length > 0) {
+          outerFilters.push(...ctx.cascadingFilters);
+        }
+      }
+
+      const col = mSql.column(ctx.column);
+      const stepLit = mSql.literal(step);
+
+      // DuckDB-friendly binning: floor(col / step) * step
+      const binExpr = mSql.sql`FLOOR(${col} / ${stepLit}) * ${stepLit}`;
+
+      const statement = mSql.Query.from(src)
+        .select({
+          bin: binExpr,
+          count: mSql.count(),
+        })
+        .groupby(mSql.sql`1`) // Group by the first selected column alias (bin)
+        .orderby(mSql.asc(mSql.sql`1`));
+
+      if (outerFilters.length > 0) {
+        statement.where(mSql.and(...outerFilters));
+      }
+
+      return statement;
+    },
+
+    transformResult: (rows) => {
+      return rows.map((row) => ({
+        bin: Number(row['bin']),
+        count: Number(row['count']),
+      }));
+    },
+
+    validate: (data) => {
+      if (!Array.isArray(data)) {
+        throw new Error('Histogram data must be an array');
+      }
+      return data as HistogramOutput;
+    },
+  };
+
 export const defaultFacetStrategies: Record<string, FacetStrategy<any, any>> = {
   unique: UniqueValuesStrategy,
   minmax: MinMaxStrategy,
   totalCount: TotalCountStrategy,
+  histogram: HistogramStrategy,
 };

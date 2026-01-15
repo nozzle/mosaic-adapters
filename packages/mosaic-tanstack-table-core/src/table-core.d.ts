@@ -1,3 +1,4 @@
+/* eslint-disable unused-imports/no-unused-vars */
 /**
  * Module augmentation for TanStack Table to support Mosaic-specific metadata.
  * Extends the ColumnMeta interface to include configuration for SQL column mapping,

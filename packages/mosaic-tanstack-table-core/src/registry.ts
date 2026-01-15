@@ -4,6 +4,7 @@
  *
  * Implements strict type contracts for Inputs and Outputs of strategies.
  */
+import type { HistogramInput, HistogramOutput } from './facet-strategies';
 
 export class StrategyRegistry<T> {
   private strategies = new Map<string, T>();
@@ -64,6 +65,7 @@ export interface MosaicFacetRegistry {
   unique: FacetStrategyDefinition<void, Array<unknown>>;
   minmax: FacetStrategyDefinition<void, [number, number] | undefined>;
   totalCount: FacetStrategyDefinition<void, number>;
+  histogram: FacetStrategyDefinition<HistogramInput, HistogramOutput>;
 }
 
 export type FacetStrategyKey = keyof MosaicFacetRegistry;
