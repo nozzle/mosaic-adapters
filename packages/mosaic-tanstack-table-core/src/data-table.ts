@@ -511,7 +511,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         this.#columnMapper = new ColumnMapper(inferredColumns as any);
       }
 
-      // CRITICAL FIX: Re-run sidecars (TotalCount, Facets) now that the schema is known.
+      // Re-run sidecars (TotalCount, Facets) now that the schema is known.
       // This ensures that filters from the URL (state) can be correctly translated
       // to SQL because the ColumnMapper is now populated.
       // Without this, sidecars run with empty filters (TotalCount = All rows),

@@ -1,10 +1,12 @@
 import * as React from 'react';
-import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import {
+  HistogramController,
+  isRangeTuple,
   useMosaicHistogram,
   useMosaicTableFilter,
 } from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicSelectionValue } from '@nozzleio/react-mosaic';
 import type { Selection } from '@uwdata/mosaic-core';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -24,6 +26,8 @@ interface HistogramProps {
  * A visual Histogram component that acts as a Range Filter.
  * Displays binned data and allows interaction to filter the underlying selection.
  * Supports Click-to-Filter and Click-to-Clear (Toggle).
+ *
+ * REFACTORED: Now uses core Logic Controllers and Hooks to remove boilerplate.
  */
 export function HistogramFilter({
   table,
@@ -33,49 +37,38 @@ export function HistogramFilter({
   filterBy,
   height = 80,
 }: HistogramProps) {
-  const bins = useMosaicHistogram({ table, column, step, filterBy });
+  // 1. Use Enhanced Hook (returns bins + stats)
+  const { bins, stats } = useMosaicHistogram({ table, column, step, filterBy });
 
+  // 2. Use Selection Value Hook (No more useEffect boilerplate)
+  const selectionValue = useMosaicSelectionValue<[number, number]>(selection);
+
+  // 3. Setup Filter & Controller
   const filter = useMosaicTableFilter({
     selection,
     column,
     mode: 'RANGE',
   });
 
-  // Reactive State for Selection
-  // We must listen to the selection to know when to show the active state/clear button,
-  // because cross-filtering often excludes "self", so the data (bins) won't update to trigger a re-render.
-  const [currentValue, setCurrentValue] = useState(selection.value);
+  // Controller manages the toggle logic and precision math
+  // We recreate it on render (it's lightweight) or it could be memoized
+  const controller = React.useMemo(
+    () => new HistogramController(filter),
+    [filter],
+  );
 
-  useEffect(() => {
-    const onValueChange = () => {
-      setCurrentValue(selection.value);
-    };
-    selection.addEventListener('value', onValueChange);
-    return () => selection.removeEventListener('value', onValueChange);
-  }, [selection]);
-
-  const maxCount = Math.max(...bins.map((b) => b.count), 0);
-
-  // Determine active range from reactive state
-  const selectionValue = currentValue as [number, number] | null | undefined;
-  const activeMin = selectionValue?.[0] ?? null;
-  const activeMax = selectionValue?.[1] ?? null;
-
+  // 4. Derive Active State using Core Type Guard
+  const activeMin = isRangeTuple(selectionValue) ? selectionValue[0] : null;
+  const activeMax = isRangeTuple(selectionValue) ? selectionValue[1] : null;
   const hasActiveSelection = activeMin !== null && activeMax !== null;
 
+  // 5. Simplified Interaction Handler
   const handleBinClick = (binStart: number, binEnd: number) => {
-    // Toggle Logic: If clicking the exact same range, clear it.
-    // We use a small epsilon for float comparison safety
-    const isSameMin =
-      activeMin !== null && Math.abs(activeMin - binStart) < 0.0001;
-    const isSameMax =
-      activeMax !== null && Math.abs(activeMax - binEnd) < 0.0001;
-
-    if (isSameMin && isSameMax) {
-      filter.setValue(null);
-    } else {
-      filter.setValue([binStart, binEnd]);
-    }
+    controller.handleBinClick(
+      binStart,
+      binEnd,
+      isRangeTuple(selectionValue) ? selectionValue : null,
+    );
   };
 
   return (
@@ -107,9 +100,11 @@ export function HistogramFilter({
           </div>
         ) : (
           bins.map((item) => {
-            const heightPct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+            // Use derived stats for rendering
+            const heightPct =
+              stats.maxCount > 0 ? (item.count / stats.maxCount) * 100 : 0;
             const binStart = item.bin;
-            // Round to avoid floating point precision issues
+            // Round to avoid floating point precision issues in display/logic
             const binEnd = Math.round((item.bin + step) * 100) / 100;
 
             // Highlight bar if it falls within the active filter range

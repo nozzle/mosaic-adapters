@@ -12,6 +12,8 @@ export * from './query/filter-factory';
 export * from './registry';
 export * from './sidecar-client';
 export * from './sidecar-manager';
+export * from './sidecar-factory';
+export * from './controllers/histogram-controller';
 export * from './domain/sql-identifier';
 export * from './schema';
 export * from './schema/factory';
