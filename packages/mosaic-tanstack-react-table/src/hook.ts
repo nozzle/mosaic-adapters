@@ -3,6 +3,7 @@ import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-cor
 import { useStore } from '@tanstack/react-store';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import type {
+  IMosaicClient,
   MosaicDataTable,
   MosaicDataTableOptions,
 } from '@nozzleio/mosaic-tanstack-table-core';
@@ -45,7 +46,14 @@ export function useMosaicReactTable<TData extends RowData, TValue = any>(
   const store = useStore(client.store);
 
   const tableOptions = React.useMemo(
-    () => client.getTableOptions(store),
+    () => ({
+      ...client.getTableOptions(store),
+      meta: {
+        mosaicClient: client as unknown as IMosaicClient & {
+          requestFacet: (col: string, type: string) => void;
+        },
+      },
+    }),
     [client, store],
   );
 
