@@ -1,5 +1,9 @@
 import '@tanstack/react-table';
-import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
+import type { RowData } from '@tanstack/react-table';
+import type {
+  IMosaicClient,
+  MosaicDataTableColumnDefMetaOptions,
+} from '@nozzleio/mosaic-tanstack-react-table';
 
 // Module Augmentation for TanStack Table
 // This extends the core TanStack definitions to support Mosaic-specific metadata
@@ -16,5 +20,8 @@ declare module '@tanstack/react-table' {
   // eslint-disable-next-line unused-imports/no-unused-vars
   interface TableMeta<TData extends RowData> {
     selectedValue?: any;
+    mosaicClient?: IMosaicClient & {
+      requestFacet: (col: string, type: string) => void;
+    };
   }
 }

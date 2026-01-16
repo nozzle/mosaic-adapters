@@ -93,7 +93,10 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
                               header.getContext(),
                             )}
                         {header.column.getCanFilter() ? (
-                          <DataTableFilter column={header.column} />
+                          <DataTableFilter
+                            column={header.column}
+                            table={table}
+                          />
                         ) : null}
                       </div>
                     </TableHead>
@@ -377,8 +380,10 @@ export function DataTableColumnHeader<TData, TValue>({
 
 function DataTableFilter<TData, TValue>({
   column,
+  table,
 }: {
   column: Column<TData, TValue>;
+  table: TanStackTable<TData>;
 }) {
   const { filterVariant = 'text', rangeFilterType } =
     column.columnDef.meta || {};
@@ -386,7 +391,11 @@ function DataTableFilter<TData, TValue>({
   return (
     <div className="pb-2 w-full">
       {filterVariant === 'range' ? (
-        <DebouncedRangeFilter column={column} type={rangeFilterType} />
+        <DebouncedRangeFilter
+          column={column}
+          table={table}
+          type={rangeFilterType}
+        />
       ) : filterVariant === 'select' ? (
         <SelectFilter column={column} />
       ) : (
@@ -398,15 +407,24 @@ function DataTableFilter<TData, TValue>({
 
 function DebouncedRangeFilter({
   column,
+  table,
   type = 'number',
   placeholderPrefix = '',
 }: {
   column: any;
+  table: any;
   type?: 'number' | 'date' | 'datetime';
   placeholderPrefix?: string;
 }) {
   const columnFilterValue = column.getFilterValue();
   const minMax = column.getFacetedMinMaxValues();
+
+  // Trigger lazy loading of min/max values on interaction
+  const handleFocus = () => {
+    if (!minMax) {
+      table.options.meta?.mosaicClient?.requestFacet(column.id, 'minmax');
+    }
+  };
 
   // Determine the HTML Input type and Step
   let inputType = 'number';
@@ -460,6 +478,7 @@ function DebouncedRangeFilter({
         type={inputType}
         step={step}
         value={currentMin}
+        onFocus={handleFocus}
         onChange={(value) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           column.setFilterValue((old: [any, any]) => [value, old?.[1]])
@@ -473,6 +492,7 @@ function DebouncedRangeFilter({
         type={inputType}
         step={step}
         value={currentMax}
+        onFocus={handleFocus}
         onChange={(value) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           column.setFilterValue((old: [any, any]) => [old?.[0], value])
