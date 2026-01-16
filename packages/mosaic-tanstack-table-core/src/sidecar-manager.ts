@@ -50,14 +50,14 @@ export class SidecarManager<TData extends RowData, TValue = unknown> {
     const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
 
     // We cast to any here because config.options is strictly typed based on the current
-    // strategies in the registry. If all current strategies have void input, TS infers
-    // this as always undefined, making the OR check "unnecessary".
-    // However, since the registry is extensible via module augmentation, we must
-    // handle cases where options are provided.
-    const strategyOptions = (config.options as any) || {};
+    // strategies in the registry.
+    const strategyInput = config.options;
+
+    // Do not spread strategyInput. It belongs in the 'options' property of the context.
+    // This ensures ctx.options is populated for strategies that require inputs (like step for histograms).
     const queryOptions = {
       sortMode,
-      ...strategyOptions,
+      options: strategyInput,
     };
 
     const client = new SidecarClient(

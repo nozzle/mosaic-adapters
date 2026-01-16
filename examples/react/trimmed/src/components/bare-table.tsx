@@ -45,7 +45,7 @@ export function BareTable<TData extends RowData, TValue>(props: {
                       )}
                       {header.column.getCanFilter() ? (
                         <div>
-                          <Filter column={header.column} />
+                          <Filter column={header.column} table={table} />
                         </div>
                       ) : null}
                     </div>
@@ -242,8 +242,10 @@ function ColumnVisibilityControls<TData extends RowData>({
 
 function Filter<TData extends RowData, TValue>({
   column,
+  table,
 }: {
   column: Column<TData, TValue>;
+  table: Table<TData>;
 }) {
   const { filterVariant = 'text' } = column.columnDef.meta ?? {};
 
@@ -251,12 +253,13 @@ function Filter<TData extends RowData, TValue>({
     <>
       <DebouncedRangeFilter
         column={column}
+        table={table}
         type={column.columnDef.meta?.rangeFilterType}
       />
     </>
   ) : filterVariant === 'select' ? (
     <>
-      <SelectFilter column={column} />
+      <SelectFilter column={column} table={table} />
     </>
   ) : (
     <>
@@ -289,8 +292,10 @@ function DebouncedTextFilter<TData extends RowData, TValue>({
 
 function SelectFilter<TData extends RowData, TValue>({
   column,
+  table,
 }: {
   column: Column<TData, TValue>;
+  table: Table<TData>;
 }) {
   const columnFilterValue = column.getFilterValue();
   const uniqueValues = column.getFacetedUniqueValues();
@@ -303,6 +308,8 @@ function SelectFilter<TData extends RowData, TValue>({
   return (
     <select
       onChange={(e) => column.setFilterValue(e.target.value)}
+      // Lazy load facet data on interaction
+      onFocus={() => table.mosaic.requestFacet(column.id, 'unique')}
       value={columnFilterValue?.toString() || ''}
       className="px-2 py-1 text-xs border rounded shadow-sm w-full font-normal text-gray-600 focus:border-blue-500 outline-none bg-white mt-1"
       onClick={(e) => e.stopPropagation()}
@@ -319,16 +326,25 @@ function SelectFilter<TData extends RowData, TValue>({
 
 function DebouncedRangeFilter<TData extends RowData, TValue>({
   column,
+  table,
   type = 'number',
   placeholderPrefix = '',
 }: {
   column: Column<TData, TValue>;
+  table: Table<TData>;
   type?: 'number' | 'date' | 'datetime';
   placeholderPrefix?: string;
 }) {
   // Explicitly typing the filter value tuple to avoid 'any'
   const columnFilterValue = column.getFilterValue() as [any, any] | undefined;
   const minMax = column.getFacetedMinMaxValues();
+
+  // Lazy Fetch on Focus
+  const handleFocus = () => {
+    if (!minMax) {
+      table.mosaic.requestFacet(column.id, 'minmax');
+    }
+  };
 
   // Determine the HTML Input type and step
   let inputType = 'number';
@@ -378,6 +394,7 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
         type={inputType}
         step={step}
         value={currentMin}
+        onFocus={handleFocus}
         onChange={(value) =>
           column.setFilterValue((old: [any, any] | undefined) => [
             value,
@@ -392,6 +409,7 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
         type={inputType}
         step={step}
         value={currentMax}
+        onFocus={handleFocus}
         onChange={(value) =>
           column.setFilterValue((old: [any, any] | undefined) => [
             old?.[0],

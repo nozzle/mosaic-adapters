@@ -1,6 +1,8 @@
 /**
  * View component for the Athletes dataset.
  * Features: Type-Safe Table + Interactive vgplot Chart + Hover Interactions.
+ * Implements a Cross-Filtering topology where histograms filter the rest of the dashboard
+ * but exclude themselves to preserve context.
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -18,8 +20,10 @@ import { useRegisterSelections } from '@nozzleio/react-mosaic';
 import type { Row } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
-import { simpleDateFormatter } from '@/lib/utils';
+import { cn, simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
+import { HistogramFilter } from '@/components/histogram-filter';
+import { Button } from '@/components/ui/button';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
@@ -30,12 +34,38 @@ const HOVER_SOURCE = { id: 'hover' };
 // Predicate to ensure queries return 0 rows when no selection is active
 const NO_SELECTION_PREDICATE = mSql.sql`1 = 0`;
 
+// --- Topology Definition ---
+// 1. Inputs (Menu, Search, Chart Brush)
 const $query = vg.Selection.intersect();
+// 2. Table Headers
 const $tableFilter = vg.Selection.intersect();
-const $combined = vg.Selection.intersect({ include: [$query, $tableFilter] });
+// 3. Histogram Brushes
+const $weight = vg.Selection.intersect();
+const $height = vg.Selection.intersect();
+
+// --- Derived Contexts ---
+// Weight Histogram Context: Everything EXCEPT Weight
+const $ctxWeight = vg.Selection.intersect({
+  include: [$query, $tableFilter, $height],
+});
+
+// Height Histogram Context: Everything EXCEPT Height
+const $ctxHeight = vg.Selection.intersect({
+  include: [$query, $tableFilter, $weight],
+});
+
+// Table Context: Everything EXCEPT Table Filters (handled internally by table prop)
+// The table receives filters from Inputs and Histograms.
+const $tableContext = vg.Selection.intersect({
+  include: [$query, $weight, $height],
+});
+
+// Global Combined: The Intersection of All Filters (Used for the Chart points)
+const $combined = vg.Selection.intersect({
+  include: [$query, $tableFilter, $weight, $height],
+});
 
 // Transient selection for high-frequency hover interactions (Last-writer wins)
-// We initialize it with the "No Selection" predicate so the overlay layer starts empty.
 const $hover = vg.Selection.single();
 $hover.update({
   source: HOVER_SOURCE,
@@ -60,7 +90,6 @@ interface AthleteRowData {
 }
 
 // 2. Strict SQL Mapping
-// We pass the generic type to ensure keys match AthleteRowData
 const AthleteMapping = createMosaicMapping<AthleteRowData>({
   id: { sqlColumn: 'id', type: 'INTEGER', filterType: 'EQUALS' },
   name: { sqlColumn: 'name', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
@@ -70,7 +99,6 @@ const AthleteMapping = createMosaicMapping<AthleteRowData>({
     filterType: 'EQUALS',
   },
   sex: { sqlColumn: 'sex', type: 'VARCHAR', filterType: 'EQUALS' },
-  // Map date_of_birth to 'DATE_RANGE' to correctly handle string-based date filtering
   date_of_birth: {
     sqlColumn: 'date_of_birth',
     type: 'DATE',
@@ -87,12 +115,13 @@ const AthleteMapping = createMosaicMapping<AthleteRowData>({
 
 export function AthletesView() {
   const [isPending, setIsPending] = useState(true);
+  const [histogramMode, setHistogramMode] = useState<'sidebar' | 'header'>(
+    'sidebar',
+  );
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
   // Register active selections for global reset.
-  // Note: We exclude $hover because its default state is "1=0" (empty),
-  // whereas Global Reset sets selections to null (all).
-  useRegisterSelections([$query, $tableFilter, $combined]);
+  useRegisterSelections([$query, $tableFilter, $weight, $height]);
 
   // Ensure hover state is reset to "empty" on mount/unmount
   useEffect(() => {
@@ -155,8 +184,7 @@ export function AthletesView() {
             r: 2,
             opacity: 0.05,
           }),
-          // Hover Overlay: Shows a specific dot when hovering the table row
-          // Starts empty due to NO_SELECTION_PREDICATE
+          // Hover Overlay
           vg.dot(vg.from(tableName, { filterBy: $hover }), {
             x: 'weight',
             y: 'height',
@@ -191,22 +219,85 @@ export function AthletesView() {
   }, []);
 
   return (
-    <>
-      <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
-      {isPending && <div className="italic">Loading data...</div>}
-      <div ref={chartDivRef} />
-      <hr className="my-4" />
-      <h4 className="text-lg mb-2 font-medium">Table area</h4>
-      {isPending ? (
-        <div className="italic">Loading data...</div>
-      ) : (
-        <AthletesTable />
-      )}
-    </>
+    <div className="flex flex-col gap-6">
+      <div className="flex justify-end items-center gap-2">
+        <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+          Histogram Mode:
+        </span>
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200">
+          <Button
+            variant={histogramMode === 'sidebar' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setHistogramMode('sidebar')}
+            className="h-6 text-xs px-2"
+          >
+            Sidebar
+          </Button>
+          <Button
+            variant={histogramMode === 'header' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setHistogramMode('header')}
+            className="h-6 text-xs px-2"
+          >
+            In-Column
+          </Button>
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          'grid gap-6',
+          histogramMode === 'sidebar'
+            ? 'grid-cols-1 lg:grid-cols-[1fr_300px]'
+            : 'grid-cols-1',
+        )}
+      >
+        <div>
+          <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
+          {isPending && <div className="italic">Loading data...</div>}
+          <div ref={chartDivRef} />
+        </div>
+
+        {histogramMode === 'sidebar' && (
+          <div className="flex flex-col gap-4 border-l pl-4">
+            <h4 className="text-lg font-medium">Filters</h4>
+            <HistogramFilter
+              table={tableName}
+              column="weight"
+              step={5}
+              selection={$weight}
+              filterBy={$ctxWeight}
+            />
+            <HistogramFilter
+              table={tableName}
+              column="height"
+              step={0.05}
+              selection={$height}
+              filterBy={$ctxHeight}
+            />
+          </div>
+        )}
+      </div>
+
+      <hr />
+
+      <div>
+        <h4 className="text-lg mb-2 font-medium">Table area</h4>
+        {isPending ? (
+          <div className="italic">Loading data...</div>
+        ) : (
+          <AthletesTable histogramMode={histogramMode} />
+        )}
+      </div>
+    </div>
   );
 }
 
-function AthletesTable() {
+function AthletesTable({
+  histogramMode,
+}: {
+  histogramMode: 'sidebar' | 'header';
+}) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
   const columnHelper = useMemo(
@@ -259,7 +350,25 @@ function AthletesTable() {
       }),
       columnHelper.accessor('height', {
         header: ({ column }) => (
-          <RenderTableHeader column={column} title="Height" view={view} />
+          <div
+            className={
+              histogramMode === 'header'
+                ? 'min-w-[180px] flex flex-col gap-1 pb-1'
+                : ''
+            }
+          >
+            <RenderTableHeader column={column} title="Height" view={view} />
+            {histogramMode === 'header' && (
+              <HistogramFilter
+                table={tableName}
+                column="height"
+                step={0.05}
+                selection={$height}
+                filterBy={$ctxHeight}
+                height={40}
+              />
+            )}
+          </div>
         ),
         cell: (props) => `${props.getValue()}m`,
         meta: {
@@ -270,7 +379,25 @@ function AthletesTable() {
       }),
       columnHelper.accessor('weight', {
         header: ({ column }) => (
-          <RenderTableHeader column={column} title="Weight" view={view} />
+          <div
+            className={
+              histogramMode === 'header'
+                ? 'min-w-[180px] flex flex-col gap-1 pb-1'
+                : ''
+            }
+          >
+            <RenderTableHeader column={column} title="Weight" view={view} />
+            {histogramMode === 'header' && (
+              <HistogramFilter
+                table={tableName}
+                column="weight"
+                step={5}
+                selection={$weight}
+                filterBy={$ctxWeight}
+                height={40}
+              />
+            )}
+          </div>
         ),
         cell: (props) => `${props.getValue()}kg`,
         meta: {
@@ -293,20 +420,18 @@ function AthletesTable() {
       columnHelper.accessor('bronze', {}),
       columnHelper.accessor('info', {}),
     ],
-    [view, columnHelper],
+    [view, histogramMode, columnHelper],
   );
 
   const { tableOptions } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
-    filterBy: $query,
+    filterBy: $tableContext,
     tableFilterSelection: $tableFilter,
     columns,
     mapping: AthleteMapping,
-    // Optional converter to ensure data types (esp. Dates)
     converter: (row) =>
       ({
         ...row,
-        // Coerce fields that might come as strings/numbers from raw SQL
         date_of_birth: coerceDate(row.date_of_birth),
         height: coerceNumber(row.height),
         weight: coerceNumber(row.weight),

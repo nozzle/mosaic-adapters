@@ -53,6 +53,10 @@ import type { FilterStrategy } from './query/filter-factory';
 import type { FacetStrategy } from './facet-strategies';
 import type { SidecarRequest } from './registry';
 
+/**
+ * Factory to create a typed MosaicDataTable instance.
+ * Simplifies instantiation for consumers.
+ */
 export function createMosaicDataTableClient<
   TData extends RowData,
   TValue = unknown,
@@ -61,6 +65,15 @@ export function createMosaicDataTableClient<
   return client;
 }
 
+/**
+ * The core adapter class that bridges TanStack Table state with Mosaic SQL execution.
+ *
+ * Responsibilities:
+ * 1. State Sync: Translates TanStack sorting/filtering/pagination into SQL queries.
+ * 2. Lifecycle: Manages connection to the Mosaic Coordinator.
+ * 3. Data Ingestion: Converts Arrow results from DuckDB into Javascript objects for the table.
+ * 4. Sidecar Management: Orchestrates auxiliary queries (Total Count, Facets) separately from the main data thread.
+ */
 export class MosaicDataTable<TData extends RowData, TValue = unknown>
   extends MosaicClient
   implements IMosaicClient
@@ -104,6 +117,16 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       ...options.facetStrategies,
     });
 
+    /**
+     * Sidecar Manager initialization.
+     *
+     * Architectural Note: Auto-faceting (eagerly fetching unique values for all columns)
+     * is intentionally omitted. For wide tables (100+ columns) or high-cardinality data,
+     * eager faceting causes massive query storms and memory spikes.
+     *
+     * Instead, we rely on the `SidecarManager` to lazy-load facets only when explicitly
+     * requested by the UI (e.g., via `table.mosaic.requestFacet` on filter focus).
+     */
     this.sidecarManager = new SidecarManager(this, this.facetRegistry);
 
     logger.debug(
@@ -145,6 +168,11 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this;
   }
 
+  /**
+   * Updates configuration options and handles necessary state resets.
+   * If the table source changes, this performs an atomic reset of the table state
+   * to prevent stale filters/sorting from applying to the new dataset.
+   */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
     const sourceChanged = this.source !== options.table;
 
@@ -259,7 +287,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       }
 
       this.#columnMapper = new ColumnMapper(options.columns, options.mapping);
-      this.#initializeAutoFacets(options.columns);
     } else if (sourceChanged) {
       this.schema = [];
       this.#columnMapper = undefined;
@@ -277,25 +304,16 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     }
   }
 
-  #initializeAutoFacets(columns: Array<ColumnDef<TData, TValue>>) {
-    columns.forEach((col) => {
-      const facetType = col.meta?.mosaicDataTable?.facet;
-      const colId =
-        col.id ||
-        ('accessorKey' in col && typeof col.accessorKey === 'string'
-          ? col.accessorKey
-          : undefined);
-
-      if (!facetType || !colId) {
-        return;
-      }
-
-      this.sidecarManager.requestFacet(colId, facetType);
-    });
-  }
-
   public requestAuxiliary(config: SidecarRequest<TData>) {
     this.sidecarManager.requestAuxiliary(config);
+  }
+
+  /**
+   * Request a specific facet for a column.
+   * Useful for lazy-loading metadata like Min/Max or Unique Values.
+   */
+  public requestFacet(columnId: string, type: string) {
+    this.sidecarManager.requestFacet(columnId, type);
   }
 
   resolveSource(filter?: FilterExpr | null): string | SelectQuery {
@@ -308,6 +326,10 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this.source as string;
   }
 
+  /**
+   * Constructs the main table query based on the current state.
+   * Applies filters, sorting, and pagination logic via the QueryBuilder.
+   */
   override query(
     primaryFilter?: FilterExpr | null | undefined,
   ): SelectQuery | null {
@@ -327,11 +349,20 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       highlightPredicate = this.options.highlightBy.predicate(null) ?? null;
     }
 
-    let effectiveFilter = hardFilter;
+    // Combine filters avoiding unsafe conditionals
+    const filtersToApply: Array<FilterExpr> = [];
+    if (hardFilter) {
+      filtersToApply.push(hardFilter);
+    }
     if (crossFilterPredicate) {
-      effectiveFilter = effectiveFilter
-        ? mSql.and(effectiveFilter, crossFilterPredicate)
-        : crossFilterPredicate;
+      filtersToApply.push(crossFilterPredicate);
+    }
+
+    let effectiveFilter: FilterExpr | null = null;
+    if (filtersToApply.length > 1) {
+      effectiveFilter = mSql.and(...filtersToApply);
+    } else if (filtersToApply.length === 1) {
+      effectiveFilter = filtersToApply[0]!;
     }
 
     const safeHighlightPredicate = crossFilterPredicate
@@ -342,21 +373,35 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
     const mapper = this.#columnMapper;
 
-    const statement = mapper
-      ? buildTableQuery({
-          source,
-          tableState,
-          mapper: mapper,
-          mapping: this.options.mapping,
-          totalRowsColumnName: this.#sql_total_rows,
-          highlightPredicate: safeHighlightPredicate,
-          manualHighlight: this.options.manualHighlight,
-          totalRowsMode: this.options.totalRowsMode,
-          filterRegistry: this.filterRegistry,
-        })
-      : mSql.Query.from(source).select('*', {
-          [this.#sql_total_rows]: mSql.sql`COUNT(*) OVER()`,
-        });
+    // Use QueryBuilder if mapper exists.
+    // If NO mapper (initial discovery state), use a lightweight fallback.
+    // Updated: Fallback no longer forces COUNT(*) OVER() unless explicitly requested.
+    let statement: SelectQuery;
+
+    if (mapper) {
+      statement = buildTableQuery({
+        source,
+        tableState,
+        mapper: mapper,
+        mapping: this.options.mapping,
+        totalRowsColumnName: this.#sql_total_rows,
+        highlightPredicate: safeHighlightPredicate,
+        manualHighlight: this.options.manualHighlight,
+        totalRowsMode: this.options.totalRowsMode,
+        filterRegistry: this.filterRegistry,
+      });
+    } else {
+      // Fallback Path (Introspection Pending)
+      const selects: Record<string, any> = { '*': mSql.column('*') };
+
+      // Only inject the heavy Window Function if explicitly in 'window' mode.
+      // This prevents the "Death Window" (OOM) on initial load for large datasets.
+      if (this.options.totalRowsMode === 'window') {
+        selects[this.#sql_total_rows] = mSql.sql`COUNT(*) OVER()`;
+      }
+
+      statement = mSql.Query.from(source).select(selects);
+    }
 
     if (effectiveFilter && typeof this.source === 'string') {
       statement.where(effectiveFilter);
@@ -378,11 +423,19 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         value: tableState.columnFilters,
         predicate: predicate,
       });
+    } else {
+      // Apply simple limit to fallback query to ensure it's lightweight
+      statement.limit(tableState.pagination.pageSize || 50);
     }
 
     return statement;
   }
 
+  /**
+   * Retrieves the current set of filters applied by the table columns.
+   * Allows exclusion of a specific column's filter, which is critical for
+   * Facet Menus (so a column doesn't filter its own available options).
+   */
   public getCascadingFilters(options?: {
     excludeColumnId?: string;
   }): Array<mSql.FilterExpr> {
@@ -474,6 +527,10 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this;
   }
 
+  /**
+   * Prepares the client for execution.
+   * If using a raw string source, this inspects the schema to build the column mapper.
+   */
   override async prepare(): Promise<void> {
     const source = this.resolveSource();
 
@@ -493,6 +550,15 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           id: s.column,
         }));
         this.#columnMapper = new ColumnMapper(inferredColumns as any);
+      }
+
+      // Re-run sidecars (TotalCount, Facets) now that the schema is known.
+      // This ensures that filters from the URL (state) can be correctly translated
+      // to SQL because the ColumnMapper is now populated.
+      // Without this, sidecars run with empty filters (TotalCount = All rows),
+      // because getCascadingFilters() returns [] when the mapper is missing.
+      if (this.schema.length > 0) {
+        this.sidecarManager.refreshAll();
       }
     }
     return Promise.resolve();

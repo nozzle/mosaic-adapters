@@ -2,6 +2,7 @@ import * as React from 'react';
 import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-core';
 import { useStore } from '@tanstack/react-store';
 import { useCoordinator } from '@nozzleio/react-mosaic';
+import { createMosaicFeature } from './feature';
 import type {
   MosaicDataTable,
   MosaicDataTableOptions,
@@ -45,7 +46,12 @@ export function useMosaicReactTable<TData extends RowData, TValue = any>(
   const store = useStore(client.store);
 
   const tableOptions = React.useMemo(
-    () => client.getTableOptions(store),
+    () => ({
+      ...client.getTableOptions(store),
+      // Inject the Mosaic Feature for first-class API access
+      _features: [createMosaicFeature(client)],
+      // Legacy meta injection removed
+    }),
     [client, store],
   );
 

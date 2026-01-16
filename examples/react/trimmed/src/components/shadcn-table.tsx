@@ -93,7 +93,10 @@ export function ShadcnTable<TData extends RowData, TValue>(props: {
                               header.getContext(),
                             )}
                         {header.column.getCanFilter() ? (
-                          <DataTableFilter column={header.column} />
+                          <DataTableFilter
+                            column={header.column}
+                            table={table}
+                          />
                         ) : null}
                       </div>
                     </TableHead>
@@ -375,10 +378,12 @@ export function DataTableColumnHeader<TData, TValue>({
   );
 }
 
-function DataTableFilter<TData, TValue>({
+function DataTableFilter<TData extends RowData, TValue>({
   column,
+  table,
 }: {
   column: Column<TData, TValue>;
+  table: TanStackTable<TData>;
 }) {
   const { filterVariant = 'text', rangeFilterType } =
     column.columnDef.meta || {};
@@ -386,9 +391,13 @@ function DataTableFilter<TData, TValue>({
   return (
     <div className="pb-2 w-full">
       {filterVariant === 'range' ? (
-        <DebouncedRangeFilter column={column} type={rangeFilterType} />
+        <DebouncedRangeFilter
+          column={column}
+          table={table}
+          type={rangeFilterType}
+        />
       ) : filterVariant === 'select' ? (
-        <SelectFilter column={column} />
+        <SelectFilter column={column} table={table} />
       ) : (
         <DebouncedTextFilter column={column} />
       )}
@@ -396,17 +405,27 @@ function DataTableFilter<TData, TValue>({
   );
 }
 
-function DebouncedRangeFilter({
+function DebouncedRangeFilter<TData extends RowData, TValue>({
   column,
+  table,
   type = 'number',
   placeholderPrefix = '',
 }: {
-  column: any;
+  column: Column<TData, TValue>;
+  table: TanStackTable<TData>;
   type?: 'number' | 'date' | 'datetime';
   placeholderPrefix?: string;
 }) {
   const columnFilterValue = column.getFilterValue();
   const minMax = column.getFacetedMinMaxValues();
+
+  // Trigger lazy loading of min/max values on interaction
+  const handleFocus = () => {
+    if (!minMax) {
+      // Updated to use the first-class Mosaic API on the table instance
+      table.mosaic.requestFacet(column.id, 'minmax');
+    }
+  };
 
   // Determine the HTML Input type and Step
   let inputType = 'number';
@@ -460,6 +479,7 @@ function DebouncedRangeFilter({
         type={inputType}
         step={step}
         value={currentMin}
+        onFocus={handleFocus}
         onChange={(value) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           column.setFilterValue((old: [any, any]) => [value, old?.[1]])
@@ -473,6 +493,7 @@ function DebouncedRangeFilter({
         type={inputType}
         step={step}
         value={currentMax}
+        onFocus={handleFocus}
         onChange={(value) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           column.setFilterValue((old: [any, any]) => [old?.[0], value])
@@ -509,8 +530,10 @@ function DebouncedTextFilter<TData extends RowData, TValue>({
 
 function SelectFilter<TData extends RowData, TValue>({
   column,
+  table,
 }: {
   column: Column<TData, TValue>;
+  table: TanStackTable<TData>;
 }) {
   const colId = column.id;
   const columnFilterValue = column.getFilterValue();
@@ -531,6 +554,8 @@ function SelectFilter<TData extends RowData, TValue>({
     <NativeSelect
       value={value}
       onChange={(e) => column.setFilterValue(e.target.value)}
+      // Lazy load facet data on interaction (focus/click)
+      onFocus={() => table.mosaic.requestFacet(colId, 'unique')}
       className="px-2 py-1 text-xs w-full"
     >
       <NativeSelectOption value="">All</NativeSelectOption>
