@@ -280,6 +280,14 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     this.sidecarManager.requestAuxiliary(config);
   }
 
+  /**
+   * Request a specific facet for a column.
+   * Useful for lazy-loading metadata like Min/Max or Unique Values.
+   */
+  public requestFacet(columnId: string, type: string) {
+    this.sidecarManager.requestFacet(columnId, type);
+  }
+
   resolveSource(filter?: FilterExpr | null): string | SelectQuery {
     if (typeof this.source === 'function') {
       return this.source(filter);

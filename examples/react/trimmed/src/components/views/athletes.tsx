@@ -1,6 +1,8 @@
 /**
  * View component for the Athletes dataset.
  * Features: Type-Safe Table + Interactive vgplot Chart + Hover Interactions.
+ * Implements a Cross-Filtering topology where histograms filter the rest of the dashboard
+ * but exclude themselves to preserve context.
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -52,6 +54,7 @@ const $ctxHeight = vg.Selection.intersect({
 });
 
 // Table Context: Everything EXCEPT Table Filters (handled internally by table prop)
+// The table receives filters from Inputs and Histograms.
 const $tableContext = vg.Selection.intersect({
   include: [$query, $weight, $height],
 });
@@ -62,7 +65,6 @@ const $combined = vg.Selection.intersect({
 });
 
 // Transient selection for high-frequency hover interactions (Last-writer wins)
-// We initialize it with the "No Selection" predicate so the overlay layer starts empty.
 const $hover = vg.Selection.single();
 $hover.update({
   source: HOVER_SOURCE,
@@ -87,7 +89,6 @@ interface AthleteRowData {
 }
 
 // 2. Strict SQL Mapping
-// We pass the generic type to ensure keys match AthleteRowData
 const AthleteMapping = createMosaicMapping<AthleteRowData>({
   id: { sqlColumn: 'id', type: 'INTEGER', filterType: 'EQUALS' },
   name: { sqlColumn: 'name', type: 'VARCHAR', filterType: 'PARTIAL_ILIKE' },
@@ -97,7 +98,6 @@ const AthleteMapping = createMosaicMapping<AthleteRowData>({
     filterType: 'EQUALS',
   },
   sex: { sqlColumn: 'sex', type: 'VARCHAR', filterType: 'EQUALS' },
-  // Map date_of_birth to 'DATE_RANGE' to correctly handle string-based date filtering
   date_of_birth: {
     sqlColumn: 'date_of_birth',
     type: 'DATE',
@@ -117,7 +117,6 @@ export function AthletesView() {
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
   // Register active selections for global reset.
-  // We register the roots so that resetAll() clears them.
   useRegisterSelections([$query, $tableFilter, $weight, $height]);
 
   // Ensure hover state is reset to "empty" on mount/unmount
@@ -181,8 +180,7 @@ export function AthletesView() {
             r: 2,
             opacity: 0.05,
           }),
-          // Hover Overlay: Shows a specific dot when hovering the table row
-          // Starts empty due to NO_SELECTION_PREDICATE
+          // Hover Overlay
           vg.dot(vg.from(tableName, { filterBy: $hover }), {
             x: 'weight',
             y: 'height',
@@ -226,12 +224,6 @@ export function AthletesView() {
         </div>
         <div className="flex flex-col gap-4 border-l pl-4">
           <h4 className="text-lg font-medium">Filters</h4>
-          {/* 
-              Histogram Filter Configuration:
-              - selection: Writes to the specific selection (e.g. $weight)
-              - filterBy: Reads from the specific Context (e.g. $ctxWeight), 
-                which includes everything EXCEPT $weight.
-          */}
           <HistogramFilter
             table={tableName}
             column="weight"
@@ -355,18 +347,13 @@ function AthletesTable() {
 
   const { tableOptions } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
-    // The Table should be filtered by everything EXCEPT its own column filters.
-    // $tableContext = Inputs + Weight + Height.
-    // $tableFilter is passed separately to tableFilterSelection.
     filterBy: $tableContext,
     tableFilterSelection: $tableFilter,
     columns,
     mapping: AthleteMapping,
-    // Optional converter to ensure data types (esp. Dates)
     converter: (row) =>
       ({
         ...row,
-        // Coerce fields that might come as strings/numbers from raw SQL
         date_of_birth: coerceDate(row.date_of_birth),
         height: coerceNumber(row.height),
         weight: coerceNumber(row.weight),
