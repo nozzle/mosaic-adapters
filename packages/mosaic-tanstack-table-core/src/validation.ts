@@ -24,6 +24,18 @@ export function assertIsArray(value: unknown): asserts value is Array<unknown> {
 }
 
 /**
+ * Type guard to check if a value is a valid numeric range tuple [number, number].
+ */
+export function isRangeTuple(val: unknown): val is [number, number] {
+  return (
+    Array.isArray(val) &&
+    val.length === 2 &&
+    typeof val[0] === 'number' &&
+    typeof val[1] === 'number'
+  );
+}
+
+/**
  * Coerces a database value (String, BigInt, Number) to a standard Number.
  * Returns 0 for null/undefined/empty string to match standard default behavior.
  */

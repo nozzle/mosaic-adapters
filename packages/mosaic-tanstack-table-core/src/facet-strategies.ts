@@ -259,6 +259,13 @@ export const HistogramStrategy: FacetStrategy<HistogramInput, HistogramOutput> =
       // Step is required for this strategy
       const { step } = ctx.options!;
 
+      // Validate step to prevent division by zero in SQL
+      if (typeof step !== 'number' || step <= 0) {
+        throw new Error(
+          `[HistogramStrategy] Invalid step value: ${step}. Step must be a number > 0.`,
+        );
+      }
+
       let src: string | SelectQuery;
       const outerFilters: Array<FilterExpr> = [];
 
@@ -293,6 +300,9 @@ export const HistogramStrategy: FacetStrategy<HistogramInput, HistogramOutput> =
         })
         .groupby(mSql.sql`1`) // Group by the first selected column alias (bin)
         .orderby(mSql.asc(mSql.sql`1`));
+
+      // Fix: Exclude NULL values explicitly to prevent "NULL" bins being coerced to "0" in JavaScript
+      statement.where(mSql.sql`${col} IS NOT NULL`);
 
       if (outerFilters.length > 0) {
         statement.where(mSql.and(...outerFilters));
