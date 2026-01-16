@@ -20,9 +20,10 @@ import { useRegisterSelections } from '@nozzleio/react-mosaic';
 import type { Row } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
-import { simpleDateFormatter } from '@/lib/utils';
+import { cn, simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 import { HistogramFilter } from '@/components/histogram-filter';
+import { Button } from '@/components/ui/button';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
@@ -114,6 +115,9 @@ const AthleteMapping = createMosaicMapping<AthleteRowData>({
 
 export function AthletesView() {
   const [isPending, setIsPending] = useState(true);
+  const [histogramMode, setHistogramMode] = useState<'sidebar' | 'header'>(
+    'sidebar',
+  );
   const chartDivRef = useRef<HTMLDivElement | null>(null);
 
   // Register active selections for global reset.
@@ -216,29 +220,63 @@ export function AthletesView() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+      <div className="flex justify-end items-center gap-2">
+        <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+          Histogram Mode:
+        </span>
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200">
+          <Button
+            variant={histogramMode === 'sidebar' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setHistogramMode('sidebar')}
+            className="h-6 text-xs px-2"
+          >
+            Sidebar
+          </Button>
+          <Button
+            variant={histogramMode === 'header' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setHistogramMode('header')}
+            className="h-6 text-xs px-2"
+          >
+            In-Column
+          </Button>
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          'grid gap-6',
+          histogramMode === 'sidebar'
+            ? 'grid-cols-1 lg:grid-cols-[1fr_300px]'
+            : 'grid-cols-1',
+        )}
+      >
         <div>
           <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
           {isPending && <div className="italic">Loading data...</div>}
           <div ref={chartDivRef} />
         </div>
-        <div className="flex flex-col gap-4 border-l pl-4">
-          <h4 className="text-lg font-medium">Filters</h4>
-          <HistogramFilter
-            table={tableName}
-            column="weight"
-            step={5}
-            selection={$weight}
-            filterBy={$ctxWeight}
-          />
-          <HistogramFilter
-            table={tableName}
-            column="height"
-            step={0.05}
-            selection={$height}
-            filterBy={$ctxHeight}
-          />
-        </div>
+
+        {histogramMode === 'sidebar' && (
+          <div className="flex flex-col gap-4 border-l pl-4">
+            <h4 className="text-lg font-medium">Filters</h4>
+            <HistogramFilter
+              table={tableName}
+              column="weight"
+              step={5}
+              selection={$weight}
+              filterBy={$ctxWeight}
+            />
+            <HistogramFilter
+              table={tableName}
+              column="height"
+              step={0.05}
+              selection={$height}
+              filterBy={$ctxHeight}
+            />
+          </div>
+        )}
       </div>
 
       <hr />
@@ -248,14 +286,18 @@ export function AthletesView() {
         {isPending ? (
           <div className="italic">Loading data...</div>
         ) : (
-          <AthletesTable />
+          <AthletesTable histogramMode={histogramMode} />
         )}
       </div>
     </div>
   );
 }
 
-function AthletesTable() {
+function AthletesTable({
+  histogramMode,
+}: {
+  histogramMode: 'sidebar' | 'header';
+}) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
   const columnHelper = useMemo(
@@ -308,7 +350,25 @@ function AthletesTable() {
       }),
       columnHelper.accessor('height', {
         header: ({ column }) => (
-          <RenderTableHeader column={column} title="Height" view={view} />
+          <div
+            className={
+              histogramMode === 'header'
+                ? 'min-w-[180px] flex flex-col gap-1 pb-1'
+                : ''
+            }
+          >
+            <RenderTableHeader column={column} title="Height" view={view} />
+            {histogramMode === 'header' && (
+              <HistogramFilter
+                table={tableName}
+                column="height"
+                step={0.05}
+                selection={$height}
+                filterBy={$ctxHeight}
+                height={40}
+              />
+            )}
+          </div>
         ),
         cell: (props) => `${props.getValue()}m`,
         meta: {
@@ -319,7 +379,25 @@ function AthletesTable() {
       }),
       columnHelper.accessor('weight', {
         header: ({ column }) => (
-          <RenderTableHeader column={column} title="Weight" view={view} />
+          <div
+            className={
+              histogramMode === 'header'
+                ? 'min-w-[180px] flex flex-col gap-1 pb-1'
+                : ''
+            }
+          >
+            <RenderTableHeader column={column} title="Weight" view={view} />
+            {histogramMode === 'header' && (
+              <HistogramFilter
+                table={tableName}
+                column="weight"
+                step={5}
+                selection={$weight}
+                filterBy={$ctxWeight}
+                height={40}
+              />
+            )}
+          </div>
         ),
         cell: (props) => `${props.getValue()}kg`,
         meta: {
@@ -342,7 +420,7 @@ function AthletesTable() {
       columnHelper.accessor('bronze', {}),
       columnHelper.accessor('info', {}),
     ],
-    [view, columnHelper],
+    [view, histogramMode, columnHelper],
   );
 
   const { tableOptions } = useMosaicReactTable<AthleteRowData>({
