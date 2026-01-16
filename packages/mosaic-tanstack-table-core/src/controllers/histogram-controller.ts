@@ -26,6 +26,11 @@ export class HistogramController {
       return;
     }
 
+    /**
+     * Epsilon for floating point comparison.
+     * Used to determine if a clicked bin edge matches the current active selection
+     * boundary, accounting for small precision errors in binary math.
+     */
     const EPSILON = 0.0001;
     const [activeMin, activeMax] = currentSelection;
 
