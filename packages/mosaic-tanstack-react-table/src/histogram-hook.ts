@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   HistogramStrategy,
-  SidecarClient,
+  createTypedSidecarClient,
 } from '@nozzleio/mosaic-tanstack-table-core';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import type {
@@ -18,9 +18,14 @@ interface UseMosaicHistogramOptions {
   filterBy?: Selection;
 }
 
+// Create the strongly typed client class outside the hook
+const TypedHistogramClient = createTypedSidecarClient(HistogramStrategy);
+
 /**
  * A specialized hook for fetching histogram data via a Sidecar Client.
  * Automatically manages the lifecycle of the client and updates state on changes.
+ *
+ * Now uses the TypedSidecarClient for strict input checking and returns calculated stats.
  */
 export function useMosaicHistogram({
   table,
@@ -31,25 +36,27 @@ export function useMosaicHistogram({
   const coordinator = useCoordinator();
   const [data, setData] = useState<HistogramOutput>([]);
 
+  // Memoize stats to avoid recalculation on every render
+  const stats = useMemo(() => {
+    const maxCount = Math.max(...data.map((d) => d.count), 0);
+    const totalCount = data.reduce((sum, d) => sum + d.count, 0);
+    return { maxCount, totalCount };
+  }, [data]);
+
   useEffect(() => {
-    // Instantiate the Sidecar Client directly
-    // This bypasses the Table Core's manager but uses the same robust base class
-    const client = new SidecarClient(
-      {
-        source: table,
-        column: column,
-        filterBy: filterBy,
-        // Histogram usually listens to ALL filters to show current distribution
-        // Cascading filters can be passed here if specific exclusion logic is needed
-        getFilters: () => [],
-        // The SidecarClient expects options to be passed as a partial context.
-        // The FacetQueryContext defines 'options' as the field holding TInput (HistogramInput).
-        options: { options: { step } },
-        onResult: (result) => setData(result),
-        __debugName: `Histogram:${column}`,
-      },
-      HistogramStrategy,
-    );
+    // Instantiate the Typed Client
+    // This enforces that 'options' contains 'step' as a number
+    const client = new TypedHistogramClient({
+      source: table,
+      column: column,
+      filterBy: filterBy,
+      // Histogram usually listens to ALL filters to show current distribution
+      getFilters: () => [],
+      // Type Safety: options is strictly typed to HistogramInput
+      options: { step },
+      onResult: (result) => setData(result),
+      __debugName: `Histogram:${column}`,
+    });
 
     client.setCoordinator(coordinator);
     const cleanup = client.connect();
@@ -63,5 +70,5 @@ export function useMosaicHistogram({
     };
   }, [table, column, step, filterBy, coordinator]);
 
-  return data;
+  return { bins: data, stats };
 }
