@@ -378,7 +378,7 @@ export function DataTableColumnHeader<TData, TValue>({
   );
 }
 
-function DataTableFilter<TData, TValue>({
+function DataTableFilter<TData extends RowData, TValue>({
   column,
   table,
 }: {
@@ -405,14 +405,14 @@ function DataTableFilter<TData, TValue>({
   );
 }
 
-function DebouncedRangeFilter({
+function DebouncedRangeFilter<TData extends RowData, TValue>({
   column,
   table,
   type = 'number',
   placeholderPrefix = '',
 }: {
-  column: any;
-  table: any;
+  column: Column<TData, TValue>;
+  table: TanStackTable<TData>;
   type?: 'number' | 'date' | 'datetime';
   placeholderPrefix?: string;
 }) {
