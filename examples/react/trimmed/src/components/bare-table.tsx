@@ -259,7 +259,7 @@ function Filter<TData extends RowData, TValue>({
     </>
   ) : filterVariant === 'select' ? (
     <>
-      <SelectFilter column={column} />
+      <SelectFilter column={column} table={table} />
     </>
   ) : (
     <>
@@ -292,8 +292,10 @@ function DebouncedTextFilter<TData extends RowData, TValue>({
 
 function SelectFilter<TData extends RowData, TValue>({
   column,
+  table,
 }: {
   column: Column<TData, TValue>;
+  table: Table<TData>;
 }) {
   const columnFilterValue = column.getFilterValue();
   const uniqueValues = column.getFacetedUniqueValues();
@@ -306,6 +308,8 @@ function SelectFilter<TData extends RowData, TValue>({
   return (
     <select
       onChange={(e) => column.setFilterValue(e.target.value)}
+      // Lazy load facet data on interaction
+      onFocus={() => table.mosaic.requestFacet(column.id, 'unique')}
       value={columnFilterValue?.toString() || ''}
       className="px-2 py-1 text-xs border rounded shadow-sm w-full font-normal text-gray-600 focus:border-blue-500 outline-none bg-white mt-1"
       onClick={(e) => e.stopPropagation()}
@@ -338,7 +342,7 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
   // Lazy Fetch on Focus
   const handleFocus = () => {
     if (!minMax) {
-      table.options.meta?.mosaicClient?.requestFacet(column.id, 'minmax');
+      table.mosaic.requestFacet(column.id, 'minmax');
     }
   };
 

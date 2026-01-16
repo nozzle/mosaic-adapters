@@ -397,7 +397,7 @@ function DataTableFilter<TData extends RowData, TValue>({
           type={rangeFilterType}
         />
       ) : filterVariant === 'select' ? (
-        <SelectFilter column={column} />
+        <SelectFilter column={column} table={table} />
       ) : (
         <DebouncedTextFilter column={column} />
       )}
@@ -422,7 +422,8 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
   // Trigger lazy loading of min/max values on interaction
   const handleFocus = () => {
     if (!minMax) {
-      table.options.meta?.mosaicClient?.requestFacet(column.id, 'minmax');
+      // Updated to use the first-class Mosaic API on the table instance
+      table.mosaic.requestFacet(column.id, 'minmax');
     }
   };
 
@@ -529,8 +530,10 @@ function DebouncedTextFilter<TData extends RowData, TValue>({
 
 function SelectFilter<TData extends RowData, TValue>({
   column,
+  table,
 }: {
   column: Column<TData, TValue>;
+  table: TanStackTable<TData>;
 }) {
   const colId = column.id;
   const columnFilterValue = column.getFilterValue();
@@ -551,6 +554,8 @@ function SelectFilter<TData extends RowData, TValue>({
     <NativeSelect
       value={value}
       onChange={(e) => column.setFilterValue(e.target.value)}
+      // Lazy load facet data on interaction (focus/click)
+      onFocus={() => table.mosaic.requestFacet(colId, 'unique')}
       className="px-2 py-1 text-xs w-full"
     >
       <NativeSelectOption value="">All</NativeSelectOption>

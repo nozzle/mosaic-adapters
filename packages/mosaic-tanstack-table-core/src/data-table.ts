@@ -53,6 +53,10 @@ import type { FilterStrategy } from './query/filter-factory';
 import type { FacetStrategy } from './facet-strategies';
 import type { SidecarRequest } from './registry';
 
+/**
+ * Factory to create a typed MosaicDataTable instance.
+ * Simplifies instantiation for consumers.
+ */
 export function createMosaicDataTableClient<
   TData extends RowData,
   TValue = unknown,
@@ -61,6 +65,15 @@ export function createMosaicDataTableClient<
   return client;
 }
 
+/**
+ * The core adapter class that bridges TanStack Table state with Mosaic SQL execution.
+ *
+ * Responsibilities:
+ * 1. State Sync: Translates TanStack sorting/filtering/pagination into SQL queries.
+ * 2. Lifecycle: Manages connection to the Mosaic Coordinator.
+ * 3. Data Ingestion: Converts Arrow results from DuckDB into Javascript objects for the table.
+ * 4. Sidecar Management: Orchestrates auxiliary queries (Total Count, Facets) separately from the main data thread.
+ */
 export class MosaicDataTable<TData extends RowData, TValue = unknown>
   extends MosaicClient
   implements IMosaicClient
@@ -104,6 +117,16 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       ...options.facetStrategies,
     });
 
+    /**
+     * Sidecar Manager initialization.
+     *
+     * Architectural Note: Auto-faceting (eagerly fetching unique values for all columns)
+     * is intentionally omitted. For wide tables (100+ columns) or high-cardinality data,
+     * eager faceting causes massive query storms and memory spikes.
+     *
+     * Instead, we rely on the `SidecarManager` to lazy-load facets only when explicitly
+     * requested by the UI (e.g., via `table.mosaic.requestFacet` on filter focus).
+     */
     this.sidecarManager = new SidecarManager(this, this.facetRegistry);
 
     logger.debug(
@@ -145,6 +168,11 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this;
   }
 
+  /**
+   * Updates configuration options and handles necessary state resets.
+   * If the table source changes, this performs an atomic reset of the table state
+   * to prevent stale filters/sorting from applying to the new dataset.
+   */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
     const sourceChanged = this.source !== options.table;
 
@@ -298,6 +326,10 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this.source as string;
   }
 
+  /**
+   * Constructs the main table query based on the current state.
+   * Applies filters, sorting, and pagination logic via the QueryBuilder.
+   */
   override query(
     primaryFilter?: FilterExpr | null | undefined,
   ): SelectQuery | null {
@@ -399,6 +431,11 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return statement;
   }
 
+  /**
+   * Retrieves the current set of filters applied by the table columns.
+   * Allows exclusion of a specific column's filter, which is critical for
+   * Facet Menus (so a column doesn't filter its own available options).
+   */
   public getCascadingFilters(options?: {
     excludeColumnId?: string;
   }): Array<mSql.FilterExpr> {
@@ -490,6 +527,10 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this;
   }
 
+  /**
+   * Prepares the client for execution.
+   * If using a raw string source, this inspects the schema to build the column mapper.
+   */
   override async prepare(): Promise<void> {
     const source = this.resolveSource();
 

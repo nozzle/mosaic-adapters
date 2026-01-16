@@ -2,6 +2,7 @@ import '@tanstack/react-table';
 import type { RowData } from '@tanstack/react-table';
 import type {
   IMosaicClient,
+  MosaicDataTable,
   MosaicDataTableColumnDefMetaOptions,
 } from '@nozzleio/mosaic-tanstack-react-table';
 
@@ -15,6 +16,14 @@ declare module '@tanstack/react-table' {
   > extends MosaicDataTableColumnDefMetaOptions<TValue> {
     filterVariant?: 'text' | 'range' | 'select';
     rangeFilterType?: 'number' | 'date' | 'datetime';
+  }
+
+  interface Table<TData extends RowData> {
+    mosaic: {
+      requestFacet: (columnId: string, type: string) => void;
+      requestTotalCount: () => void;
+      client: MosaicDataTable<TData, any>;
+    };
   }
 
   // eslint-disable-next-line unused-imports/no-unused-vars
