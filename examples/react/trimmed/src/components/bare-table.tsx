@@ -309,7 +309,7 @@ function SelectFilter<TData extends RowData, TValue>({
     <select
       onChange={(e) => column.setFilterValue(e.target.value)}
       // Lazy load facet data on interaction
-      onFocus={() => table.mosaic.requestFacet(column.id, 'unique')}
+      onFocus={() => table.mosaicDataTable.requestFacet(column.id, 'unique')}
       value={columnFilterValue?.toString() || ''}
       className="px-2 py-1 text-xs border rounded shadow-sm w-full font-normal text-gray-600 focus:border-blue-500 outline-none bg-white mt-1"
       onClick={(e) => e.stopPropagation()}
@@ -342,7 +342,7 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
   // Lazy Fetch on Focus
   const handleFocus = () => {
     if (!minMax) {
-      table.mosaic.requestFacet(column.id, 'minmax');
+      table.mosaicDataTable.requestFacet(column.id, 'minmax');
     }
   };
 

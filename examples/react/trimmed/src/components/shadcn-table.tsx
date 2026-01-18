@@ -423,7 +423,7 @@ function DebouncedRangeFilter<TData extends RowData, TValue>({
   const handleFocus = () => {
     if (!minMax) {
       // Updated to use the first-class Mosaic API on the table instance
-      table.mosaic.requestFacet(column.id, 'minmax');
+      table.mosaicDataTable.requestFacet(column.id, 'minmax');
     }
   };
 
@@ -555,7 +555,7 @@ function SelectFilter<TData extends RowData, TValue>({
       value={value}
       onChange={(e) => column.setFilterValue(e.target.value)}
       // Lazy load facet data on interaction (focus/click)
-      onFocus={() => table.mosaic.requestFacet(colId, 'unique')}
+      onFocus={() => table.mosaicDataTable.requestFacet(colId, 'unique')}
       className="px-2 py-1 text-xs w-full"
     >
       <NativeSelectOption value="">All</NativeSelectOption>
