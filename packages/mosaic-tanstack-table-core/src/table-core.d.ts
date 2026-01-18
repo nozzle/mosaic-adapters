@@ -11,7 +11,7 @@ import type { MosaicDataTable } from './data-table';
 declare module '@tanstack/table-core' {
   // Extend the Table Instance with the first-class Mosaic API
   interface Table<TData extends RowData> {
-    mosaic: {
+    mosaicDataTable: {
       requestFacet: (columnId: string, type: string) => void;
       requestTotalCount: () => void;
       client: MosaicDataTable<TData, any>;

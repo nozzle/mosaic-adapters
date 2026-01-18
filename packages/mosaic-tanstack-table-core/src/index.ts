@@ -1,6 +1,3 @@
-// Import augmentation to ensure types are merged when consuming this package
-import './augmentation';
-
 export * from './data-table';
 export * from './facet-menu';
 export * from './selection-manager';
@@ -21,3 +18,4 @@ export * from './domain/sql-identifier';
 export * from './schema';
 export * from './schema/factory';
 export * from './constants';
+export * from './feature';

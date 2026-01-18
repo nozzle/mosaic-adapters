@@ -1,11 +1,12 @@
-import type { RowData, Table, TableFeature } from '@tanstack/react-table';
-import type { MosaicDataTable } from '@nozzleio/mosaic-tanstack-table-core';
+import type { RowData, Table, TableFeature } from '@tanstack/table-core';
+import type { MosaicDataTable } from './data-table';
 
 /**
  * Creates a TanStack Table Feature that injects the Mosaic Client API
  * directly into the table instance.
  *
- * This replaces the legacy pattern of injecting the client into `table.options.meta`.
+ * This exposes the 'mosaicDataTable' property on the table instance,
+ * providing access to facets, total counts, and the underlying client.
  */
 export const createMosaicFeature = <TData extends RowData, TValue = any>(
   client: MosaicDataTable<TData, TValue>,
@@ -13,7 +14,7 @@ export const createMosaicFeature = <TData extends RowData, TValue = any>(
   return {
     createTable: (table: Table<TData>) => {
       Object.assign(table, {
-        mosaic: {
+        mosaicDataTable: {
           requestFacet: (columnId: string, type: string) =>
             client.requestFacet(columnId, type),
           requestTotalCount: () => client.sidecarManager.requestTotalCount(),

@@ -30,6 +30,7 @@ import { SidecarManager } from './sidecar-manager';
 import { StrategyRegistry } from './registry';
 import { defaultFilterStrategies } from './query/filter-factory';
 import { defaultFacetStrategies } from './facet-strategies';
+import { createMosaicFeature } from './feature';
 
 import type {
   Coordinator,
@@ -53,10 +54,6 @@ import type { FilterStrategy } from './query/filter-factory';
 import type { FacetStrategy } from './facet-strategies';
 import type { SidecarRequest } from './registry';
 
-/**
- * Factory to create a typed MosaicDataTable instance.
- * Simplifies instantiation for consumers.
- */
 export function createMosaicDataTableClient<
   TData extends RowData,
   TValue = unknown,
@@ -67,12 +64,6 @@ export function createMosaicDataTableClient<
 
 /**
  * The core adapter class that bridges TanStack Table state with Mosaic SQL execution.
- *
- * Responsibilities:
- * 1. State Sync: Translates TanStack sorting/filtering/pagination into SQL queries.
- * 2. Lifecycle: Manages connection to the Mosaic Coordinator.
- * 3. Data Ingestion: Converts Arrow results from DuckDB into Javascript objects for the table.
- * 4. Sidecar Management: Orchestrates auxiliary queries (Total Count, Facets) separately from the main data thread.
  */
 export class MosaicDataTable<TData extends RowData, TValue = unknown>
   extends MosaicClient
@@ -794,6 +785,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       manualFiltering: true,
       rowCount: state.totalRows,
       ...state.tableOptions,
+      _features: [createMosaicFeature(this)],
     };
   }
 
