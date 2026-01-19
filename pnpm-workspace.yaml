@@ -3,7 +3,7 @@ packages:
   - examples/react/*
 
 catalog:
-  '@eslint-react/eslint-plugin': ^2.2.4
+  '@eslint-react/eslint-plugin': ^2.7.2
   '@playwright/test': ^1.57.0
   '@tanstack/eslint-config': ^0.3.4
   '@tanstack/vite-config': ^0.4.3
