@@ -132,14 +132,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this.lifecycle.isConnected;
   }
 
-  /**
-   * Helper to expose the column being used for Row Selection.
-   * Critical for the Filter Registry to label Summary Table filters correctly.
-   */
-  get rowSelectionColumn(): string | undefined {
-    return this.options.rowSelection?.column;
-  }
-
   setCoordinator(coordinator: Coordinator) {
     this.lifecycle.handleCoordinatorSwap(this.coordinator, coordinator, () =>
       this.connect(),
@@ -287,18 +279,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
       this.#columnMapper = new ColumnMapper(options.columns, options.mapping);
     } else if (options.mapping) {
-      // FIX: Infer columns from mapping if columns are missing but mapping exists.
-      // This is crucial for derived tables (Summary Tables) that use function sources.
-      // logger.debug(
-      //   'Core',
-      //   `[MosaicDataTable #${this.id}] Inferring columns from mapping definition.`,
-      // );
-      // const inferredDefs = Object.keys(options.mapping).map((key) => ({
-      //   accessorKey: key,
-      //   id: key,
-      // }));
-      // // @ts-ignore - Minimal defs are sufficient for the mapper logic
-      // this.#columnMapper = new ColumnMapper(inferredDefs, options.mapping);
+      // Columns might be inferred from mapping if not explicitly provided
     } else if (sourceChanged) {
       this.schema = [];
       this.#columnMapper = undefined;
@@ -387,7 +368,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
     // Use QueryBuilder if mapper exists.
     // If NO mapper (initial discovery state), use a lightweight fallback.
-    // Updated: Fallback no longer forces COUNT(*) OVER() unless explicitly requested.
     let statement: SelectQuery;
 
     if (mapper) {
@@ -407,15 +387,13 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       const selects: Record<string, any> = { '*': mSql.column('*') };
 
       // Only inject the heavy Window Function if explicitly in 'window' mode.
-      // This prevents the "Death Window" (OOM) on initial load for large datasets.
       if (this.options.totalRowsMode === 'window') {
         selects[this.#sql_total_rows] = mSql.sql`COUNT(*) OVER()`;
       }
 
       statement = mSql.Query.from(source).select(selects);
 
-      // FIX: Apply Sorting in Fallback Mode
-      // tableState.sorting is guaranteed to be an array by seedInitialTableState
+      // Apply Sorting in Fallback Mode
       if (tableState.sorting.length > 0) {
         const ordering = tableState.sorting.map((sort) => {
           // In fallback, we blindly trust the ID as the column name
@@ -447,7 +425,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         predicate: predicate,
       });
     } else {
-      // FIX: Apply Pagination Offset in Fallback Mode
+      // Apply Pagination Offset in Fallback Mode
       statement.limit(tableState.pagination.pageSize || 50);
       if (tableState.pagination.pageIndex > 0) {
         statement.offset(
@@ -572,19 +550,27 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
       const mapper = this.#columnMapper;
 
-      if (schema.length > 0 && this.options.columns === undefined && !mapper) {
+      if (schema.length > 0 && this.options.columns === undefined) {
         const inferredColumns = schema.map((s) => ({
           accessorKey: s.column,
           id: s.column,
         }));
-        this.#columnMapper = new ColumnMapper(inferredColumns as any);
+
+        if (!mapper) {
+          this.#columnMapper = new ColumnMapper(inferredColumns as any);
+        }
+
+        // Force a store update immediately so the UI knows we have columns.
+        // This unblocks loading states in React even before rows arrive.
+        batch(() => {
+          this.#store.setState((prev) => ({
+            ...prev,
+            columnDefs: inferredColumns as any,
+          }));
+        });
       }
 
       // Re-run sidecars (TotalCount, Facets) now that the schema is known.
-      // This ensures that filters from the URL (state) can be correctly translated
-      // to SQL because the ColumnMapper is now populated.
-      // Without this, sidecars run with empty filters (TotalCount = All rows),
-      // because getCascadingFilters() returns [] when the mapper is missing.
       if (this.schema.length > 0) {
         this.sidecarManager.refreshAll();
       }
@@ -622,7 +608,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.requestUpdate();
     };
 
-    // Internal filter listener (Handles Global Resets & External Clears)
+    // Internal filter listener (Handles Global Resets)
     const internalFilterCb = () => {
       const active = this.tableFilterSelection.active;
       // If the active update source is this table, ignore (we triggered it)
@@ -631,35 +617,30 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         return;
       }
 
-      // External Update detected (e.g. Active Filter Bar Removal or Global Reset)
+      // External Update detected (e.g., Global Reset)
       const val = this.tableFilterSelection.value;
+      const isEmpty = !val || (Array.isArray(val) && val.length === 0);
 
-      // Handle Full Reset or specific incoming value
-      let nextFilters = [];
-      if (val && Array.isArray(val) && val.length > 0) {
-        // If an external source set a value, try to use it (assuming compatible shape)
-        // Checks if it looks like [{id, value}]
-        if ('id' in val[0] && 'value' in val[0]) {
-          nextFilters = val as any;
-        }
-      }
-
-      batch(() => {
-        this.store.setState((prev) => ({
-          ...prev,
-          tableState: {
-            ...prev.tableState,
-            columnFilters: nextFilters,
-            // Only reset pagination if filters actually cleared or changed significantly
-            pagination: {
-              ...prev.tableState.pagination,
-              pageIndex: 0,
+      if (isEmpty) {
+        batch(() => {
+          this.store.setState((prev) => ({
+            ...prev,
+            tableState: {
+              ...prev.tableState,
+              columnFilters: [],
+              // Reset Pagination on global reset
+              pagination: {
+                ...prev.tableState.pagination,
+                pageIndex: 0,
+              },
+              // Reset Sorting on global reset
+              sorting: [],
             },
-          },
-        }));
-      });
-      // Request update to reflect the changed filters in the query
-      this.requestUpdate();
+          }));
+        });
+        // Request update to reflect the cleared filters in the query
+        this.requestUpdate();
+      }
     };
 
     const rowSelectionCb = () => {
@@ -768,7 +749,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         const oldState = this.store.state.tableState;
         const newState = functionalUpdate(updater, oldState);
 
-        // Detect silent rejections by TanStack table
+        // Detect silent rejections by TanStack Table
         // We calculate hashes of the filters to detect changes
         const hashedOldFilters = JSON.stringify(oldState.columnFilters);
         const hashedNewFilters = JSON.stringify(newState.columnFilters);
