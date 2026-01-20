@@ -132,6 +132,14 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return this.lifecycle.isConnected;
   }
 
+  /**
+   * Helper to expose the column being used for Row Selection.
+   * Critical for the Filter Registry to label Summary Table filters correctly.
+   */
+  get rowSelectionColumn(): string | undefined {
+    return this.options.rowSelection?.column;
+  }
+
   setCoordinator(coordinator: Coordinator) {
     this.lifecycle.handleCoordinatorSwap(this.coordinator, coordinator, () =>
       this.connect(),
@@ -614,7 +622,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.requestUpdate();
     };
 
-    // Internal filter listener (Handles Global Resets)
+    // Internal filter listener (Handles Global Resets & External Clears)
     const internalFilterCb = () => {
       const active = this.tableFilterSelection.active;
       // If the active update source is this table, ignore (we triggered it)
@@ -623,30 +631,35 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         return;
       }
 
-      // External Update detected (e.g., Global Reset)
+      // External Update detected (e.g. Active Filter Bar Removal or Global Reset)
       const val = this.tableFilterSelection.value;
-      const isEmpty = !val || (Array.isArray(val) && val.length === 0);
 
-      if (isEmpty) {
-        batch(() => {
-          this.store.setState((prev) => ({
-            ...prev,
-            tableState: {
-              ...prev.tableState,
-              columnFilters: [],
-              // Reset Pagination on global reset
-              pagination: {
-                ...prev.tableState.pagination,
-                pageIndex: 0,
-              },
-              // Reset Sorting on global reset
-              sorting: [],
-            },
-          }));
-        });
-        // Request update to reflect the cleared filters in the query
-        this.requestUpdate();
+      // Handle Full Reset or specific incoming value
+      let nextFilters = [];
+      if (val && Array.isArray(val) && val.length > 0) {
+        // If an external source set a value, try to use it (assuming compatible shape)
+        // Checks if it looks like [{id, value}]
+        if ('id' in val[0] && 'value' in val[0]) {
+          nextFilters = val as any;
+        }
       }
+
+      batch(() => {
+        this.store.setState((prev) => ({
+          ...prev,
+          tableState: {
+            ...prev.tableState,
+            columnFilters: nextFilters,
+            // Only reset pagination if filters actually cleared or changed significantly
+            pagination: {
+              ...prev.tableState.pagination,
+              pageIndex: 0,
+            },
+          },
+        }));
+      });
+      // Request update to reflect the changed filters in the query
+      this.requestUpdate();
     };
 
     const rowSelectionCb = () => {

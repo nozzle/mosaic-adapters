@@ -1,5 +1,5 @@
-import type { Selection } from '@uwdata/mosaic-core';
 import { Store } from '@tanstack/store';
+import type { Selection } from '@uwdata/mosaic-core';
 
 /**
  * Configuration for a logical group of filters.
@@ -36,6 +36,8 @@ export interface ActiveFilter {
   selection: Selection;
   /** The original source object that generated this filter */
   sourceObject: unknown;
+  /** If this is part of a larger object (like Table Filters), identifying key */
+  subId?: string;
 }
 
 /**
@@ -47,7 +49,7 @@ export class MosaicFilterRegistry {
   private groups = new Map<string, FilterGroupConfig>();
   private registrations = new Map<Selection, SelectionRegistration>();
 
-  public store = new Store<{ filters: ActiveFilter[] }>({ filters: [] });
+  public store = new Store<{ filters: Array<ActiveFilter> }>({ filters: [] });
 
   /**
    * Registers a group definition.
@@ -81,11 +83,10 @@ export class MosaicFilterRegistry {
    * Aggregates all clauses from all selections, normalizes them, and updates the store.
    */
   private handleUpdate = () => {
-    const allFilters: ActiveFilter[] = [];
+    const allFilters: Array<ActiveFilter> = [];
 
     for (const [selection, config] of this.registrations.entries()) {
       // Access internal clauses of the selection.
-      // Note: In standard Mosaic usage, 'clauses' is where the active state lives.
       const clauses = (selection as any).clauses || [];
 
       clauses.forEach((clause: any) => {
@@ -97,60 +98,61 @@ export class MosaicFilterRegistry {
           return;
         }
 
-        // 1. Resolve Source ID and Label
-        let label = 'Unknown Filter';
+        // --- Logic to resolve Source ID ---
         let sourceId = 'unknown';
 
         if (sourceClient) {
-          // Attempt to extract column info or debug name
-          // Check for 'column' property which exists on most Mosaic clients/filters
-          if (sourceClient.column) {
+          if (sourceClient.rowSelectionColumn) {
+            // Case: MosaicDataTable (Summary Row Selection)
+            sourceId = sourceClient.rowSelectionColumn;
+          } else if (sourceClient.column) {
+            // Case: MosaicFacetMenu or similar
             sourceId = sourceClient.column;
-            label = sourceId;
           } else if (sourceClient.options?.column) {
             sourceId = sourceClient.options.column;
-            label = sourceId;
           } else if (sourceClient.debugName) {
-            label = sourceClient.debugName;
+            sourceId = sourceClient.debugName;
           }
         }
 
-        // Apply Label Overrides
-        const mappedLabel = config.labelMap?.[sourceId];
-        if (mappedLabel) {
-          label = mappedLabel;
-        } else if (config.labelMap?.['*']) {
-          // specific fallback if needed, or simple default behavior above
-          label = config.labelMap['*'];
+        // --- Logic to explode TanStack Filter Arrays (Detail Table) ---
+        // Heuristic: Array of objects with { id, value }
+        const isTanStackFilterArray =
+          Array.isArray(rawValue) &&
+          rawValue.length > 0 &&
+          typeof rawValue[0] === 'object' && // Check if item is object (Fix for "Cannot use 'in' operator")
+          rawValue[0] !== null &&
+          'id' in rawValue[0] &&
+          'value' in rawValue[0];
+
+        if (isTanStackFilterArray) {
+          (rawValue as Array<{ id: string; value: unknown }>).forEach(
+            (item) => {
+              const itemSourceId = item.id;
+              const itemValue = item.value;
+
+              this.addActiveFilter(
+                allFilters,
+                config,
+                itemSourceId,
+                itemValue,
+                selection,
+                sourceClient,
+                itemSourceId, // subId
+              );
+            },
+          );
+        } else {
+          // Standard Single Value
+          this.addActiveFilter(
+            allFilters,
+            config,
+            sourceId,
+            rawValue,
+            selection,
+            sourceClient,
+          );
         }
-
-        // 2. Format Value
-        let formatted = String(rawValue);
-
-        const formatter = config.formatterMap?.[sourceId];
-        if (formatter) {
-          formatted = formatter(rawValue);
-        } else if (Array.isArray(rawValue)) {
-          // Default range/list formatting
-          if (rawValue.length === 2 && typeof rawValue[0] === 'number') {
-            formatted = `${rawValue[0]} - ${rawValue[1]}`;
-          } else {
-            formatted = rawValue.join(', ');
-          }
-        } else if (rawValue instanceof Date) {
-          formatted = rawValue.toLocaleDateString();
-        }
-
-        allFilters.push({
-          id: `${config.groupId}-${sourceId}-${JSON.stringify(rawValue)}`,
-          groupId: config.groupId,
-          sourceId,
-          label,
-          value: rawValue,
-          formattedValue: formatted,
-          selection,
-          sourceObject: sourceClient,
-        });
       });
     }
 
@@ -164,12 +166,87 @@ export class MosaicFilterRegistry {
     this.store.setState({ filters: allFilters });
   };
 
+  private addActiveFilter(
+    list: Array<ActiveFilter>,
+    config: SelectionRegistration,
+    sourceId: string,
+    value: unknown,
+    selection: Selection,
+    sourceObject: unknown,
+    subId?: string,
+  ) {
+    let label = sourceId;
+
+    // Apply Label Overrides
+    const mappedLabel = config.labelMap?.[sourceId];
+    if (mappedLabel) {
+      label = mappedLabel;
+    } else if (config.labelMap?.['*']) {
+      label = config.labelMap['*'];
+    }
+
+    let formatted = String(value);
+    const formatter = config.formatterMap?.[sourceId];
+
+    if (formatter) {
+      formatted = formatter(value);
+    } else if (Array.isArray(value)) {
+      // Default range/list formatting
+      if (value.length === 2 && typeof value[0] === 'number') {
+        formatted = `${value[0]} - ${value[1]}`;
+      } else {
+        formatted = value.join(', ');
+      }
+    } else if (value instanceof Date) {
+      formatted = value.toLocaleDateString();
+    } else if (typeof value === 'object') {
+      // Safe stringify for complex objects that slipped through
+      try {
+        formatted = JSON.stringify(value);
+      } catch {
+        formatted = '[Complex Value]';
+      }
+    }
+
+    list.push({
+      id: `${config.groupId}-${sourceId}-${JSON.stringify(value)}`,
+      groupId: config.groupId,
+      sourceId,
+      label,
+      value,
+      formattedValue: formatted,
+      selection,
+      sourceObject,
+      subId,
+    });
+  }
+
   /**
    * Removes a specific filter.
-   * Updates the underlying selection by setting the value for the specific source to null.
+   * Updates the underlying selection.
+   * Supports granular removal for Table Filters by mutating the array and writing back.
    */
   removeFilter(filter: ActiveFilter) {
-    if (filter.sourceObject) {
+    if (!filter.sourceObject) {
+      return;
+    }
+
+    // Check if this is a sub-filter (part of an array, like Table Column Filters)
+    if (filter.subId && Array.isArray((filter.selection as any).value)) {
+      const currentVal = (filter.selection as any).value as Array<{
+        id: string;
+        value: unknown;
+      }>;
+      // Filter out the specific item
+      const nextVal = currentVal.filter((item) => item.id !== filter.subId);
+
+      filter.selection.update({
+        source: filter.sourceObject as object,
+        value: nextVal, // Write back the modified array
+        predicate: null, // Let the source (Table) regenerate the predicate internally if needed, or pass null to force a refresh cycle
+      });
+    } else {
+      // Standard clearing
       filter.selection.update({
         source: filter.sourceObject as object,
         value: null,
