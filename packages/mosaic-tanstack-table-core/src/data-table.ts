@@ -278,6 +278,19 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       }
 
       this.#columnMapper = new ColumnMapper(options.columns, options.mapping);
+    } else if (options.mapping) {
+      // FIX: Infer columns from mapping if columns are missing but mapping exists.
+      // This is crucial for derived tables (Summary Tables) that use function sources.
+      // logger.debug(
+      //   'Core',
+      //   `[MosaicDataTable #${this.id}] Inferring columns from mapping definition.`,
+      // );
+      // const inferredDefs = Object.keys(options.mapping).map((key) => ({
+      //   accessorKey: key,
+      //   id: key,
+      // }));
+      // // @ts-ignore - Minimal defs are sufficient for the mapper logic
+      // this.#columnMapper = new ColumnMapper(inferredDefs, options.mapping);
     } else if (sourceChanged) {
       this.schema = [];
       this.#columnMapper = undefined;
@@ -392,6 +405,17 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       }
 
       statement = mSql.Query.from(source).select(selects);
+
+      // FIX: Apply Sorting in Fallback Mode
+      // tableState.sorting is guaranteed to be an array by seedInitialTableState
+      if (tableState.sorting.length > 0) {
+        const ordering = tableState.sorting.map((sort) => {
+          // In fallback, we blindly trust the ID as the column name
+          const col = mSql.column(sort.id);
+          return sort.desc ? mSql.desc(col) : mSql.asc(col);
+        });
+        statement.orderby(...ordering);
+      }
     }
 
     if (effectiveFilter && typeof this.source === 'string') {
@@ -415,8 +439,13 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         predicate: predicate,
       });
     } else {
-      // Apply simple limit to fallback query to ensure it's lightweight
+      // FIX: Apply Pagination Offset in Fallback Mode
       statement.limit(tableState.pagination.pageSize || 50);
+      if (tableState.pagination.pageIndex > 0) {
+        statement.offset(
+          tableState.pagination.pageIndex * tableState.pagination.pageSize,
+        );
+      }
     }
 
     return statement;

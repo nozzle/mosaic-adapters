@@ -308,6 +308,12 @@ importers:
 
   packages/react-mosaic:
     dependencies:
+      '@nozzleio/mosaic-tanstack-table-core':
+        specifier: workspace:*
+        version: link:../mosaic-tanstack-table-core
+      '@tanstack/react-store':
+        specifier: 'catalog:'
+        version: 0.8.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
         version: 0.21.1

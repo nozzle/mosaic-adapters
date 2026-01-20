@@ -1,5 +1,8 @@
 import * as React from 'react';
-import { SelectionRegistryProvider } from '@nozzleio/react-mosaic';
+import {
+  MosaicFilterProvider,
+  SelectionRegistryProvider,
+} from '@nozzleio/react-mosaic';
 import { TableStyleSwitcher } from './render-table';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
@@ -56,7 +59,9 @@ export function RenderView() {
   return (
     <ConnectorProvider>
       <SelectionRegistryProvider>
-        <RenderViewContent />
+        <MosaicFilterProvider>
+          <RenderViewContent />
+        </MosaicFilterProvider>
       </SelectionRegistryProvider>
     </ConnectorProvider>
   );

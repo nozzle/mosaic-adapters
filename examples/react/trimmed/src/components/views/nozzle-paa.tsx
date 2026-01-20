@@ -12,7 +12,11 @@ import {
   createMosaicMapping,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { useCoordinator } from '@nozzleio/react-mosaic';
+import {
+  useCoordinator,
+  useFilterRegistry,
+  useRegisterFilterSource,
+} from '@nozzleio/react-mosaic';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import type { Selection } from '@uwdata/mosaic-core';
@@ -25,6 +29,7 @@ import {
   SearchableSelectFilter,
   TextFilter,
 } from '@/components/paa/paa-filters';
+import { ActiveFilterBar } from '@/components/active-filter-bar';
 
 const TABLE_NAME = 'nozzle_paa';
 const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
@@ -73,6 +78,57 @@ export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
   const coordinator = useCoordinator();
   const topology = usePaaTopology();
+  const filterRegistry = useFilterRegistry();
+
+  // Register Filter Groups on mount
+  useEffect(() => {
+    filterRegistry.registerGroup({
+      id: 'global',
+      label: 'Global Controls',
+      priority: 1,
+    });
+    filterRegistry.registerGroup({
+      id: 'summary',
+      label: 'Summary Selections',
+      priority: 2,
+    });
+    filterRegistry.registerGroup({
+      id: 'detail',
+      label: 'Detail Filters',
+      priority: 3,
+    });
+  }, [filterRegistry]);
+
+  // Register Top-Level Selections
+  // We use the hook to register the 'input' selection (Top Bar)
+  useRegisterFilterSource(topology.input, 'global', {
+    labelMap: {
+      domain: 'Domain',
+      phrase: 'Keyword',
+      keyword_groups: 'Keyword Group',
+      description: 'Answer Text',
+      requested: 'Date Range',
+      device: 'Device',
+      'related_phrase.phrase': 'Question',
+    },
+  });
+
+  // Register Summary Table Output Selections
+  useRegisterFilterSource(topology.selections.phrase, 'summary', {
+    labelMap: { phrase: 'Selected Keyword' },
+  });
+  useRegisterFilterSource(topology.selections.question, 'summary', {
+    labelMap: { 'related_phrase.phrase': 'Selected Question' },
+  });
+  useRegisterFilterSource(topology.selections.domain, 'summary', {
+    labelMap: { domain: 'Selected Domain' },
+  });
+  useRegisterFilterSource(topology.selections.url, 'summary', {
+    labelMap: { url: 'Selected URL' },
+  });
+
+  // Register Detail Table Column Filters
+  useRegisterFilterSource(topology.detail, 'detail');
 
   useEffect(() => {
     async function init() {
@@ -100,6 +156,9 @@ export function NozzlePaaView() {
   return (
     <div className="flex flex-col gap-6 bg-slate-50/50 min-h-screen pb-10">
       <HeaderSection topology={topology} />
+
+      {/* Insert Active Filter Bar Here */}
+      <ActiveFilterBar />
 
       <div className="px-6 -mt-8 relative z-10">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">

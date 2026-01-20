@@ -19,3 +19,4 @@ export * from './schema';
 export * from './schema/factory';
 export * from './constants';
 export * from './feature';
+export * from './filter-registry';
