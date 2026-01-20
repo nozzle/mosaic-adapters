@@ -11,7 +11,6 @@ import { Selection } from '@uwdata/mosaic-core';
 import {
   useMosaicSelection,
   useRegisterSelections,
-  useSelectionListener,
 } from '@nozzleio/react-mosaic';
 import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
 
@@ -90,22 +89,9 @@ export function usePaaTopology() {
     };
   }, [input, detail, selDomain, selPhrase, selQuestion, selUrl]);
 
-  // 4. Logic: Clear Summary Selections when Top Bar Inputs change
-  // When high-level filters change (e.g. changing the Date Range),
-  // we clear the drill-down selections to prevent invalid states.
-  useSelectionListener(input, () => {
-    const allSummarySelections = [selDomain, selPhrase, selQuestion, selUrl];
-    allSummarySelections.forEach((sel) => {
-      // Only trigger an update if there is actually a value to clear
-      if (sel.value !== null) {
-        sel.update({
-          source: {}, // Arbitrary identity for the reset
-          value: null,
-          predicate: null,
-        });
-      }
-    });
-  });
+  // REMOVED: The aggressive listener that cleared summary selections (selDomain, etc.)
+  // when 'input' changed. This was the primary cause of the "Ghost" bug where
+  // applying a keyword filter would wipe out the domain filter.
 
   // 5. Define Column Metadata Helpers
   // Maps UI IDs to SQL column names and filter types

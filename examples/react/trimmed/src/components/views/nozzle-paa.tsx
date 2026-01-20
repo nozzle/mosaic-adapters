@@ -80,6 +80,17 @@ export function NozzlePaaView() {
   const topology = usePaaTopology();
   const filterRegistry = useFilterRegistry();
 
+  // Stable Aggregation Function for Phrase Table
+  // Prevents table reset loop on render
+  const maxAgg = useMemo(() => (e: any) => mSql.max(e), []);
+
+  // Stable Where Clauses
+  // Crucial: mSql.sql tagged template literals create new objects on every render.
+  // We must memoize them to prevent the Table Client from detecting a "Source Change"
+  // and resetting the internal state (including clearing Header Filters).
+  const whereDomain = useMemo(() => mSql.sql`domain IS NOT NULL`, []);
+  const whereUrl = useMemo(() => mSql.sql`url IS NOT NULL`, []);
+
   // Register Filter Groups on mount
   useEffect(() => {
     filterRegistry.registerGroup({
@@ -226,7 +237,7 @@ export function NozzlePaaView() {
           groupBy="phrase"
           metric="search_volume"
           metricLabel="Search Vol"
-          aggFn={(e) => mSql.max(e)}
+          aggFn={maxAgg}
           filterBy={topology.phraseContext}
           selection={topology.selections.phrase}
         />
@@ -245,7 +256,7 @@ export function NozzlePaaView() {
           metric="*"
           metricLabel="# of Answers"
           aggFn={mSql.count}
-          where={mSql.sql`domain IS NOT NULL`}
+          where={whereDomain}
           filterBy={topology.domainContext}
           selection={topology.selections.domain}
         />
@@ -255,7 +266,7 @@ export function NozzlePaaView() {
           metric="*"
           metricLabel="# of Answers"
           aggFn={mSql.count}
-          where={mSql.sql`url IS NOT NULL`}
+          where={whereUrl}
           filterBy={topology.urlContext}
           selection={topology.selections.url}
         />
