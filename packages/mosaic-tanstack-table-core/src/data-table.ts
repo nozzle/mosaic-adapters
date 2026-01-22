@@ -750,7 +750,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         const newState = functionalUpdate(updater, oldState);
 
         // Detect silent rejections by TanStack Table
-        // We calculate hashes of the filters to detect changes
         const hashedOldFilters = JSON.stringify(oldState.columnFilters);
         const hashedNewFilters = JSON.stringify(newState.columnFilters);
         const hasFiltersChanged = hashedOldFilters !== hashedNewFilters;
@@ -767,6 +766,20 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           );
         }
 
+        // LOGGING UPDATE: Use the diffing logger
+        // We pass 'newState' but the Logger will internally diff it against the last saw
+        // state for this Table ID.
+        logger.info('TanStack-Table', 'State Change', {
+          id: this.id, // Critical: Allows logger to maintain a history map for this specific table
+          newState: {
+            pagination: newState.pagination,
+            sorting: newState.sorting,
+            filters: newState.columnFilters, // Rename for brevity
+            // We purposefully OMIT column visibility/sizing unless they change,
+            // but simplistic approach is pass strictly typed subset
+          },
+        });
+
         this.store.setState((prev) => ({
           ...prev,
           tableState: newState,
@@ -777,10 +790,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
         if (hashedOldState !== hashedNewState) {
           if (hasFiltersChanged) {
-            logger.debug('Core', `[MosaicDataTable] Filter Change Applied`, {
-              from: JSON.parse(hashedOldFilters),
-              to: newState.columnFilters,
-            });
             this.sidecarManager.refreshAll();
           }
 

@@ -20,7 +20,7 @@ function App() {
           onClick={() => logger.download()}
           className="text-xs border px-2 py-1 rounded bg-slate-100 hover:bg-slate-200"
         >
-          Download Full Debug Logs
+          Download Debug Session (.jsonl)
         </button>
       </div>
     </div>

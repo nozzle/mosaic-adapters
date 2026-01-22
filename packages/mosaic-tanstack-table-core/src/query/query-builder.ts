@@ -121,14 +121,10 @@ export function buildTableQuery<TData extends RowData, TValue>(
     'debug',
     'SQL',
     'Generated Table Query',
-    {
-      sql: statement.toString(),
-      context: {
-        pagination,
-        sorting,
-        filtersCount: whereClauses.length,
-      },
-    },
+    // Only log the SQL string. The context (filters, sort, pagination) is fully
+    // encapsulated within the SQL string itself (WHERE, ORDER BY, LIMIT).
+    // This reduces token usage significantly by removing redundant object dumps.
+    { sql: statement.toString() },
   );
 
   return statement;

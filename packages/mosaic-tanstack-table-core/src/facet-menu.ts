@@ -401,8 +401,28 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     }
 
     let effectiveFilter = filter;
+
+    // DEBUG: Inspect state of filterBy (Input)
     if (filterBy) {
+      // 1. Log the internal clauses of the selection (if accessible via any)
+      // This helps debug why Domain might be missing.
+      const clauses = (filterBy as any).clauses;
+      const clauseSources =
+        clauses?.map((c: any) => c.source?.id || 'unknown') || [];
+
+      logger.debug('SQL', `${this.debugPrefix} FilterBy State`, {
+        selectionId: (filterBy as any).id,
+        clausesCount: clauses?.length,
+        clauseSources,
+        myId: this.id,
+      });
+
       effectiveFilter = filterBy.predicate(this);
+
+      // 2. Log the resulting predicate
+      logger.debug('SQL', `${this.debugPrefix} Resolved Predicate`, {
+        predicate: effectiveFilter?.toString() || 'NULL',
+      });
     }
 
     if (additionalContext) {
@@ -470,6 +490,10 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
 
     // Use dynamic limit for infinite scrolling
     query.limit(this._currentLimit + 1); // Fetch +1 to detect if there are more results
+
+    // Added Logic: Log the generated SQL to verify filter application in the wild.
+    const sqlStr = query.toString();
+    logger.debug('SQL', `${this.debugPrefix} Generated Query`, { sql: sqlStr });
 
     return query;
   }
