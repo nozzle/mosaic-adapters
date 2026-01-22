@@ -81,13 +81,9 @@ export function NozzlePaaView() {
   const filterRegistry = useFilterRegistry();
 
   // Stable Aggregation Function for Phrase Table
-  // Prevents table reset loop on render
   const maxAgg = useMemo(() => (e: any) => mSql.max(e), []);
 
   // Stable Where Clauses
-  // Crucial: mSql.sql tagged template literals create new objects on every render.
-  // We must memoize them to prevent the Table Client from detecting a "Source Change"
-  // and resetting the internal state (including clearing Header Filters).
   const whereDomain = useMemo(() => mSql.sql`domain IS NOT NULL`, []);
   const whereUrl = useMemo(() => mSql.sql`url IS NOT NULL`, []);
 
@@ -110,18 +106,28 @@ export function NozzlePaaView() {
     });
   }, [filterRegistry]);
 
-  // Register Top-Level Selections
-  // We use the hook to register the 'input' selection (Top Bar)
-  useRegisterFilterSource(topology.input, 'global', {
-    labelMap: {
-      domain: 'Domain',
-      phrase: 'Keyword',
-      keyword_groups: 'Keyword Group',
-      description: 'Answer Text',
-      requested: 'Date Range',
-      device: 'Device',
-      'related_phrase.phrase': 'Question',
-    },
+  // Register Top-Level Selections Individually
+  // This allows correct labeling in the active filter bar and ensures they are tracked independently.
+  useRegisterFilterSource(topology.inputs.domain, 'global', {
+    labelMap: { domain: 'Domain' },
+  });
+  useRegisterFilterSource(topology.inputs.phrase, 'global', {
+    labelMap: { phrase: 'Keyword' },
+  });
+  useRegisterFilterSource(topology.inputs.keywordGroup, 'global', {
+    labelMap: { keyword_groups: 'Keyword Group' },
+  });
+  useRegisterFilterSource(topology.inputs.desc, 'global', {
+    labelMap: { description: 'Answer Text' },
+  });
+  useRegisterFilterSource(topology.inputs.date, 'global', {
+    labelMap: { requested: 'Date Range' },
+  });
+  useRegisterFilterSource(topology.inputs.device, 'global', {
+    labelMap: { device: 'Device' },
+  });
+  useRegisterFilterSource(topology.inputs.question, 'global', {
+    labelMap: { 'related_phrase.phrase': 'Question' },
   });
 
   // Register Summary Table Output Selections
@@ -180,53 +186,52 @@ export function NozzlePaaView() {
             label="Domain"
             table={TABLE_NAME}
             column="domain"
-            selection={topology.input}
-            filterBy={topology.input}
+            // WRITE to the specific Input selection
+            selection={topology.inputs.domain}
+            // READ from the Explicit Context (All Other Inputs + Table State)
+            filterBy={topology.inputContexts.domain}
             externalContext={topology.externalContext}
           />
           <TextFilter
             label="Phrase"
             table={TABLE_NAME}
             column="phrase"
-            selection={topology.input}
-            filterBy={topology.input}
+            // Text inputs only write, they don't read options
+            selection={topology.inputs.phrase}
           />
           <ArraySelectFilter
             label="Keyword Group"
             table={TABLE_NAME}
             column="keyword_groups"
-            selection={topology.input}
-            filterBy={topology.input}
+            selection={topology.inputs.keywordGroup}
+            filterBy={topology.inputContexts.keywordGroup}
             externalContext={topology.externalContext}
           />
           <TextFilter
             label="Answer Contains"
             table={TABLE_NAME}
             column="description"
-            selection={topology.input}
-            filterBy={topology.input}
+            selection={topology.inputs.desc}
           />
           <DateRangeFilter
             label="Requested Date"
             table={TABLE_NAME}
             column="requested"
-            selection={topology.input}
-            filterBy={topology.input}
+            selection={topology.inputs.date}
           />
           <SearchableSelectFilter
             label="Device"
             table={TABLE_NAME}
             column="device"
-            selection={topology.input}
-            filterBy={topology.input}
+            selection={topology.inputs.device}
+            filterBy={topology.inputContexts.device}
             externalContext={topology.externalContext}
           />
           <TextFilter
             label="Question Contains"
             table={TABLE_NAME}
             column="related_phrase.phrase"
-            selection={topology.input}
-            filterBy={topology.input}
+            selection={topology.inputs.question}
           />
         </div>
       </div>
@@ -306,6 +311,7 @@ function HeaderSection({
       .select({ value: mSql.count('requested').distinct() })
       .where(filter);
 
+  // KPIs use the Global Context (All Inputs + All Summaries + Detail)
   const valPhrases = useMosaicValue(qPhrases, topology.globalContext);
   const valQuestions = useMosaicValue(qQuestions, topology.globalContext);
   const valDays = useMosaicValue(qDays, topology.globalContext);
@@ -364,7 +370,6 @@ function SummaryTable({
   filterBy: Selection;
   selection: Selection;
 }) {
-  // Logic to build the dynamic query but map it to our static schema
   const queryFactory = useMemo(
     () => (filter: FilterExpr | null | undefined) => {
       let groupKey;
@@ -375,10 +380,6 @@ function SummaryTable({
         groupKey = mSql.column(groupBy);
       }
 
-      // Highlight Logic:
-      // We check the specific 'selection' passed to this table.
-      // If a row in this table is selected, we want it to have __is_highlighted = 1.
-      // We pass 'null' to predicate() to get the pure SQL clause for this selection.
       const highlightPred = selection.predicate(null);
       let highlightCol;
       const hasPred =
@@ -398,7 +399,7 @@ function SummaryTable({
 
       const q = mSql.Query.from(TABLE_NAME)
         .select({
-          key: groupKey, // Aliased to 'key' to match Schema
+          key: groupKey,
           metric: metric === '*' ? aggFn() : aggFn(metric),
           __is_highlighted: highlightCol,
         })
@@ -416,14 +417,10 @@ function SummaryTable({
     [groupBy, metric, aggFn, where, selection],
   );
 
-  const helper = useMemo(
-    () => createMosaicColumnHelper<GroupByRow>(),
-    [], // empty dep array
-  );
+  const helper = useMemo(() => createMosaicColumnHelper<GroupByRow>(), []);
 
   const columns = useMemo(
     () => [
-      // Select Box column (Manual definition for non-data column)
       {
         id: 'select',
         header: '',
@@ -453,7 +450,6 @@ function SummaryTable({
         cell: (info) => info.getValue()?.toLocaleString(),
         enableColumnFilter: false,
       }),
-      // We must explicitly add the hidden column so it survives the outer QueryBuilder wrapper
       helper.accessor('__is_highlighted', {
         id: '__is_highlighted',
         header: '',
@@ -469,12 +465,9 @@ function SummaryTable({
 
   const { tableOptions } = useMosaicReactTable<GroupByRow>({
     table: queryFactory,
-    // Use the Context that EXCLUDES this table's own selection
-    // so that other rows do not disappear when one is clicked.
     filterBy: filterBy,
     manualHighlight: true,
     totalRowsMode: 'split',
-    // Bind the row clicks to the specific output selection
     rowSelection: {
       selection: selection,
       column: groupBy as keyof GroupByRow,
@@ -492,10 +485,9 @@ function SummaryTable({
       initialState: {
         sorting: [{ id: 'metric', desc: true }],
         pagination: { pageSize: 10 },
-        // Hide the logic column
         columnVisibility: { __is_highlighted: false },
       },
-      getRowId: (row) => String(row.key), // Use the aliased 'key'
+      getRowId: (row) => String(row.key),
       enableRowSelection: true,
       enableMultiRowSelection: true,
     },
@@ -545,7 +537,6 @@ function DetailTable({
 
   const { tableOptions } = useMosaicReactTable<PaaRowData>({
     table: TABLE_NAME,
-    // Detail table listens to everything (Inputs + All Summary selections)
     filterBy: topology.detailContext,
     tableFilterSelection: topology.detail,
     columns,
