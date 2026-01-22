@@ -2,187 +2,101 @@
  * Hook derived from PaaDashboardModel.
  * Encapsulates the Search & Facet topology for the PAA Dashboard.
  *
- * Implements an Explicit Functional Topology for inputs to ensure robust cross-filtering.
- * Instead of a single "Crossfilter" selection which can be fragile with complex dependencies,
- * we explicitly define:
- * 1. Individual Selections for each Input (Domain, Phrase, etc.)
- * 2. Explicit Contexts for each Input (Context = All Other Inputs)
- * 3. A Global Input Composite (The Union of all Inputs) for downstream tables.
+ * REFACTORED: Now uses `useTopologyHelpers` to implement the Explicit Topology
+ * with significantly less boilerplate.
  */
 import { useMemo } from 'react';
 import { Selection } from '@uwdata/mosaic-core';
 import {
+  useCascadingContexts,
   useMosaicSelection,
+  useMosaicSelections,
   useRegisterSelections,
 } from '@nozzleio/react-mosaic';
 import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
 
+// Define keys statically to ensure type safety and stable references
+const INPUT_KEYS = [
+  'domain',
+  'phrase',
+  'keywordGroup',
+  'desc',
+  'date',
+  'device',
+  'question',
+] as const;
+
 export function usePaaTopology() {
-  // 1. Instantiate Granular Inputs
-  // Each input gets its own independent selection.
-  const inputDomain = useMosaicSelection('intersect');
-  const inputPhrase = useMosaicSelection('intersect');
-  const inputKeywordGroup = useMosaicSelection('intersect');
-  const inputDesc = useMosaicSelection('intersect');
-  const inputDate = useMosaicSelection('intersect');
-  const inputDevice = useMosaicSelection('intersect');
-  const inputQuestion = useMosaicSelection('intersect');
+  // 1. Instantiate Inputs (Batch)
+  const inputs = useMosaicSelections(INPUT_KEYS);
 
   // 2. Instantiate Detail Table Filter
   const detail = useMosaicSelection('intersect');
 
-  // 3. Instantiate Explicit Outputs for Summary Tables
-  const selDomain = useMosaicSelection('intersect');
-  const selPhrase = useMosaicSelection('intersect');
-  const selQuestion = useMosaicSelection('intersect');
-  const selUrl = useMosaicSelection('intersect');
+  // 3. Instantiate Explicit Outputs for Summary Tables (Batch)
+  const summaries = useMosaicSelections([
+    'domain',
+    'phrase',
+    'question',
+    'url',
+  ]);
 
   // Register all selections with the global reset context
   useRegisterSelections([
-    inputDomain,
-    inputPhrase,
-    inputKeywordGroup,
-    inputDesc,
-    inputDate,
-    inputDevice,
-    inputQuestion,
+    ...Object.values(inputs),
     detail,
-    selDomain,
-    selPhrase,
-    selQuestion,
-    selUrl,
+    ...Object.values(summaries),
   ]);
 
-  // 4. Define Derived Contexts
-  const contexts = useMemo(() => {
-    // A. Global Input Composite
-    // Represents the intersection of ALL Top Bar Inputs.
-    // Used by Summary Tables and KPIs.
+  // 4. Compute Derived Topology
+  //    Using helper hooks to automate the "N^2" wiring logic
+  const topology = useMemo(() => {
+    const allInputs = Object.values(inputs);
+
+    // A. Global Input Composite (Union of all Top Bar Inputs)
     const globalInput = Selection.intersect({
-      include: [
-        inputDomain,
-        inputPhrase,
-        inputKeywordGroup,
-        inputDesc,
-        inputDate,
-        inputDevice,
-        inputQuestion,
-      ],
+      include: allInputs,
     });
 
     // B. Global Cross (Summary Tables Intersection)
     const globalCross = Selection.intersect({
-      include: [selDomain, selPhrase, selQuestion, selUrl],
+      include: Object.values(summaries),
     });
 
-    // C. External Context (Downstream Table State)
-    // Used by Input Dropdowns to limit options based on what is visible in the Detail/Summary tables.
+    // C. External Context
+    // What the Input Dropdowns should see from the "Outside World"
     const externalContext = Selection.intersect({
       include: [detail, globalCross],
     });
 
-    // D. Input Contexts (Explicit Cascading Logic)
-    // Each dropdown needs to see: "All Other Inputs" + "External Context".
-    // We explicitly exclude the input's own selection to allow selecting from the full set.
-
-    const ctxInputDomain = Selection.intersect({
-      include: [
-        inputPhrase,
-        inputKeywordGroup,
-        inputDesc,
-        inputDate,
-        inputDevice,
-        inputQuestion,
-      ],
-    });
-
-    const ctxInputKeywordGroup = Selection.intersect({
-      include: [
-        inputDomain,
-        inputPhrase,
-        inputDesc,
-        inputDate,
-        inputDevice,
-        inputQuestion,
-      ],
-    });
-
-    const ctxInputDevice = Selection.intersect({
-      include: [
-        inputDomain,
-        inputPhrase,
-        inputKeywordGroup,
-        inputDesc,
-        inputDate,
-        inputQuestion,
-      ],
+    // D. Global Context (KPIs)
+    const globalContext = Selection.intersect({
+      include: [globalInput, detail, globalCross],
     });
 
     return {
-      // Expose granular inputs for writing
-      inputs: {
-        domain: inputDomain,
-        phrase: inputPhrase,
-        keywordGroup: inputKeywordGroup,
-        desc: inputDesc,
-        date: inputDate,
-        device: inputDevice,
-        question: inputQuestion,
-      },
-
-      // Expose explicit contexts for reading (Dropdowns)
-      inputContexts: {
-        domain: ctxInputDomain,
-        keywordGroup: ctxInputKeywordGroup,
-        device: ctxInputDevice,
-      },
-
-      // E. Summary Table Contexts
-      // Summary tables are filtered by Global Inputs + Detail Filter + All Other Summary Tables
-      domainContext: Selection.intersect({
-        include: [globalInput, detail, selPhrase, selQuestion, selUrl],
-      }),
-      phraseContext: Selection.intersect({
-        include: [globalInput, detail, selDomain, selQuestion, selUrl],
-      }),
-      questionContext: Selection.intersect({
-        include: [globalInput, detail, selDomain, selPhrase, selUrl],
-      }),
-      urlContext: Selection.intersect({
-        include: [globalInput, detail, selDomain, selPhrase, selQuestion],
-      }),
-
-      // F. Detail Table Context
-      // Filtered by everything (Inputs + Summaries)
-      detailContext: Selection.intersect({
-        include: [globalInput, globalCross],
-      }),
-
-      // G. Global Context (KPIs)
-      // Filtered by absolutely everything
-      globalContext: Selection.intersect({
-        include: [globalInput, detail, globalCross],
-      }),
-
-      externalContext,
       globalInput,
+      globalCross,
+      externalContext,
+      globalContext,
     };
-  }, [
-    inputDomain,
-    inputPhrase,
-    inputKeywordGroup,
-    inputDesc,
-    inputDate,
-    inputDevice,
-    inputQuestion,
-    detail,
-    selDomain,
-    selPhrase,
-    selQuestion,
-    selUrl,
+  }, [inputs, summaries, detail]);
+
+  // 5. Wire Cascading Contexts (The Fix)
+  //    Each input gets a context containing: [All Other Inputs] + [External Context]
+  const inputContexts = useCascadingContexts(inputs, [
+    topology.externalContext,
   ]);
 
-  // 5. Define Column Metadata Helpers
+  // 6. Wire Summary Contexts
+  //    Summary tables see: [Global Inputs] + [Detail] + [All Other Summaries]
+  //    We can reuse the helper here too!
+  const summaryContexts = useCascadingContexts(summaries, [
+    topology.globalInput,
+    detail,
+  ]);
+
+  // 7. Define Column Metadata Helpers
   const getColumnMeta = (
     id: string,
   ): MosaicDataTableColumnDefMetaOptions['mosaicDataTable'] => {
@@ -190,33 +104,43 @@ export function usePaaTopology() {
       string,
       MosaicDataTableColumnDefMetaOptions['mosaicDataTable']
     > = {
-      domain: {
-        sqlFilterType: 'PARTIAL_ILIKE',
-      },
+      domain: { sqlFilterType: 'PARTIAL_ILIKE' },
       paa_question: {
         sqlColumn: 'related_phrase.phrase',
         sqlFilterType: 'PARTIAL_ILIKE',
       },
-      title: {
-        sqlFilterType: 'PARTIAL_ILIKE',
-      },
-      description: {
-        sqlFilterType: 'PARTIAL_ILIKE',
-      },
+      title: { sqlFilterType: 'PARTIAL_ILIKE' },
+      description: { sqlFilterType: 'PARTIAL_ILIKE' },
     };
     return map[id];
   };
 
   return {
+    inputs,
+    inputContexts,
     detail,
-    // Expose explicit selections for wiring up the Summary Tables
+    detailContext: useMemo(
+      () =>
+        Selection.intersect({
+          include: [topology.globalInput, topology.globalCross],
+        }),
+      [topology.globalInput, topology.globalCross],
+    ),
+    // Map Summary Selections/Contexts to semantic names expected by the view
     selections: {
-      domain: selDomain,
-      phrase: selPhrase,
-      question: selQuestion,
-      url: selUrl,
+      domain: summaries.domain,
+      phrase: summaries.phrase,
+      question: summaries.question,
+      url: summaries.url,
     },
-    ...contexts,
+    domainContext: summaryContexts.domain,
+    phraseContext: summaryContexts.phrase,
+    questionContext: summaryContexts.question,
+    urlContext: summaryContexts.url,
+
+    globalInput: topology.globalInput,
+    globalContext: topology.globalContext,
+    externalContext: topology.externalContext,
     getColumnMeta,
   };
 }

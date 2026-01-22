@@ -5,4 +5,5 @@ export * from './hooks/use-mosaic-selection';
 export * from './hooks/use-selection-listener';
 export * from './hooks/use-mosaic-selection-value';
 export * from './hooks/use-register-selections';
+export * from './hooks/use-topology-helpers';
 export * from './filter-context';
