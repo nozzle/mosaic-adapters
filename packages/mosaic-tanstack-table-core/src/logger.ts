@@ -1,10 +1,13 @@
 /**
- * A structured logging utility that separates console output from stored logs.
- * Includes capabilities for sanitizing console output and heuristic error detection.
- * Governs the verbosity of the application based on global configuration and
- * provides diagnostic tools for debugging SQL generation and state transitions.
+ * A structured logging utility that prioritizes semantic clarity and token efficiency.
+ *
+ * Architecture:
+ * - Console: Rich, interactive output for developers.
+ * - Storage: Sanitized, diff-based event stream for LLM analysis.
+ * - Format: JSONL (JSON Lines) for easy stream processing and readability.
  */
 
+import { getObjectDiff, llmFriendlyReplacer } from './logger-utils';
 import type { Coordinator } from '@uwdata/mosaic-core';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -14,76 +17,30 @@ export type LogCategory =
   | 'TanStack-Table'
   | 'Mosaic'
   | 'SQL'
-  | 'Memory';
+  | 'Memory'
+  | 'Interaction';
 
 interface LogEntry {
-  timestamp: string;
-  level: LogLevel;
-  category: LogCategory;
-  message: string;
-  // meta is for heavy objects (Table State, columns, etc)
-  meta?: Record<string, any>;
-}
-
-/**
- * Truncates and sanitizes objects for console display to prevent
- * polluting the console with thousands of array items.
- */
-function sanitizeForConsole(obj: any, depth = 0): any {
-  if (depth > 2) {
-    return '...';
-  }
-  if (Array.isArray(obj)) {
-    if (obj.length > 5) {
-      return [
-        ...obj.slice(0, 5).map((o) => sanitizeForConsole(o, depth + 1)),
-        `... (${obj.length - 5} more items)`,
-      ];
-    }
-    return obj.map((o) => sanitizeForConsole(o, depth + 1));
-  }
-  if (typeof obj === 'object' && obj !== null) {
-    const res: any = {};
-    for (const k in obj) {
-      // Heuristic: truncate likely large data arrays
-      if (
-        (k === 'rows' || k === 'data') &&
-        Array.isArray(obj[k]) &&
-        obj[k].length > 10
-      ) {
-        res[k] = `Array(${obj[k].length})`;
-      } else {
-        res[k] = sanitizeForConsole(obj[k], depth + 1);
-      }
-    }
-    return res;
-  }
-  return obj;
+  ts: number; // Relative timestamp in ms
+  lvl: LogLevel;
+  cat: LogCategory;
+  msg: string;
+  meta?: any;
 }
 
 class LogManager {
   private logs: Array<LogEntry> = [];
-  private maxLogs = 2000;
+  private maxLogs = 1000; // Lower limit to keep high signal-to-noise ratio
+  private startTime = Date.now();
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  // Configuration: Console defaults to WARN level to suppress noise.
-  private consoleLevel = 2; // 0=Debug, 1=Info, 2=Warn, 3=Error
-  private storageLevel = 0;
-
-  private levelMap: Record<LogLevel, number> = {
-    debug: 0,
-    info: 1,
-    warn: 2,
-    error: 3,
-  };
+  // Cache strictly for calculating diffs between log events
+  private stateCache = new Map<string, any>();
 
   constructor() {
-    // Check for environment-driven debug overrides if available in the metadata
-    if (
-      typeof import.meta !== 'undefined' &&
-      (import.meta as any).env?.VITE_DEBUG_MODE === 'true'
-    ) {
-      this.consoleLevel = 0;
+    // Auto-enable verbose logging in dev environments if needed
+    if (typeof window !== 'undefined') {
+      (window as any).__MOSAIC_LOGGER__ = this;
     }
   }
 
@@ -93,81 +50,68 @@ class LogManager {
     message: string,
     meta?: any,
   ) {
-    const numericLevel = this.levelMap[level];
+    // 1. Console Output (Keep it rich for developers)
+    this.printToConsole(level, category, message, meta);
 
-    // 0. Heuristic Check for Common SQL Errors (Struct Access)
-    if (
-      (level === 'error' || level === 'warn') &&
-      meta &&
-      (typeof meta.error?.message === 'string' || typeof meta.sql === 'string')
-    ) {
-      const textToCheck = meta.error?.message || meta.sql;
-      // Look for "something.something" pattern which indicates incorrect quoting
-      // Exclude dot from the first character set to prevent polynomial backtracking ReDoS
-      const structErrorRegex = /"[^".]+\.[^"]+"/;
-      const match = textToCheck.match(structErrorRegex);
+    // 2. Storage (Sanitize specifically for LLM context windows)
+    let storedMeta = meta;
 
-      if (match) {
-        // Log a high-visibility warning to help developers immediately
-        console.warn(
-          `%c[Mosaic-Fix-Hint] Potential Struct Syntax Error detected: ${JSON.stringify(match[0])}`,
-          'background: #ffcc00; color: black; padding: 2px; border-radius: 2px;',
-          '\nDuckDB requires nested columns to be quoted separately like "table"."column", not "table.column".\nCheck your createStructAccess utility.',
-        );
-      }
-    }
-
-    // 1. Handle Console Output (The "Quiet" Channel)
-    if (numericLevel >= this.consoleLevel) {
-      const badge = `[${category}]`;
-      const style = this.getConsoleStyle(category);
-      const sanitizedMeta = meta ? sanitizeForConsole(meta) : undefined;
-
-      if (level === 'error') {
-        console.error(`%c${badge} ${message}`, style, sanitizedMeta || '');
-      } else if (level === 'warn') {
-        console.warn(`%c${badge} ${message}`, style, sanitizedMeta || '');
+    // Special handling for State Updates (Diffing)
+    // If an ID is provided, we track changes over time instead of full dumps.
+    if (message.includes('State Change') && meta?.id) {
+      const prev = this.stateCache.get(meta.id);
+      if (prev) {
+        const diff = getObjectDiff(prev, meta.newState);
+        storedMeta = { diff }; // Only store what changed
       } else {
-        // For Info/Debug in console, use collapsed groups if meta exists to keep it tidy
-        if (sanitizedMeta) {
-          console.groupCollapsed(`%c${badge} ${message}`, style);
-          console.log(sanitizedMeta);
-          console.groupEnd();
-        } else {
-          console.log(`%c${badge} ${message}`, style);
-        }
+        storedMeta = { initialState: meta.newState };
       }
+      // Update cache for next time
+      this.stateCache.set(meta.id, meta.newState);
+    }
+    // Handle SQL: Just store the string, drop the heavy AST objects
+    else if (category === 'SQL' && typeof meta?.sql === 'string') {
+      storedMeta = { sql: meta.sql };
     }
 
-    // 2. Handle Storage (The "Loud" Channel)
-    if (numericLevel >= this.storageLevel) {
-      this.logs.push({
-        timestamp: new Date().toISOString(),
-        level,
-        category,
-        message,
-        // Deep clone meta to prevent mutation references later
-        meta: meta
-          ? JSON.parse(JSON.stringify(meta, this.circularReplacer()))
-          : undefined,
-      });
+    // Clone and sanitize immediately to prevent mutation issues and memory leaks
+    const sanitizedMeta = storedMeta
+      ? JSON.parse(JSON.stringify(storedMeta, llmFriendlyReplacer()))
+      : undefined;
 
-      if (this.logs.length > this.maxLogs) {
-        this.logs.shift();
-      }
+    this.logs.push({
+      ts: Date.now() - this.startTime, // Relative time is easier to track causality
+      lvl: level,
+      cat: category,
+      msg: message,
+      meta: sanitizedMeta,
+    });
+
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift();
+    }
+  }
+
+  private printToConsole(
+    level: LogLevel,
+    category: LogCategory,
+    message: string,
+    meta?: any,
+  ) {
+    const style = this.getConsoleStyle(category, level);
+    // Use groupCollapsed to keep the console clean but explorable
+    if (meta) {
+      console.groupCollapsed(`%c[${category}] ${message}`, style);
+      console.log(meta);
+      console.groupEnd();
+    } else {
+      console.log(`%c[${category}] ${message}`, style);
     }
   }
 
   /**
    * Debounces a log entry. Useful for high-frequency events like brush selections or scroll updates.
    * Only the last log entry within the `delay` window for a given `id` will be recorded.
-   *
-   * @param id - Unique identifier for the debounce group (e.g., 'query-generation')
-   * @param delay - Debounce delay in ms
-   * @param level - Log level
-   * @param category - Log category
-   * @param message - Log message
-   * @param meta - Metadata
    */
   debounce(
     id: string,
@@ -204,45 +148,38 @@ class LogManager {
   }
 
   /**
-   * Diagnostic: Logs the current memory usage of DuckDB.
-   * STUB: PRAGMA memory_info is not available in EH/MVP WASM bundles.
+   * Stub for memory logging to maintain interface compatibility.
    */
-
   logMemory(_coordinator: Coordinator, _label: string) {
-    // This is a stub to prevent TypeError: logger.logMemory is not a function
-    // in clients that were instrumented for memory tracking.
+    // No-op
   }
 
+  /**
+   * Generates an LLM-Optimized Log Dump.
+   * Format: JSON Lines (JSONL)
+   * Why: Easier for LLMs to read line-by-line without parsing a massive start/end object.
+   */
   download() {
-    const data = {
-      generatedAt: new Date().toISOString(),
-      environment:
-        typeof globalThis !== 'undefined' &&
-        (globalThis as any).process?.env?.NODE_ENV
-          ? (globalThis as any).process.env.NODE_ENV
-          : 'unknown',
-      userAgent:
-        typeof window !== 'undefined' ? window.navigator.userAgent : 'node',
-      // Define the schema for the array tuples below
-      logSchema: ['timestamp', 'level', 'category', 'message', 'meta'],
-      // Transform objects to arrays to reduce key repetition overhead
-      logs: this.logs.map((l) => [
-        l.timestamp,
-        l.level,
-        l.category,
-        l.message,
-        l.meta,
-      ]),
+    const header = {
+      generated: new Date().toISOString(),
+      sessionDuration: `${((Date.now() - this.startTime) / 1000).toFixed(1)}s`,
+      system: 'Mosaic Adapter Logs',
+      instructions:
+        "Timestamps are relative (ms). 'diff' fields show state changes.",
     };
 
-    // Use default stringify (no indentation) for maximum compression
-    const blob = new Blob([JSON.stringify(data)], {
-      type: 'application/json',
+    // Convert logs to JSONL strings
+    const lines = this.logs.map((entry) => {
+      return JSON.stringify(entry);
     });
+
+    const output = [JSON.stringify(header), ...lines].join('\n');
+
+    const blob = new Blob([output], { type: 'application/x-jsonlines' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mosaic-debug-logs-${Date.now()}.json`;
+    a.download = `debug-session-${Date.now()}.jsonl`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -250,7 +187,10 @@ class LogManager {
   }
 
   // Helper: Color code console logs by category
-  private getConsoleStyle(category: LogCategory): string {
+  private getConsoleStyle(category: LogCategory, level: LogLevel): string {
+    if (level === 'error') {
+      return 'color: #ff0000; font-weight: bold;';
+    }
     switch (category) {
       case 'SQL':
         return 'color: #8e44ad; font-weight: bold;';
@@ -260,25 +200,9 @@ class LogManager {
         return 'color: #2980b9; font-weight: bold;';
       case 'Framework':
         return 'color: #27ae60; font-weight: bold;';
-      case 'Memory':
-        return 'color: #c0392b; font-weight: bold;';
       default:
         return 'color: gray;';
     }
-  }
-
-  // Helper: Handle circular references in JSON
-  private circularReplacer() {
-    const seen = new WeakSet();
-    return (key: string, value: any) => {
-      if (typeof value === 'object' && value !== null) {
-        if (seen.has(value)) {
-          return '[Circular]';
-        }
-        seen.add(value);
-      }
-      return value;
-    };
   }
 }
 
