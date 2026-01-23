@@ -37,6 +37,11 @@ class LogManager {
   // Cache strictly for calculating diffs between log events
   private stateCache = new Map<string, any>();
 
+  // Check debug mode from environment
+  private isDebug =
+    typeof import.meta !== 'undefined' &&
+    (import.meta as any).env?.VITE_DEBUG_MODE === 'true';
+
   constructor() {
     // Auto-enable verbose logging in dev environments if needed
     if (typeof window !== 'undefined') {
@@ -98,6 +103,11 @@ class LogManager {
     message: string,
     meta?: any,
   ) {
+    // Only log to console if debug mode is enabled
+    if (!this.isDebug) {
+      return;
+    }
+
     const style = this.getConsoleStyle(category, level);
     // Use groupCollapsed to keep the console clean but explorable
     if (meta) {

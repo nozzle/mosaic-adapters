@@ -9,11 +9,14 @@ import { TotalCountStrategy } from './facet-strategies';
 import type { MosaicDataTable } from './data-table';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type { RowData } from '@tanstack/table-core';
-import type { MosaicTableSource } from './types';
+import type { MosaicTableSource, PrimitiveSqlValue } from './types';
 import type { SidecarRequest, StrategyRegistry } from './registry';
 import type { FacetStrategy } from './facet-strategies';
 
-export class SidecarManager<TData extends RowData, TValue = unknown> {
+export class SidecarManager<
+  TData extends RowData,
+  TValue extends PrimitiveSqlValue = PrimitiveSqlValue,
+> {
   private clients = new Map<string, SidecarClient<any, any>>();
 
   constructor(

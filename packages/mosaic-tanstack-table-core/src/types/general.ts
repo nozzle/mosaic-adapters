@@ -39,6 +39,14 @@ export type SqlType =
   | 'TIMESTAMP'
   | 'BOOLEAN';
 
+export type PrimitiveSqlValue =
+  | string
+  | number
+  | boolean
+  | Date
+  | null
+  | undefined;
+
 export type FilterOperator =
   | 'eq'
   | 'neq'
@@ -49,9 +57,9 @@ export type FilterOperator =
   | 'contains'
   | 'not_contains'
   | 'starts_with'
-  | 'not_starts_with' // Added
+  | 'not_starts_with'
   | 'ends_with'
-  | 'not_ends_with' // Added
+  | 'not_ends_with'
   | 'is_null'
   | 'not_null'
   | 'between'
@@ -280,6 +288,20 @@ export interface MosaicDataTableOptions<
 
   filterStrategies?: Record<string, FilterStrategy>;
   facetStrategies?: Record<string, FacetStrategy<any, any>>;
+
+  /**
+   * Optional validator function to ensure row data matches expected schema.
+   * Returns true if valid, false otherwise.
+   */
+  validateRow?: (row: unknown) => boolean;
+
+  /**
+   * Validation strategy.
+   * 'first': Validate only the first row (performance).
+   * 'all': Validate all rows (safety).
+   * 'none': Skip validation.
+   */
+  validationMode?: 'first' | 'all' | 'none';
 }
 
 /**
