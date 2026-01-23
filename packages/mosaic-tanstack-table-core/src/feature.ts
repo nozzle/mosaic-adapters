@@ -1,5 +1,6 @@
 import type { RowData, Table, TableFeature } from '@tanstack/table-core';
 import type { MosaicDataTable } from './data-table';
+import type { PrimitiveSqlValue } from './types';
 
 /**
  * Creates a TanStack Table Feature that injects the Mosaic Client API
@@ -8,7 +9,10 @@ import type { MosaicDataTable } from './data-table';
  * This exposes the 'mosaicDataTable' property on the table instance,
  * providing access to facets, total counts, and the underlying client.
  */
-export const createMosaicFeature = <TData extends RowData, TValue = any>(
+export const createMosaicFeature = <
+  TData extends RowData,
+  TValue extends PrimitiveSqlValue = PrimitiveSqlValue,
+>(
   client: MosaicDataTable<TData, TValue>,
 ): TableFeature<TData> => {
   return {

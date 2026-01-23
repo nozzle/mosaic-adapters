@@ -49,6 +49,7 @@ import type {
   MosaicDataTableOptions,
   MosaicDataTableStore,
   MosaicTableSource,
+  PrimitiveSqlValue,
 } from './types';
 import type { FilterStrategy } from './query/filter-factory';
 import type { FacetStrategy } from './facet-strategies';
@@ -56,7 +57,7 @@ import type { SidecarRequest } from './registry';
 
 export function createMosaicDataTableClient<
   TData extends RowData,
-  TValue = unknown,
+  TValue extends PrimitiveSqlValue = PrimitiveSqlValue,
 >(options: MosaicDataTableOptions<TData, TValue>) {
   const client = new MosaicDataTable<TData, TValue>(options);
   return client;
@@ -65,7 +66,10 @@ export function createMosaicDataTableClient<
 /**
  * The core adapter class that bridges TanStack Table state with Mosaic SQL execution.
  */
-export class MosaicDataTable<TData extends RowData, TValue = unknown>
+export class MosaicDataTable<
+  TData extends RowData,
+  TValue extends PrimitiveSqlValue = PrimitiveSqlValue,
+>
   extends MosaicClient
   implements IMosaicClient
 {
@@ -110,13 +114,7 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
     /**
      * Sidecar Manager initialization.
-     *
-     * Architectural Note: Auto-faceting (eagerly fetching unique values for all columns)
-     * is intentionally omitted. For wide tables (100+ columns) or high-cardinality data,
-     * eager faceting causes massive query storms and memory spikes.
-     *
-     * Instead, we rely on the `SidecarManager` to lazy-load facets only when explicitly
-     * requested by the UI (e.g., via `table.mosaic.requestFacet` on filter focus).
+     * We rely on the `SidecarManager` to lazy-load facets only when explicitly requested.
      */
     this.sidecarManager = new SidecarManager(this, this.facetRegistry);
 
@@ -161,8 +159,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   /**
    * Updates configuration options and handles necessary state resets.
-   * If the table source changes, this performs an atomic reset of the table state
-   * to prevent stale filters/sorting from applying to the new dataset.
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
     const sourceChanged = this.source !== options.table;
@@ -278,9 +274,9 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       }
 
       this.#columnMapper = new ColumnMapper(options.columns, options.mapping);
-    } else if (options.mapping) {
-      // Columns might be inferred from mapping if not explicitly provided
     } else if (sourceChanged) {
+      // Priority: If source changed and no explicit columns, we must introspect.
+      // This block was moved above options.mapping to ensure it runs even if mapping is present but empty.
       this.schema = [];
       this.#columnMapper = undefined;
       this.#store.setState((prev) => ({
@@ -294,6 +290,8 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           this.requestUpdate();
         });
       }
+    } else if (options.mapping) {
+      // Columns might be inferred from mapping if not explicitly provided
     }
   }
 
@@ -321,7 +319,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   /**
    * Constructs the main table query based on the current state.
-   * Applies filters, sorting, and pagination logic via the QueryBuilder.
    */
   override query(
     primaryFilter?: FilterExpr | null | undefined,
@@ -386,7 +383,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       // Fallback Path (Introspection Pending)
       const selects: Record<string, any> = { '*': mSql.column('*') };
 
-      // Only inject the heavy Window Function if explicitly in 'window' mode.
       if (this.options.totalRowsMode === 'window') {
         selects[this.#sql_total_rows] = mSql.sql`COUNT(*) OVER()`;
       }
@@ -396,7 +392,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       // Apply Sorting in Fallback Mode
       if (tableState.sorting.length > 0) {
         const ordering = tableState.sorting.map((sort) => {
-          // In fallback, we blindly trust the ID as the column name
           const col = mSql.column(sort.id);
           return sort.desc ? mSql.desc(col) : mSql.asc(col);
         });
@@ -437,11 +432,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
     return statement;
   }
 
-  /**
-   * Retrieves the current set of filters applied by the table columns.
-   * Allows exclusion of a specific column's filter, which is critical for
-   * Facet Menus (so a column doesn't filter its own available options).
-   */
   public getCascadingFilters(options?: {
     excludeColumnId?: string;
   }): Array<mSql.FilterExpr> {
@@ -501,6 +491,39 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         }
       }
 
+      // Boundary Validation Logic
+      if (
+        this.options.validateRow &&
+        this.options.validationMode &&
+        this.options.validationMode !== 'none'
+      ) {
+        if (rows.length > 0) {
+          const rowsToValidate =
+            this.options.validationMode === 'first' ? [rows[0]] : rows;
+          let invalidCount = 0;
+
+          rowsToValidate.forEach((row, idx) => {
+            if (!this.options.validateRow!(row)) {
+              invalidCount++;
+              if (this.options.validationMode === 'first' || invalidCount < 5) {
+                logger.error(
+                  'Core',
+                  `[MosaicDataTable ${this.debugPrefix}] Row validation failed at index ${idx}. Schema mismatch.`,
+                  { row },
+                );
+              }
+            }
+          });
+
+          if (invalidCount > 0) {
+            logger.warn(
+              'Core',
+              `[MosaicDataTable ${this.debugPrefix}] ${invalidCount} rows failed validation.`,
+            );
+          }
+        }
+      }
+
       const typedRows = rows as Array<TData>;
 
       if (
@@ -535,7 +558,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
 
   /**
    * Prepares the client for execution.
-   * If using a raw string source, this inspects the schema to build the column mapper.
    */
   override async prepare(): Promise<void> {
     const source = this.resolveSource();
@@ -560,8 +582,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           this.#columnMapper = new ColumnMapper(inferredColumns as any);
         }
 
-        // Force a store update immediately so the UI knows we have columns.
-        // This unblocks loading states in React even before rows arrive.
         batch(() => {
           this.#store.setState((prev) => ({
             ...prev,
@@ -570,7 +590,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         });
       }
 
-      // Re-run sidecars (TotalCount, Facets) now that the schema is known.
       if (this.schema.length > 0) {
         this.sidecarManager.refreshAll();
       }
@@ -608,16 +627,13 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
       this.requestUpdate();
     };
 
-    // Internal filter listener (Handles Global Resets)
     const internalFilterCb = () => {
       const active = this.tableFilterSelection.active;
-      // If the active update source is this table, ignore (we triggered it)
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (active && active.source === this) {
         return;
       }
 
-      // External Update detected (e.g., Global Reset)
       const val = this.tableFilterSelection.value;
       const isEmpty = !val || (Array.isArray(val) && val.length === 0);
 
@@ -628,17 +644,14 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
             tableState: {
               ...prev.tableState,
               columnFilters: [],
-              // Reset Pagination on global reset
               pagination: {
                 ...prev.tableState.pagination,
                 pageIndex: 0,
               },
-              // Reset Sorting on global reset
               sorting: [],
             },
           }));
         });
-        // Request update to reflect the cleared filters in the query
         this.requestUpdate();
       }
     };
@@ -749,12 +762,10 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         const oldState = this.store.state.tableState;
         const newState = functionalUpdate(updater, oldState);
 
-        // Detect silent rejections by TanStack Table
         const hashedOldFilters = JSON.stringify(oldState.columnFilters);
         const hashedNewFilters = JSON.stringify(newState.columnFilters);
         const hasFiltersChanged = hashedOldFilters !== hashedNewFilters;
 
-        // Trace logging for debugging rejected updates
         if (!hasFiltersChanged && typeof updater === 'function') {
           logger.debug(
             'Core',
@@ -766,17 +777,12 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
           );
         }
 
-        // LOGGING UPDATE: Use the diffing logger
-        // We pass 'newState' but the Logger will internally diff it against the last saw
-        // state for this Table ID.
         logger.info('TanStack-Table', 'State Change', {
-          id: this.id, // Critical: Allows logger to maintain a history map for this specific table
+          id: this.id,
           newState: {
             pagination: newState.pagination,
             sorting: newState.sorting,
-            filters: newState.columnFilters, // Rename for brevity
-            // We purposefully OMIT column visibility/sizing unless they change,
-            // but simplistic approach is pass strictly typed subset
+            filters: newState.columnFilters,
           },
         });
 
@@ -808,7 +814,6 @@ export class MosaicDataTable<TData extends RowData, TValue = unknown>
         if (this.#rowSelectionManager) {
           const selectedValues = Object.keys(newState);
           const valueToSend = selectedValues.length > 0 ? selectedValues : null;
-          // select expects array of TValue (string | number) or null
           this.#rowSelectionManager.select(valueToSend);
         }
       },
