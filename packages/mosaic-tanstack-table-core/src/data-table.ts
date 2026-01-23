@@ -1,3 +1,4 @@
+// packages/mosaic-tanstack-table-core/src/data-table.ts
 /**
  * Orchestrator for the Mosaic and TanStack Table integration.
  * Manages the data-fetching lifecycle, schema mapping, and reactive state synchronization.
@@ -653,6 +654,7 @@ export class MosaicDataTable<
           }));
         });
         this.requestUpdate();
+        this.sidecarManager.refreshAll();
       }
     };
 
