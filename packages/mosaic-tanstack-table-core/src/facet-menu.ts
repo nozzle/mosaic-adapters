@@ -392,11 +392,11 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
 
     const isTableInvalid = typeof table === 'string' && table.trim() === '';
 
+    // Fix: Return a strictly valid dummy query when disabled.
+    // Parser Error: SELECT clause without selection list (caused by select(*) or empty)
     if (enabled === false || isTableInvalid) {
-      const dummySource =
-        this.resolveSource(null) || mSql.sql`(SELECT 1) AS _dummy`;
-      return mSql.Query.from(dummySource)
-        .select('*')
+      return mSql.Query.from(mSql.sql`(SELECT 1)`)
+        .select({ _dummy: mSql.literal(1) })
         .where(mSql.sql`1=0`);
     }
 
