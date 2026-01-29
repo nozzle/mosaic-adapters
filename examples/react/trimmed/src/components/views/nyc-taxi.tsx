@@ -21,9 +21,13 @@ import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 
-const fileURL =
-  'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet';
 const tableName = 'trips';
+
+// Data sources: WASM downloads from URL, Remote uses local server file
+const DATA_SOURCES = {
+  wasm: 'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet',
+  remote: '/data/nyc-rides-2010.parquet',
+} as const;
 
 // Constants for Hover Logic
 const HOVER_SOURCE = { id: 'hover' };
@@ -84,6 +88,7 @@ const SummaryMapping = createMosaicMapping<SummaryRowData>({
 export function NycTaxiView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
+  const loadedModeRef = useRef<string | null>(null);
   const coordinator = useCoordinator();
   const { mode } = useConnector();
   const topology = useNycTaxiTopology();
@@ -128,13 +133,25 @@ export function NycTaxiView() {
   }, []);
 
   useEffect(() => {
-    if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {
+    if (!chartDivRef.current) {
       return;
     }
+
+    // Only re-run full setup if mode actually changed
+    const modeChanged = loadedModeRef.current !== mode;
+    if (!modeChanged && chartDivRef.current.hasChildNodes()) {
+      return;
+    }
+
+    // Clear existing content when mode changes
+    chartDivRef.current.innerHTML = '';
 
     async function setup() {
       try {
         setIsPending(true);
+
+        // Use local file path in remote mode, URL in WASM mode
+        const fileURL = DATA_SOURCES[mode];
 
         // Skip extension loading in remote mode - server should have it pre-loaded
         const loadCommands = mode === 'remote'
@@ -263,6 +280,7 @@ export function NycTaxiView() {
         );
 
         chartDivRef.current?.replaceChildren(layout);
+        loadedModeRef.current = mode;
         setIsPending(false);
       } catch (err) {
         console.warn('NycTaxiView setup interrupted or failed:', err);

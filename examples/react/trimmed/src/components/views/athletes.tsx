@@ -16,7 +16,6 @@ import {
   createMosaicMapping,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { useRegisterSelections } from '@nozzleio/react-mosaic';
 import type { Row } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -24,48 +23,25 @@ import { cn, simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 import { HistogramFilter } from '@/components/histogram-filter';
 import { Button } from '@/components/ui/button';
+import { useConnector } from '@/context/ConnectorContext';
+import { useAthletesTopology } from '@/hooks/useAthletesTopology';
 
-const fileURL =
-  'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
 const tableName = 'athletes';
+
+// Data sources: WASM downloads from URL, Remote uses local server file
+const DATA_SOURCES = {
+  wasm: 'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet',
+  remote: '/data/athletes.parquet',
+} as const;
 
 // Constants for Hover Logic
 const HOVER_SOURCE = { id: 'hover' };
 // Predicate to ensure queries return 0 rows when no selection is active
 const NO_SELECTION_PREDICATE = mSql.sql`1 = 0`;
 
-// --- Topology Definition ---
-// 1. Inputs (Menu, Search, Chart Brush)
-const $query = vg.Selection.intersect();
-// 2. Table Headers
-const $tableFilter = vg.Selection.intersect();
-// 3. Histogram Brushes
-const $weight = vg.Selection.intersect();
-const $height = vg.Selection.intersect();
-
-// --- Derived Contexts ---
-// Weight Histogram Context: Everything EXCEPT Weight
-const $ctxWeight = vg.Selection.intersect({
-  include: [$query, $tableFilter, $height],
-});
-
-// Height Histogram Context: Everything EXCEPT Height
-const $ctxHeight = vg.Selection.intersect({
-  include: [$query, $tableFilter, $weight],
-});
-
-// Table Context: Everything EXCEPT Table Filters (handled internally by table prop)
-// The table receives filters from Inputs and Histograms.
-const $tableContext = vg.Selection.intersect({
-  include: [$query, $weight, $height],
-});
-
-// Global Combined: The Intersection of All Filters (Used for the Chart points)
-const $combined = vg.Selection.intersect({
-  include: [$query, $tableFilter, $weight, $height],
-});
-
 // Transient selection for high-frequency hover interactions (Last-writer wins)
+// This is module-level but gets reset on mount/unmount and is NOT registered
+// with the global reset (intentionally stays empty when reset is clicked)
 const $hover = vg.Selection.single();
 $hover.update({
   source: HOVER_SOURCE,
@@ -119,9 +95,11 @@ export function AthletesView() {
     'sidebar',
   );
   const chartDivRef = useRef<HTMLDivElement | null>(null);
+  const loadedModeRef = useRef<string | null>(null);
+  const { mode } = useConnector();
 
-  // Register active selections for global reset.
-  useRegisterSelections([$query, $tableFilter, $weight, $height]);
+  // Use topology hook - selections are created fresh on remount (mode switch)
+  const topology = useAthletesTopology();
 
   // Ensure hover state is reset to "empty" on mount/unmount
   useEffect(() => {
@@ -140,13 +118,25 @@ export function AthletesView() {
   }, []);
 
   useEffect(() => {
-    if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {
+    if (!chartDivRef.current) {
       return;
     }
+
+    // Only re-run full setup if mode actually changed
+    const modeChanged = loadedModeRef.current !== mode;
+    if (!modeChanged && chartDivRef.current.hasChildNodes()) {
+      return;
+    }
+
+    // Clear existing content when mode changes
+    chartDivRef.current.innerHTML = '';
 
     async function setup() {
       try {
         setIsPending(true);
+
+        // Use local file path in remote mode, URL in WASM mode
+        const fileURL = DATA_SOURCES[mode];
 
         await vg
           .coordinator()
@@ -157,19 +147,19 @@ export function AthletesView() {
         const inputs = vg.hconcat(
           vg.menu({
             label: 'Sport',
-            as: $query,
+            as: topology.$query,
             from: tableName,
             column: 'sport',
           }),
           vg.menu({
             label: 'Gender',
-            as: $query,
+            as: topology.$query,
             from: tableName,
             column: 'sex',
           }),
           vg.search({
             label: 'Name',
-            as: $query,
+            as: topology.$query,
             from: tableName,
             column: 'name',
             type: 'contains',
@@ -177,7 +167,7 @@ export function AthletesView() {
         );
 
         const plot = vg.plot(
-          vg.dot(vg.from(tableName, { filterBy: $combined }), {
+          vg.dot(vg.from(tableName, { filterBy: topology.$combined }), {
             x: 'weight',
             y: 'height',
             fill: 'sex',
@@ -193,13 +183,13 @@ export function AthletesView() {
             strokeWidth: 2,
             r: 6,
           }),
-          vg.regressionY(vg.from(tableName, { filterBy: $combined }), {
+          vg.regressionY(vg.from(tableName, { filterBy: topology.$combined }), {
             x: 'weight',
             y: 'height',
             stroke: 'sex',
           }),
           vg.intervalXY({
-            as: $query,
+            as: topology.$query,
             brush: { fillOpacity: 0, stroke: 'currentColor' },
           }),
           vg.xyDomain(vg.Fixed),
@@ -209,6 +199,7 @@ export function AthletesView() {
         const layout = vg.vconcat(inputs, vg.vspace(10), plot);
         chartDivRef.current?.replaceChildren(layout);
 
+        loadedModeRef.current = mode;
         setIsPending(false);
       } catch (err) {
         console.warn('AthletesView setup interrupted or failed:', err);
@@ -216,7 +207,7 @@ export function AthletesView() {
     }
 
     setup();
-  }, []);
+  }, [mode, topology]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -265,15 +256,15 @@ export function AthletesView() {
               table={tableName}
               column="weight"
               step={5}
-              selection={$weight}
-              filterBy={$ctxWeight}
+              selection={topology.$weight}
+              filterBy={topology.$ctxWeight}
             />
             <HistogramFilter
               table={tableName}
               column="height"
               step={0.05}
-              selection={$height}
-              filterBy={$ctxHeight}
+              selection={topology.$height}
+              filterBy={topology.$ctxHeight}
             />
           </div>
         )}
@@ -286,7 +277,7 @@ export function AthletesView() {
         {isPending ? (
           <div className="italic">Loading data...</div>
         ) : (
-          <AthletesTable histogramMode={histogramMode} />
+          <AthletesTable histogramMode={histogramMode} topology={topology} />
         )}
       </div>
     </div>
@@ -295,8 +286,10 @@ export function AthletesView() {
 
 function AthletesTable({
   histogramMode,
+  topology,
 }: {
   histogramMode: 'sidebar' | 'header';
+  topology: ReturnType<typeof useAthletesTopology>;
 }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
@@ -363,8 +356,8 @@ function AthletesTable({
                 table={tableName}
                 column="height"
                 step={0.05}
-                selection={$height}
-                filterBy={$ctxHeight}
+                selection={topology.$height}
+                filterBy={topology.$ctxHeight}
                 height={40}
               />
             )}
@@ -392,8 +385,8 @@ function AthletesTable({
                 table={tableName}
                 column="weight"
                 step={5}
-                selection={$weight}
-                filterBy={$ctxWeight}
+                selection={topology.$weight}
+                filterBy={topology.$ctxWeight}
                 height={40}
               />
             )}
@@ -420,13 +413,13 @@ function AthletesTable({
       columnHelper.accessor('bronze', {}),
       columnHelper.accessor('info', {}),
     ],
-    [view, histogramMode, columnHelper],
+    [view, histogramMode, columnHelper, topology],
   );
 
   const { tableOptions } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
-    filterBy: $tableContext,
-    tableFilterSelection: $tableFilter,
+    filterBy: topology.$tableContext,
+    tableFilterSelection: topology.$tableFilter,
     columns,
     mapping: AthleteMapping,
     converter: (row) =>
