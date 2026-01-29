@@ -58,12 +58,26 @@ type ViewConfig = ViewMap extends Map<infer _K, infer V> ? V : never;
 export function RenderView() {
   return (
     <ConnectorProvider>
-      <SelectionRegistryProvider>
-        <MosaicFilterProvider>
-          <RenderViewContent />
-        </MosaicFilterProvider>
-      </SelectionRegistryProvider>
+      <RenderViewWithProviders />
     </ConnectorProvider>
+  );
+}
+
+/**
+ * Inner component that keys the SelectionRegistry and FilterProvider by mode.
+ * This ensures all Selections and filter state are fresh when the connector changes.
+ */
+function RenderViewWithProviders() {
+  const { mode } = useConnector();
+
+  return (
+    // Key the providers by mode to ensure fresh Selection and Filter state
+    // when switching between WASM and Remote connectors.
+    <SelectionRegistryProvider key={`registry-${mode}`}>
+      <MosaicFilterProvider key={`filter-${mode}`}>
+        <RenderViewContent />
+      </MosaicFilterProvider>
+    </SelectionRegistryProvider>
   );
 }
 
@@ -72,7 +86,50 @@ function RenderViewContent() {
     reloadOnChange: true,
   });
 
-  const { mode, status } = useConnector();
+  const { mode, status, error } = useConnector();
+
+  const renderViewContent = () => {
+    if (!view || !views.has(view)) {
+      return (
+        <div>
+          <p>Invalid view: "{view}". Please select a valid dashboard.</p>
+        </div>
+      );
+    }
+
+    if (status === 'error') {
+      return (
+        <div className="h-64 flex flex-col gap-4 items-center justify-center text-red-500">
+          <div className="font-bold text-lg">Connection Failed</div>
+          <p className="text-sm max-w-md text-center bg-red-50 p-2 rounded border border-red-100">
+            {error || 'Unknown error'}
+          </p>
+          {mode === 'remote' && (
+            <p className="text-xs text-slate-500">
+              Make sure the proxy server is running: <code>node proxy-server.js</code>
+            </p>
+          )}
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-slate-200 rounded hover:bg-slate-300 text-slate-800 text-sm font-medium"
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+
+    if (status === 'connecting') {
+      return (
+        <div className="h-64 flex items-center justify-center text-slate-400 italic">
+          Connecting to {mode === 'remote' ? 'Remote Server' : 'WASM'}...
+        </div>
+      );
+    }
+
+    // status === 'connected'
+    return <RenderLayout key={`${view}-${mode}`} view={views.get(view)!} />;
+  };
 
   return (
     <>
@@ -97,22 +154,7 @@ function RenderViewContent() {
 
         <ConnectorToggle />
       </div>
-      {view && views.has(view) ? (
-        // Only render the layout if we are fully connected.
-        // This prevents the "Uncaught (in promise) Cleared" error by ensuring
-        // the component is unmounted while the coordinator is being cleared/swapped.
-        status === 'connected' ? (
-          <RenderLayout key={`${view}-${mode}`} view={views.get(view)!} />
-        ) : (
-          <div className="h-64 flex items-center justify-center text-slate-400 italic">
-            Connecting to {mode === 'remote' ? 'Remote Server' : 'WASM'}...
-          </div>
-        )
-      ) : (
-        <div>
-          <p>Invalid view: "{view}". Please select a valid dashboard.</p>
-        </div>
-      )}
+      {renderViewContent()}
     </>
   );
 }

@@ -7,5 +7,7 @@
     "paths": {
       "@/*": ["./src/*"]
     }
-  }
+  },
+  "include": ["src"],
+  "exclude": ["proxy-server.js", "node_modules"]
 }

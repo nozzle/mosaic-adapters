@@ -30,9 +30,15 @@ import {
   TextFilter,
 } from '@/components/paa/paa-filters';
 import { ActiveFilterBar } from '@/components/active-filter-bar';
+import { useConnector } from '@/context/ConnectorContext';
 
 const TABLE_NAME = 'nozzle_paa';
-const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
+
+// Data Sources
+// 1. Remote: Public URL (Go server fetches this directly)
+const REMOTE_URL = 'https://fastopendata.org/nozzle_test.parquet';
+// 2. WASM: Local Proxy Path (Browser fetches this via Vite -> fastopendata.org to bypass CORS)
+const PROXY_PATH = '/data-proxy/nozzle_test.parquet';
 
 // --- MAIN DETAIL TABLE ---
 interface PaaRowData {
@@ -76,7 +82,9 @@ const GroupByMapping = createMosaicMapping<GroupByRow>({
 
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const coordinator = useCoordinator();
+  const { mode } = useConnector();
   const topology = usePaaTopology();
   const filterRegistry = useFilterRegistry();
 
@@ -107,7 +115,6 @@ export function NozzlePaaView() {
   }, [filterRegistry]);
 
   // Register Top-Level Selections Individually
-  // This allows correct labeling in the active filter bar and ensures they are tracked independently.
   useRegisterFilterSource(topology.inputs.domain, 'global', {
     labelMap: { domain: 'Domain' },
   });
@@ -148,19 +155,72 @@ export function NozzlePaaView() {
   useRegisterFilterSource(topology.detail, 'detail');
 
   useEffect(() => {
+    let active = true;
+    // Simple retry mechanism for "Cleared" errors which can happen if init overlaps with a connector switch
+    let retryCount = 0;
+
     async function init() {
       try {
-        const parquetUrl = new URL(PARQUET_PATH, window.location.origin).href;
+        setError(null);
+
+        // Determine the correct URL based on the connection mode
+        // Remote: Needs absolute URL to fetch from internet
+        // WASM: Needs relative URL to fetch via Vite Proxy (to bypass CORS)
+        const parquetUrl =
+          mode === 'remote'
+            ? REMOTE_URL
+            : new URL(PROXY_PATH, window.location.origin).href;
+
         await coordinator.exec([
           `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
         ]);
-        setIsReady(true);
-      } catch (err) {
+
+        if (active) {
+          setIsReady(true);
+        }
+      } catch (err: any) {
+        if (!active) {
+          return;
+        }
+
         console.warn('NozzlePaaView init interrupted or failed:', err);
+        const errMsg = err.message || String(err);
+
+        // If the error is "Cleared", it means the coordinator reset while we were querying.
+        // We can try once more after a short delay.
+        if (errMsg.includes('Cleared') && retryCount < 1) {
+          console.log('Retrying init...');
+          retryCount++;
+          setTimeout(init, 500);
+          return;
+        }
+
+        setError(errMsg);
       }
     }
     init();
-  }, [coordinator]);
+
+    return () => {
+      active = false;
+    };
+  }, [coordinator, mode]);
+
+  if (error) {
+    return (
+      <div className="flex h-64 flex-col gap-4 items-center justify-center text-red-500">
+        <div className="font-bold text-lg">Initialization Failed</div>
+        <p className="text-sm max-w-md text-center bg-red-50 p-2 rounded border border-red-100">
+          {error}
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-slate-200 rounded hover:bg-slate-300 text-slate-800 text-sm font-medium"
+        >
+          Reload Page
+        </button>
+      </div>
+    );
+  }
 
   if (!isReady) {
     return (
