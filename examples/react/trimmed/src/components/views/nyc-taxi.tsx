@@ -15,6 +15,7 @@ import {
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useCoordinator } from '@nozzleio/react-mosaic';
+import { useConnector } from '@/context/ConnectorContext';
 import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -84,6 +85,7 @@ export function NycTaxiView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
   const coordinator = useCoordinator();
+  const { mode } = useConnector();
   const topology = useNycTaxiTopology();
 
   // Create a constrained hover selection that respects the current topology context.
@@ -134,8 +136,13 @@ export function NycTaxiView() {
       try {
         setIsPending(true);
 
+        // Skip extension loading in remote mode - server should have it pre-loaded
+        const loadCommands = mode === 'remote'
+          ? []
+          : [vg.loadExtension('spatial')];
+
         await coordinator.exec([
-          vg.loadExtension('spatial'),
+          ...loadCommands,
           vg.loadParquet('rides', fileURL, {
             select: [
               'pickup_datetime::TIMESTAMP AS datetime',
@@ -263,7 +270,7 @@ export function NycTaxiView() {
     }
 
     setup();
-  }, [coordinator, topology, $hoverZoneConstrained]);
+  }, [coordinator, topology, $hoverZoneConstrained, mode]);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6">
