@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5.0.0
+        uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
 
@@ -27,12 +27,12 @@ jobs:
         uses: tanstack/config/.github/setup@main
 
       - name: Get base and head commits for `nx affected`
-        uses: nrwl/nx-set-shas@v4.3.3
+        uses: nrwl/nx-set-shas@v4.4.0
         with:
           main-branch-name: main
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
