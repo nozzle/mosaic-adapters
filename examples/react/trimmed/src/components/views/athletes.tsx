@@ -17,7 +17,7 @@ import {
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useConnectorStatus } from '@nozzleio/react-mosaic';
-import type { Row } from '@tanstack/react-table';
+import type { ColumnDef, Row } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { cn, simpleDateFormatter } from '@/lib/utils';
@@ -245,7 +245,9 @@ export function AthletesView() {
       >
         <div>
           <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
-          {isPending && <div className="italic">Loading data...</div>}
+          {isPending && (
+            <div className="italic text-sm mb-2">Initializing...</div>
+          )}
           <div ref={chartDivRef} />
         </div>
 
@@ -258,6 +260,7 @@ export function AthletesView() {
               step={5}
               selection={topology.$weight}
               filterBy={topology.$ctxWeight}
+              enabled={!isPending}
             />
             <HistogramFilter
               table={tableName}
@@ -265,6 +268,7 @@ export function AthletesView() {
               step={0.05}
               selection={topology.$height}
               filterBy={topology.$ctxHeight}
+              enabled={!isPending}
             />
           </div>
         )}
@@ -274,11 +278,11 @@ export function AthletesView() {
 
       <div>
         <h4 className="text-lg mb-2 font-medium">Table area</h4>
-        {isPending ? (
-          <div className="italic">Loading data...</div>
-        ) : (
-          <AthletesTable histogramMode={histogramMode} topology={topology} />
-        )}
+        <AthletesTable
+          histogramMode={histogramMode}
+          topology={topology}
+          enabled={!isPending}
+        />
       </div>
     </div>
   );
@@ -287,9 +291,11 @@ export function AthletesView() {
 function AthletesTable({
   histogramMode,
   topology,
+  enabled,
 }: {
   histogramMode: 'sidebar' | 'header';
   topology: ReturnType<typeof useAthletesTopology>;
+  enabled: boolean;
 }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
@@ -298,7 +304,7 @@ function AthletesTable({
     [],
   );
 
-  const columns = useMemo(
+  const columns = useMemo<Array<ColumnDef<AthleteRowData, any>>>(
     () => [
       columnHelper.accessor('id', {
         header: ({ column }) => (
@@ -359,6 +365,7 @@ function AthletesTable({
                 selection={topology.$height}
                 filterBy={topology.$ctxHeight}
                 height={40}
+                enabled={enabled}
               />
             )}
           </div>
@@ -388,6 +395,7 @@ function AthletesTable({
                 selection={topology.$weight}
                 filterBy={topology.$ctxWeight}
                 height={40}
+                enabled={enabled}
               />
             )}
           </div>
@@ -413,7 +421,7 @@ function AthletesTable({
       columnHelper.accessor('bronze', {}),
       columnHelper.accessor('info', {}),
     ],
-    [view, histogramMode, columnHelper, topology],
+    [view, histogramMode, columnHelper, topology, enabled],
   );
 
   const { tableOptions } = useMosaicReactTable<AthleteRowData>({
@@ -440,6 +448,7 @@ function AthletesTable({
       enableColumnFilters: true,
     },
     __debugName: 'AthletesTable',
+    enabled,
   });
 
   const table = useReactTable(tableOptions);

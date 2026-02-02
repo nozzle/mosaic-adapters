@@ -15,6 +15,7 @@ import {
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useConnectorStatus, useCoordinator } from '@nozzleio/react-mosaic';
+import type { ColumnDef } from '@tanstack/react-table';
 import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -292,26 +293,23 @@ export function NycTaxiView() {
     <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6">
       <div>
         <h4 className="text-lg mb-2 font-medium">NYC Taxi Map</h4>
+        {isPending && (
+          <div className="italic text-sm mb-2">Initializing...</div>
+        )}
         <div ref={chartDivRef} />
       </div>
 
       <div className="flex flex-col gap-8 overflow-hidden">
-        {isPending ? (
-          <div className="italic">Initializing...</div>
-        ) : (
-          <>
-            <div>
-              <h4 className="text-lg mb-2 font-medium">Trip Details (Raw)</h4>
-              <TripsDetailTable topology={topology} />
-            </div>
-            <div>
-              <h4 className="text-lg mb-2 font-medium">
-                Zone Summary (Aggregated)
-              </h4>
-              <TripsSummaryTable topology={topology} />
-            </div>
-          </>
-        )}
+        <div>
+          <h4 className="text-lg mb-2 font-medium">Trip Details (Raw)</h4>
+          <TripsDetailTable topology={topology} enabled={!isPending} />
+        </div>
+        <div>
+          <h4 className="text-lg mb-2 font-medium">
+            Zone Summary (Aggregated)
+          </h4>
+          <TripsSummaryTable topology={topology} enabled={!isPending} />
+        </div>
       </div>
     </div>
   );
@@ -319,13 +317,15 @@ export function NycTaxiView() {
 
 function TripsDetailTable({
   topology,
+  enabled,
 }: {
   topology: ReturnType<typeof useNycTaxiTopology>;
+  enabled: boolean;
 }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
   const helper = useMemo(() => createMosaicColumnHelper<TripRowData>(), []);
 
-  const columns = useMemo(
+  const columns = useMemo<Array<ColumnDef<TripRowData, any>>>(
     () => [
       helper.accessor('datetime', {
         header: ({ column }) => (
@@ -374,6 +374,7 @@ function TripsDetailTable({
       }) as TripRowData,
     totalRowsMode: 'window',
     tableOptions: { enableColumnFilters: true },
+    enabled,
   });
 
   const table = useReactTable(tableOptions);
@@ -416,13 +417,15 @@ function TripsDetailTable({
 
 function TripsSummaryTable({
   topology,
+  enabled,
 }: {
   topology: ReturnType<typeof useNycTaxiTopology>;
+  enabled: boolean;
 }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
   const helper = useMemo(() => createMosaicColumnHelper<SummaryRowData>(), []);
 
-  const columns = useMemo(
+  const columns = useMemo<Array<ColumnDef<SummaryRowData, any>>>(
     () => [
       helper.accessor('zone_x', {
         header: ({ column }) => (
@@ -478,6 +481,7 @@ function TripsSummaryTable({
       enableColumnFilters: true,
       initialState: { sorting: [{ id: 'trip_count', desc: true }] },
     },
+    enabled,
   });
 
   const table = useReactTable(tableOptions);

@@ -150,6 +150,9 @@ export class MosaicDataTable<
     if (!this.coordinator) {
       return Promise.resolve();
     }
+    if (this.enabled === false) {
+      return Promise.resolve();
+    }
     return super.requestQuery(query);
   }
 
@@ -166,6 +169,10 @@ export class MosaicDataTable<
 
     this.options = options;
     this.source = options.table;
+
+    if (options.enabled !== undefined) {
+      this.enabled = options.enabled;
+    }
 
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
@@ -294,6 +301,11 @@ export class MosaicDataTable<
     } else if (options.mapping) {
       // Columns might be inferred from mapping if not explicitly provided
     }
+
+    // Trigger update if enabled status changed to true
+    if (this.enabled) {
+      this.requestUpdate();
+    }
   }
 
   public requestAuxiliary(config: SidecarRequest<TData>) {
@@ -324,6 +336,10 @@ export class MosaicDataTable<
   override query(
     primaryFilter?: FilterExpr | null | undefined,
   ): SelectQuery | null {
+    if (!this.enabled) {
+      return null;
+    }
+
     const source = this.resolveSource(primaryFilter);
 
     if (!source || (typeof source === 'string' && source.trim() === '')) {
@@ -561,6 +577,10 @@ export class MosaicDataTable<
    * Prepares the client for execution.
    */
   override async prepare(): Promise<void> {
+    if (!this.enabled) {
+      return Promise.resolve();
+    }
+
     const source = this.resolveSource();
 
     if (!source || (typeof source === 'string' && source.trim() === '')) {
@@ -599,7 +619,12 @@ export class MosaicDataTable<
   }
 
   public __onConnect() {
-    this.enabled = true;
+    // If enabled option is not provided, default to true
+    if (this.options.enabled !== false) {
+      this.enabled = true;
+    } else {
+      this.enabled = false;
+    }
 
     this.sidecarManager.connectAll();
     this.sidecarManager.refreshAll();
@@ -694,6 +719,7 @@ export class MosaicDataTable<
     }
 
     this._cleanupListener = () => {
+      // Use internal property to avoid triggering side-effects during cleanup
       this.enabled = false;
       this.filterBy?.removeEventListener('value', selectionCb);
       this.options.highlightBy?.removeEventListener('value', selectionCb);
@@ -718,6 +744,10 @@ export class MosaicDataTable<
   }
 
   fields(): Array<FieldInfoRequest> {
+    if (!this.enabled) {
+      return [];
+    }
+
     const source = this.resolveSource();
 
     if (!source || (typeof source === 'string' && source.trim() === '')) {
@@ -929,6 +959,6 @@ export class MosaicDataTable<
   }
 
   get isEnabled() {
-    return this.isConnected;
+    return this.isConnected && this.enabled;
   }
 }

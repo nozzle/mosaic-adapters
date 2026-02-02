@@ -5,6 +5,15 @@ import { isArrowTable } from '@uwdata/mosaic-core';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import type { Selection } from '@uwdata/mosaic-core';
 
+export interface UseMosaicValueOptions {
+  /**
+   * If false, the query will not be executed.
+   * Useful for dependent queries or waiting for data initialization.
+   * @default true
+   */
+  enabled?: boolean;
+}
+
 /**
  * HOOK: useMosaicValue
  * Connects a specific SQL Aggregation query to a React state value.
@@ -12,15 +21,22 @@ import type { Selection } from '@uwdata/mosaic-core';
  *
  * @param queryFactory - A function that accepts a filter predicate and returns a query object.
  * @param selection - The Mosaic Selection to listen to for updates.
+ * @param options - Configuration options.
  */
 export function useMosaicValue(
   queryFactory: (filter: any) => any,
   selection: Selection,
+  options: UseMosaicValueOptions = {},
 ) {
   const [value, setValue] = useState<number | string>('-');
   const coordinator = useCoordinator();
+  const { enabled = true } = options;
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     const setup = async () => {
       // 1. Resolve the current filter state from the Selection
       const predicate = selection.predicate(null);
@@ -48,7 +64,7 @@ export function useMosaicValue(
     // 5. Subscribe to Selection changes to trigger re-fetches
     selection.addEventListener('value', setup);
     return () => selection.removeEventListener('value', setup);
-  }, [queryFactory, selection, coordinator]);
+  }, [queryFactory, selection, coordinator, enabled]);
 
   return value;
 }

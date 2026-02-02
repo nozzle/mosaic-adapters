@@ -16,6 +16,11 @@ interface UseMosaicHistogramOptions {
   step: number;
   /** The global filter (Input) to respect */
   filterBy?: Selection;
+  /**
+   * If false, the histogram client will not issue queries.
+   * @default true
+   */
+  enabled?: boolean;
 }
 
 // Create the strongly typed client class outside the hook
@@ -32,6 +37,7 @@ export function useMosaicHistogram({
   column,
   step,
   filterBy,
+  enabled = true,
 }: UseMosaicHistogramOptions) {
   const coordinator = useCoordinator();
   const [data, setData] = useState<HistogramOutput>([]);
@@ -44,6 +50,10 @@ export function useMosaicHistogram({
   }, [data]);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     // Instantiate the Typed Client
     // This enforces that 'options' contains 'step' as a number
     const client = new TypedHistogramClient({
@@ -68,7 +78,7 @@ export function useMosaicHistogram({
       cleanup();
       client.disconnect();
     };
-  }, [table, column, step, filterBy, coordinator]);
+  }, [table, column, step, filterBy, coordinator, enabled]);
 
   return { bins: data, stats };
 }

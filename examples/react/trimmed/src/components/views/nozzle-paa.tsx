@@ -222,22 +222,23 @@ export function NozzlePaaView() {
     );
   }
 
-  if (!isReady) {
-    return (
-      <div className="flex h-64 items-center justify-center text-slate-500 animate-pulse">
-        Initializing...
-      </div>
-    );
-  }
-
+  // Render optimistically. We no longer block on isReady.
+  // Instead, we pass isReady to child components to suppress queries until data is loaded.
   return (
     <div className="flex flex-col gap-6 bg-slate-50/50 min-h-screen pb-10">
-      <HeaderSection topology={topology} />
+      <HeaderSection topology={topology} enabled={isReady} />
 
       {/* Insert Active Filter Bar Here */}
       <ActiveFilterBar />
 
       <div className="px-6 -mt-8 relative z-10">
+        {/*
+          NOTE: Facet Filters (Dropdowns) implicitly handle "enabled" internally if we pass it,
+          but we are currently relying on the fact that if they query an empty table,
+          it just returns empty results or fails silently.
+          Ideally, we would pass `enabled={isReady}` to them as well if we added that prop to the components.
+          For now, allowing them to render is acceptable as they handle empty states well.
+        */}
         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">
           <div className="text-sm font-bold text-slate-700 mr-2">
             FILTER BY:
@@ -246,9 +247,7 @@ export function NozzlePaaView() {
             label="Domain"
             table={TABLE_NAME}
             column="domain"
-            // WRITE to the specific Input selection
             selection={topology.inputs.domain}
-            // READ from the Explicit Context (All Other Inputs + Table State)
             filterBy={topology.inputContexts.domain}
             externalContext={topology.externalContext}
           />
@@ -256,7 +255,6 @@ export function NozzlePaaView() {
             label="Phrase"
             table={TABLE_NAME}
             column="phrase"
-            // Text inputs only write, they don't read options
             selection={topology.inputs.phrase}
           />
           <ArraySelectFilter
@@ -305,6 +303,7 @@ export function NozzlePaaView() {
           aggFn={maxAgg}
           filterBy={topology.phraseContext}
           selection={topology.selections.phrase}
+          enabled={isReady}
         />
         <SummaryTable
           title="PAA Questions"
@@ -314,6 +313,7 @@ export function NozzlePaaView() {
           aggFn={mSql.count}
           filterBy={topology.questionContext}
           selection={topology.selections.question}
+          enabled={isReady}
         />
         <SummaryTable
           title="Domain"
@@ -324,6 +324,7 @@ export function NozzlePaaView() {
           where={whereDomain}
           filterBy={topology.domainContext}
           selection={topology.selections.domain}
+          enabled={isReady}
         />
         <SummaryTable
           title="URL"
@@ -334,6 +335,7 @@ export function NozzlePaaView() {
           where={whereUrl}
           filterBy={topology.urlContext}
           selection={topology.selections.url}
+          enabled={isReady}
         />
       </div>
 
@@ -343,7 +345,7 @@ export function NozzlePaaView() {
             Detailed Breakdown
           </div>
           <div className="flex-1 overflow-auto p-0">
-            <DetailTable topology={topology} />
+            <DetailTable topology={topology} enabled={isReady} />
           </div>
         </div>
       </div>
@@ -353,8 +355,10 @@ export function NozzlePaaView() {
 
 function HeaderSection({
   topology,
+  enabled,
 }: {
   topology: ReturnType<typeof usePaaTopology>;
+  enabled: boolean;
 }) {
   const qPhrases = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
@@ -372,9 +376,13 @@ function HeaderSection({
       .where(filter);
 
   // KPIs use the Global Context (All Inputs + All Summaries + Detail)
-  const valPhrases = useMosaicValue(qPhrases, topology.globalContext);
-  const valQuestions = useMosaicValue(qQuestions, topology.globalContext);
-  const valDays = useMosaicValue(qDays, topology.globalContext);
+  const valPhrases = useMosaicValue(qPhrases, topology.globalContext, {
+    enabled,
+  });
+  const valQuestions = useMosaicValue(qQuestions, topology.globalContext, {
+    enabled,
+  });
+  const valDays = useMosaicValue(qDays, topology.globalContext, { enabled });
 
   return (
     <div className="bg-[#0e7490] text-white pt-8 pb-12 px-6">
@@ -420,6 +428,7 @@ function SummaryTable({
   where,
   filterBy,
   selection,
+  enabled,
 }: {
   title: string;
   groupBy: string;
@@ -429,6 +438,7 @@ function SummaryTable({
   where?: FilterExpr;
   filterBy: Selection;
   selection: Selection;
+  enabled: boolean;
 }) {
   const queryFactory = useMemo(
     () => (filter: FilterExpr | null | undefined) => {
@@ -552,6 +562,7 @@ function SummaryTable({
       enableMultiRowSelection: true,
     },
     __debugName: `${title}SummaryTable`,
+    enabled,
   });
 
   const table = useReactTable(tableOptions);
@@ -574,8 +585,10 @@ function SummaryTable({
 
 function DetailTable({
   topology,
+  enabled,
 }: {
   topology: ReturnType<typeof usePaaTopology>;
+  enabled: boolean;
 }) {
   const helper = useMemo(() => createMosaicColumnHelper<PaaRowData>(), []);
 
@@ -608,6 +621,7 @@ function DetailTable({
       enableColumnFilters: true,
     },
     __debugName: 'DetailTable',
+    enabled,
   });
 
   const table = useReactTable(tableOptions);
