@@ -14,8 +14,7 @@ import {
   createMosaicMapping,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { useCoordinator } from '@nozzleio/react-mosaic';
-import { useConnector } from '@/context/ConnectorContext';
+import { useConnectorStatus, useCoordinator } from '@nozzleio/react-mosaic';
 import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -90,7 +89,7 @@ export function NycTaxiView() {
   const chartDivRef = useRef<HTMLDivElement | null>(null);
   const loadedModeRef = useRef<string | null>(null);
   const coordinator = useCoordinator();
-  const { mode } = useConnector();
+  const { mode } = useConnectorStatus();
   const topology = useNycTaxiTopology();
 
   // Create a constrained hover selection that respects the current topology context.
@@ -154,9 +153,8 @@ export function NycTaxiView() {
         const fileURL = DATA_SOURCES[mode];
 
         // Skip extension loading in remote mode - server should have it pre-loaded
-        const loadCommands = mode === 'remote'
-          ? []
-          : [vg.loadExtension('spatial')];
+        const loadCommands =
+          mode === 'remote' ? [] : [vg.loadExtension('spatial')];
 
         await coordinator.exec([
           ...loadCommands,

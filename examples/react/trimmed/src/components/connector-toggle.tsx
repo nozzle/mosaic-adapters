@@ -1,10 +1,20 @@
 // UI Component to toggle between WASM and Remote execution modes
+// Refactored to be a controlled component using the library's status hook
 
-import { useConnector } from '@/context/ConnectorContext';
+import { useConnectorStatus } from '@nozzleio/react-mosaic';
+import type { ConnectorMode } from '@nozzleio/react-mosaic';
 import { Button } from '@/components/ui/button';
 
-export function ConnectorToggle() {
-  const { mode, setMode, status } = useConnector();
+interface ConnectorToggleProps {
+  currentMode: ConnectorMode;
+  onToggle: (mode: ConnectorMode) => void;
+}
+
+export function ConnectorToggle({
+  currentMode,
+  onToggle,
+}: ConnectorToggleProps) {
+  const { status } = useConnectorStatus();
 
   const isConnecting = status === 'connecting';
 
@@ -15,8 +25,8 @@ export function ConnectorToggle() {
       </div>
       <Button
         size="sm"
-        variant={mode === 'wasm' ? 'default' : 'outline'}
-        onClick={() => setMode('wasm')}
+        variant={currentMode === 'wasm' ? 'default' : 'outline'}
+        onClick={() => onToggle('wasm')}
         disabled={isConnecting}
         className="h-7 text-xs"
       >
@@ -24,8 +34,8 @@ export function ConnectorToggle() {
       </Button>
       <Button
         size="sm"
-        variant={mode === 'remote' ? 'default' : 'outline'}
-        onClick={() => setMode('remote')}
+        variant={currentMode === 'remote' ? 'default' : 'outline'}
+        onClick={() => onToggle('remote')}
         disabled={isConnecting}
         className="h-7 text-xs"
       >

@@ -16,6 +16,7 @@ import {
   createMosaicMapping,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
+import { useConnectorStatus } from '@nozzleio/react-mosaic';
 import type { Row } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
@@ -23,7 +24,6 @@ import { cn, simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 import { HistogramFilter } from '@/components/histogram-filter';
 import { Button } from '@/components/ui/button';
-import { useConnector } from '@/context/ConnectorContext';
 import { useAthletesTopology } from '@/hooks/useAthletesTopology';
 
 const tableName = 'athletes';
@@ -96,7 +96,7 @@ export function AthletesView() {
   );
   const chartDivRef = useRef<HTMLDivElement | null>(null);
   const loadedModeRef = useRef<string | null>(null);
-  const { mode } = useConnector();
+  const { mode } = useConnectorStatus();
 
   // Use topology hook - selections are created fresh on remount (mode switch)
   const topology = useAthletesTopology();

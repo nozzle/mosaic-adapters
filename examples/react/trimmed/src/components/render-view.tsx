@@ -1,16 +1,20 @@
 import * as React from 'react';
+import { useMemo, useState } from 'react';
 import {
+  HttpArrowConnector,
+  MosaicConnectorProvider,
   MosaicFilterProvider,
   SelectionRegistryProvider,
+  useConnectorStatus,
 } from '@nozzleio/react-mosaic';
 import { TableStyleSwitcher } from './render-table';
+import type { ConnectorMode } from '@nozzleio/react-mosaic';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
 import { AthletesViewSimple } from '@/components/views/athletes-simple';
 import { NycTaxiView } from '@/components/views/nyc-taxi';
 import { NozzlePaaView } from '@/components/views/nozzle-paa';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
-import { ConnectorProvider, useConnector } from '@/context/ConnectorContext';
 import { ConnectorToggle } from '@/components/connector-toggle';
 import { GlobalResetButton } from '@/components/global-reset-button';
 
@@ -55,38 +59,91 @@ const views = new Map([
 type ViewMap = typeof views;
 type ViewConfig = ViewMap extends Map<infer _K, infer V> ? V : never;
 
+/**
+ * Main application layout that sets up the Mosaic Provider hierarchy.
+ *
+ * It configures the MosaicConnectorProvider with secrets and endpoints injected
+ * from the environment (e.g. Cloudflare Access Headers).
+ */
 export function RenderView() {
+  const [mode, setMode] = useState<ConnectorMode>('wasm');
+
+  // Load secrets from Vite environment variables (or defaults for local dev)
+  const REMOTE_URL =
+    import.meta.env.VITE_REMOTE_DB_URL || 'http://localhost:3001/query';
+  const CF_CLIENT_ID = import.meta.env.VITE_CF_CLIENT_ID;
+  const CF_CLIENT_SECRET = import.meta.env.VITE_CF_CLIENT_SECRET;
+  const TENANT_ID = import.meta.env.VITE_TENANT_ID;
+
+  // Memoize the configuration to prevent re-creation on every render
+  const connectorConfig = useMemo(
+    () => ({
+      mode,
+      remoteConnectorFactory: () =>
+        new HttpArrowConnector({
+          url: REMOTE_URL,
+          headers: {
+            // Cloudflare Tunnel Authentication Headers
+            // The library doesn't know these exist; it just spreads them into fetch()
+            ...(CF_CLIENT_ID ? { 'CF-Access-Client-Id': CF_CLIENT_ID } : {}),
+            ...(CF_CLIENT_SECRET
+              ? { 'CF-Access-Client-Secret': CF_CLIENT_SECRET }
+              : {}),
+
+            // App-Specific Multi-Tenant Header
+            ...(TENANT_ID ? { 'X-Tenant-Id': TENANT_ID } : {}),
+          },
+          logger: console, // Pass console to debug SQL queries
+        }),
+    }),
+    [mode, REMOTE_URL, CF_CLIENT_ID, CF_CLIENT_SECRET, TENANT_ID],
+  );
+
   return (
-    <ConnectorProvider>
-      <RenderViewWithProviders />
-    </ConnectorProvider>
+    // Updated: The Provider now handles the mode switch internally via derived state.
+    // We no longer need `key={mode}` to force a remount.
+    <MosaicConnectorProvider config={connectorConfig}>
+      <RenderViewWithProviders mode={mode} setMode={setMode} />
+    </MosaicConnectorProvider>
   );
 }
 
 /**
- * Inner component that keys the SelectionRegistry and FilterProvider by mode.
- * This ensures all Selections and filter state are fresh when the connector changes.
+ * Inner component that keys the SelectionRegistry and FilterProvider by connection ID.
+ * This ensures all Selections and filter state are fresh when the connector changes (e.g. database swap).
  */
-function RenderViewWithProviders() {
-  const { mode } = useConnector();
+function RenderViewWithProviders({
+  mode,
+  setMode,
+}: {
+  mode: ConnectorMode;
+  setMode: (m: ConnectorMode) => void;
+}) {
+  const { connectionId } = useConnectorStatus();
 
   return (
-    // Key the providers by mode to ensure fresh Selection and Filter state
+    // Key the providers by connectionId to ensure fresh Selection and Filter state
     // when switching between WASM and Remote connectors.
-    <SelectionRegistryProvider key={`registry-${mode}`}>
-      <MosaicFilterProvider key={`filter-${mode}`}>
-        <RenderViewContent />
+    <SelectionRegistryProvider key={`registry-${connectionId}`}>
+      <MosaicFilterProvider key={`filter-${connectionId}`}>
+        <RenderViewContent mode={mode} setMode={setMode} />
       </MosaicFilterProvider>
     </SelectionRegistryProvider>
   );
 }
 
-function RenderViewContent() {
+function RenderViewContent({
+  mode,
+  setMode,
+}: {
+  mode: ConnectorMode;
+  setMode: (m: ConnectorMode) => void;
+}) {
   const [view, setView] = useURLSearchParam('dashboard', 'athletes', {
     reloadOnChange: true,
   });
 
-  const { mode, status, error } = useConnector();
+  const { status, error } = useConnectorStatus();
 
   const renderViewContent = () => {
     if (!view || !views.has(view)) {
@@ -106,7 +163,8 @@ function RenderViewContent() {
           </p>
           {mode === 'remote' && (
             <p className="text-xs text-slate-500">
-              Make sure the proxy server is running: <code>node proxy-server.js</code>
+              Make sure the proxy server is running:
+              <code>node proxy-server.js</code>
             </p>
           )}
           <button
@@ -152,7 +210,7 @@ function RenderViewContent() {
           <TableStyleSwitcher />
         </div>
 
-        <ConnectorToggle />
+        <ConnectorToggle currentMode={mode} onToggle={setMode} />
       </div>
       {renderViewContent()}
     </>

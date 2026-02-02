@@ -13,6 +13,7 @@ import {
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import {
+  useConnectorStatus,
   useCoordinator,
   useFilterRegistry,
   useRegisterFilterSource,
@@ -30,7 +31,6 @@ import {
   TextFilter,
 } from '@/components/paa/paa-filters';
 import { ActiveFilterBar } from '@/components/active-filter-bar';
-import { useConnector } from '@/context/ConnectorContext';
 
 const TABLE_NAME = 'nozzle_paa';
 
@@ -84,7 +84,7 @@ export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const coordinator = useCoordinator();
-  const { mode } = useConnector();
+  const { mode } = useConnectorStatus();
   const topology = usePaaTopology();
   const filterRegistry = useFilterRegistry();
 
