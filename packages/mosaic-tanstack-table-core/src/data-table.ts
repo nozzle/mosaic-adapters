@@ -56,6 +56,9 @@ import type { FilterStrategy } from './query/filter-factory';
 import type { FacetStrategy } from './facet-strategies';
 import type { SidecarRequest } from './registry';
 
+/** Max number of validation errors to log individually before summarizing */
+const MAX_VALIDATION_ERRORS_LOGGED = 5;
+
 export function createMosaicDataTableClient<
   TData extends RowData,
   TValue extends PrimitiveSqlValue = PrimitiveSqlValue,
@@ -515,7 +518,10 @@ export class MosaicDataTable<
           rowsToValidate.forEach((row, idx) => {
             if (!this.options.validateRow!(row)) {
               invalidCount++;
-              if (this.options.validationMode === 'first' || invalidCount < 5) {
+              if (
+                this.options.validationMode === 'first' ||
+                invalidCount < MAX_VALIDATION_ERRORS_LOGGED
+              ) {
                 logger.error(
                   'Core',
                   `[MosaicDataTable ${this.debugPrefix}] Row validation failed at index ${idx}. Schema mismatch.`,
