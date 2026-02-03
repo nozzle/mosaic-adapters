@@ -62,8 +62,13 @@ export class MosaicFilterRegistry {
 
   /**
    * Registers a selection to be tracked.
+   * Safe to call multiple times - will remove old listener before adding new one.
    */
   registerSelection(selection: Selection, config: SelectionRegistration) {
+    // Prevent double listeners if selection is re-registered
+    if (this.registrations.has(selection)) {
+      selection.removeEventListener('value', this.handleUpdate);
+    }
     this.registrations.set(selection, config);
     selection.addEventListener('value', this.handleUpdate);
     this.handleUpdate();
@@ -208,8 +213,16 @@ export class MosaicFilterRegistry {
       }
     }
 
+    const safeId = (() => {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(Date.now());
+      }
+    })();
+
     list.push({
-      id: `${config.groupId}-${sourceId}-${JSON.stringify(value)}`,
+      id: `${config.groupId}-${sourceId}-${safeId}`,
       groupId: config.groupId,
       sourceId,
       label,
@@ -263,5 +276,18 @@ export class MosaicFilterRegistry {
       (f) => f.groupId === groupId,
     );
     filters.forEach((f) => this.removeFilter(f));
+  }
+
+  /**
+   * Cleans up all listeners and clears internal state.
+   * Call when the registry is no longer needed.
+   */
+  destroy() {
+    for (const selection of this.registrations.keys()) {
+      selection.removeEventListener('value', this.handleUpdate);
+    }
+    this.registrations.clear();
+    this.groups.clear();
+    this.store.setState({ filters: [] });
   }
 }
