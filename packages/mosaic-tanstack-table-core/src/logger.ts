@@ -37,10 +37,12 @@ class LogManager {
   // Cache strictly for calculating diffs between log events
   private stateCache = new Map<string, any>();
 
-  // Check debug mode from environment
+  // Check debug mode from environment (supports Vite and Node.js)
   private isDebug =
-    typeof import.meta !== 'undefined' &&
-    (import.meta as any).env?.VITE_DEBUG_MODE === 'true';
+    (typeof import.meta !== 'undefined' &&
+      (import.meta as any).env?.VITE_DEBUG_MODE === 'true') ||
+    (typeof process !== 'undefined' &&
+      (process.env?.DEBUG === 'true' || process.env?.DEBUG === '*'));
 
   constructor() {
     // Auto-enable verbose logging in dev environments if needed
@@ -170,6 +172,11 @@ class LogManager {
    * Why: Easier for LLMs to read line-by-line without parsing a massive start/end object.
    */
   download() {
+    // Guard for SSR/Node.js environments
+    if (typeof document === 'undefined') {
+      return;
+    }
+
     const header = {
       generated: new Date().toISOString(),
       sessionDuration: `${((Date.now() - this.startTime) / 1000).toFixed(1)}s`,
