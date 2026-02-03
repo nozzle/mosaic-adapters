@@ -601,6 +601,7 @@ export class MosaicDataTable<
         const inferredColumns = schema.map((s) => ({
           accessorKey: s.column,
           id: s.column,
+          meta: { dataType: s.type },
         }));
 
         if (!mapper) {

@@ -5,6 +5,7 @@ import { useCoordinator } from '@nozzleio/react-mosaic';
 import type {
   MosaicDataTable,
   MosaicDataTableOptions,
+  PrimitiveSqlValue,
 } from '@nozzleio/mosaic-tanstack-table-core';
 import type { RowData, TableOptions } from '@tanstack/react-table';
 
@@ -20,7 +21,10 @@ export type * from '@nozzleio/mosaic-tanstack-table-core';
  * respond to coordinator changes. This is useful for components that stay mounted
  * but are hidden (e.g., tabs with display:none) to prevent queries to wrong backends.
  */
-export function useMosaicReactTable<TData extends RowData, TValue = any>(
+export function useMosaicReactTable<
+  TData extends RowData,
+  TValue extends PrimitiveSqlValue = PrimitiveSqlValue,
+>(
   options: MosaicDataTableOptions<TData, TValue>,
 ): {
   tableOptions: TableOptions<TData>;
