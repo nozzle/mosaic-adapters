@@ -42,7 +42,8 @@ class LogManager {
     (typeof import.meta !== 'undefined' &&
       (import.meta as any).env?.VITE_DEBUG_MODE === 'true') ||
     (typeof process !== 'undefined' &&
-      (process.env?.DEBUG === 'true' || process.env?.DEBUG === '*'));
+      typeof process.env !== 'undefined' &&
+      process.env.DEBUG === 'true');
 
   constructor() {
     // Auto-enable verbose logging in dev environments if needed

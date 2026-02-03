@@ -62,7 +62,7 @@ export function useCascadingContexts<TKey extends string>(
   const contexts = useMemo(() => {
     const map = {} as Record<TKey, Selection>;
     const keys = Object.keys(inputs) as Array<TKey>;
-    const inputValues = Object.values(inputs) as Array<Selection>;
+    const inputValues: Array<Selection> = Object.values(inputs);
 
     keys.forEach((key) => {
       const self = inputs[key];
