@@ -266,6 +266,30 @@ export class MosaicDataTable<
       this.sidecarManager.requestTotalCount();
     }
 
+    // Source change ALWAYS triggers schema reset and re-introspection
+    // Even if explicit columns are provided, we need fresh schema from new source
+    if (sourceChanged) {
+      this.schema = [];
+
+      this.#store.setState((prev) => ({
+        ...prev,
+        rows: [],
+      }));
+
+      // If connected, trigger re-introspection
+      if (this.isConnected && !options.columns) {
+        this.#columnMapper = undefined;
+        this.#store.setState((prev) => ({
+          ...prev,
+          columnDefs: [],
+        }));
+        this.prepare().then(() => {
+          this.requestUpdate();
+        });
+      }
+    }
+
+    // Handle column configuration (can happen with or without source change)
     if (options.columns) {
       if (options.__debugName?.includes('DetailTable')) {
         logger.debug(
@@ -275,24 +299,9 @@ export class MosaicDataTable<
       }
 
       this.#columnMapper = new ColumnMapper(options.columns, options.mapping);
-    } else if (sourceChanged) {
-      // Priority: If source changed and no explicit columns, we must introspect.
-      // This block was moved above options.mapping to ensure it runs even if mapping is present but empty.
-      this.schema = [];
-      this.#columnMapper = undefined;
-      this.#store.setState((prev) => ({
-        ...prev,
-        columnDefs: [],
-        rows: [],
-      }));
-
-      if (this.isConnected) {
-        this.prepare().then(() => {
-          this.requestUpdate();
-        });
-      }
-    } else if (options.mapping) {
+    } else if (!sourceChanged && options.mapping) {
       // Columns might be inferred from mapping if not explicitly provided
+      // (Only applies when source didn't change - otherwise handled above)
     }
   }
 
