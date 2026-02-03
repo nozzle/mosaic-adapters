@@ -436,9 +436,10 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
 
     const resolvedSource = this.resolveSource(effectiveFilter);
     if (!resolvedSource) {
-      return mSql.Query.from(mSql.sql`(SELECT 1) AS _dummy`).where(
-        mSql.sql`1=0`,
-      );
+      // Use consistent dummy query pattern to prevent parser errors
+      return mSql.Query.from(mSql.sql`(SELECT 1)`)
+        .select({ _dummy: mSql.literal(1) })
+        .where(mSql.sql`1=0`);
     }
 
     const isArray = columnType === 'array' || isArrayColumn === true;
