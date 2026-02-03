@@ -3,7 +3,8 @@
  * Maintains a set of active Mosaic Selections and provides methods to register, unregister, and reset them.
  * This acts as the central point for "Global Reset" functionality.
  */
-import { createContext, useContext, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useRef } from 'react';
+import type { ReactNode } from 'react';
 import type { Selection } from '@uwdata/mosaic-core';
 
 export interface SelectionRegistryContextType {

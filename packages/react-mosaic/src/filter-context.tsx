@@ -1,12 +1,7 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  type ReactNode,
-} from 'react';
+import { createContext, useContext, useEffect, useMemo } from 'react';
 import { MosaicFilterRegistry } from '@nozzleio/mosaic-tanstack-table-core';
 import { useStore } from '@tanstack/react-store';
+import type { ReactNode } from 'react';
 import type {
   ActiveFilter,
   SelectionRegistration,
