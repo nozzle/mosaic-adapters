@@ -53,16 +53,13 @@ export function useCascadingContexts<TKey extends string>(
   inputs: Record<TKey, Selection>,
   externals: Array<Selection> = [],
 ): Record<TKey, Selection> {
-  // Create stable dependency key from input keys and external count
-  // The actual Selection objects are stable (from useMosaicSelections),
-  // so we only need to track when the structure changes
-  const inputKeys = Object.keys(inputs).sort().join(',');
-  const externalsCount = externals.length;
+  // Memoize dependency array to avoid unnecessary re-calculation
+  const inputValues = Object.values(inputs);
+  const deps = [...inputValues, ...externals];
 
   const contexts = useMemo(() => {
     const map = {} as Record<TKey, Selection>;
     const keys = Object.keys(inputs) as Array<TKey>;
-    const inputValues: Array<Selection> = Object.values(inputs);
 
     keys.forEach((key) => {
       const self = inputs[key];
@@ -70,16 +67,15 @@ export function useCascadingContexts<TKey extends string>(
       const others = inputValues.filter((s) => s !== self);
 
       // Context = Others + Externals
+      // Explicitly cast to Selection[] to resolve TS inference issue (unknown[])
       map[key] = Selection.intersect({
-        include: [...others, ...externals],
+        include: [...others, ...externals] as Array<Selection>,
       });
     });
 
     return map;
-    // We use inputKeys + externalsCount as stable dependency proxies
-    // The actual Selection instances are stable from useMosaicSelections
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputs, externals, inputKeys, externalsCount]);
+  }, deps);
 
   return contexts;
 }

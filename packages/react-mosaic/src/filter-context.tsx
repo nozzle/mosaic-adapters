@@ -1,12 +1,10 @@
-import { createContext, useContext, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useMemo } from 'react';
 import { MosaicFilterRegistry } from '@nozzleio/mosaic-tanstack-table-core';
 import { useStore } from '@tanstack/react-store';
-import type { ReactNode } from 'react';
 import type {
   ActiveFilter,
   SelectionRegistration,
 } from '@nozzleio/mosaic-tanstack-table-core';
-import type { Selection } from '@uwdata/mosaic-core';
 
 const FilterContext = createContext<MosaicFilterRegistry | null>(null);
 
@@ -14,7 +12,11 @@ const FilterContext = createContext<MosaicFilterRegistry | null>(null);
  * Provider component for the Mosaic Filter Registry.
  * Initializes a new registry instance.
  */
-export function MosaicFilterProvider({ children }: { children: ReactNode }) {
+export function MosaicFilterProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const registry = useMemo(() => new MosaicFilterRegistry(), []);
   return (
     <FilterContext.Provider value={registry}>{children}</FilterContext.Provider>
@@ -53,7 +55,7 @@ export function useActiveFilters(): Array<ActiveFilter> {
  * @param metadata - Optional configuration for labels and formatters
  */
 export function useRegisterFilterSource(
-  selection: Selection | null | undefined,
+  selection: any,
   groupId: string,
   metadata?: Partial<Omit<SelectionRegistration, 'selection' | 'groupId'>>,
 ) {

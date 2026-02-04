@@ -27,7 +27,8 @@
   "dependencies": {
     "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@tanstack/react-store": "catalog:",
-    "@uwdata/mosaic-core": "catalog:"
+    "@uwdata/mosaic-core": "catalog:",
+    "@uwdata/vgplot": "catalog:"
   },
   "peerDependencies": {
     "react": ">=18.2.0"
