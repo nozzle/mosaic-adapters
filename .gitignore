@@ -147,6 +147,3 @@ vite.config.ts.timestamp-*
 .idea/
 
 local-testing/
-
-# agents temp files
-.opencode/
