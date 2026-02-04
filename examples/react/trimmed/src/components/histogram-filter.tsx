@@ -20,6 +20,11 @@ interface HistogramProps {
   /** Selection used to input global context */
   filterBy: Selection;
   height?: number;
+  /**
+   * If false, queries are suppressed.
+   * @default true
+   */
+  enabled?: boolean;
 }
 
 /**
@@ -36,9 +41,16 @@ export function HistogramFilter({
   selection,
   filterBy,
   height = 80,
+  enabled = true,
 }: HistogramProps) {
   // 1. Use Enhanced Hook (returns bins + stats)
-  const { bins, stats } = useMosaicHistogram({ table, column, step, filterBy });
+  const { bins, stats } = useMosaicHistogram({
+    table,
+    column,
+    step,
+    filterBy,
+    enabled,
+  });
 
   // 2. Use Selection Value Hook (No more useEffect boilerplate)
   const selectionValue = useMosaicSelectionValue<[number, number]>(selection);
@@ -96,7 +108,7 @@ export function HistogramFilter({
       >
         {bins.length === 0 ? (
           <div className="w-full text-center text-xs text-slate-400 italic mb-4">
-            No data
+            {enabled ? 'No data' : 'Loading...'}
           </div>
         ) : (
           bins.map((item) => {

@@ -42,12 +42,11 @@ export function usePaaTopology() {
   ]);
 
   // Register all selections with the global reset context
-  // Memoize the array to prevent effect re-runs on every render
-  const allSelections = useMemo(
-    () => [...Object.values(inputs), detail, ...Object.values(summaries)],
-    [inputs, detail, summaries],
-  );
-  useRegisterSelections(allSelections);
+  useRegisterSelections([
+    ...Object.values(inputs),
+    detail,
+    ...Object.values(summaries),
+  ]);
 
   // 4. Compute Derived Topology
   //    Using helper hooks to automate the "N^2" wiring logic
