@@ -269,5 +269,4 @@ export class MosaicFilterRegistry {
     );
     filters.forEach((f) => this.removeFilter(f));
   }
-
 }
