@@ -61,7 +61,7 @@ Use e2e when testing "does the right thing happen on screen when a user interact
 
 - Always run `pnpm test:lint`, `pnpm test:types`, and `pnpm test:build` before committing
 - Test changes in relevant example apps: `cd examples/react/trimmed && pnpm dev`
-- Update corresponding documentation in `docs/` directory when adding features
+- Update corresponding documentation in `docs/` directory when adding adding/changing any library APIs and their usage
 - Add or update tests for any code changes
 
 ## Package structure
