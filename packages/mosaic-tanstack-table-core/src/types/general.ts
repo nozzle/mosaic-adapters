@@ -302,6 +302,13 @@ export interface MosaicDataTableOptions<
    * 'none': Skip validation.
    */
   validationMode?: 'first' | 'all' | 'none';
+
+  /**
+   * If false, the table client will not issue queries.
+   * Useful for deferring execution until the data source is ready.
+   * @default true
+   */
+  enabled?: boolean;
 }
 
 /**
