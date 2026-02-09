@@ -146,7 +146,12 @@ function RenderViewContent() {
 
         <ConnectorToggle />
       </div>
-      <ViewContent view={view ?? ''} mode={mode} status={status} error={error} />
+      <ViewContent
+        view={view ?? ''}
+        mode={mode}
+        status={status}
+        error={error}
+      />
     </>
   );
 }
@@ -165,7 +170,9 @@ function ViewContent({
   if (!view || !views.has(view)) {
     return (
       <div>
-        <p>Invalid view: &quot;{view}&quot;. Please select a valid dashboard.</p>
+        <p>
+          Invalid view: &quot;{view}&quot;. Please select a valid dashboard.
+        </p>
       </div>
     );
   }

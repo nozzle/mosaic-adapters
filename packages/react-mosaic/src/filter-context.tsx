@@ -14,11 +14,7 @@ const FilterContext = createContext<MosaicFilterRegistry | null>(null);
  * Provider component for the Mosaic Filter Registry.
  * Initializes a new registry instance.
  */
-export function MosaicFilterProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function MosaicFilterProvider({ children }: { children: ReactNode }) {
   const registry = useMemo(() => new MosaicFilterRegistry(), []);
   return (
     <FilterContext.Provider value={registry}>{children}</FilterContext.Provider>

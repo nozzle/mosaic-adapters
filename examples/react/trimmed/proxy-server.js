@@ -9,10 +9,7 @@ const TENANT_ID = process.env.TENANT_ID;
 const CF_CLIENT_ID = process.env.CF_CLIENT_ID;
 const CF_CLIENT_SECRET = process.env.CF_CLIENT_SECRET;
 
-const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://localhost:4173',
-];
+const ALLOWED_ORIGINS = ['http://localhost:5173', 'http://localhost:4173'];
 
 let requestCounter = 0;
 

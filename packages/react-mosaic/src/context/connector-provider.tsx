@@ -95,7 +95,9 @@ export function MosaicConnectorProvider({
     setError(null);
 
     // WASM gating: wait for wasmOptions when explicitly null (deferred)
-    if (mode === 'wasm' && wasmOptionsRef.current === null) {return;}
+    if (mode === 'wasm' && wasmOptionsRef.current === null) {
+      return;
+    }
 
     let active = true;
     setStatus('connecting');
@@ -173,7 +175,6 @@ export function MosaicConnectorProvider({
     // `wasmReady` — re-init when wasm prerequisites appear (false→true)
     // Props are read from refs, so changes to remoteConnectorFactory or
     // wasmOptions reference do NOT cause spurious re-initialization.
-     
   }, [mode, wasmReady]);
 
   // Derived: only expose the coordinator if its mode matches the current mode

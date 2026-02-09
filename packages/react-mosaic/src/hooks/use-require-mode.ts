@@ -1,9 +1,6 @@
 import { useEffect, useRef } from 'react';
-import {
-  
-  useMosaicCoordinator
-} from '../context/connector-provider';
-import type {ConnectorMode} from '../context/connector-provider';
+import { useMosaicCoordinator } from '../context/connector-provider';
+import type { ConnectorMode } from '../context/connector-provider';
 
 /**
  * Ensures the Mosaic coordinator is in the specified mode.
