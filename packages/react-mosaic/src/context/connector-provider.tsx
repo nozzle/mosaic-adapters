@@ -7,15 +7,15 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { ReactNode } from 'react';
 import * as vg from '@uwdata/vgplot';
 import {
   Coordinator,
-  wasmConnector,
   coordinator as globalCoordinator,
+  wasmConnector,
 } from '@uwdata/mosaic-core';
-import type { Connector } from '@uwdata/mosaic-core';
 import { MosaicContext } from '../context';
+import type { Connector } from '@uwdata/mosaic-core';
+import type { ReactNode } from 'react';
 
 export type ConnectorMode = 'wasm' | 'remote';
 
@@ -90,7 +90,7 @@ export function MosaicConnectorProvider({
     setError(null);
 
     // WASM gating: wait for wasmOptions when explicitly null (deferred)
-    if (mode === 'wasm' && wasmOptionsRef.current === null) return;
+    if (mode === 'wasm' && wasmOptionsRef.current === null) {return;}
 
     let active = true;
     setStatus('connecting');
@@ -120,11 +120,11 @@ export function MosaicConnectorProvider({
 
         // Enable real logging
         coord.logger({
-          log: (...args: unknown[]) => console.log('[Mosaic]', ...args),
-          info: (...args: unknown[]) => console.info('[Mosaic]', ...args),
-          warn: (...args: unknown[]) => console.warn('[Mosaic]', ...args),
-          error: (...args: unknown[]) => console.error('[Mosaic]', ...args),
-          debug: (...args: unknown[]) => console.debug('[Mosaic]', ...args),
+          log: (...args: Array<unknown>) => console.log('[Mosaic]', ...args),
+          info: (...args: Array<unknown>) => console.info('[Mosaic]', ...args),
+          warn: (...args: Array<unknown>) => console.warn('[Mosaic]', ...args),
+          error: (...args: Array<unknown>) => console.error('[Mosaic]', ...args),
+          debug: (...args: Array<unknown>) => console.debug('[Mosaic]', ...args),
           group: (label?: unknown) => console.group(label as string),
           groupCollapsed: (label?: unknown) =>
             console.groupCollapsed(label as string),
@@ -163,7 +163,7 @@ export function MosaicConnectorProvider({
     // `wasmReady` — re-init when wasm prerequisites appear (false→true)
     // Props are read from refs, so changes to remoteConnectorFactory or
     // wasmOptions reference do NOT cause spurious re-initialization.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [mode, wasmReady]);
 
   // Derived: only expose the coordinator if its mode matches the current mode

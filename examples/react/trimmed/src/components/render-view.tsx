@@ -8,8 +8,8 @@ import {
   useConnectorStatus,
   useMosaicCoordinator,
 } from '@nozzleio/react-mosaic';
-import type { ConnectorMode } from '@nozzleio/react-mosaic';
 import { TableStyleSwitcher } from './render-table';
+import type { ConnectorMode } from '@nozzleio/react-mosaic';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
 import { AthletesViewSimple } from '@/components/views/athletes-simple';
