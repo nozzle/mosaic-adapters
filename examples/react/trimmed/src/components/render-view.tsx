@@ -86,7 +86,6 @@ export function RenderView() {
             : {}),
           ...(TENANT_ID ? { 'X-Tenant-Id': TENANT_ID } : {}),
         },
-        logger: console,
       }),
     [REMOTE_URL, CF_CLIENT_ID, CF_CLIENT_SECRET, TENANT_ID],
   );

@@ -36,6 +36,8 @@ export interface MosaicConnectorProviderProps {
   remoteConnectorFactory?: () => Connector;
   /** Options passed to wasmConnector (e.g. { duckdb: db }). Pass `null` to defer init. */
   wasmOptions?: Record<string, unknown> | null;
+  /** Enable verbose Coordinator logging to the console. @default false */
+  debug?: boolean;
   children: ReactNode;
 }
 
@@ -48,6 +50,7 @@ export function MosaicConnectorProvider({
   initialMode = 'wasm',
   remoteConnectorFactory,
   wasmOptions,
+  debug = false,
   children,
 }: MosaicConnectorProviderProps) {
   const [mode, setModeRaw] = useState<ConnectorMode>(initialMode);
@@ -81,6 +84,8 @@ export function MosaicConnectorProvider({
   remoteFactoryRef.current = remoteConnectorFactory;
   const wasmOptionsRef = useRef(wasmOptions);
   wasmOptionsRef.current = wasmOptions;
+  const debugRef = useRef(debug);
+  debugRef.current = debug;
 
   // Derive a boolean that is true when wasm prerequisites are met.
   // undefined (not passed) = "use defaults", null = "defer init"
@@ -118,18 +123,23 @@ export function MosaicConnectorProvider({
           preagg: { enabled: true },
         });
 
-        // Enable real logging
-        coord.logger({
-          log: (...args: Array<unknown>) => console.log('[Mosaic]', ...args),
-          info: (...args: Array<unknown>) => console.info('[Mosaic]', ...args),
-          warn: (...args: Array<unknown>) => console.warn('[Mosaic]', ...args),
-          error: (...args: Array<unknown>) => console.error('[Mosaic]', ...args),
-          debug: (...args: Array<unknown>) => console.debug('[Mosaic]', ...args),
-          group: (label?: unknown) => console.group(label as string),
-          groupCollapsed: (label?: unknown) =>
-            console.groupCollapsed(label as string),
-          groupEnd: () => console.groupEnd(),
-        });
+        if (debugRef.current) {
+          coord.logger({
+            log: (...args: Array<unknown>) => console.log('[Mosaic]', ...args),
+            info: (...args: Array<unknown>) =>
+              console.info('[Mosaic]', ...args),
+            warn: (...args: Array<unknown>) =>
+              console.warn('[Mosaic]', ...args),
+            error: (...args: Array<unknown>) =>
+              console.error('[Mosaic]', ...args),
+            debug: (...args: Array<unknown>) =>
+              console.debug('[Mosaic]', ...args),
+            group: (label?: unknown) => console.group(label as string),
+            groupCollapsed: (label?: unknown) =>
+              console.groupCollapsed(label as string),
+            groupEnd: () => console.groupEnd(),
+          });
+        }
 
         // Dual registration: both global singleton and vgplot
         globalCoordinator(coord);
