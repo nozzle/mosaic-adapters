@@ -53,13 +53,15 @@ export function useCascadingContexts<TKey extends string>(
   inputs: Record<TKey, Selection>,
   externals: Array<Selection> = [],
 ): Record<TKey, Selection> {
-  // Memoize dependency array to avoid unnecessary re-calculation
-  const inputValues = Object.values(inputs);
-  const deps = [...inputValues, ...externals];
+  // Stable dep proxies — prevent useMemo from re-running on every render
+  // while still catching structural changes to inputs/externals.
+  const inputKeys = Object.keys(inputs).sort().join(',');
+  const externalsCount = externals.length;
 
   const contexts = useMemo(() => {
     const map = {} as Record<TKey, Selection>;
     const keys = Object.keys(inputs) as Array<TKey>;
+    const inputValues: Array<Selection> = Object.values(inputs);
 
     keys.forEach((key) => {
       const self = inputs[key];
@@ -67,15 +69,14 @@ export function useCascadingContexts<TKey extends string>(
       const others = inputValues.filter((s) => s !== self);
 
       // Context = Others + Externals
-      // Explicitly cast to Selection[] to resolve TS inference issue (unknown[])
       map[key] = Selection.intersect({
-        include: [...others, ...externals] as Array<Selection>,
+        include: [...others, ...externals],
       });
     });
 
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [inputs, externals, inputKeys, externalsCount]);
 
   return contexts;
 }

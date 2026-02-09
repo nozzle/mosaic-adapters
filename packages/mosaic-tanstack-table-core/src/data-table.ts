@@ -559,9 +559,8 @@ export class MosaicDataTable<
         const firstRow = typedRows[0] as Record<string, any>;
         const rawTotal = firstRow[this.#sql_total_rows];
 
-        // Safe coercion for BigInt total rows (common from DuckDB/Parquet)
-        totalRows =
-          typeof rawTotal === 'bigint' ? Number(rawTotal) : Number(rawTotal);
+        // Safe coercion — Number() handles bigint, string, and number
+        totalRows = Number(rawTotal);
       }
 
       batch(() => {
