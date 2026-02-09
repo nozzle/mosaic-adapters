@@ -1,14 +1,15 @@
 import * as React from 'react';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   HttpArrowConnector,
   MosaicConnectorProvider,
   MosaicFilterProvider,
   SelectionRegistryProvider,
   useConnectorStatus,
+  useMosaicCoordinator,
 } from '@nozzleio/react-mosaic';
-import { TableStyleSwitcher } from './render-table';
 import type { ConnectorMode } from '@nozzleio/react-mosaic';
+import { TableStyleSwitcher } from './render-table';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
 import { AthletesViewSimple } from '@/components/views/athletes-simple';
@@ -66,8 +67,6 @@ type ViewConfig = ViewMap extends Map<infer _K, infer V> ? V : never;
  * from the environment (e.g. Cloudflare Access Headers).
  */
 export function RenderView() {
-  const [mode, setMode] = useState<ConnectorMode>('wasm');
-
   // Load secrets from Vite environment variables (or defaults for local dev)
   const REMOTE_URL =
     import.meta.env.VITE_REMOTE_DB_URL || 'http://localhost:3001/query';
@@ -75,35 +74,29 @@ export function RenderView() {
   const CF_CLIENT_SECRET = import.meta.env.VITE_CF_CLIENT_SECRET;
   const TENANT_ID = import.meta.env.VITE_TENANT_ID;
 
-  // Memoize the configuration to prevent re-creation on every render
-  const connectorConfig = useMemo(
-    () => ({
-      mode,
-      remoteConnectorFactory: () =>
-        new HttpArrowConnector({
-          url: REMOTE_URL,
-          headers: {
-            // Cloudflare Tunnel Authentication Headers
-            // The library doesn't know these exist; it just spreads them into fetch()
-            ...(CF_CLIENT_ID ? { 'CF-Access-Client-Id': CF_CLIENT_ID } : {}),
-            ...(CF_CLIENT_SECRET
-              ? { 'CF-Access-Client-Secret': CF_CLIENT_SECRET }
-              : {}),
-
-            // App-Specific Multi-Tenant Header
-            ...(TENANT_ID ? { 'X-Tenant-Id': TENANT_ID } : {}),
-          },
-          logger: console, // Pass console to debug SQL queries
-        }),
-    }),
-    [mode, REMOTE_URL, CF_CLIENT_ID, CF_CLIENT_SECRET, TENANT_ID],
+  // Memoize the factory separately — no `mode` in deps, stable reference
+  const remoteConnectorFactory = useMemo(
+    () => () =>
+      new HttpArrowConnector({
+        url: REMOTE_URL,
+        headers: {
+          ...(CF_CLIENT_ID ? { 'CF-Access-Client-Id': CF_CLIENT_ID } : {}),
+          ...(CF_CLIENT_SECRET
+            ? { 'CF-Access-Client-Secret': CF_CLIENT_SECRET }
+            : {}),
+          ...(TENANT_ID ? { 'X-Tenant-Id': TENANT_ID } : {}),
+        },
+        logger: console,
+      }),
+    [REMOTE_URL, CF_CLIENT_ID, CF_CLIENT_SECRET, TENANT_ID],
   );
 
   return (
-    // Updated: The Provider now handles the mode switch internally via derived state.
-    // We no longer need `key={mode}` to force a remount.
-    <MosaicConnectorProvider config={connectorConfig}>
-      <RenderViewWithProviders mode={mode} setMode={setMode} />
+    <MosaicConnectorProvider
+      initialMode="wasm"
+      remoteConnectorFactory={remoteConnectorFactory}
+    >
+      <RenderViewWithProviders />
     </MosaicConnectorProvider>
   );
 }
@@ -112,82 +105,24 @@ export function RenderView() {
  * Inner component that keys the SelectionRegistry and FilterProvider by connection ID.
  * This ensures all Selections and filter state are fresh when the connector changes (e.g. database swap).
  */
-function RenderViewWithProviders({
-  mode,
-  setMode,
-}: {
-  mode: ConnectorMode;
-  setMode: (m: ConnectorMode) => void;
-}) {
+function RenderViewWithProviders() {
   const { connectionId } = useConnectorStatus();
 
   return (
-    // Key the providers by connectionId to ensure fresh Selection and Filter state
-    // when switching between WASM and Remote connectors.
     <SelectionRegistryProvider key={`registry-${connectionId}`}>
       <MosaicFilterProvider key={`filter-${connectionId}`}>
-        <RenderViewContent mode={mode} setMode={setMode} />
+        <RenderViewContent />
       </MosaicFilterProvider>
     </SelectionRegistryProvider>
   );
 }
 
-function RenderViewContent({
-  mode,
-  setMode,
-}: {
-  mode: ConnectorMode;
-  setMode: (m: ConnectorMode) => void;
-}) {
+function RenderViewContent() {
   const [view, setView] = useURLSearchParam('dashboard', 'athletes', {
     reloadOnChange: true,
   });
 
-  const { status, error } = useConnectorStatus();
-
-  const renderViewContent = () => {
-    if (!view || !views.has(view)) {
-      return (
-        <div>
-          <p>Invalid view: "{view}". Please select a valid dashboard.</p>
-        </div>
-      );
-    }
-
-    if (status === 'error') {
-      return (
-        <div className="h-64 flex flex-col gap-4 items-center justify-center text-red-500">
-          <div className="font-bold text-lg">Connection Failed</div>
-          <p className="text-sm max-w-md text-center bg-red-50 p-2 rounded border border-red-100">
-            {error || 'Unknown error'}
-          </p>
-          {mode === 'remote' && (
-            <p className="text-xs text-slate-500">
-              Make sure the proxy server is running:
-              <code>node proxy-server.js</code>
-            </p>
-          )}
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-slate-200 rounded hover:bg-slate-300 text-slate-800 text-sm font-medium"
-          >
-            Reload Page
-          </button>
-        </div>
-      );
-    }
-
-    if (status === 'connecting') {
-      return (
-        <div className="h-64 flex items-center justify-center text-slate-400 italic">
-          Connecting to {mode === 'remote' ? 'Remote Server' : 'WASM'}...
-        </div>
-      );
-    }
-
-    // status === 'connected'
-    return <RenderLayout key={`${view}-${mode}`} view={views.get(view)!} />;
-  };
+  const { mode, status, error } = useMosaicCoordinator();
 
   return (
     <>
@@ -210,11 +145,65 @@ function RenderViewContent({
           <TableStyleSwitcher />
         </div>
 
-        <ConnectorToggle currentMode={mode} onToggle={setMode} />
+        <ConnectorToggle />
       </div>
-      {renderViewContent()}
+      <ViewContent view={view ?? ''} mode={mode} status={status} error={error} />
     </>
   );
+}
+
+function ViewContent({
+  view,
+  mode,
+  status,
+  error,
+}: {
+  view: string;
+  mode: ConnectorMode;
+  status: 'connecting' | 'connected' | 'error';
+  error: Error | null;
+}) {
+  if (!view || !views.has(view)) {
+    return (
+      <div>
+        <p>Invalid view: &quot;{view}&quot;. Please select a valid dashboard.</p>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="h-64 flex flex-col gap-4 items-center justify-center text-red-500">
+        <div className="font-bold text-lg">Connection Failed</div>
+        <p className="text-sm max-w-md text-center bg-red-50 p-2 rounded border border-red-100">
+          {error?.message || 'Unknown error'}
+        </p>
+        {mode === 'remote' && (
+          <p className="text-xs text-slate-500">
+            Make sure the proxy server is running:
+            <code>node proxy-server.js</code>
+          </p>
+        )}
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-slate-200 rounded hover:bg-slate-300 text-slate-800 text-sm font-medium"
+        >
+          Reload Page
+        </button>
+      </div>
+    );
+  }
+
+  if (status === 'connecting') {
+    return (
+      <div className="h-64 flex items-center justify-center text-slate-400 italic">
+        Connecting to {mode === 'remote' ? 'Remote Server' : 'WASM'}...
+      </div>
+    );
+  }
+
+  // status === 'connected'
+  return <RenderLayout key={`${view}-${mode}`} view={views.get(view)!} />;
 }
 
 function RenderLayout({ view: { title, Component } }: { view: ViewConfig }) {
