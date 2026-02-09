@@ -20,3 +20,11 @@ export function useCoordinator(): Coordinator {
   }
   return context;
 }
+
+/**
+ * Hook to retrieve the active Mosaic Coordinator, or null if not yet available.
+ * Does not throw — useful in components that render before the coordinator is ready.
+ */
+export function useOptionalCoordinator(): Coordinator | null {
+  return useContext(MosaicContext);
+}
