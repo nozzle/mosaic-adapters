@@ -153,6 +153,9 @@ export class MosaicDataTable<
     if (!this.coordinator) {
       return Promise.resolve();
     }
+    if (this.enabled === false) {
+      return Promise.resolve();
+    }
     return super.requestQuery(query);
   }
 
@@ -169,6 +172,10 @@ export class MosaicDataTable<
 
     this.options = options;
     this.source = options.table;
+
+    if (options.enabled !== undefined) {
+      this.enabled = options.enabled;
+    }
 
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
@@ -269,30 +276,6 @@ export class MosaicDataTable<
       this.sidecarManager.requestTotalCount();
     }
 
-    // Source change ALWAYS triggers schema reset and re-introspection
-    // Even if explicit columns are provided, we need fresh schema from new source
-    if (sourceChanged) {
-      this.schema = [];
-
-      this.#store.setState((prev) => ({
-        ...prev,
-        rows: [],
-      }));
-
-      // If connected, trigger re-introspection
-      if (this.isConnected && !options.columns) {
-        this.#columnMapper = undefined;
-        this.#store.setState((prev) => ({
-          ...prev,
-          columnDefs: [],
-        }));
-        this.prepare().then(() => {
-          this.requestUpdate();
-        });
-      }
-    }
-
-    // Handle column configuration (can happen with or without source change)
     if (options.columns) {
       if (options.__debugName?.includes('DetailTable')) {
         logger.debug(
@@ -302,9 +285,29 @@ export class MosaicDataTable<
       }
 
       this.#columnMapper = new ColumnMapper(options.columns, options.mapping);
-    } else if (!sourceChanged && options.mapping) {
+    } else if (sourceChanged) {
+      // Priority: If source changed and no explicit columns, we must introspect.
+      // This block was moved above options.mapping to ensure it runs even if mapping is present but empty.
+      this.schema = [];
+      this.#columnMapper = undefined;
+      this.#store.setState((prev) => ({
+        ...prev,
+        columnDefs: [],
+        rows: [],
+      }));
+
+      if (this.isConnected) {
+        this.prepare().then(() => {
+          this.requestUpdate();
+        });
+      }
+    } else if (options.mapping) {
       // Columns might be inferred from mapping if not explicitly provided
-      // (Only applies when source didn't change - otherwise handled above)
+    }
+
+    // Trigger update if enabled status changed to true
+    if (this.enabled) {
+      this.requestUpdate();
     }
   }
 
@@ -336,6 +339,10 @@ export class MosaicDataTable<
   override query(
     primaryFilter?: FilterExpr | null | undefined,
   ): SelectQuery | null {
+    if (!this.enabled) {
+      return null;
+    }
+
     const source = this.resolveSource(primaryFilter);
 
     if (!source || (typeof source === 'string' && source.trim() === '')) {
@@ -550,7 +557,10 @@ export class MosaicDataTable<
         this.#sql_total_rows in (typedRows[0] as Record<string, any>)
       ) {
         const firstRow = typedRows[0] as Record<string, any>;
-        totalRows = firstRow[this.#sql_total_rows];
+        const rawTotal = firstRow[this.#sql_total_rows];
+
+        // Safe coercion — Number() handles bigint, string, and number
+        totalRows = Number(rawTotal);
       }
 
       batch(() => {
@@ -576,6 +586,10 @@ export class MosaicDataTable<
    * Prepares the client for execution.
    */
   override async prepare(): Promise<void> {
+    if (!this.enabled) {
+      return Promise.resolve();
+    }
+
     const source = this.resolveSource();
 
     if (!source || (typeof source === 'string' && source.trim() === '')) {
@@ -592,6 +606,7 @@ export class MosaicDataTable<
         const inferredColumns = schema.map((s) => ({
           accessorKey: s.column,
           id: s.column,
+          meta: { dataType: s.type },
         }));
 
         if (!mapper) {
@@ -614,7 +629,12 @@ export class MosaicDataTable<
   }
 
   public __onConnect() {
-    this.enabled = true;
+    // If enabled option is not provided, default to true
+    if (this.options.enabled !== false) {
+      this.enabled = true;
+    } else {
+      this.enabled = false;
+    }
 
     this.sidecarManager.connectAll();
     this.sidecarManager.refreshAll();
@@ -709,6 +729,7 @@ export class MosaicDataTable<
     }
 
     this._cleanupListener = () => {
+      // Use internal property to avoid triggering side-effects during cleanup
       this.enabled = false;
       this.filterBy?.removeEventListener('value', selectionCb);
       this.options.highlightBy?.removeEventListener('value', selectionCb);
@@ -733,6 +754,10 @@ export class MosaicDataTable<
   }
 
   fields(): Array<FieldInfoRequest> {
+    if (!this.enabled) {
+      return [];
+    }
+
     const source = this.resolveSource();
 
     if (!source || (typeof source === 'string' && source.trim() === '')) {
@@ -925,10 +950,14 @@ export class MosaicDataTable<
   }
 
   updateTotalRows(count: number) {
+    // Ensure we always store a clean Javascript Number, never a BigInt
+    // to prevent crashes in UI calculations.
+    const safeCount = typeof count === 'bigint' ? Number(count) : count;
+
     batch(() => {
       this.store.setState((prev) => ({
         ...prev,
-        totalRows: count,
+        totalRows: safeCount,
       }));
     });
   }
@@ -944,6 +973,6 @@ export class MosaicDataTable<
   }
 
   get isEnabled() {
-    return this.isConnected;
+    return this.isConnected && this.enabled;
   }
 }
