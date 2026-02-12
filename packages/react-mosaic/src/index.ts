@@ -7,3 +7,6 @@ export * from './hooks/use-mosaic-selection-value';
 export * from './hooks/use-register-selections';
 export * from './hooks/use-topology-helpers';
 export * from './filter-context';
+export * from './connectors/http-arrow-connector';
+export * from './hooks/use-require-mode';
+export * from './context/connector-provider';
