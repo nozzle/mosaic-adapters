@@ -14,15 +14,19 @@ import {
   createMosaicMapping,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { useCoordinator } from '@nozzleio/react-mosaic';
+import { useConnectorStatus, useCoordinator } from '@nozzleio/react-mosaic';
 import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 
-const fileURL =
-  'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet';
 const tableName = 'trips';
+
+// Data sources: WASM downloads from URL, Remote uses local server file
+const DATA_SOURCES = {
+  wasm: 'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet',
+  remote: '/data/nyc-rides-2010.parquet',
+} as const;
 
 // Constants for Hover Logic
 const HOVER_SOURCE = { id: 'hover' };
@@ -83,7 +87,9 @@ const SummaryMapping = createMosaicMapping<SummaryRowData>({
 export function NycTaxiView() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
+  const loadedModeRef = useRef<string | null>(null);
   const coordinator = useCoordinator();
+  const { mode } = useConnectorStatus();
   const topology = useNycTaxiTopology();
 
   // Create a constrained hover selection that respects the current topology context.
@@ -126,16 +132,28 @@ export function NycTaxiView() {
   }, []);
 
   useEffect(() => {
-    if (!chartDivRef.current || chartDivRef.current.hasChildNodes()) {
+    if (!chartDivRef.current) {
       return;
     }
+
+    // Only re-run full setup if mode actually changed
+    const modeChanged = loadedModeRef.current !== mode;
+    if (!modeChanged && chartDivRef.current.hasChildNodes()) {
+      return;
+    }
+
+    // Clear existing content when mode changes
+    chartDivRef.current.innerHTML = '';
 
     async function setup() {
       try {
         setIsPending(true);
 
-        await coordinator.exec([
-          vg.loadExtension('spatial'),
+        const fileURL = DATA_SOURCES[mode];
+
+        // Skip loadExtension('spatial') in remote mode — the Go server has it preloaded
+        const setupCommands = [
+          ...(mode === 'wasm' ? [vg.loadExtension('spatial')] : []),
           vg.loadParquet('rides', fileURL, {
             select: [
               'pickup_datetime::TIMESTAMP AS datetime',
@@ -157,7 +175,9 @@ export function NycTaxiView() {
           trip_distance, fare_amount, tip_amount, total_amount, vendor_id
         FROM rides
         WHERE fare_amount > 0 AND trip_distance > 0`,
-        ]);
+        ];
+
+        await coordinator.exec(setupCommands);
 
         const mapAttributes = [
           vg.width(350),
@@ -256,6 +276,8 @@ export function NycTaxiView() {
         );
 
         chartDivRef.current?.replaceChildren(layout);
+
+        loadedModeRef.current = mode;
         setIsPending(false);
       } catch (err) {
         console.warn('NycTaxiView setup interrupted or failed:', err);
@@ -263,7 +285,7 @@ export function NycTaxiView() {
     }
 
     setup();
-  }, [coordinator, topology, $hoverZoneConstrained]);
+  }, [coordinator, mode, topology, $hoverZoneConstrained]);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6">
@@ -273,22 +295,17 @@ export function NycTaxiView() {
       </div>
 
       <div className="flex flex-col gap-8 overflow-hidden">
-        {isPending ? (
-          <div className="italic">Initializing...</div>
-        ) : (
-          <>
-            <div>
-              <h4 className="text-lg mb-2 font-medium">Trip Details (Raw)</h4>
-              <TripsDetailTable topology={topology} />
-            </div>
-            <div>
-              <h4 className="text-lg mb-2 font-medium">
-                Zone Summary (Aggregated)
-              </h4>
-              <TripsSummaryTable topology={topology} />
-            </div>
-          </>
-        )}
+        {isPending && <div className="italic">Initializing...</div>}
+        <div>
+          <h4 className="text-lg mb-2 font-medium">Trip Details (Raw)</h4>
+          <TripsDetailTable topology={topology} enabled={!isPending} />
+        </div>
+        <div>
+          <h4 className="text-lg mb-2 font-medium">
+            Zone Summary (Aggregated)
+          </h4>
+          <TripsSummaryTable topology={topology} enabled={!isPending} />
+        </div>
       </div>
     </div>
   );
@@ -296,8 +313,10 @@ export function NycTaxiView() {
 
 function TripsDetailTable({
   topology,
+  enabled,
 }: {
   topology: ReturnType<typeof useNycTaxiTopology>;
+  enabled: boolean;
 }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
   const helper = useMemo(() => createMosaicColumnHelper<TripRowData>(), []);
@@ -351,6 +370,7 @@ function TripsDetailTable({
       }) as TripRowData,
     totalRowsMode: 'window',
     tableOptions: { enableColumnFilters: true },
+    enabled,
   });
 
   const table = useReactTable(tableOptions);
@@ -393,8 +413,10 @@ function TripsDetailTable({
 
 function TripsSummaryTable({
   topology,
+  enabled,
 }: {
   topology: ReturnType<typeof useNycTaxiTopology>;
+  enabled: boolean;
 }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
   const helper = useMemo(() => createMosaicColumnHelper<SummaryRowData>(), []);
@@ -455,6 +477,7 @@ function TripsSummaryTable({
       enableColumnFilters: true,
       initialState: { sorting: [{ id: 'trip_count', desc: true }] },
     },
+    enabled,
   });
 
   const table = useReactTable(tableOptions);
