@@ -13,6 +13,7 @@ import {
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import {
+  useConnectorStatus,
   useCoordinator,
   useFilterRegistry,
   useRegisterFilterSource,
@@ -32,7 +33,12 @@ import {
 import { ActiveFilterBar } from '@/components/active-filter-bar';
 
 const TABLE_NAME = 'nozzle_paa';
-const PARQUET_PATH = '/data-proxy/nozzle_test.parquet';
+
+// Data Sources
+// 1. Remote: Public URL (Go server fetches this directly)
+const REMOTE_URL = 'https://fastopendata.org/nozzle_test.parquet';
+// 2. WASM: Local Proxy Path (Browser fetches this via Vite -> fastopendata.org to bypass CORS)
+const PROXY_PATH = '/data-proxy/nozzle_test.parquet';
 
 // --- MAIN DETAIL TABLE ---
 interface PaaRowData {
@@ -76,7 +82,9 @@ const GroupByMapping = createMosaicMapping<GroupByRow>({
 
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const coordinator = useCoordinator();
+  const { mode } = useConnectorStatus();
   const topology = usePaaTopology();
   const filterRegistry = useFilterRegistry();
 
@@ -107,7 +115,6 @@ export function NozzlePaaView() {
   }, [filterRegistry]);
 
   // Register Top-Level Selections Individually
-  // This allows correct labeling in the active filter bar and ensures they are tracked independently.
   useRegisterFilterSource(topology.inputs.domain, 'global', {
     labelMap: { domain: 'Domain' },
   });
@@ -148,31 +155,78 @@ export function NozzlePaaView() {
   useRegisterFilterSource(topology.detail, 'detail');
 
   useEffect(() => {
+    let active = true;
+    // Simple retry mechanism for "Cleared" errors which can happen if init overlaps with a connector switch
+    let retryCount = 0;
+
     async function init() {
       try {
-        const parquetUrl = new URL(PARQUET_PATH, window.location.origin).href;
+        setError(null);
+
+        // Determine the correct URL based on the connection mode
+        // Remote: Needs absolute URL to fetch from internet
+        // WASM: Needs relative URL to fetch via Vite Proxy (to bypass CORS)
+        const parquetUrl =
+          mode === 'remote'
+            ? REMOTE_URL
+            : new URL(PROXY_PATH, window.location.origin).href;
+
         await coordinator.exec([
           `CREATE OR REPLACE TABLE ${TABLE_NAME} AS SELECT * FROM read_parquet('${parquetUrl}')`,
         ]);
-        setIsReady(true);
-      } catch (err) {
+
+        if (active) {
+          setIsReady(true);
+        }
+      } catch (err: any) {
+        if (!active) {
+          return;
+        }
+
         console.warn('NozzlePaaView init interrupted or failed:', err);
+        const errMsg = err.message || String(err);
+
+        // If the error is "Cleared", it means the coordinator reset while we were querying.
+        // We can try once more after a short delay.
+        if (errMsg.includes('Cleared') && retryCount < 1) {
+          console.log('Retrying init...');
+          retryCount++;
+          setTimeout(init, 500);
+          return;
+        }
+
+        setError(errMsg);
       }
     }
     init();
-  }, [coordinator]);
 
-  if (!isReady) {
+    return () => {
+      active = false;
+    };
+  }, [coordinator, mode]);
+
+  if (error) {
     return (
-      <div className="flex h-64 items-center justify-center text-slate-500 animate-pulse">
-        Initializing...
+      <div className="flex h-64 flex-col gap-4 items-center justify-center text-red-500">
+        <div className="font-bold text-lg">Initialization Failed</div>
+        <p className="text-sm max-w-md text-center bg-red-50 p-2 rounded border border-red-100">
+          {error}
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-slate-200 rounded hover:bg-slate-300 text-slate-800 text-sm font-medium"
+        >
+          Reload Page
+        </button>
       </div>
     );
   }
 
+  // Render optimistically. We no longer block on isReady.
+  // Instead, we pass isReady to child components to suppress queries until data is loaded.
   return (
     <div className="flex flex-col gap-6 bg-slate-50/50 min-h-screen pb-10">
-      <HeaderSection topology={topology} />
+      <HeaderSection topology={topology} enabled={isReady} />
 
       {/* Insert Active Filter Bar Here */}
       <ActiveFilterBar />
@@ -186,9 +240,7 @@ export function NozzlePaaView() {
             label="Domain"
             table={TABLE_NAME}
             column="domain"
-            // WRITE to the specific Input selection
             selection={topology.inputs.domain}
-            // READ from the Explicit Context (All Other Inputs + Table State)
             filterBy={topology.inputContexts.domain}
             externalContext={topology.externalContext}
           />
@@ -196,7 +248,6 @@ export function NozzlePaaView() {
             label="Phrase"
             table={TABLE_NAME}
             column="phrase"
-            // Text inputs only write, they don't read options
             selection={topology.inputs.phrase}
           />
           <ArraySelectFilter
@@ -245,6 +296,7 @@ export function NozzlePaaView() {
           aggFn={maxAgg}
           filterBy={topology.phraseContext}
           selection={topology.selections.phrase}
+          enabled={isReady}
         />
         <SummaryTable
           title="PAA Questions"
@@ -254,6 +306,7 @@ export function NozzlePaaView() {
           aggFn={mSql.count}
           filterBy={topology.questionContext}
           selection={topology.selections.question}
+          enabled={isReady}
         />
         <SummaryTable
           title="Domain"
@@ -264,6 +317,7 @@ export function NozzlePaaView() {
           where={whereDomain}
           filterBy={topology.domainContext}
           selection={topology.selections.domain}
+          enabled={isReady}
         />
         <SummaryTable
           title="URL"
@@ -274,6 +328,7 @@ export function NozzlePaaView() {
           where={whereUrl}
           filterBy={topology.urlContext}
           selection={topology.selections.url}
+          enabled={isReady}
         />
       </div>
 
@@ -283,7 +338,7 @@ export function NozzlePaaView() {
             Detailed Breakdown
           </div>
           <div className="flex-1 overflow-auto p-0">
-            <DetailTable topology={topology} />
+            <DetailTable topology={topology} enabled={isReady} />
           </div>
         </div>
       </div>
@@ -293,8 +348,10 @@ export function NozzlePaaView() {
 
 function HeaderSection({
   topology,
+  enabled,
 }: {
   topology: ReturnType<typeof usePaaTopology>;
+  enabled: boolean;
 }) {
   const qPhrases = (filter: any) =>
     mSql.Query.from(TABLE_NAME)
@@ -312,9 +369,13 @@ function HeaderSection({
       .where(filter);
 
   // KPIs use the Global Context (All Inputs + All Summaries + Detail)
-  const valPhrases = useMosaicValue(qPhrases, topology.globalContext);
-  const valQuestions = useMosaicValue(qQuestions, topology.globalContext);
-  const valDays = useMosaicValue(qDays, topology.globalContext);
+  const valPhrases = useMosaicValue(qPhrases, topology.globalContext, {
+    enabled,
+  });
+  const valQuestions = useMosaicValue(qQuestions, topology.globalContext, {
+    enabled,
+  });
+  const valDays = useMosaicValue(qDays, topology.globalContext, { enabled });
 
   return (
     <div className="bg-[#0e7490] text-white pt-8 pb-12 px-6">
@@ -360,6 +421,7 @@ function SummaryTable({
   where,
   filterBy,
   selection,
+  enabled,
 }: {
   title: string;
   groupBy: string;
@@ -369,6 +431,7 @@ function SummaryTable({
   where?: FilterExpr;
   filterBy: Selection;
   selection: Selection;
+  enabled: boolean;
 }) {
   const queryFactory = useMemo(
     () => (filter: FilterExpr | null | undefined) => {
@@ -492,6 +555,7 @@ function SummaryTable({
       enableMultiRowSelection: true,
     },
     __debugName: `${title}SummaryTable`,
+    enabled,
   });
 
   const table = useReactTable(tableOptions);
@@ -514,8 +578,10 @@ function SummaryTable({
 
 function DetailTable({
   topology,
+  enabled,
 }: {
   topology: ReturnType<typeof usePaaTopology>;
+  enabled: boolean;
 }) {
   const helper = useMemo(() => createMosaicColumnHelper<PaaRowData>(), []);
 
@@ -548,6 +614,7 @@ function DetailTable({
       enableColumnFilters: true,
     },
     __debugName: 'DetailTable',
+    enabled,
   });
 
   const table = useReactTable(tableOptions);
