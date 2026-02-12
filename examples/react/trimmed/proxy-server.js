@@ -4,7 +4,7 @@ import 'dotenv/config';
 const PORT = 3001;
 
 const REMOTE_DB_URL =
-  process.env.REMOTE_DB_URL || 'https://datadb.theopendatastack.com';
+  process.env.REMOTE_DB_URL || 'https://trueprod.theopendatastack.com';
 const TENANT_ID = process.env.TENANT_ID;
 const CF_CLIENT_ID = process.env.CF_CLIENT_ID;
 const CF_CLIENT_SECRET = process.env.CF_CLIENT_SECRET;
@@ -105,7 +105,7 @@ const server = createServer(async (req, res) => {
   } catch (err) {
     console.error(`[Proxy #${reqId}] Connection Crash:`, err);
     res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: String(err) }));
+    res.end(JSON.stringify({ error: 'Internal server error' }));
   }
 });
 

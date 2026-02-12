@@ -16,6 +16,11 @@ const FilterContext = createContext<MosaicFilterRegistry | null>(null);
  */
 export function MosaicFilterProvider({ children }: { children: ReactNode }) {
   const registry = useMemo(() => new MosaicFilterRegistry(), []);
+
+  useEffect(() => {
+    return () => registry.destroy();
+  }, [registry]);
+
   return (
     <FilterContext.Provider value={registry}>{children}</FilterContext.Provider>
   );
