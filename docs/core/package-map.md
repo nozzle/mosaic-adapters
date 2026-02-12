@@ -34,16 +34,19 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 
 `@nozzleio/react-mosaic`
 
-- `MosaicContext`
-- `useCoordinator`
+- `MosaicContext`, `useCoordinator`
+- `MosaicConnectorProvider`, `useConnectorStatus`, `useMosaicCoordinator`
+- `HttpArrowConnector`
 - `useMosaicSelection` / `useMosaicSelections`
 - `useCascadingContexts`
+- `useRequireMode`
 - `SelectionRegistryProvider`, `useRegisterSelections`
 - `MosaicFilterProvider`, `useRegisterFilterSource`, `useActiveFilters`
 
 ## Where to Start
 
 - React integration: `docs/react/simple-usage.md`
+- Dual-mode (WASM + remote): `docs/react/dual-mode-setup.md`
 - Inputs and filters: `docs/react/inputs.md`
 - Topologies and multi-table: `docs/react/complex-setup.md`
 - Core flow: `docs/core/data-flow.md`
