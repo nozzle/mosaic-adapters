@@ -15,7 +15,9 @@ import {
 } from '@nozzleio/react-mosaic';
 import type { MosaicDataTableColumnDefMetaOptions } from '@nozzleio/mosaic-tanstack-react-table';
 
-// Define keys statically to ensure type safety and stable references
+// Define keys statically to ensure type safety and stable references.
+// CRITICAL: These must be module-level constants so that useMosaicSelections
+// receives a stable array reference, preventing Selection recreation on re-render.
 const INPUT_KEYS = [
   'domain',
   'phrase',
@@ -26,6 +28,8 @@ const INPUT_KEYS = [
   'question',
 ] as const;
 
+const SUMMARY_KEYS = ['domain', 'phrase', 'question', 'url'] as const;
+
 export function usePaaTopology() {
   // 1. Instantiate Inputs (Batch)
   const inputs = useMosaicSelections(INPUT_KEYS);
@@ -34,20 +38,14 @@ export function usePaaTopology() {
   const detail = useMosaicSelection('intersect');
 
   // 3. Instantiate Explicit Outputs for Summary Tables (Batch)
-  const summaries = useMosaicSelections([
-    'domain',
-    'phrase',
-    'question',
-    'url',
-  ]);
+  const summaries = useMosaicSelections(SUMMARY_KEYS);
 
   // Register all selections with the global reset context
-  // Memoize the array to prevent effect re-runs on every render
-  const allSelections = useMemo(
-    () => [...Object.values(inputs), detail, ...Object.values(summaries)],
-    [inputs, detail, summaries],
-  );
-  useRegisterSelections(allSelections);
+  useRegisterSelections([
+    ...Object.values(inputs),
+    detail,
+    ...Object.values(summaries),
+  ]);
 
   // 4. Compute Derived Topology
   //    Using helper hooks to automate the "N^2" wiring logic
@@ -83,19 +81,22 @@ export function usePaaTopology() {
     };
   }, [inputs, summaries, detail]);
 
-  // 5. Wire Cascading Contexts (The Fix)
+  // 5. Wire Cascading Contexts
   //    Each input gets a context containing: [All Other Inputs] + [External Context]
-  const inputContexts = useCascadingContexts(inputs, [
-    topology.externalContext,
-  ]);
+  //    Memoize the externals arrays to keep stable references across renders.
+  const inputExternals = useMemo(
+    () => [topology.externalContext],
+    [topology.externalContext],
+  );
+  const inputContexts = useCascadingContexts(inputs, inputExternals);
 
   // 6. Wire Summary Contexts
   //    Summary tables see: [Global Inputs] + [Detail] + [All Other Summaries]
-  //    We can reuse the helper here too!
-  const summaryContexts = useCascadingContexts(summaries, [
-    topology.globalInput,
-    detail,
-  ]);
+  const summaryExternals = useMemo(
+    () => [topology.globalInput, detail],
+    [topology.globalInput, detail],
+  );
+  const summaryContexts = useCascadingContexts(summaries, summaryExternals);
 
   // 7. Define Column Metadata Helpers
   const getColumnMeta = (

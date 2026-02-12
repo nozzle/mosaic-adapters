@@ -12,6 +12,11 @@ export function useMosaicSelections<TKey extends string>(
   keys: ReadonlyArray<TKey>,
   type: 'intersect' | 'union' | 'single' | 'crossfilter' = 'intersect',
 ): Record<TKey, Selection> {
+  // Derive a stable scalar from the keys array so that callers can safely
+  // pass inline array literals (e.g. `useMosaicSelections(['a','b'])`)
+  // without causing Selection recreation on every render.
+  const keyString = keys.join('\0');
+
   const selections = useMemo(() => {
     const map = {} as Record<TKey, Selection>;
     keys.forEach((key) => {
@@ -32,7 +37,8 @@ export function useMosaicSelections<TKey extends string>(
       }
     });
     return map;
-  }, [keys, type]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyString, type]);
 
   return selections;
 }
@@ -53,9 +59,12 @@ export function useCascadingContexts<TKey extends string>(
   inputs: Record<TKey, Selection>,
   externals: Array<Selection> = [],
 ): Record<TKey, Selection> {
-  // Create stable dependency key from input keys and external count
-  // The actual Selection objects are stable (from useMosaicSelections),
-  // so we only need to track when the structure changes
+  // Stable dep proxies — prevent useMemo from re-running on every render
+  // while still catching structural changes to inputs/externals.
+  // NOTE: We intentionally do NOT include `externals` as a direct dependency
+  // because callers often pass inline array literals whose reference changes
+  // on every render. Instead we rely on `inputs` identity (which transitively
+  // captures the topology) and `externalsCount` as a structural proxy.
   const inputKeys = Object.keys(inputs).sort().join(',');
   const externalsCount = externals.length;
 
@@ -76,10 +85,8 @@ export function useCascadingContexts<TKey extends string>(
     });
 
     return map;
-    // We use inputKeys + externalsCount as stable dependency proxies
-    // The actual Selection instances are stable from useMosaicSelections
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputs, externals, inputKeys, externalsCount]);
+  }, [inputs, inputKeys, externalsCount]);
 
   return contexts;
 }
