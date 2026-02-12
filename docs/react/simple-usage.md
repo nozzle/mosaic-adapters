@@ -394,6 +394,7 @@ See `examples/react/trimmed/src/components/views/athletes-simple.tsx` for a full
 
 ## Next Steps
 
+- [Dual-Mode Setup](./dual-mode-setup.md) – WASM + remote server execution
 - [Complex Setup](./complex-setup.md) – Multi-table dashboards with cross-filtering
 - [Inputs](./inputs.md) – Building custom filter inputs
 - [Real-World Examples](./real-world-examples.md) – PAA and Athletes dashboards

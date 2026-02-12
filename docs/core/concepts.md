@@ -22,24 +22,47 @@ If you are building a React app, the primary library is `@nozzleio/mosaic-tansta
 
 The **Coordinator** is the central hub that:
 
-1. Manages a connection to DuckDB (WASM or remote socket)
+1. Manages a connection to DuckDB (WASM, socket, or HTTP)
 2. Receives SQL queries from clients
 3. Caches and optimizes query execution
 4. Notifies clients when upstream filters change
 
-You typically set up a coordinator once at the app root:
+### Basic Setup (WASM only)
+
+For simple apps using only browser-side DuckDB:
 
 ```tsx
 import * as vg from '@uwdata/vgplot';
 import { MosaicContext } from '@nozzleio/react-mosaic';
 
-// vg.coordinator() returns the global singleton
 <MosaicContext.Provider value={vg.coordinator()}>
   {children}
 </MosaicContext.Provider>;
 ```
 
-Hooks like `useCoordinator()` then access it implicitly.
+### Dual-Mode Setup (WASM + Remote)
+
+For apps that switch between local and remote execution:
+
+```tsx
+import {
+  MosaicConnectorProvider,
+  HttpArrowConnector,
+} from '@nozzleio/react-mosaic';
+
+<MosaicConnectorProvider
+  initialMode="wasm"
+  remoteConnectorFactory={() =>
+    new HttpArrowConnector({ url: 'http://localhost:3001/query' })
+  }
+>
+  {children}
+</MosaicConnectorProvider>;
+```
+
+This provides `useConnectorStatus()` and `useMosaicCoordinator()` hooks for managing mode switching. See [Dual-Mode Setup](../react/dual-mode-setup.md) for details.
+
+Hooks like `useCoordinator()` access the coordinator implicitly from context.
 
 ## Selection
 
@@ -219,5 +242,6 @@ useRegisterFilterSource($domainFilter, 'global', {
 - [Package Map](./package-map.md) – Which package to use and why
 - [Data Flow](./data-flow.md) – How queries and filters propagate
 - [Simple Usage](../react/simple-usage.md) – Minimal React table setup
+- [Dual-Mode Setup](../react/dual-mode-setup.md) – WASM + remote execution
 - [Complex Setup](../react/complex-setup.md) – Multi-table topologies
 - [Inputs](../react/inputs.md) – Filter inputs and facet menus
