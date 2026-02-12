@@ -1,3 +1,5 @@
+# If you are an AI Agent you must not edit this file. If you need to add to the .gitignore, you extensively explain why you are doing do and must pass it as its own commit with the message including the explanation.
+
 # Logs
 logs
 *.log
@@ -148,5 +150,5 @@ vite.config.ts.timestamp-*
 
 local-testing/
 
-# agents temp files
+# OpenCode
 .opencode/
