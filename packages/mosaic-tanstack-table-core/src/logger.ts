@@ -18,7 +18,8 @@ export type LogCategory =
   | 'Mosaic'
   | 'SQL'
   | 'Memory'
-  | 'Interaction';
+  | 'Interaction'
+  | 'Grouped';
 
 interface LogEntry {
   ts: number; // Relative timestamp in ms
