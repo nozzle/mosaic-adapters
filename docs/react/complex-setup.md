@@ -464,3 +464,4 @@ vg.dot(vg.from('data', { filterBy: $hover }), {
 - [Real-World Examples](./real-world-examples.md) – PAA and Athletes dashboards
 - [Data Flow](../core/data-flow.md) – Deep dive into query lifecycle
 - [Concepts](../core/concepts.md) – Review core primitives
+- [Grouped Table](./grouped-table.md) – Server-side hierarchical grouping with lazy expand

@@ -26,3 +26,13 @@ These examples are the fastest way to see how the libraries are used in practice
 - KPI queries using `useMosaicValue`
 - Active filter bar + global reset
 - Summary tables using `rowSelection` + `manualHighlight`
+
+## Athletes (Grouped Table)
+
+`examples/react/trimmed/src/components/views/athletes.tsx` — `AthletesGroupedTable` component
+
+- Server-side hierarchical grouping: Country → Sport → Gender
+- Uses `useServerGroupedTable` with 3 group levels and 4 aggregation metrics
+- Leaf rows with `leafSelectAll: true` show individual athlete detail
+- Integrates with existing athletes topology for cross-filtering
+- See [Grouped Table Guide](./grouped-table.md) for full documentation
