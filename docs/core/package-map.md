@@ -31,6 +31,7 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 - `createMosaicMapping`
 - `createMosaicColumnHelper`
 - `HistogramController`
+- `useServerGroupedTable`
 
 `@nozzleio/react-mosaic`
 
@@ -50,3 +51,4 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 - Inputs and filters: `docs/react/inputs.md`
 - Topologies and multi-table: `docs/react/complex-setup.md`
 - Core flow: `docs/core/data-flow.md`
+- Grouped tables: `docs/react/grouped-table.md`
