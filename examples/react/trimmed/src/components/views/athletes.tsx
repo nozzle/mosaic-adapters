@@ -30,6 +30,7 @@ import type {
   ServerGroupedRow,
   LeafColumn,
 } from '@nozzleio/mosaic-tanstack-react-table';
+import { GroupedTableRenderer } from '@/components/grouped-table-renderer';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { cn, simpleDateFormatter } from '@/lib/utils';
@@ -528,7 +529,7 @@ const LEAF_COLUMNS: Array<LeafColumn> = [
 ];
 
 // Per-column overrides for leaf row rendering.
-// Any column not listed here gets a default 80px width and String(val) rendering.
+// Columns without an explicit width flex to fill available space.
 const LEAF_COL_STYLES: Record<
   string,
   {
@@ -538,39 +539,35 @@ const LEAF_COL_STYLES: Record<
     render?: (val: unknown) => string;
   }
 > = {
-  id: { label: 'ID', width: 70, className: 'text-slate-400 tabular-nums' },
+  id: { label: 'ID', className: 'text-slate-400 tabular-nums' },
   name: { label: 'Name', width: 160, className: 'font-medium text-slate-700' },
   date_of_birth: {
     label: 'Born',
-    width: 90,
     className: 'text-slate-500 tabular-nums',
     render: (v) => (v != null ? String(v).slice(0, 10) : '—'),
   },
   height: {
     label: 'Height',
-    width: 60,
     className: 'text-slate-500 tabular-nums',
     render: (v) => (v != null ? `${String(v)}m` : '—'),
   },
   weight: {
     label: 'Weight',
-    width: 60,
     className: 'text-slate-500 tabular-nums',
     render: (v) => (v != null ? `${String(v)}kg` : '—'),
   },
-  gold: { label: 'Gold', width: 50, className: 'tabular-nums text-amber-600' },
-  silver: {
-    label: 'Silver',
-    width: 50,
-    className: 'tabular-nums text-slate-400',
-  },
-  bronze: {
-    label: 'Bronze',
-    width: 50,
-    className: 'tabular-nums text-amber-800',
-  },
-  info: { label: 'Info', width: 200, className: 'text-slate-400 italic' },
+  gold: { label: 'Gold', className: 'tabular-nums text-amber-600' },
+  silver: { label: 'Silver', className: 'tabular-nums text-slate-400' },
+  bronze: { label: 'Bronze', className: 'tabular-nums text-amber-800' },
+  info: { label: 'Info', className: 'text-slate-400 italic' },
 };
+
+const GROUPED_METRIC_COLUMNS = [
+  { id: 'count', label: 'Athletes' },
+  { id: 'total_gold', label: 'Gold' },
+  { id: 'total_silver', label: 'Silver' },
+  { id: 'total_bronze', label: 'Bronze' },
+];
 
 function AthletesGroupedTable({
   topology,
@@ -614,139 +611,15 @@ function AthletesGroupedTable({
   }
 
   return (
-    <div className="border rounded overflow-auto max-h-[600px]">
-      <table className="w-full text-sm">
-        <thead className="bg-slate-50 sticky top-0 z-10">
-          <tr>
-            <th className="text-left px-3 py-2 font-medium">Group</th>
-            <th className="text-right px-3 py-2 font-medium">Athletes</th>
-            <th className="text-right px-3 py-2 font-medium">Gold</th>
-            <th className="text-right px-3 py-2 font-medium">Silver</th>
-            <th className="text-right px-3 py-2 font-medium">Bronze</th>
-          </tr>
-        </thead>
-        <tbody>
-          {table.getRowModel().rows.map((row, flatIndex) => {
-            const original = row.original;
-
-            // Leaf rows: auto-loop over all columns with optional custom overrides
-            if (original.type === 'leaf') {
-              const lv = original.values;
-              const indent = (row.depth + 1) * 20 + 12;
-              const keys = Object.keys(lv);
-
-              // Show a column header row before the first leaf in a sibling group
-              const prevRow =
-                flatIndex > 0
-                  ? table.getRowModel().rows[flatIndex - 1]
-                  : undefined;
-              const isFirstLeaf =
-                !prevRow || prevRow.original.type !== 'leaf';
-
-              return (
-                <React.Fragment key={row.id}>
-                  {isFirstLeaf && (
-                    <tr className="bg-slate-50/80">
-                      <td colSpan={5} style={{ paddingLeft: `${indent}px` }}>
-                        <div className="flex gap-1 text-[10px] font-medium text-slate-400 uppercase tracking-wider py-1 px-1">
-                          {keys.map((key) => (
-                            <span
-                              key={key}
-                              className="truncate"
-                              style={{
-                                width: LEAF_COL_STYLES[key]?.width ?? 80,
-                                flexShrink: 0,
-                              }}
-                            >
-                              {LEAF_COL_STYLES[key]?.label ?? key}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                  <tr className="border-t border-slate-100 text-xs hover:bg-slate-50/50">
-                    <td colSpan={5} style={{ paddingLeft: `${indent}px` }}>
-                      <div className="flex gap-1 py-0.5 px-1">
-                        {keys.map((key) => {
-                          const val = lv[key];
-                          const style = LEAF_COL_STYLES[key];
-                          const rendered = style?.render
-                            ? style.render(val)
-                            : String(val ?? '—');
-                          return (
-                            <span
-                              key={key}
-                              className={cn(
-                                'truncate',
-                                style?.className ?? 'text-slate-500',
-                              )}
-                              style={{
-                                width: style?.width ?? 80,
-                                flexShrink: 0,
-                              }}
-                            >
-                              {rendered}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </td>
-                  </tr>
-                </React.Fragment>
-              );
-            }
-
-            // Group rows
-            const isExpanded = row.getIsExpanded();
-            const indent = row.depth * 20;
-            const levelLabel = GROUPED_LEVELS[row.depth]?.label ?? '';
-            const isLoading = loadingGroupIds.includes(row.id);
-
-            return (
-              <tr
-                key={row.id}
-                className={cn(
-                  'border-t cursor-pointer hover:bg-slate-50 transition-colors',
-                  row.depth === 0 && 'font-medium',
-                )}
-                onClick={() => toggleExpand(row)}
-              >
-                <td
-                  className="px-3 py-1.5"
-                  style={{ paddingLeft: `${indent + 12}px` }}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="text-xs text-slate-400 w-4 inline-block">
-                      {isLoading ? '...' : isExpanded ? '▼' : '▶'}
-                    </span>
-                    <span>{original.groupValue || '(empty)'}</span>
-                    <span className="text-xs text-slate-400">
-                      ({levelLabel})
-                    </span>
-                  </span>
-                </td>
-                <td className="text-right px-3 py-1.5 tabular-nums">
-                  {original.metrics.count?.toLocaleString()}
-                </td>
-                <td className="text-right px-3 py-1.5 tabular-nums">
-                  {original.metrics.total_gold?.toLocaleString() ?? '—'}
-                </td>
-                <td className="text-right px-3 py-1.5 tabular-nums">
-                  {original.metrics.total_silver?.toLocaleString() ?? '—'}
-                </td>
-                <td className="text-right px-3 py-1.5 tabular-nums">
-                  {original.metrics.total_bronze?.toLocaleString() ?? '—'}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <div className="text-xs text-slate-400 px-3 py-2 border-t bg-slate-50">
-        {totalRootRows} countries
-      </div>
-    </div>
+    <GroupedTableRenderer
+      table={table}
+      levels={GROUPED_LEVELS}
+      toggleExpand={toggleExpand}
+      loadingGroupIds={loadingGroupIds}
+      leafColStyles={LEAF_COL_STYLES}
+      metricColumns={GROUPED_METRIC_COLUMNS}
+      footerText={`${totalRootRows} countries`}
+    />
   );
 }
 
