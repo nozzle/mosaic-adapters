@@ -7,7 +7,7 @@
  */
 import * as mSql from '@uwdata/mosaic-sql';
 import type { ExprValue, FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
-import type { GroupLevel, GroupMetric, GroupedRow, LeafColumn } from './types';
+import type { GroupLevel, GroupMetric, LeafColumn } from './types';
 
 // ---------------------------------------------------------------------------
 // Query Building
@@ -265,34 +265,43 @@ export function buildLeafRowsQuery(
 // ---------------------------------------------------------------------------
 
 /**
+ * Input for building selection predicates from grouped rows.
+ * Decoupled from the row type so callers can construct from any source
+ * (e.g., internal RowMeta map).
+ */
+export interface GroupedSelectionInput {
+  groupColumn: string;
+  groupValue: string;
+  parentConstraints: Record<string, string>;
+}
+
+/**
  * Builds a compound SQL predicate for a selected grouped row.
  *
  * The predicate includes all ancestor constraints plus the row's own value,
  * enabling cross-filtering at any depth in the hierarchy.
  *
  * @example
- * // Selecting a level-1 row ("Loud Music" under "Noise")
- * const row = {
- *   _groupColumn: 'descriptor',
- *   _groupValue: 'Loud Music',
- *   _parentValues: { complaint_type: 'Noise' },
- * };
- * buildGroupedSelectionPredicate(row);
+ * buildGroupedSelectionPredicate({
+ *   groupColumn: 'descriptor',
+ *   groupValue: 'Loud Music',
+ *   parentConstraints: { complaint_type: 'Noise' },
+ * });
  * // → AND(complaint_type = 'Noise', descriptor = 'Loud Music')
  */
 export function buildGroupedSelectionPredicate(
-  row: Pick<GroupedRow, '_groupColumn' | '_groupValue' | '_parentValues'>,
+  input: GroupedSelectionInput,
 ): FilterExpr {
   const clauses: Array<FilterExpr> = [];
 
   // Parent constraints (ancestors)
-  for (const [col, val] of Object.entries(row._parentValues)) {
+  for (const [col, val] of Object.entries(input.parentConstraints)) {
     clauses.push(mSql.eq(mSql.column(col), mSql.literal(val)));
   }
 
   // Own value
   clauses.push(
-    mSql.eq(mSql.column(row._groupColumn), mSql.literal(row._groupValue)),
+    mSql.eq(mSql.column(input.groupColumn), mSql.literal(input.groupValue)),
   );
 
   return clauses.length === 1 ? clauses[0]! : mSql.and(...clauses);
@@ -304,17 +313,15 @@ export function buildGroupedSelectionPredicate(
  * Used for multi-select scenarios where rows at different depths can be selected.
  */
 export function buildGroupedMultiSelectionPredicate(
-  rows: Array<
-    Pick<GroupedRow, '_groupColumn' | '_groupValue' | '_parentValues'>
-  >,
+  inputs: Array<GroupedSelectionInput>,
 ): FilterExpr | null {
-  if (rows.length === 0) {
+  if (inputs.length === 0) {
     return null;
   }
-  if (rows.length === 1) {
-    return buildGroupedSelectionPredicate(rows[0]!);
+  if (inputs.length === 1) {
+    return buildGroupedSelectionPredicate(inputs[0]!);
   }
 
-  const predicates = rows.map((r) => buildGroupedSelectionPredicate(r));
+  const predicates = inputs.map((r) => buildGroupedSelectionPredicate(r));
   return mSql.or(...predicates);
 }

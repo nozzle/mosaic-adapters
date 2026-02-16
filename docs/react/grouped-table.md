@@ -53,13 +53,13 @@ import {
   getExpandedRowModel,
 } from '@tanstack/react-table';
 
-const table = useReactTable<GroupedRow>({
+const table = useReactTable<ServerGroupedRow>({
   data,
   columns: yourColumns,
   state: { expanded },
   onExpandedChange: () => {}, // controlled via toggleExpand
-  getSubRows: (row) => row.subRows,
-  getRowId: (row) => row._groupId,
+  getSubRows: (row) => (row.type === 'group' ? row.subRows : undefined),
+  getRowId: (row) => row.id,
   getCoreRowModel: getCoreRowModel(),
   getExpandedRowModel: getExpandedRowModel(),
 });
@@ -111,9 +111,10 @@ const table = useReactTable<GroupedRow>({
 
 | Property          | Type                             | Description                                         |
 | ----------------- | -------------------------------- | --------------------------------------------------- |
-| `data`            | `GroupedRow[]`                   | Tree-structured data for TanStack Table             |
-| `expanded`        | `ExpandedState`                  | Current expanded state keyed by row ID              |
-| `toggleExpand`    | `(row: Row<GroupedRow>) => void` | Toggle expand/collapse. Fires child query if needed |
+| `data`            | `ServerGroupedRow[]`                   | Tree-structured data for TanStack Table             |
+| `expanded`        | `ExpandedState`                        | Current expanded state keyed by row ID              |
+| `toggleExpand`    | `(row: Row<ServerGroupedRow>) => void` | Toggle expand/collapse. Fires child query if needed |
+| `loadingGroupIds` | `string[]`                             | IDs of groups currently loading children            |
 | `isRootLoading`   | `boolean`                        | Whether the root query is loading                   |
 | `totalRootRows`   | `number`                         | Total root-level group count                        |
 | `clearSelection`  | `() => void`                     | Clear the current row selection                     |
@@ -165,11 +166,11 @@ const result = useServerGroupedTable({
 });
 ```
 
-Leaf rows have `_isLeafRow: true` and carry their data in `leafValues`. Render them differently from group rows:
+Leaf rows have `type: 'leaf'` and carry their data in `values`. Render them differently from group rows:
 
 ```tsx
-if (row.original._isLeafRow) {
-  const values = row.original.leafValues ?? {};
+if (row.original.type === 'leaf') {
+  const values = row.original.values;
   return <LeafRowComponent values={values} />;
 }
 ```
