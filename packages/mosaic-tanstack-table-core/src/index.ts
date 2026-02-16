@@ -23,3 +23,4 @@ export * from './filter-registry';
 export * from './grouped/types';
 export * from './grouped/query-builder';
 export * from './grouped/arrow-utils';
+export * from './grouped/mosaic-grouped-table';
