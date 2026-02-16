@@ -14,14 +14,16 @@ import type { ExpandedState, Row } from '@tanstack/react-table';
 import type {
   GroupLevel,
   GroupMetric,
-  GroupedRow,
+  GroupRow,
   LeafColumn,
+  LeafRow,
+  ServerGroupedRow,
 } from '@nozzleio/mosaic-tanstack-table-core';
 import type { Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 
 // Re-export types for convenience
-export type { GroupLevel, GroupMetric, GroupedRow, LeafColumn };
+export type { GroupLevel, GroupMetric, GroupRow, LeafRow, ServerGroupedRow, LeafColumn };
 
 // ---------------------------------------------------------------------------
 // Options (React-facing, superset of core options)
@@ -58,15 +60,17 @@ export interface UseServerGroupedTableOptions {
 
 export interface ServerGroupedTableResult {
   /** Tree-structured data for TanStack Table. */
-  data: Array<GroupedRow>;
+  data: Array<ServerGroupedRow>;
   /** Current expanded state keyed by row ID. */
   expanded: ExpandedState;
   /** Toggle a row's expanded state. Fires child query if needed. */
-  toggleExpand: (row: Row<GroupedRow>) => void;
+  toggleExpand: (row: Row<ServerGroupedRow>) => void;
   /** Whether the root query is loading. */
   isRootLoading: boolean;
   /** Total root-level group count. */
   totalRootRows: number;
+  /** IDs of groups currently loading children. */
+  loadingGroupIds: Array<string>;
   /** Clear the current row selection. */
   clearSelection: () => void;
   /** Leaf columns configuration (if any). */
@@ -145,9 +149,9 @@ export function useServerGroupedTable(
   // 5. Subscribe to store
   const state = useStore(client.store);
 
-  // 6. Wrap toggleExpand to accept Row<GroupedRow>
+  // 6. Wrap toggleExpand to accept Row<ServerGroupedRow>
   const toggleExpand = React.useCallback(
-    (row: Row<GroupedRow>) => {
+    (row: Row<ServerGroupedRow>) => {
       client.toggleExpand(row.id);
     },
     [client],
@@ -163,6 +167,7 @@ export function useServerGroupedTable(
     toggleExpand,
     isRootLoading: state.isRootLoading,
     totalRootRows: state.totalRootRows,
+    loadingGroupIds: state.loadingGroupIds,
     clearSelection,
     leafColumns,
     tableName: table,

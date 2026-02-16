@@ -4,8 +4,17 @@
  * Defines the data model for rows that form a tree structure where each level
  * is loaded lazily from the server via GROUP BY queries, plus optional raw
  * leaf rows at the deepest level.
+ *
+ * Uses a discriminated union (`ServerGroupedRow = GroupRow | LeafRow`) so
+ * consumers can narrow with `row.type === 'group'` or `row.type === 'leaf'`.
  */
 import type { ExprValue } from '@uwdata/mosaic-sql';
+
+/**
+ * Separator used between segments in row IDs.
+ * ASCII 31 (Unit Separator) — never appears in real data values.
+ */
+export const GROUP_ID_SEPARATOR = '\x1F';
 
 /**
  * Defines a column to display in raw leaf rows.
@@ -62,59 +71,33 @@ export interface GroupMetric {
   label?: string;
 }
 
-/**
- * A single row in the grouped tree structure.
- *
- * Every row — whether a group (expandable) or a leaf — carries metadata about
- * its position in the hierarchy. TanStack Table navigates children via `subRows`.
- */
-export interface GroupedRow {
-  /**
-   * Unique identifier across all depths.
-   * Pipe-delimited ancestry: `"Noise"`, `"Noise|Loud Music"`, `"Noise|Loud Music|Resolved"`.
-   */
-  _groupId: string;
+// ---------------------------------------------------------------------------
+// Row types — discriminated union
+// ---------------------------------------------------------------------------
 
-  /** 0-based depth in the hierarchy. */
-  _depth: number;
+/** A row in the grouped tree. Either a group (aggregated) or a leaf (raw data). */
+export type ServerGroupedRow = GroupRow | LeafRow;
 
-  /** True when this row has potential children (depth < maxDepth). */
-  _isGroup: boolean;
-
-  /** True when this is a raw data row (no aggregation), displayed at the leaf level. */
-  _isLeafRow: boolean;
-
-  /** True when this row can expand to show a detail panel with embedded grid. */
-  _hasDetailPanel: boolean;
-
-  /** The SQL column that this row's value belongs to. */
-  _groupColumn: string;
-
-  /** The actual value at this level (e.g., `"Noise"`). */
-  _groupValue: string;
-
-  /**
-   * Ancestor column→value pairs used to construct WHERE clauses for child queries
-   * and compound selection predicates.
-   *
-   * @example
-   * // For a Level 1 row under complaint_type = "Noise":
-   * { complaint_type: "Noise" }
-   */
-  _parentValues: Record<string, string>;
-
-  /** Whether child rows have been fetched from the server. */
-  _childrenLoaded: boolean;
-
-  /** Whether a child query is currently in-flight. */
-  _isLoading: boolean;
-
-  /** TanStack Table convention — child rows. `undefined` means not yet loaded. */
-  subRows?: Array<GroupedRow>;
-
+/** An aggregated group row with metrics and optional children. */
+export interface GroupRow {
+  /** Discriminant — always `'group'`. */
+  readonly type: 'group';
+  /** Unique ID (segments separated by GROUP_ID_SEPARATOR). */
+  readonly id: string;
+  /** Display value at this group level. */
+  readonly groupValue: string;
   /** Aggregation values keyed by metric ID (e.g., `{ count: 1234 }`). */
-  metrics: Record<string, number>;
+  readonly metrics: Record<string, number>;
+  /** TanStack Table convention — child rows. */
+  subRows?: Array<ServerGroupedRow>;
+}
 
-  /** Raw leaf row data keyed by column name. Only present on leaf rows. */
-  leafValues?: Record<string, unknown>;
+/** A raw data row at the leaf level (no aggregation). */
+export interface LeafRow {
+  /** Discriminant — always `'leaf'`. */
+  readonly type: 'leaf';
+  /** Unique ID (segments separated by GROUP_ID_SEPARATOR). */
+  readonly id: string;
+  /** Raw column data keyed by column name. */
+  readonly values: Record<string, unknown>;
 }

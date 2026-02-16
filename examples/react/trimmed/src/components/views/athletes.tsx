@@ -27,7 +27,7 @@ import type { ColumnDef, Row } from '@tanstack/react-table';
 import type {
   GroupLevel,
   GroupMetric,
-  GroupedRow,
+  ServerGroupedRow,
   LeafColumn,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { RenderTable } from '@/components/render-table';
@@ -579,26 +579,32 @@ function AthletesGroupedTable({
   topology: ReturnType<typeof useAthletesTopology>;
   enabled: boolean;
 }) {
-  const { data, expanded, toggleExpand, isRootLoading, totalRootRows } =
-    useServerGroupedTable({
-      table: tableName,
-      groupBy: GROUPED_LEVELS,
-      metrics: GROUPED_METRICS,
-      filterBy: topology.$tableContext,
-      leafColumns: LEAF_COLUMNS,
-      leafSelectAll: true,
-      enabled,
-    });
+  const {
+    data,
+    expanded,
+    toggleExpand,
+    isRootLoading,
+    totalRootRows,
+    loadingGroupIds,
+  } = useServerGroupedTable({
+    table: tableName,
+    groupBy: GROUPED_LEVELS,
+    metrics: GROUPED_METRICS,
+    filterBy: topology.$tableContext,
+    leafColumns: LEAF_COLUMNS,
+    leafSelectAll: true,
+    enabled,
+  });
 
-  const table = useReactTable<GroupedRow>({
+  const table = useReactTable<ServerGroupedRow>({
     data,
     columns: GROUPED_TABLE_COLUMNS,
     state: { expanded },
     onExpandedChange: () => {
       /* controlled via toggleExpand */
     },
-    getSubRows: (row) => row.subRows,
-    getRowId: (row) => row._groupId,
+    getSubRows: (row) => (row.type === 'group' ? row.subRows : undefined),
+    getRowId: (row) => row.id,
     getCoreRowModel: getCoreRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
   });
@@ -624,9 +630,9 @@ function AthletesGroupedTable({
             const original = row.original;
 
             // Leaf rows: auto-loop over all columns with optional custom overrides
-            if (original._isLeafRow) {
-              const lv = original.leafValues ?? {};
-              const indent = (original._depth + 1) * 20 + 12;
+            if (original.type === 'leaf') {
+              const lv = original.values;
+              const indent = (row.depth + 1) * 20 + 12;
               const keys = Object.keys(lv);
 
               // Show a column header row before the first leaf in a sibling group
@@ -634,7 +640,8 @@ function AthletesGroupedTable({
                 flatIndex > 0
                   ? table.getRowModel().rows[flatIndex - 1]
                   : undefined;
-              const isFirstLeaf = !prevRow || !prevRow.original._isLeafRow;
+              const isFirstLeaf =
+                !prevRow || prevRow.original.type !== 'leaf';
 
               return (
                 <React.Fragment key={row.id}>
@@ -692,15 +699,16 @@ function AthletesGroupedTable({
 
             // Group rows
             const isExpanded = row.getIsExpanded();
-            const indent = original._depth * 20;
-            const levelLabel = GROUPED_LEVELS[original._depth]?.label ?? '';
+            const indent = row.depth * 20;
+            const levelLabel = GROUPED_LEVELS[row.depth]?.label ?? '';
+            const isLoading = loadingGroupIds.includes(row.id);
 
             return (
               <tr
                 key={row.id}
                 className={cn(
                   'border-t cursor-pointer hover:bg-slate-50 transition-colors',
-                  original._depth === 0 && 'font-medium',
+                  row.depth === 0 && 'font-medium',
                 )}
                 onClick={() => toggleExpand(row)}
               >
@@ -710,9 +718,9 @@ function AthletesGroupedTable({
                 >
                   <span className="inline-flex items-center gap-1.5">
                     <span className="text-xs text-slate-400 w-4 inline-block">
-                      {original._isLoading ? '...' : isExpanded ? '▼' : '▶'}
+                      {isLoading ? '...' : isExpanded ? '▼' : '▶'}
                     </span>
-                    <span>{original._groupValue || '(empty)'}</span>
+                    <span>{original.groupValue || '(empty)'}</span>
                     <span className="text-xs text-slate-400">
                       ({levelLabel})
                     </span>
@@ -742,15 +750,26 @@ function AthletesGroupedTable({
   );
 }
 
-const groupedHelper = createColumnHelper<GroupedRow>();
+const groupedHelper = createColumnHelper<ServerGroupedRow>();
 const GROUPED_TABLE_COLUMNS = [
-  groupedHelper.accessor('_groupValue', { id: 'group' }),
-  groupedHelper.accessor((row) => row.metrics.count, { id: 'count' }),
-  groupedHelper.accessor((row) => row.metrics.total_gold, { id: 'total_gold' }),
-  groupedHelper.accessor((row) => row.metrics.total_silver, {
-    id: 'total_silver',
-  }),
-  groupedHelper.accessor((row) => row.metrics.total_bronze, {
-    id: 'total_bronze',
-  }),
+  groupedHelper.accessor(
+    (row) => (row.type === 'group' ? row.groupValue : ''),
+    { id: 'group' },
+  ),
+  groupedHelper.accessor(
+    (row) => (row.type === 'group' ? row.metrics.count : null),
+    { id: 'count' },
+  ),
+  groupedHelper.accessor(
+    (row) => (row.type === 'group' ? row.metrics.total_gold : null),
+    { id: 'total_gold' },
+  ),
+  groupedHelper.accessor(
+    (row) => (row.type === 'group' ? row.metrics.total_silver : null),
+    { id: 'total_silver' },
+  ),
+  groupedHelper.accessor(
+    (row) => (row.type === 'group' ? row.metrics.total_bronze : null),
+    { id: 'total_bronze' },
+  ),
 ];

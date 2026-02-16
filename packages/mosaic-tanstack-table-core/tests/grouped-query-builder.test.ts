@@ -261,9 +261,9 @@ describe('buildLeafRowsQuery', () => {
 describe('buildGroupedSelectionPredicate', () => {
   test('root-level row: single equality predicate', () => {
     const sql = buildGroupedSelectionPredicate({
-      _groupColumn: 'country',
-      _groupValue: 'USA',
-      _parentValues: {},
+      groupColumn: 'country',
+      groupValue: 'USA',
+      parentConstraints: {},
     }).toString();
 
     expect(sql).toContain('"country"');
@@ -272,9 +272,9 @@ describe('buildGroupedSelectionPredicate', () => {
 
   test('child-level row: AND of parent + own column', () => {
     const sql = buildGroupedSelectionPredicate({
-      _groupColumn: 'sport',
-      _groupValue: 'Swimming',
-      _parentValues: { country: 'USA' },
+      groupColumn: 'sport',
+      groupValue: 'Swimming',
+      parentConstraints: { country: 'USA' },
     }).toString();
 
     expect(sql).toContain('"country"');
@@ -286,9 +286,9 @@ describe('buildGroupedSelectionPredicate', () => {
 
   test('deep-level row: chains all 3 ancestor constraints', () => {
     const sql = buildGroupedSelectionPredicate({
-      _groupColumn: 'gender',
-      _groupValue: 'M',
-      _parentValues: { country: 'USA', sport: 'Swimming' },
+      groupColumn: 'gender',
+      groupValue: 'M',
+      parentConstraints: { country: 'USA', sport: 'Swimming' },
     }).toString();
 
     expect(sql).toContain('"country"');
@@ -312,9 +312,9 @@ describe('buildGroupedMultiSelectionPredicate', () => {
   test('single row: returns predicate directly (no OR)', () => {
     const result = buildGroupedMultiSelectionPredicate([
       {
-        _groupColumn: 'country',
-        _groupValue: 'USA',
-        _parentValues: {},
+        groupColumn: 'country',
+        groupValue: 'USA',
+        parentConstraints: {},
       },
     ]);
 
@@ -327,14 +327,14 @@ describe('buildGroupedMultiSelectionPredicate', () => {
   test('multiple rows: returns OR of compound predicates', () => {
     const result = buildGroupedMultiSelectionPredicate([
       {
-        _groupColumn: 'country',
-        _groupValue: 'USA',
-        _parentValues: {},
+        groupColumn: 'country',
+        groupValue: 'USA',
+        parentConstraints: {},
       },
       {
-        _groupColumn: 'country',
-        _groupValue: 'GBR',
-        _parentValues: {},
+        groupColumn: 'country',
+        groupValue: 'GBR',
+        parentConstraints: {},
       },
     ]);
 

@@ -8,7 +8,7 @@
  *
  * Uses the Mosaic Coordinator directly (not MosaicClient) to fire queries —
  * the grouped table fires ad-hoc queries at multiple depth levels on user
- * expand, which does not fit MosaicClient's single query()/queryResult() lifecycle.
+ * expand, which does not fit MosaicClient's single query/queryResult() lifecycle.
  */
 import { Store, batch } from '@tanstack/store';
 import { arrowTableToObjects } from './arrow-utils';
@@ -17,13 +17,34 @@ import { logger } from '../logger';
 import type { Coordinator, Selection, SelectionClause } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { ExpandedState } from '@tanstack/table-core';
-import type { GroupLevel, GroupMetric, GroupedRow, LeafColumn } from './types';
+import type {
+  GroupLevel,
+  GroupMetric,
+  GroupRow,
+  LeafColumn,
+  LeafRow,
+  ServerGroupedRow,
+} from './types';
+import { GROUP_ID_SEPARATOR } from './types';
 
 // ---------------------------------------------------------------------------
 // Stable source identity for Mosaic Selection updates
 // ---------------------------------------------------------------------------
 
 const GROUPED_TABLE_SOURCE = { id: 'server-grouped-table' };
+
+// ---------------------------------------------------------------------------
+// Internal metadata — NOT stored on rows, NOT in Store
+// ---------------------------------------------------------------------------
+
+interface RowMeta {
+  depth: number;
+  groupColumn: string;
+  groupValue: string;
+  parentConstraints: Record<string, string>;
+  isGroup: boolean;
+  hasDetailPanel: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -48,95 +69,6 @@ function isKeyExpanded(state: ExpandedState, key: string): boolean {
     return true;
   }
   return !!state[key];
-}
-
-/** Build a GroupedRow from a raw query result row. */
-function toGroupedRow(
-  raw: Record<string, unknown>,
-  groupBy: Array<GroupLevel>,
-  metrics: Array<GroupMetric>,
-  depth: number,
-  parentValues: Record<string, string>,
-  hasLeafColumns: boolean,
-): GroupedRow {
-  const level = groupBy[depth]!;
-  const value = String(raw[level.column] ?? '');
-
-  const isDeepestLevel = depth === groupBy.length - 1;
-  const isGroup = !isDeepestLevel || hasLeafColumns;
-  const hasDetailPanel = isDeepestLevel && hasLeafColumns;
-
-  const parentChain = Object.values(parentValues);
-  const groupId =
-    parentChain.length > 0 ? `${parentChain.join('|')}|${value}` : value;
-
-  const metricsRecord: Record<string, number> = {};
-  for (const metric of metrics) {
-    const rawVal = raw[metric.id];
-    metricsRecord[metric.id] = typeof rawVal === 'number' ? rawVal : 0;
-  }
-
-  const row: GroupedRow = {
-    _groupId: groupId,
-    _depth: depth,
-    _isGroup: isGroup,
-    _isLeafRow: false,
-    _hasDetailPanel: hasDetailPanel,
-    _groupColumn: level.column,
-    _groupValue: value,
-    _parentValues: { ...parentValues },
-    _childrenLoaded: false,
-    _isLoading: false,
-    metrics: metricsRecord,
-  };
-
-  if (isGroup && !hasDetailPanel) {
-    row.subRows = [];
-  }
-
-  return row;
-}
-
-/** Build a leaf row (raw data) from a query result. */
-function toLeafRow(
-  raw: Record<string, unknown>,
-  leafColumns: Array<LeafColumn>,
-  depth: number,
-  parentValues: Record<string, string>,
-  index: number,
-  selectAll: boolean,
-): GroupedRow {
-  const parentChain = Object.values(parentValues);
-  const uniqueId = raw.unique_key ?? `row_${index}`;
-  const groupId =
-    parentChain.length > 0
-      ? `${parentChain.join('|')}|_leaf_${uniqueId}`
-      : `_leaf_${uniqueId}`;
-
-  let leafValues: Record<string, unknown>;
-  if (selectAll) {
-    leafValues = { ...raw };
-  } else {
-    leafValues = {};
-    for (const col of leafColumns) {
-      leafValues[col.column] = raw[col.column];
-    }
-  }
-
-  return {
-    _groupId: groupId,
-    _depth: depth,
-    _isGroup: false,
-    _isLeafRow: true,
-    _hasDetailPanel: false,
-    _groupColumn: '',
-    _groupValue: '',
-    _parentValues: { ...parentValues },
-    _childrenLoaded: false,
-    _isLoading: false,
-    metrics: {},
-    leafValues,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +110,7 @@ export interface MosaicGroupedTableOptions {
 
   /**
    * When true, leaf row queries use SELECT * instead of only named leafColumns.
-   * All result columns are available in `leafValues`.
+   * All result columns are available in `values`.
    */
   leafSelectAll?: boolean;
 }
@@ -188,7 +120,7 @@ export interface MosaicGroupedTableOptions {
 // ---------------------------------------------------------------------------
 
 export interface MosaicGroupedTableState {
-  treeData: Array<GroupedRow>;
+  treeData: Array<ServerGroupedRow>;
   expanded: ExpandedState;
   isRootLoading: boolean;
   totalRootRows: number;
@@ -202,8 +134,9 @@ export interface MosaicGroupedTableState {
 export class MosaicGroupedTable {
   readonly store: Store<MosaicGroupedTableState>;
 
-  #childrenCache: Map<string, Array<GroupedRow>> = new Map();
-  #rootRows: Array<GroupedRow> = [];
+  #childrenCache: Map<string, Array<ServerGroupedRow>> = new Map();
+  #rootRows: Array<ServerGroupedRow> = [];
+  #rowMeta: Map<string, RowMeta> = new Map();
   #generation = 0;
   #coordinator: Coordinator | null = null;
   #options: MosaicGroupedTableOptions;
@@ -235,7 +168,6 @@ export class MosaicGroupedTable {
       this.disconnect();
       this.connect();
     } else if (this.#connected) {
-      // Re-fetch with new options (table, groupBy, metrics changed, etc.)
       this.#childrenCache.clear();
       this.#fetchAll();
     }
@@ -273,11 +205,10 @@ export class MosaicGroupedTable {
           const nextExpanded =
             prev.expanded === true ? {} : { ...prev.expanded };
           delete (nextExpanded as Record<string, boolean>)[rowId];
-          // Also collapse any children of this group
           for (const k of Object.keys(
             nextExpanded as Record<string, boolean>,
           )) {
-            if (k.startsWith(rowId + '|')) {
+            if (k.startsWith(rowId + GROUP_ID_SEPARATOR)) {
               delete (nextExpanded as Record<string, boolean>)[k];
             }
           }
@@ -291,7 +222,9 @@ export class MosaicGroupedTable {
         const currentVal = sel.value as Array<string> | null;
         if (
           currentVal &&
-          currentVal.some((v) => v.startsWith(rowId + '|') && v !== rowId)
+          currentVal.some(
+            (v) => v.startsWith(rowId + GROUP_ID_SEPARATOR) && v !== rowId,
+          )
         ) {
           sel.update({
             source: GROUPED_TABLE_SOURCE,
@@ -305,18 +238,22 @@ export class MosaicGroupedTable {
       return;
     }
 
-    // Find the row data from rootRows or cache to determine its type
-    const rowData = this.#findRow(rowId);
-    if (!rowData) {
+    // Find metadata to determine row type
+    const meta = this.#rowMeta.get(rowId);
+    if (!meta) {
       return;
     }
 
-    // Detail panel rows or regular expand
-    if (rowData._hasDetailPanel) {
-      this.#expandDetailPanel(rowId, rowData);
+    if (meta.hasDetailPanel) {
+      this.#expandDetailPanel(rowId, meta);
     } else {
-      this.#expandGroup(rowId, rowData);
+      this.#expandGroup(rowId, meta);
     }
+  }
+
+  /** Check if a row is currently loading children. */
+  isRowLoading(rowId: string): boolean {
+    return this.store.state.loadingGroupIds.includes(rowId);
   }
 
   clearSelection(): void {
@@ -331,25 +268,7 @@ export class MosaicGroupedTable {
 
   // --- Private methods ---
 
-  #findRow(rowId: string): GroupedRow | undefined {
-    // Search root rows first
-    for (const row of this.#rootRows) {
-      if (row._groupId === rowId) {
-        return row;
-      }
-    }
-    // Search cached children
-    for (const children of this.#childrenCache.values()) {
-      for (const child of children) {
-        if (child._groupId === rowId) {
-          return child;
-        }
-      }
-    }
-    return undefined;
-  }
-
-  async #expandDetailPanel(rowId: string, rowData: GroupedRow): Promise<void> {
+  async #expandDetailPanel(rowId: string, meta: RowMeta): Promise<void> {
     if (!this.#childrenCache.has(rowId)) {
       if (!this.#coordinator) {
         return;
@@ -360,8 +279,8 @@ export class MosaicGroupedTable {
       try {
         const filterPredicate = this.#getFilterPredicate();
         const constraints: Record<string, string> = {
-          ...rowData._parentValues,
-          [rowData._groupColumn]: rowData._groupValue,
+          ...meta.parentConstraints,
+          [meta.groupColumn]: meta.groupValue,
         };
 
         const leaves = await this.#queryLeafRows(constraints, filterPredicate);
@@ -386,7 +305,7 @@ export class MosaicGroupedTable {
     this.#rebuildTree();
   }
 
-  async #expandGroup(rowId: string, rowData: GroupedRow): Promise<void> {
+  async #expandGroup(rowId: string, meta: RowMeta): Promise<void> {
     if (!this.#childrenCache.has(rowId)) {
       if (!this.#coordinator) {
         return;
@@ -397,12 +316,12 @@ export class MosaicGroupedTable {
       try {
         const filterPredicate = this.#getFilterPredicate();
         const constraints: Record<string, string> = {
-          ...rowData._parentValues,
-          [rowData._groupColumn]: rowData._groupValue,
+          ...meta.parentConstraints,
+          [meta.groupColumn]: meta.groupValue,
         };
 
         const children = await this.#queryLevel(
-          rowData._depth + 1,
+          meta.depth + 1,
           constraints,
           filterPredicate,
         );
@@ -461,7 +380,7 @@ export class MosaicGroupedTable {
       }
 
       // Build set of valid root IDs for pruning
-      const validRootIds = new Set(roots.map((r) => r._groupId));
+      const validRootIds = new Set(roots.map((r) => r.id));
 
       // 2. Re-query all currently expanded groups in parallel
       const expandedKeys = getExpandedKeys(this.store.state.expanded);
@@ -473,35 +392,65 @@ export class MosaicGroupedTable {
       }> = [];
 
       for (const key of expandedKeys) {
+        // Skip leaf row entries
         if (key.includes('_leaf_')) {
           continue;
         }
 
-        const segments = key.split('|');
-        const depth = segments.length - 1;
+        const meta = this.#rowMeta.get(key);
+        if (!meta) {
+          // Row may come from a previous generation — try to parse from ID segments
+          const segments = key.split(GROUP_ID_SEPARATOR);
+          const depth = segments.length - 1;
 
-        const isDetailPanelRow =
-          depth === groupBy.length - 1 && hasLeafColumns;
-        if (isDetailPanelRow) {
+          const isDetailPanelRow =
+            depth === groupBy.length - 1 && hasLeafColumns;
+          if (isDetailPanelRow) {
+            continue;
+          }
+
+          if (depth >= groupBy.length - 1) {
+            continue;
+          }
+
+          const constraints: Record<string, string> = {};
+          for (let i = 0; i <= depth; i++) {
+            constraints[groupBy[i]!.column] = segments[i]!;
+          }
+
+          if (!validRootIds.has(segments[0]!)) {
+            continue;
+          }
+
+          expandQueries.push({
+            parentId: key,
+            depth: depth + 1,
+            constraints,
+          });
           continue;
         }
 
-        if (depth >= groupBy.length - 1) {
+        if (meta.hasDetailPanel) {
+          continue;
+        }
+        if (!meta.isGroup) {
           continue;
         }
 
-        const constraints: Record<string, string> = {};
-        for (let i = 0; i <= depth; i++) {
-          constraints[groupBy[i]!.column] = segments[i]!;
-        }
-
-        if (!validRootIds.has(segments[0]!)) {
+        // Verify root is still valid
+        const rootSegment = key.split(GROUP_ID_SEPARATOR)[0]!;
+        if (!validRootIds.has(rootSegment)) {
           continue;
         }
+
+        const constraints: Record<string, string> = {
+          ...meta.parentConstraints,
+          [meta.groupColumn]: meta.groupValue,
+        };
 
         expandQueries.push({
           parentId: key,
-          depth: depth + 1,
+          depth: meta.depth + 1,
           constraints,
         });
       }
@@ -517,7 +466,7 @@ export class MosaicGroupedTable {
             );
             return { parentId: eq.parentId, children };
           } catch {
-            return { parentId: eq.parentId, children: [] };
+            return { parentId: eq.parentId, children: [] as ServerGroupedRow[] };
           }
         }),
       );
@@ -527,7 +476,7 @@ export class MosaicGroupedTable {
       }
 
       // 3. Update caches
-      const newCache = new Map<string, Array<GroupedRow>>();
+      const newCache = new Map<string, Array<ServerGroupedRow>>();
       for (const { parentId, children } of childResults) {
         newCache.set(parentId, children);
       }
@@ -539,7 +488,7 @@ export class MosaicGroupedTable {
       if (prevExpanded !== true) {
         const pruned: Record<string, boolean> = {};
         for (const [k, v] of Object.entries(prevExpanded)) {
-          const rootSegment = k.split('|')[0]!;
+          const rootSegment = k.split(GROUP_ID_SEPARATOR)[0]!;
           if (v && validRootIds.has(rootSegment)) {
             pruned[k] = true;
           }
@@ -570,31 +519,34 @@ export class MosaicGroupedTable {
   #rebuildTree(): void {
     const cache = this.#childrenCache;
     const loadingGroupIds = this.store.state.loadingGroupIds;
+    const rowMeta = this.#rowMeta;
 
-    function attachChildren(rows: Array<GroupedRow>): Array<GroupedRow> {
+    function attachChildren(rows: Array<ServerGroupedRow>): Array<ServerGroupedRow> {
       return rows.map((row) => {
-        if (!row._isGroup) {
+        if (row.type === 'leaf') {
           return row;
         }
 
-        const cachedChildren = cache.get(row._groupId);
-        const isLoading = loadingGroupIds.includes(row._groupId);
+        // row is GroupRow — meta was populated at query time
+        const meta = rowMeta.get(row.id);
+        const cachedChildren = cache.get(row.id);
 
         if (cachedChildren && cachedChildren.length > 0) {
           return {
             ...row,
-            _childrenLoaded: true,
-            _isLoading: false,
             subRows: attachChildren(cachedChildren),
-          };
+          } as GroupRow;
         }
 
-        return {
-          ...row,
-          _childrenLoaded: !!cachedChildren,
-          _isLoading: isLoading,
-          subRows: [],
-        };
+        // Keep empty subRows so TanStack shows expand toggle for expandable rows
+        if (meta?.isGroup || meta?.hasDetailPanel) {
+          return {
+            ...row,
+            subRows: [] as ServerGroupedRow[],
+          } as GroupRow;
+        }
+
+        return row;
       });
     }
 
@@ -602,20 +554,113 @@ export class MosaicGroupedTable {
     this.store.setState((prev) => ({ ...prev, treeData }));
   }
 
+  #toGroupedRow(
+    raw: Record<string, unknown>,
+    depth: number,
+    parentConstraints: Record<string, string>,
+  ): GroupRow {
+    const { groupBy, metrics, leafColumns } = this.#options;
+    const hasLeafColumns = !!leafColumns && leafColumns.length > 0;
+    const level = groupBy[depth]!;
+    const value = String(raw[level.column] ?? '');
+
+    const isDeepestLevel = depth === groupBy.length - 1;
+    const isGroup = !isDeepestLevel || hasLeafColumns;
+    const hasDetailPanel = isDeepestLevel && hasLeafColumns;
+
+    // Build ID with \x1F separator
+    const parentChain = Object.values(parentConstraints);
+    const id =
+      parentChain.length > 0
+        ? `${parentChain.join(GROUP_ID_SEPARATOR)}${GROUP_ID_SEPARATOR}${value}`
+        : value;
+
+    const metricsRecord: Record<string, number> = {};
+    for (const metric of metrics) {
+      const rawVal = raw[metric.id];
+      metricsRecord[metric.id] = typeof rawVal === 'number' ? rawVal : 0;
+    }
+
+    // Store metadata internally
+    this.#rowMeta.set(id, {
+      depth,
+      groupColumn: level.column,
+      groupValue: value,
+      parentConstraints: { ...parentConstraints },
+      isGroup,
+      hasDetailPanel,
+    });
+
+    const row: GroupRow = {
+      type: 'group',
+      id,
+      groupValue: value,
+      metrics: metricsRecord,
+    };
+
+    // Group rows (not detail panel) get empty subRows so TanStack shows expand toggle
+    if (isGroup && !hasDetailPanel) {
+      row.subRows = [];
+    }
+
+    return row;
+  }
+
+  #toLeafRow(
+    raw: Record<string, unknown>,
+    parentConstraints: Record<string, string>,
+    index: number,
+  ): LeafRow {
+    const { leafColumns = [], leafSelectAll = false, groupBy } = this.#options;
+
+    const parentChain = Object.values(parentConstraints);
+    const uniqueId = raw.unique_key ?? `row_${index}`;
+    const id =
+      parentChain.length > 0
+        ? `${parentChain.join(GROUP_ID_SEPARATOR)}${GROUP_ID_SEPARATOR}_leaf_${uniqueId}`
+        : `_leaf_${uniqueId}`;
+
+    let values: Record<string, unknown>;
+    if (leafSelectAll) {
+      values = { ...raw };
+    } else {
+      values = {};
+      for (const col of leafColumns) {
+        values[col.column] = raw[col.column];
+      }
+    }
+
+    const leafDepth = groupBy.length;
+
+    // Store metadata internally
+    this.#rowMeta.set(id, {
+      depth: leafDepth,
+      groupColumn: '',
+      groupValue: '',
+      parentConstraints: { ...parentConstraints },
+      isGroup: false,
+      hasDetailPanel: false,
+    });
+
+    return {
+      type: 'leaf',
+      id,
+      values,
+    };
+  }
+
   async #queryLevel(
     depth: number,
     parentConstraints: Record<string, string>,
     filterPredicate: FilterExpr | null,
-  ): Promise<Array<GroupedRow>> {
+  ): Promise<Array<GroupRow>> {
     const {
       table,
       groupBy,
       metrics,
       additionalWhere,
       pageSize = 200,
-      leafColumns,
     } = this.#options;
-    const hasLeafColumns = !!leafColumns && leafColumns.length > 0;
 
     const query = buildGroupedLevelQuery({
       table,
@@ -632,21 +677,20 @@ export class MosaicGroupedTable {
     const rawRows = arrowTableToObjects(result);
 
     return rawRows.map((raw) =>
-      toGroupedRow(raw, groupBy, metrics, depth, parentConstraints, hasLeafColumns),
+      this.#toGroupedRow(raw, depth, parentConstraints),
     );
   }
 
   async #queryLeafRows(
     parentConstraints: Record<string, string>,
     filterPredicate: FilterExpr | null,
-  ): Promise<Array<GroupedRow>> {
+  ): Promise<Array<LeafRow>> {
     const {
       table,
       leafColumns,
       additionalWhere,
       leafPageSize = 50,
       leafSelectAll = false,
-      groupBy,
     } = this.#options;
 
     if (!leafColumns || leafColumns.length === 0) {
@@ -665,10 +709,9 @@ export class MosaicGroupedTable {
 
     const result = await this.#coordinator!.query(query.toString());
     const rawRows = arrowTableToObjects(result);
-    const leafDepth = groupBy.length;
 
     return rawRows.map((raw, idx) =>
-      toLeafRow(raw, leafColumns, leafDepth, parentConstraints, idx, leafSelectAll),
+      this.#toLeafRow(raw, parentConstraints, idx),
     );
   }
 
