@@ -27,8 +27,8 @@ import type { ColumnDef, Row } from '@tanstack/react-table';
 import type {
   GroupLevel,
   GroupMetric,
-  ServerGroupedRow,
   LeafColumn,
+  ServerGroupedRow,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { GroupedTableRenderer } from '@/components/grouped-table-renderer';
 import { RenderTable } from '@/components/render-table';
@@ -587,7 +587,7 @@ function AthletesGroupedTable({
     table: tableName,
     groupBy: GROUPED_LEVELS,
     metrics: GROUPED_METRICS,
-    filterBy: topology.$tableContext,
+    filterBy: topology.$combined,
     leafColumns: LEAF_COLUMNS,
     leafSelectAll: true,
     enabled,
