@@ -11,9 +11,10 @@
  * expand, which does not fit MosaicClient's single query/queryResult() lifecycle.
  */
 import { Store, batch } from '@tanstack/store';
+import { logger } from '../logger';
 import { arrowTableToObjects } from './arrow-utils';
 import { buildGroupedLevelQuery, buildLeafRowsQuery } from './query-builder';
-import { logger } from '../logger';
+import { GROUP_ID_SEPARATOR } from './types';
 import type { Coordinator, Selection, SelectionClause } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { ExpandedState } from '@tanstack/table-core';
@@ -25,7 +26,6 @@ import type {
   LeafRow,
   ServerGroupedRow,
 } from './types';
-import { GROUP_ID_SEPARATOR } from './types';
 
 // ---------------------------------------------------------------------------
 // Stable source identity for Mosaic Selection updates
@@ -300,7 +300,7 @@ export class MosaicGroupedTable {
       expanded:
         prev.expanded === true
           ? { [rowId]: true }
-          : { ...(prev.expanded as Record<string, boolean>), [rowId]: true },
+          : { ...(prev.expanded), [rowId]: true },
     }));
     this.#rebuildTree();
   }
@@ -341,7 +341,7 @@ export class MosaicGroupedTable {
       expanded:
         prev.expanded === true
           ? { [rowId]: true }
-          : { ...(prev.expanded as Record<string, boolean>), [rowId]: true },
+          : { ...(prev.expanded), [rowId]: true },
     }));
     this.#rebuildTree();
   }
@@ -466,7 +466,7 @@ export class MosaicGroupedTable {
             );
             return { parentId: eq.parentId, children };
           } catch {
-            return { parentId: eq.parentId, children: [] as ServerGroupedRow[] };
+            return { parentId: eq.parentId, children: [] as Array<ServerGroupedRow> };
           }
         }),
       );
@@ -542,7 +542,7 @@ export class MosaicGroupedTable {
         if (meta?.isGroup || meta?.hasDetailPanel) {
           return {
             ...row,
-            subRows: [] as ServerGroupedRow[],
+            subRows: [] as Array<ServerGroupedRow>,
           } as GroupRow;
         }
 

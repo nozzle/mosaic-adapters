@@ -9,16 +9,14 @@ import * as React from 'react';
 import { useOptionalCoordinator } from '@nozzleio/react-mosaic';
 import { useStore } from '@tanstack/react-store';
 import { MosaicGroupedTable } from '@nozzleio/mosaic-tanstack-table-core';
-import type { MosaicGroupedTableOptions } from '@nozzleio/mosaic-tanstack-table-core';
-import type { ExpandedState, Row } from '@tanstack/react-table';
-import type {
-  GroupLevel,
+import type { GroupLevel,
   GroupMetric,
   GroupRow,
   LeafColumn,
   LeafRow,
-  ServerGroupedRow,
-} from '@nozzleio/mosaic-tanstack-table-core';
+  MosaicGroupedTableOptions,
+  ServerGroupedRow } from '@nozzleio/mosaic-tanstack-table-core';
+import type { ExpandedState, Row } from '@tanstack/react-table';
 import type { Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 
@@ -120,7 +118,7 @@ export function useServerGroupedTable(
       leafPageSize,
       leafSelectAll,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional structural deps
+     
     [table, groupBy, metrics, filterBy, rowSelection, additionalWhere, pageSize, leafColumns, leafPageSize, leafSelectAll],
   );
 

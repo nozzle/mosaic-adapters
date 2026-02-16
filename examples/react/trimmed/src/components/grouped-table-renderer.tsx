@@ -5,12 +5,12 @@
  * (individual data displayed in a flat flex layout).
  */
 import * as React from 'react';
-import { cn } from '@/lib/utils';
 import type { Row, Table } from '@tanstack/react-table';
 import type {
   GroupLevel,
   ServerGroupedRow,
 } from '@nozzleio/mosaic-tanstack-react-table';
+import { cn } from '@/lib/utils';
 
 export interface LeafColStyle {
   label?: string;
@@ -21,9 +21,9 @@ export interface LeafColStyle {
 
 export interface GroupedTableRendererProps {
   table: Table<ServerGroupedRow>;
-  levels: GroupLevel[];
+  levels: Array<GroupLevel>;
   toggleExpand: (row: Row<ServerGroupedRow>) => void;
-  loadingGroupIds: string[];
+  loadingGroupIds: Array<string>;
   leafColStyles?: Record<string, LeafColStyle>;
   metricColumns: Array<{ id: string; label: string }>;
   footerText?: string;
