@@ -15,7 +15,11 @@ import { logger } from '../logger';
 import { arrowTableToObjects } from './arrow-utils';
 import { buildGroupedLevelQuery, buildLeafRowsQuery } from './query-builder';
 import { GROUP_ID_SEPARATOR } from './types';
-import type { Coordinator, Selection, SelectionClause } from '@uwdata/mosaic-core';
+import type {
+  Coordinator,
+  Selection,
+  SelectionClause,
+} from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { ExpandedState } from '@tanstack/table-core';
 import type {
@@ -300,7 +304,7 @@ export class MosaicGroupedTable {
       expanded:
         prev.expanded === true
           ? { [rowId]: true }
-          : { ...(prev.expanded), [rowId]: true },
+          : { ...prev.expanded, [rowId]: true },
     }));
     this.#rebuildTree();
   }
@@ -341,7 +345,7 @@ export class MosaicGroupedTable {
       expanded:
         prev.expanded === true
           ? { [rowId]: true }
-          : { ...(prev.expanded), [rowId]: true },
+          : { ...prev.expanded, [rowId]: true },
     }));
     this.#rebuildTree();
   }
@@ -466,7 +470,10 @@ export class MosaicGroupedTable {
             );
             return { parentId: eq.parentId, children };
           } catch {
-            return { parentId: eq.parentId, children: [] as Array<ServerGroupedRow> };
+            return {
+              parentId: eq.parentId,
+              children: [] as Array<ServerGroupedRow>,
+            };
           }
         }),
       );
@@ -521,7 +528,9 @@ export class MosaicGroupedTable {
     const loadingGroupIds = this.store.state.loadingGroupIds;
     const rowMeta = this.#rowMeta;
 
-    function attachChildren(rows: Array<ServerGroupedRow>): Array<ServerGroupedRow> {
+    function attachChildren(
+      rows: Array<ServerGroupedRow>,
+    ): Array<ServerGroupedRow> {
       return rows.map((row) => {
         if (row.type === 'leaf') {
           return row;

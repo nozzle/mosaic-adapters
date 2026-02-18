@@ -67,8 +67,7 @@ export function GroupedTableRenderer({
                 flatIndex > 0
                   ? table.getRowModel().rows[flatIndex - 1]
                   : undefined;
-              const isFirstLeaf =
-                !prevRow || prevRow.original.type !== 'leaf';
+              const isFirstLeaf = !prevRow || prevRow.original.type !== 'leaf';
 
               return (
                 <React.Fragment key={row.id}>
