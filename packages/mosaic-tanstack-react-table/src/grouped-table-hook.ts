@@ -1,9 +1,10 @@
 /**
  * @file useServerGroupedTable — thin React wrapper around MosaicGroupedTable.
  *
- * Follows the established `MosaicDataTable` (heavy core) + `useMosaicReactTable`
- * (thin hook) pattern. All logic lives in the framework-agnostic core class;
- * this hook wires lifecycle and exposes reactive state via `useStore`.
+ * Returns `{ tableOptions, client }` — the consumer passes `tableOptions`
+ * directly to `useReactTable()`, matching the `useMosaicReactTable` pattern.
+ * All logic lives in the framework-agnostic core class; this hook wires
+ * lifecycle and exposes reactive state via `useStore`.
  */
 import * as React from 'react';
 import { useOptionalCoordinator } from '@nozzleio/react-mosaic';
@@ -18,7 +19,7 @@ import type {
   MosaicGroupedTableOptions,
   ServerGroupedRow,
 } from '@nozzleio/mosaic-tanstack-table-core';
-import type { ExpandedState, Row } from '@tanstack/react-table';
+import type { ColumnDef, TableOptions } from '@tanstack/react-table';
 import type { Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 
@@ -45,6 +46,8 @@ export interface UseServerGroupedTableOptions {
   metrics: Array<GroupMetric>;
   /** Mosaic Selection that provides cross-filter predicates. */
   filterBy: Selection;
+  /** TanStack column definitions for the grouped table. */
+  columns: Array<ColumnDef<ServerGroupedRow, any>>;
   /** Optional row selection integration for cross-filtering output. */
   rowSelection?: { selection: Selection };
   /** Additional static WHERE clauses (e.g., NULL exclusion). */
@@ -66,28 +69,16 @@ export interface UseServerGroupedTableOptions {
 // ---------------------------------------------------------------------------
 
 export interface ServerGroupedTableResult {
-  /** Tree-structured data for TanStack Table. */
-  data: Array<ServerGroupedRow>;
-  /** Current expanded state keyed by row ID. */
-  expanded: ExpandedState;
-  /** Toggle a row's expanded state. Fires child query if needed. */
-  toggleExpand: (row: Row<ServerGroupedRow>) => void;
+  /** TanStack TableOptions — pass directly to useReactTable(). */
+  tableOptions: TableOptions<ServerGroupedRow>;
+  /** The core client for programmatic access. */
+  client: MosaicGroupedTable;
   /** Whether the root query is loading. */
   isRootLoading: boolean;
   /** Total root-level group count. */
   totalRootRows: number;
   /** IDs of groups currently loading children. */
   loadingGroupIds: Array<string>;
-  /** Clear the current row selection. */
-  clearSelection: () => void;
-  /** Leaf columns configuration (if any). */
-  leafColumns?: Array<LeafColumn>;
-  /** Table name for detail panel queries. */
-  tableName: string;
-  /** Additional WHERE clause for detail panel queries. */
-  additionalWhere?: FilterExpr | null;
-  /** Filter selection for detail panel queries. */
-  filterBy: Selection;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +93,7 @@ export function useServerGroupedTable(
     groupBy,
     metrics,
     filterBy,
+    columns,
     rowSelection,
     additionalWhere,
     pageSize,
@@ -113,7 +105,7 @@ export function useServerGroupedTable(
 
   const coordinator = useOptionalCoordinator();
 
-  // Build core options (exclude React-only `enabled`)
+  // Build core options (exclude React-only `enabled` and `columns`)
   const coreOptions: MosaicGroupedTableOptions = React.useMemo(
     () => ({
       table,
@@ -145,10 +137,13 @@ export function useServerGroupedTable(
   // 1. Create core client once
   const [client] = React.useState(() => new MosaicGroupedTable(coreOptions));
 
-  // 2. Set coordinator
+  // 2. Set coordinator (same pattern as useMosaicReactTable)
   React.useEffect(() => {
+    if (!enabled || !coordinator) {
+      return;
+    }
     client.setCoordinator(coordinator);
-  }, [client, coordinator]);
+  }, [client, coordinator, enabled]);
 
   // 3. Update options when they change
   React.useEffect(() => {
@@ -167,29 +162,17 @@ export function useServerGroupedTable(
   // 5. Subscribe to store
   const state = useStore(client.store);
 
-  // 6. Wrap toggleExpand to accept Row<ServerGroupedRow>
-  const toggleExpand = React.useCallback(
-    (row: Row<ServerGroupedRow>) => {
-      client.toggleExpand(row.id);
-    },
-    [client],
+  // 6. Build tableOptions via core class
+  const tableOptions = React.useMemo(
+    () => client.getTableOptions(state, columns),
+    [client, state, columns],
   );
 
-  const clearSelection = React.useCallback(() => {
-    client.clearSelection();
-  }, [client]);
-
   return {
-    data: state.treeData,
-    expanded: state.expanded,
-    toggleExpand,
+    tableOptions,
+    client,
     isRootLoading: state.isRootLoading,
     totalRootRows: state.totalRootRows,
     loadingGroupIds: state.loadingGroupIds,
-    clearSelection,
-    leafColumns,
-    tableName: table,
-    additionalWhere,
-    filterBy,
   };
 }
