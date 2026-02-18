@@ -109,19 +109,19 @@ const table = useReactTable<ServerGroupedRow>({
 
 ## Return Value
 
-| Property          | Type                             | Description                                         |
-| ----------------- | -------------------------------- | --------------------------------------------------- |
+| Property          | Type                                   | Description                                         |
+| ----------------- | -------------------------------------- | --------------------------------------------------- |
 | `data`            | `ServerGroupedRow[]`                   | Tree-structured data for TanStack Table             |
 | `expanded`        | `ExpandedState`                        | Current expanded state keyed by row ID              |
 | `toggleExpand`    | `(row: Row<ServerGroupedRow>) => void` | Toggle expand/collapse. Fires child query if needed |
 | `loadingGroupIds` | `string[]`                             | IDs of groups currently loading children            |
-| `isRootLoading`   | `boolean`                        | Whether the root query is loading                   |
-| `totalRootRows`   | `number`                         | Total root-level group count                        |
-| `clearSelection`  | `() => void`                     | Clear the current row selection                     |
-| `leafColumns`     | `LeafColumn[]`                   | Leaf columns configuration (pass-through)           |
-| `tableName`       | `string`                         | Table name (pass-through)                           |
-| `additionalWhere` | `FilterExpr`                     | Additional WHERE (pass-through)                     |
-| `filterBy`        | `Selection`                      | Filter selection (pass-through)                     |
+| `isRootLoading`   | `boolean`                              | Whether the root query is loading                   |
+| `totalRootRows`   | `number`                               | Total root-level group count                        |
+| `clearSelection`  | `() => void`                           | Clear the current row selection                     |
+| `leafColumns`     | `LeafColumn[]`                         | Leaf columns configuration (pass-through)           |
+| `tableName`       | `string`                               | Table name (pass-through)                           |
+| `additionalWhere` | `FilterExpr`                           | Additional WHERE (pass-through)                     |
+| `filterBy`        | `Selection`                            | Filter selection (pass-through)                     |
 
 ## How It Works
 

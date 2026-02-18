@@ -9,19 +9,28 @@ import * as React from 'react';
 import { useOptionalCoordinator } from '@nozzleio/react-mosaic';
 import { useStore } from '@tanstack/react-store';
 import { MosaicGroupedTable } from '@nozzleio/mosaic-tanstack-table-core';
-import type { GroupLevel,
+import type {
+  GroupLevel,
   GroupMetric,
   GroupRow,
   LeafColumn,
   LeafRow,
   MosaicGroupedTableOptions,
-  ServerGroupedRow } from '@nozzleio/mosaic-tanstack-table-core';
+  ServerGroupedRow,
+} from '@nozzleio/mosaic-tanstack-table-core';
 import type { ExpandedState, Row } from '@tanstack/react-table';
 import type { Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 
 // Re-export types for convenience
-export type { GroupLevel, GroupMetric, GroupRow, LeafRow, ServerGroupedRow, LeafColumn };
+export type {
+  GroupLevel,
+  GroupMetric,
+  GroupRow,
+  LeafRow,
+  ServerGroupedRow,
+  LeafColumn,
+};
 
 // ---------------------------------------------------------------------------
 // Options (React-facing, superset of core options)
@@ -118,8 +127,19 @@ export function useServerGroupedTable(
       leafPageSize,
       leafSelectAll,
     }),
-     
-    [table, groupBy, metrics, filterBy, rowSelection, additionalWhere, pageSize, leafColumns, leafPageSize, leafSelectAll],
+
+    [
+      table,
+      groupBy,
+      metrics,
+      filterBy,
+      rowSelection,
+      additionalWhere,
+      pageSize,
+      leafColumns,
+      leafPageSize,
+      leafSelectAll,
+    ],
   );
 
   // 1. Create core client once
