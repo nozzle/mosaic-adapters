@@ -6,12 +6,7 @@
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  createColumnHelper,
-  getCoreRowModel,
-  getExpandedRowModel,
-  useReactTable,
-} from '@tanstack/react-table';
+import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import {
@@ -23,7 +18,7 @@ import {
   useServerGroupedTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useConnectorStatus } from '@nozzleio/react-mosaic';
-import type { ColumnDef, Row } from '@tanstack/react-table';
+import type { CellContext, ColumnDef, Row } from '@tanstack/react-table';
 import type {
   GroupLevel,
   GroupMetric,
@@ -562,11 +557,56 @@ const LEAF_COL_STYLES: Record<
   info: { label: 'Info', className: 'text-slate-400 italic' },
 };
 
-const GROUPED_METRIC_COLUMNS = [
+const GROUPED_METRIC_COLUMNS: Array<{
+  id: string;
+  label: string;
+}> = [
   { id: 'count', label: 'Athletes' },
   { id: 'total_gold', label: 'Gold' },
   { id: 'total_silver', label: 'Silver' },
   { id: 'total_bronze', label: 'Bronze' },
+];
+
+const GROUPED_TABLE_COLUMNS: Array<ColumnDef<ServerGroupedRow, any>> = [
+  {
+    id: 'group',
+    header: 'Group',
+    cell: ({ row }: CellContext<ServerGroupedRow, any>) => {
+      const original = row.original;
+      if (original.type === 'leaf') {
+        return null;
+      }
+
+      const indent = row.depth * 20;
+      const levelLabel = GROUPED_LEVELS[row.depth]?.label ?? '';
+
+      return (
+        <span
+          style={{ paddingLeft: `${indent}px` }}
+          className="inline-flex items-center gap-1.5"
+        >
+          <span className="text-xs text-slate-400 w-4 inline-block">
+            {row.getIsExpanded() ? '▼' : '▶'}
+          </span>
+          <span>{original.groupValue || '(empty)'}</span>
+          <span className="text-xs text-slate-400">({levelLabel})</span>
+        </span>
+      );
+    },
+  },
+  ...GROUPED_METRIC_COLUMNS.map(
+    (mc): ColumnDef<ServerGroupedRow, any> => ({
+      id: mc.id,
+      header: mc.label,
+      cell: ({ row }: CellContext<ServerGroupedRow, any>) => {
+        if (row.original.type !== 'group') {
+          return null;
+        }
+        return row.original.metrics[mc.id]?.toLocaleString() ?? '—';
+      },
+      meta: { align: 'right' } as Record<string, unknown>,
+    }),
+  ),
 ];
 
 function AthletesGroupedTable({
@@ -576,73 +616,30 @@ function AthletesGroupedTable({
   topology: ReturnType<typeof useAthletesTopology>;
   enabled: boolean;
 }) {
-  const {
-    data,
-    expanded,
-    toggleExpand,
-    isRootLoading,
-    totalRootRows,
-    loadingGroupIds,
-  } = useServerGroupedTable({
-    table: tableName,
-    groupBy: GROUPED_LEVELS,
-    metrics: GROUPED_METRICS,
-    filterBy: topology.$combined,
-    leafColumns: LEAF_COLUMNS,
-    leafSelectAll: true,
-    enabled,
-  });
+  const { tableOptions, isRootLoading, totalRootRows, loadingGroupIds } =
+    useServerGroupedTable({
+      table: tableName,
+      groupBy: GROUPED_LEVELS,
+      metrics: GROUPED_METRICS,
+      filterBy: topology.$combined,
+      leafColumns: LEAF_COLUMNS,
+      leafSelectAll: true,
+      columns: GROUPED_TABLE_COLUMNS,
+      enabled,
+    });
 
-  const table = useReactTable<ServerGroupedRow>({
-    data,
-    columns: GROUPED_TABLE_COLUMNS,
-    state: { expanded },
-    onExpandedChange: () => {
-      /* controlled via toggleExpand */
-    },
-    getSubRows: (row) => (row.type === 'group' ? row.subRows : undefined),
-    getRowId: (row) => row.id,
-    getCoreRowModel: getCoreRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
-  });
+  const table = useReactTable(tableOptions);
 
-  if (isRootLoading && data.length === 0) {
+  if (isRootLoading && table.getRowModel().rows.length === 0) {
     return <div className="text-sm italic py-4">Loading grouped data...</div>;
   }
 
   return (
     <GroupedTableRenderer
       table={table}
-      levels={GROUPED_LEVELS}
-      toggleExpand={toggleExpand}
       loadingGroupIds={loadingGroupIds}
       leafColStyles={LEAF_COL_STYLES}
-      metricColumns={GROUPED_METRIC_COLUMNS}
       footerText={`${totalRootRows} countries`}
     />
   );
 }
-
-const groupedHelper = createColumnHelper<ServerGroupedRow>();
-const GROUPED_TABLE_COLUMNS = [
-  groupedHelper.accessor(
-    (row) => (row.type === 'group' ? row.groupValue : ''),
-    { id: 'group' },
-  ),
-  groupedHelper.accessor(
-    (row) => (row.type === 'group' ? row.metrics.count : null),
-    { id: 'count' },
-  ),
-  groupedHelper.accessor(
-    (row) => (row.type === 'group' ? row.metrics.total_gold : null),
-    { id: 'total_gold' },
-  ),
-  groupedHelper.accessor(
-    (row) => (row.type === 'group' ? row.metrics.total_silver : null),
-    { id: 'total_silver' },
-  ),
-  groupedHelper.accessor(
-    (row) => (row.type === 'group' ? row.metrics.total_bronze : null),
-    { id: 'total_bronze' },
-  ),
-];

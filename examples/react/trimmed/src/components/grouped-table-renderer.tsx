@@ -1,15 +1,15 @@
 /**
  * Reusable renderer for grouped table markup.
  *
- * Handles group rows (expandable with metrics) and leaf rows
- * (individual data displayed in a flat flex layout).
+ * Uses TanStack's rendering pipeline: `flexRender` for headers and group cells,
+ * `row.toggleExpanded()` for expand/collapse, and `row.getVisibleCells()` for
+ * group row rendering. Leaf rows are the only special-case: they span the full
+ * width with a flat flex layout (unavoidable with mixed row types).
  */
 import * as React from 'react';
-import type { Row, Table } from '@tanstack/react-table';
-import type {
-  GroupLevel,
-  ServerGroupedRow,
-} from '@nozzleio/mosaic-tanstack-react-table';
+import { flexRender } from '@tanstack/react-table';
+import type { Table } from '@tanstack/react-table';
+import type { ServerGroupedRow } from '@nozzleio/mosaic-tanstack-react-table';
 import { cn } from '@/lib/utils';
 
 export interface LeafColStyle {
@@ -21,43 +21,52 @@ export interface LeafColStyle {
 
 export interface GroupedTableRendererProps {
   table: Table<ServerGroupedRow>;
-  levels: Array<GroupLevel>;
-  toggleExpand: (row: Row<ServerGroupedRow>) => void;
   loadingGroupIds: Array<string>;
   leafColStyles?: Record<string, LeafColStyle>;
-  metricColumns: Array<{ id: string; label: string }>;
   footerText?: string;
 }
 
 export function GroupedTableRenderer({
   table,
-  levels,
-  toggleExpand,
   loadingGroupIds,
   leafColStyles = {},
-  metricColumns,
   footerText,
 }: GroupedTableRendererProps) {
-  const colSpan = 1 + metricColumns.length;
+  const headerGroups = table.getHeaderGroups();
+  const colSpan = headerGroups[0]?.headers.length ?? 1;
 
   return (
     <div className="border rounded overflow-auto max-h-[600px]">
       <table className="w-full text-sm">
         <thead className="bg-slate-50 sticky top-0 z-10">
-          <tr>
-            <th className="text-left px-3 py-2 font-medium">Group</th>
-            {metricColumns.map((mc) => (
-              <th key={mc.id} className="text-right px-3 py-2 font-medium">
-                {mc.label}
-              </th>
-            ))}
-          </tr>
+          {headerGroups.map((headerGroup) => (
+            <tr key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <th
+                  key={header.id}
+                  className={cn(
+                    'px-3 py-2 font-medium',
+                    (header.column.columnDef.meta as any)?.align === 'right'
+                      ? 'text-right'
+                      : 'text-left',
+                  )}
+                >
+                  {header.isPlaceholder
+                    ? null
+                    : flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
+                </th>
+              ))}
+            </tr>
+          ))}
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row, flatIndex) => {
             const original = row.original;
 
-            // Leaf rows
+            // Leaf rows — special-cased (full-width flex layout)
             if (original.type === 'leaf') {
               const lv = original.values;
               const indent = (row.depth + 1) * 20 + 12;
@@ -136,10 +145,7 @@ export function GroupedTableRenderer({
               );
             }
 
-            // Group rows
-            const isExpanded = row.getIsExpanded();
-            const indent = row.depth * 20;
-            const levelLabel = levels[row.depth]?.label ?? '';
+            // Group rows — use TanStack's rendering pipeline
             const isLoading = loadingGroupIds.includes(row.id);
 
             return (
@@ -149,28 +155,22 @@ export function GroupedTableRenderer({
                   'border-t cursor-pointer hover:bg-slate-50 transition-colors',
                   row.depth === 0 && 'font-medium',
                 )}
-                onClick={() => toggleExpand(row)}
+                onClick={() => row.toggleExpanded()}
               >
-                <td
-                  className="px-3 py-1.5"
-                  style={{ paddingLeft: `${indent + 12}px` }}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="text-xs text-slate-400 w-4 inline-block">
-                      {isLoading ? '...' : isExpanded ? '▼' : '▶'}
-                    </span>
-                    <span>{original.groupValue || '(empty)'}</span>
-                    <span className="text-xs text-slate-400">
-                      ({levelLabel})
-                    </span>
-                  </span>
-                </td>
-                {metricColumns.map((mc) => (
+                {row.getVisibleCells().map((cell) => (
                   <td
-                    key={mc.id}
-                    className="text-right px-3 py-1.5 tabular-nums"
+                    key={cell.id}
+                    className={cn(
+                      'px-3 py-1.5',
+                      (cell.column.columnDef.meta as any)?.align === 'right' &&
+                        'text-right tabular-nums',
+                    )}
                   >
-                    {original.metrics[mc.id]?.toLocaleString() ?? '—'}
+                    {flexRender(cell.column.columnDef.cell, {
+                      ...cell.getContext(),
+                      // Pass loading state via context for the group cell
+                      ...(cell.column.id === 'group' ? { isLoading } : {}),
+                    })}
                   </td>
                 ))}
               </tr>
