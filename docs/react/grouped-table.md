@@ -13,79 +13,178 @@
 ```ts
 import * as mSql from '@uwdata/mosaic-sql';
 import type {
+  FlatGroupedRow,
   GroupLevel,
   GroupMetric,
-  ServerGroupedRow,
+  LeafColumn,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import type { ColumnDef, CellContext } from '@tanstack/react-table';
+import type { ColumnDef } from '@tanstack/react-table';
 
-const GROUPED_LEVELS: Array<GroupLevel> = [
+const LEVELS: Array<GroupLevel> = [
   { column: 'nationality', label: 'Country' },
   { column: 'sport', label: 'Sport' },
   { column: 'sex', label: 'Gender' },
 ];
 
-const GROUPED_METRICS: Array<GroupMetric> = [
+const METRICS: Array<GroupMetric> = [
   { id: 'count', expression: mSql.count(), label: 'Athletes' },
   { id: 'total_gold', expression: mSql.sum('gold'), label: 'Gold' },
 ];
 
-const COLUMNS: Array<ColumnDef<ServerGroupedRow, any>> = [
+const LEAF_COLUMNS: Array<LeafColumn> = [
+  { column: 'name', label: 'Name' },
+  { column: 'height', label: 'Height' },
+  { column: 'weight', label: 'Weight' },
+];
+
+// Column defs use accessorKey — SQL results are top-level properties
+const COLUMNS: Array<ColumnDef<FlatGroupedRow, any>> = [
   {
     id: 'group',
     header: 'Group',
-    cell: ({ row }: CellContext<ServerGroupedRow, any>) => {
-      if (row.original.type !== 'group') return null;
+    cell: ({ row }) => {
+      const meta = row.original._groupMeta;
+      if (meta.type !== 'group') {
+        return row.original.name != null ? String(row.original.name) : null;
+      }
       const indent = row.depth * 20;
       return (
         <span style={{ paddingLeft: `${indent}px` }}>
-          {row.getIsExpanded() ? '▼' : '▶'} {row.original.groupValue}
+          {row.getIsExpanded() ? '▼' : '▶'} {meta.groupValue}
+          <span> ({LEVELS[row.depth]?.label})</span>
         </span>
       );
     },
   },
-  {
-    id: 'count',
-    header: 'Athletes',
-    cell: ({ row }: CellContext<ServerGroupedRow, any>) => {
-      if (row.original.type !== 'group') return null;
-      return row.original.metrics.count?.toLocaleString() ?? '—';
-    },
-    meta: { align: 'right' },
-  },
+  { accessorKey: 'count', header: 'Athletes' },
+  { accessorKey: 'total_gold', header: 'Gold' },
+  // Leaf detail columns — blank for group rows, filled for leaf rows
+  { accessorKey: 'name', header: 'Name' },
+  { accessorKey: 'height', header: 'Height' },
 ];
 ```
 
-### 2. Call useServerGroupedTable
+### 2. Call useMosaicReactTable with groupBy
 
-The hook returns `tableOptions` — pass them directly to `useReactTable()`:
+Grouping is a feature toggle on the existing `useMosaicReactTable` hook — pass a `groupBy` option:
 
 ```tsx
-import { useServerGroupedTable } from '@nozzleio/mosaic-tanstack-react-table';
-import { useReactTable } from '@tanstack/react-table';
+import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import { flexRender, useReactTable } from '@tanstack/react-table';
 
-const { tableOptions, isRootLoading, totalRootRows, loadingGroupIds } =
-  useServerGroupedTable({
+function GroupedTable({ topology, enabled }) {
+  const { tableOptions, client } = useMosaicReactTable<FlatGroupedRow>({
     table: 'athletes',
-    groupBy: GROUPED_LEVELS,
-    metrics: GROUPED_METRICS,
-    filterBy: topology.$tableContext,
+    filterBy: topology.$combined,
     columns: COLUMNS,
-    enabled: true,
+    groupBy: {
+      levels: LEVELS,
+      metrics: METRICS,
+      leafColumns: LEAF_COLUMNS,
+      leafSelectAll: true,
+    },
+    enabled,
   });
 
-const table = useReactTable(tableOptions);
+  const table = useReactTable(tableOptions);
+  const { isRootLoading, totalRootRows } = client.groupedState;
+
+  if (isRootLoading && table.getRowModel().rows.length === 0) {
+    return <div>Loading...</div>;
+  }
+
+  // Standard TanStack table markup — no special renderer needed
+  return (
+    <table>
+      <thead>
+        {table.getHeaderGroups().map((hg) => (
+          <tr key={hg.id}>
+            {hg.headers.map((h) => (
+              <th key={h.id}>
+                {!h.isPlaceholder &&
+                  flexRender(h.column.columnDef.header, h.getContext())}
+              </th>
+            ))}
+          </tr>
+        ))}
+      </thead>
+      <tbody>
+        {table.getRowModel().rows.map((row) => (
+          <tr
+            key={row.id}
+            onClick={() => row.getCanExpand() && row.toggleExpanded()}
+          >
+            {row.getVisibleCells().map((cell) => (
+              <td key={cell.id}>
+                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 ```
 
-The `tableOptions` include `onExpandedChange`, `getSubRows`, `getRowId`, `getCoreRowModel`, and `getExpandedRowModel` — all pre-configured. TanStack's expanding APIs drive the expand/collapse lifecycle: clicking `row.toggleExpanded()` triggers lazy child queries automatically.
+The `tableOptions` include `onExpandedChange`, `getSubRows`, `getRowId`, `getRowCanExpand`, `getCoreRowModel`, and `getExpandedRowModel` — all pre-configured. TanStack's expanding APIs drive the expand/collapse lifecycle: clicking `row.toggleExpanded()` triggers lazy child queries automatically.
 
 ## Architecture
 
-`MosaicGroupedTable` extends `MosaicClient`, giving the root GROUP BY query the full Mosaic lifecycle — automatic cross-filter updates, query consolidation, caching, and pre-aggregation optimizations.
+Grouped mode is a feature toggle on `MosaicDataTable`. When `groupBy` is provided, the class branches its `query()`, `queryResult()`, and `getTableOptions()` methods to handle hierarchical GROUP BY queries instead of flat table queries.
+
+The root GROUP BY query goes through the MosaicClient lifecycle — automatic cross-filter updates, query consolidation, caching, and pre-aggregation optimizations via `filterStable`.
 
 Child queries (on user expand) use `coordinator.query()` directly — these are ad-hoc, on-demand queries that don't fit MosaicClient's single-query lifecycle.
 
+## Data Model: FlatGroupedRow
+
+SQL result columns sit at the **top level** of each row, enabling standard TanStack `accessorKey` column definitions. Tree metadata lives under `_groupMeta`:
+
+```ts
+// Group row from: SELECT nationality, COUNT(*) as count FROM athletes GROUP BY nationality
+{
+  nationality: "USA",
+  count: 500,
+  _groupMeta: {
+    type: 'group',
+    id: "USA",
+    depth: 0,
+    parentConstraints: {},
+    groupColumn: "nationality",
+    groupValue: "USA",
+  },
+  subRows: [...],
+}
+
+// Leaf row from: SELECT name, height FROM athletes WHERE nationality='USA' AND sport='Swimming'
+{
+  name: "Michael Phelps",
+  height: 1.93,
+  _groupMeta: {
+    type: 'leaf',
+    id: "USA\x1FSwimming\x1F_leaf_42",
+    depth: 2,
+    parentConstraints: { nationality: "USA", sport: "Swimming" },
+  },
+}
+```
+
+Group rows have metric values (e.g. `count`, `total_gold`) as top-level properties. Leaf rows have detail values (e.g. `name`, `height`) as top-level properties. Both go through the same `flexRender()` pipeline — cells for missing keys simply render blank.
+
 ## Configuration
+
+### groupBy Option
+
+| Property          | Type            | Default | Description                                             |
+| ----------------- | --------------- | ------- | ------------------------------------------------------- |
+| `levels`          | `GroupLevel[]`  | —       | Hierarchy of columns to group by, in order              |
+| `metrics`         | `GroupMetric[]` | —       | Aggregation metrics to compute at each level            |
+| `additionalWhere` | `FilterExpr`    | —       | Additional static WHERE clauses (e.g. NULL exclusion)   |
+| `pageSize`        | `number`        | `200`   | Maximum rows per level                                  |
+| `leafColumns`     | `LeafColumn[]`  | —       | Columns for raw leaf rows at the deepest level          |
+| `leafPageSize`    | `number`        | `50`    | Maximum leaf rows per parent                            |
+| `leafSelectAll`   | `boolean`       | `false` | Use SELECT \* for leaf queries instead of named columns |
 
 ### GroupLevel
 
@@ -111,32 +210,15 @@ Child queries (on user expand) use `coordinator.query()` directly — these are 
 | `width`  | `number` | Optional width hint in pixels                               |
 | `format` | `string` | Optional format hint: `'date'`, `'datetime'`, or `'number'` |
 
-### Full Options (UseServerGroupedTableOptions)
+## Client Accessors
 
-| Property          | Type                            | Default | Description                                             |
-| ----------------- | ------------------------------- | ------- | ------------------------------------------------------- |
-| `table`           | `string`                        | —       | Table or view name to query                             |
-| `groupBy`         | `GroupLevel[]`                  | —       | Hierarchy of columns to group by, in order              |
-| `metrics`         | `GroupMetric[]`                 | —       | Aggregation metrics to compute at each level            |
-| `filterBy`        | `Selection`                     | —       | Mosaic Selection providing cross-filter predicates      |
-| `columns`         | `ColumnDef<ServerGroupedRow>[]` | —       | TanStack column definitions with cell renderers         |
-| `rowSelection`    | `{ selection }`                 | —       | Optional row selection integration for cross-filtering  |
-| `additionalWhere` | `FilterExpr`                    | —       | Additional static WHERE clauses (e.g. NULL exclusion)   |
-| `pageSize`        | `number`                        | `200`   | Maximum rows per level                                  |
-| `leafColumns`     | `LeafColumn[]`                  | —       | Columns for raw leaf rows at the deepest level          |
-| `leafPageSize`    | `number`                        | `50`    | Maximum leaf rows per parent                            |
-| `leafSelectAll`   | `boolean`                       | `false` | Use SELECT \* for leaf queries instead of named columns |
-| `enabled`         | `boolean`                       | `true`  | Whether the hook is active                              |
+The `client` returned by `useMosaicReactTable` provides grouped-mode accessors:
 
-## Return Value
-
-| Property          | Type                             | Description                              |
-| ----------------- | -------------------------------- | ---------------------------------------- |
-| `tableOptions`    | `TableOptions<ServerGroupedRow>` | Pass directly to `useReactTable()`       |
-| `client`          | `MosaicGroupedTable`             | Core client for programmatic access      |
-| `loadingGroupIds` | `string[]`                       | IDs of groups currently loading children |
-| `isRootLoading`   | `boolean`                        | Whether the root query is loading        |
-| `totalRootRows`   | `number`                         | Total root-level group count             |
+| Accessor                  | Type      | Description                                                   |
+| ------------------------- | --------- | ------------------------------------------------------------- |
+| `client.isGroupedMode`    | `boolean` | Whether grouped mode is active                                |
+| `client.groupedState`     | `object`  | `{ expanded, loadingGroupIds, totalRootRows, isRootLoading }` |
+| `client.isRowLoading(id)` | `boolean` | Whether a specific row is loading children                    |
 
 ## How It Works
 
@@ -148,11 +230,11 @@ graph TD
     D --> E[coordinator calls client.queryResult arrowTable]
     E --> F[Process root rows, update store]
     F --> G[Fire parallel coordinator.query for expanded children]
-    G --> H[Merge into cache, rebuildTree]
+    G --> H[Merge into cache, rebuildGroupedTree]
     I[User clicks expand] --> J[row.toggleExpanded via TanStack]
     J --> K[onExpandedChange fires handleExpandedChange]
     K --> L[coordinator.query childSQL directly]
-    L --> M[Cache result, rebuildTree]
+    L --> M[Cache result, rebuildGroupedTree]
 ```
 
 **MosaicClient lifecycle:** The root GROUP BY query goes through the coordinator's managed lifecycle (`query()` → `queryResult()`). This gives the grouped table automatic cross-filter updates, query consolidation, caching, and `filterStable` pre-aggregation optimizations.
@@ -161,34 +243,21 @@ graph TD
 
 **Children cache:** Fetched child rows are cached. When filters change and `queryResult` processes new root data, expanded children are refreshed via parallel `coordinator.query()` calls.
 
-**TanStack integration:** `onExpandedChange` intercepts TanStack's expand/collapse state changes, triggering lazy child queries for newly expanded rows. The `getSubRows` accessor wires the tree structure. Cell renderers defined in `columns` use `row.getIsExpanded()`, `row.depth`, and `row.original` for rendering.
+**TanStack integration:** `onExpandedChange` intercepts TanStack's expand/collapse state changes, triggering lazy child queries for newly expanded rows. The `getSubRows` accessor wires the tree structure. Cell renderers defined in `columns` use `row.getIsExpanded()`, `row.depth`, and `row.original._groupMeta` for rendering.
 
-## Leaf Rows (Detail Panel)
+## GroupMeta
 
-When `leafColumns` is provided, expanding the deepest grouped level fetches individual data rows instead of another GROUP BY query.
+Each row's `_groupMeta` carries metadata for internal use and cell rendering:
 
-```ts
-const LEAF_COLUMNS: Array<LeafColumn> = [
-  { column: 'name', label: 'Name' },
-  { column: 'height', label: 'Height' },
-  { column: 'weight', label: 'Weight' },
-];
-
-const result = useServerGroupedTable({
-  // ...
-  leafColumns: LEAF_COLUMNS,
-  leafSelectAll: true, // fetch all columns, not just the named ones
-});
-```
-
-Leaf rows have `type: 'leaf'` and carry their data in `values`. Render them differently from group rows:
-
-```tsx
-if (row.original.type === 'leaf') {
-  const values = row.original.values;
-  return <LeafRowComponent values={values} />;
-}
-```
+| Field               | Type                     | Description                                                |
+| ------------------- | ------------------------ | ---------------------------------------------------------- |
+| `type`              | `'group' \| 'leaf'`      | Discriminant for row type                                  |
+| `id`                | `string`                 | Unique composite ID (segments joined by separator)         |
+| `depth`             | `number`                 | Depth in the group hierarchy (0 = root)                    |
+| `parentConstraints` | `Record<string, string>` | Ancestor equality constraints for child queries            |
+| `groupColumn`       | `string`                 | The SQL column this row was grouped by (group rows only)   |
+| `groupValue`        | `string`                 | The value for this group (group rows only)                 |
+| `isLeafParent`      | `boolean`                | Whether expanding shows leaf rows instead of deeper groups |
 
 ## Cross-Filtering
 
@@ -199,17 +268,6 @@ The `filterBy` selection provides the cross-filter predicate. When any other com
 ### rowSelection for Output Predicates
 
 To make the grouped table a cross-filter _source_, pass `rowSelection` with a Selection. Use `buildGroupedSelectionPredicate` to generate the predicate when a row is clicked.
-
-## GroupRow Metadata
-
-Each `GroupRow` carries embedded metadata for internal use:
-
-| Field                | Type                     | Description                                                |
-| -------------------- | ------------------------ | ---------------------------------------------------------- |
-| `_depth`             | `number`                 | Depth in the group hierarchy (0 = root)                    |
-| `_parentConstraints` | `Record<string, string>` | Ancestor equality constraints for child queries            |
-| `_groupColumn`       | `string`                 | The SQL column this row was grouped by                     |
-| `_isDetailPanel`     | `boolean`                | Whether expanding shows leaf rows instead of deeper groups |
 
 ## Query Builder API (Advanced)
 
@@ -237,11 +295,11 @@ See `examples/react/trimmed/src/components/views/athletes.tsx` — the `Athletes
 
 The example demonstrates:
 
-1. **3 group levels:** `GROUPED_LEVELS` — Country → Sport → Gender
-2. **4 aggregation metrics:** `GROUPED_METRICS` — count, gold, silver, bronze
-3. **Leaf columns:** `LEAF_COLUMNS` with `leafSelectAll: true` for full athlete detail
-4. **Column definitions with cell renderers:** `GROUPED_TABLE_COLUMNS` using `flexRender`, `row.getIsExpanded()`, `row.depth`
-5. **TanStack Table integration:** `useReactTable(tableOptions)` — single call, fully configured
+1. **3 group levels:** Country → Sport → Gender
+2. **4 aggregation metrics:** count, gold, silver, bronze
+3. **Leaf columns:** with `leafSelectAll: true` for full athlete detail
+4. **Column definitions with `accessorKey`:** metrics and leaf data render automatically via `flexRender`
+5. **Standard TanStack Table markup:** no special renderer component needed
 6. **Topology integration:** Uses `topology.$combined` as `filterBy` for cross-filtering with the rest of the athletes dashboard
 
 ## Next Steps

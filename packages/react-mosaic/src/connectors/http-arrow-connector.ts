@@ -29,15 +29,14 @@ export class HttpArrowConnector {
   // Without it, TS tries to infer the return type from decodeIPC, which
   // references types from '@uwdata/flechette' that are not exported/portable.
   async query(queryInput: any): Promise<any> {
-    // 1. Unpack Mosaic's potentially wrapped SQL object.
-    // Mosaic Core sometimes wraps the SQL string in a Query object or passes it directly.
-    const sql =
-      typeof queryInput === 'object' && queryInput !== null && queryInput.sql
-        ? queryInput.sql
-        : String(queryInput);
+    // 1. Unpack Mosaic's query object: { type, sql } or a raw SQL string.
+    const isObj =
+      typeof queryInput === 'object' && queryInput !== null && queryInput.sql;
+    const sql = isObj ? queryInput.sql : String(queryInput);
+    const type: string = (isObj && queryInput.type) || 'arrow';
 
     this.options.logger?.log(
-      `[HttpArrowConnector] Fetching: ${sql.substring(0, 60)}...`,
+      `[HttpArrowConnector] Fetching (${type}): ${sql.substring(0, 60)}...`,
     );
 
     // 2. Perform Fetch with injected Headers
@@ -47,8 +46,7 @@ export class HttpArrowConnector {
         'Content-Type': 'application/json',
         ...this.options.headers,
       },
-      // The Go server expects { type: 'arrow', sql: ... }
-      body: JSON.stringify({ sql, type: 'arrow' }),
+      body: JSON.stringify({ sql, type }),
     });
 
     if (!response.ok) {
@@ -58,15 +56,24 @@ export class HttpArrowConnector {
       throw new Error(errMsg);
     }
 
-    // 3. Decode Binary Response
+    // 3. Branch on type, matching Mosaic's Connector contract:
+    //    - exec: no result data (DDL/DML statements)
+    //    - arrow: decode binary Arrow IPC into a queryable table
+    //    - json: parse as JSON
+    if (type === 'exec') {
+      return undefined;
+    }
+
     const buffer = await response.arrayBuffer();
 
     this.options.logger?.log(
       `[HttpArrowConnector] Received ${buffer.byteLength} bytes`,
     );
 
-    // 4. Hydrate into Mosaic-compatible Table
-    // decodeIPC parses the Arrow IPC format into a queryable table structure.
+    if (type === 'json') {
+      return JSON.parse(new TextDecoder().decode(buffer));
+    }
+
     return decodeIPC(buffer);
   }
 }
