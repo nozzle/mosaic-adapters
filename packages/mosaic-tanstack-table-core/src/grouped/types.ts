@@ -5,8 +5,10 @@
  * is loaded lazily from the server via GROUP BY queries, plus optional raw
  * leaf rows at the deepest level.
  *
- * Uses a discriminated union (`ServerGroupedRow = GroupRow | LeafRow`) so
- * consumers can narrow with `row.type === 'group'` or `row.type === 'leaf'`.
+ * Row data is flat: SQL query result columns sit at the top level (enabling
+ * standard TanStack `accessorKey` column definitions), while tree metadata
+ * lives under `_groupMeta`. The `subRows` property follows TanStack's
+ * convention for tree traversal via `getSubRows`.
  */
 import type { ExprValue } from '@uwdata/mosaic-sql';
 
@@ -89,47 +91,24 @@ export interface GroupMetric {
 }
 
 // ---------------------------------------------------------------------------
-// Row types — discriminated union
+// Row types — flat data model
 // ---------------------------------------------------------------------------
 
-/** A row in the grouped tree. Either a group (aggregated) or a leaf (raw data). */
-export type ServerGroupedRow = GroupRow | LeafRow;
-
 /**
- * An aggregated group row with metrics and optional children.
+ * Metadata embedded on grouped rows under `_groupMeta`.
  *
- * Each GroupRow carries embedded metadata (`_depth`, `_parentConstraints`, etc.)
- * because the row must be self-describing — when TanStack fires
- * `onExpandedChange` with a row ID, we need to know *what SQL to run* to load
- * that row's children. In client-side grouping the table already has all the
- * data, but in server-side grouping we need to construct a new GROUP BY query
- * with the right WHERE constraints. The metadata makes each row carry enough
- * context to build its child query without a side-map lookup.
+ * Each row must be self-describing — when TanStack fires `onExpandedChange`
+ * with a row ID, we need to know *what SQL to run* to load that row's
+ * children. The metadata makes each row carry enough context to build its
+ * child query without a side-map lookup.
  */
-export interface GroupRow {
-  /** Discriminant — always `'group'`. */
-  readonly type: 'group';
-  /** Unique ID (segments separated by GROUP_ID_SEPARATOR). */
-  readonly id: string;
-  /** Display value at this group level. */
-  readonly groupValue: string;
-  /** Aggregation values keyed by metric ID (e.g., `{ count: 1234 }`). */
-  readonly metrics: Record<string, number>;
-  /**
-   * TanStack Table convention — child rows populated lazily.
-   * Starts as `[]` (empty array signals "expandable but not yet loaded").
-   * Filled by `#rebuildTree()` from `#childrenCache` after a child query completes.
-   */
-  subRows?: Array<ServerGroupedRow>;
-
-  // --- Embedded metadata (prefixed with _ to signal internal use) ----------
-  //
-  // These fields replace a separate `#rowMeta: Map<string, RowMeta>` side-map.
-  // Embedding them directly on the row keeps the data self-describing and
-  // avoids Map lookups during expand/collapse operations.
-
-  /** Depth in the group hierarchy (0 = root). */
-  readonly _depth: number;
+export interface GroupMeta {
+  /** Discriminant: 'group' for aggregated rows, 'leaf' for raw detail rows. */
+  type: 'group' | 'leaf';
+  /** Unique composite ID (segments joined by GROUP_ID_SEPARATOR). */
+  id: string;
+  /** Depth in the hierarchy (0 = root). */
+  depth: number;
   /**
    * Ancestor equality constraints for building child queries.
    *
@@ -139,19 +118,44 @@ export interface GroupRow {
    * When the user expands this row, we build the child query as:
    * `WHERE nationality = 'USA' AND sport = 'Swimming' GROUP BY <next level>`.
    */
-  readonly _parentConstraints: Record<string, string>;
-  /** The SQL column this row was grouped by (e.g. "nationality"). */
-  readonly _groupColumn: string;
-  /** Whether expanding this row fetches raw leaf rows instead of deeper groups. */
-  readonly _isDetailPanel: boolean;
+  parentConstraints: Record<string, string>;
+  /** The SQL column this row was grouped by. Only present on type='group'. */
+  groupColumn?: string;
+  /** The value of the group column for this row. Only present on type='group'. */
+  groupValue?: string;
+  /** Whether expanding this row fetches leaf rows instead of deeper groups. */
+  isLeafParent?: boolean;
 }
 
-/** A raw data row at the leaf level (no aggregation). */
-export interface LeafRow {
-  /** Discriminant — always `'leaf'`. */
-  readonly type: 'leaf';
-  /** Unique ID (segments separated by GROUP_ID_SEPARATOR). */
-  readonly id: string;
-  /** Raw column data keyed by column name. */
-  readonly values: Record<string, unknown>;
+/**
+ * A row in a grouped MosaicDataTable.
+ *
+ * SQL result columns sit at the top level (e.g., `nationality`, `count`,
+ * `total_gold`), enabling standard TanStack `accessorKey` column definitions.
+ * Tree metadata lives under `_groupMeta`. The `subRows` field follows
+ * TanStack's convention for tree traversal.
+ *
+ * @example
+ * // Group row from: SELECT nationality, COUNT(*) as count FROM athletes GROUP BY nationality
+ * {
+ *   nationality: "USA",
+ *   count: 500,
+ *   _groupMeta: { type: 'group', id: "USA", depth: 0, groupColumn: "nationality", ... },
+ *   subRows: [],
+ * }
+ *
+ * // Leaf row from: SELECT name, height FROM athletes WHERE nationality='USA' AND sport='Swimming'
+ * {
+ *   name: "Michael Phelps",
+ *   height: 1.93,
+ *   _groupMeta: { type: 'leaf', id: "USA\x1FSwimming\x1F_leaf_42", depth: 2, ... },
+ * }
+ */
+export interface FlatGroupedRow {
+  /** Tree metadata. Present on every row when groupBy is active. */
+  _groupMeta: GroupMeta;
+  /** TanStack tree convention: child rows (populated lazily from cache). */
+  subRows?: Array<FlatGroupedRow>;
+  /** All other keys are SQL column values at the top level. */
+  [key: string]: unknown;
 }

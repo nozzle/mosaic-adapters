@@ -7,12 +7,14 @@ import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
+  ExpandedState,
   RowData,
   TableOptions,
   TableState,
 } from '@tanstack/table-core';
 import type { FacetStrategy } from '../facet-strategies';
 import type { FilterStrategy } from '../query/filter-factory';
+import type { GroupLevel, GroupMetric, LeafColumn } from '../grouped/types';
 
 export type MosaicDataTableSqlFilterType =
   | 'EQUALS'
@@ -309,6 +311,30 @@ export interface MosaicDataTableOptions<
    * @default true
    */
   enabled?: boolean;
+
+  /**
+   * Server-side grouping configuration. When provided, the table operates
+   * in grouped mode: the root query uses GROUP BY, and child levels are
+   * lazily loaded on expand via `onExpandedChange`. The data type becomes
+   * `FlatGroupedRow` — SQL result columns sit at the top level, enabling
+   * standard TanStack `accessorKey` column definitions.
+   */
+  groupBy?: {
+    /** Hierarchy of columns to group by, in order. */
+    levels: Array<GroupLevel>;
+    /** Aggregation metrics to compute at each level. */
+    metrics: Array<GroupMetric>;
+    /** Additional static WHERE clauses (e.g., NULL exclusion). */
+    additionalWhere?: FilterExpr | null;
+    /** Maximum rows per group level. Defaults to 200. */
+    pageSize?: number;
+    /** Columns to fetch for raw leaf rows at the deepest level. */
+    leafColumns?: Array<LeafColumn>;
+    /** Maximum leaf rows per parent. Defaults to 50. */
+    leafPageSize?: number;
+    /** When true, leaf row queries use SELECT * instead of named columns. */
+    leafSelectAll?: boolean;
+  };
 }
 
 /**
@@ -329,6 +355,17 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   totalRows: number | undefined;
   tableOptions: SubsetTableOptions<TData>;
   _facetsUpdateCount: number;
+  /** Grouped-mode state. Only meaningful when `groupBy` is active. */
+  _grouped: {
+    /** Expanded state for the tree. */
+    expanded: ExpandedState;
+    /** IDs of groups currently loading children. */
+    loadingGroupIds: Array<string>;
+    /** Total count of root-level groups. */
+    totalRootRows: number;
+    /** Whether the root query is in-flight. */
+    isRootLoading: boolean;
+  };
 };
 
 export type FacetClientConfig<TResult extends Array<any>> = {
