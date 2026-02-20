@@ -6,7 +6,7 @@
  */
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useReactTable } from '@tanstack/react-table';
+import { flexRender, useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import {
@@ -15,17 +15,15 @@ import {
   createMosaicColumnHelper,
   createMosaicMapping,
   useMosaicReactTable,
-  useServerGroupedTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useConnectorStatus } from '@nozzleio/react-mosaic';
-import type { CellContext, ColumnDef, Row } from '@tanstack/react-table';
+import type { ColumnDef, Row } from '@tanstack/react-table';
 import type {
+  FlatGroupedRow,
   GroupLevel,
   GroupMetric,
   LeafColumn,
-  ServerGroupedRow,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { GroupedTableRenderer } from '@/components/grouped-table-renderer';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
 import { cn, simpleDateFormatter } from '@/lib/utils';
@@ -523,90 +521,32 @@ const LEAF_COLUMNS: Array<LeafColumn> = [
   { column: 'bronze', label: 'Bronze' },
 ];
 
-// Per-column overrides for leaf row rendering.
-// Columns without an explicit width flex to fill available space.
-const LEAF_COL_STYLES: Record<
-  string,
-  {
-    label?: string;
-    width?: number;
-    className?: string;
-    render?: (val: unknown) => string;
-  }
-> = {
-  id: { label: 'ID', className: 'text-slate-400 tabular-nums' },
-  name: { label: 'Name', width: 160, className: 'font-medium text-slate-700' },
-  date_of_birth: {
-    label: 'Born',
-    className: 'text-slate-500 tabular-nums',
-    render: (v) => (v != null ? String(v).slice(0, 10) : '—'),
-  },
-  height: {
-    label: 'Height',
-    className: 'text-slate-500 tabular-nums',
-    render: (v) => (v != null ? `${String(v)}m` : '—'),
-  },
-  weight: {
-    label: 'Weight',
-    className: 'text-slate-500 tabular-nums',
-    render: (v) => (v != null ? `${String(v)}kg` : '—'),
-  },
-  gold: { label: 'Gold', className: 'tabular-nums text-amber-600' },
-  silver: { label: 'Silver', className: 'tabular-nums text-slate-400' },
-  bronze: { label: 'Bronze', className: 'tabular-nums text-amber-800' },
-  info: { label: 'Info', className: 'text-slate-400 italic' },
-};
-
-const GROUPED_METRIC_COLUMNS: Array<{
-  id: string;
-  label: string;
-}> = [
-  { id: 'count', label: 'Athletes' },
-  { id: 'total_gold', label: 'Gold' },
-  { id: 'total_silver', label: 'Silver' },
-  { id: 'total_bronze', label: 'Bronze' },
-];
-
-const GROUPED_TABLE_COLUMNS: Array<ColumnDef<ServerGroupedRow, any>> = [
+const GROUPED_TABLE_COLUMNS: Array<ColumnDef<FlatGroupedRow, any>> = [
   {
     id: 'group',
     header: 'Group',
-    cell: ({ row }: CellContext<ServerGroupedRow, any>) => {
-      const original = row.original;
-      if (original.type === 'leaf') {
-        return null;
+    cell: ({ row }) => {
+      const meta = row.original._groupMeta;
+      if (meta.type !== 'group') {
+        return row.original.name != null ? String(row.original.name) : null;
       }
 
       const indent = row.depth * 20;
       const levelLabel = GROUPED_LEVELS[row.depth]?.label ?? '';
 
       return (
-        <span
-          style={{ paddingLeft: `${indent}px` }}
-          className="inline-flex items-center gap-1.5"
-        >
-          <span className="text-xs text-slate-400 w-4 inline-block">
-            {row.getIsExpanded() ? '▼' : '▶'}
-          </span>
-          <span>{original.groupValue || '(empty)'}</span>
-          <span className="text-xs text-slate-400">({levelLabel})</span>
+        <span style={{ paddingLeft: `${indent}px` }}>
+          {row.getIsExpanded() ? '▼' : '▶'} {meta.groupValue || '(empty)'} (
+          {levelLabel})
         </span>
       );
     },
   },
-  ...GROUPED_METRIC_COLUMNS.map(
-    (mc): ColumnDef<ServerGroupedRow, any> => ({
-      id: mc.id,
-      header: mc.label,
-      cell: ({ row }: CellContext<ServerGroupedRow, any>) => {
-        if (row.original.type !== 'group') {
-          return null;
-        }
-        return row.original.metrics[mc.id]?.toLocaleString() ?? '—';
-      },
-      meta: { align: 'right' } as Record<string, unknown>,
-    }),
-  ),
+  { accessorKey: 'count', header: 'Athletes' },
+  { accessorKey: 'total_gold', header: 'Gold' },
+  { accessorKey: 'total_silver', header: 'Silver' },
+  { accessorKey: 'total_bronze', header: 'Bronze' },
+  // Leaf columns auto-generated from loaded data — no need to specify here
 ];
 
 function AthletesGroupedTable({
@@ -616,30 +556,64 @@ function AthletesGroupedTable({
   topology: ReturnType<typeof useAthletesTopology>;
   enabled: boolean;
 }) {
-  const { tableOptions, isRootLoading, totalRootRows, loadingGroupIds } =
-    useServerGroupedTable({
-      table: tableName,
-      groupBy: GROUPED_LEVELS,
+  const { tableOptions, client } = useMosaicReactTable<FlatGroupedRow>({
+    table: tableName,
+    filterBy: topology.$combined,
+    columns: GROUPED_TABLE_COLUMNS,
+    groupBy: {
+      levels: GROUPED_LEVELS,
       metrics: GROUPED_METRICS,
-      filterBy: topology.$combined,
       leafColumns: LEAF_COLUMNS,
       leafSelectAll: true,
-      columns: GROUPED_TABLE_COLUMNS,
-      enabled,
-    });
+    },
+    enabled,
+  });
 
   const table = useReactTable(tableOptions);
+  const { isRootLoading, totalRootRows } = client.groupedState;
 
   if (isRootLoading && table.getRowModel().rows.length === 0) {
-    return <div className="text-sm italic py-4">Loading grouped data...</div>;
+    return <div>Loading grouped data...</div>;
   }
 
   return (
-    <GroupedTableRenderer
-      table={table}
-      loadingGroupIds={loadingGroupIds}
-      leafColStyles={LEAF_COL_STYLES}
-      footerText={`${totalRootRows} countries`}
-    />
+    <div>
+      <table>
+        <thead>
+          {table.getHeaderGroups().map((hg) => (
+            <tr key={hg.id}>
+              {hg.headers.map((header) => (
+                <th key={header.id}>
+                  {!header.isPlaceholder &&
+                    flexRender(
+                      header.column.columnDef.header,
+                      header.getContext(),
+                    )}
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+        <tbody>
+          {table.getRowModel().rows.map((row) => (
+            <tr
+              key={row.id}
+              onClick={() => {
+                if (row.getCanExpand()) {
+                  row.toggleExpanded();
+                }
+              }}
+            >
+              {row.getVisibleCells().map((cell) => (
+                <td key={cell.id}>
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div>{totalRootRows} countries</div>
+    </div>
   );
 }
