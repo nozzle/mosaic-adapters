@@ -15,7 +15,11 @@ import {
   queryFieldInfo,
 } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
-import { getCoreRowModel, getFacetedRowModel } from '@tanstack/table-core';
+import {
+  getCoreRowModel,
+  getExpandedRowModel,
+  getFacetedRowModel,
+} from '@tanstack/table-core';
 import { Store, batch } from '@tanstack/store';
 import {
   functionalUpdate,
@@ -32,6 +36,12 @@ import { StrategyRegistry } from './registry';
 import { defaultFilterStrategies } from './query/filter-factory';
 import { defaultFacetStrategies } from './facet-strategies';
 import { createMosaicFeature } from './feature';
+import { arrowTableToObjects } from './grouped/arrow-utils';
+import {
+  buildGroupedLevelQuery,
+  buildLeafRowsQuery,
+} from './grouped/query-builder';
+import { GROUP_ID_SEPARATOR } from './grouped/types';
 
 import type {
   Coordinator,
@@ -41,9 +51,11 @@ import type {
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
+  ExpandedState,
   RowData,
   Table,
   TableOptions,
+  Updater,
 } from '@tanstack/table-core';
 import type {
   IMosaicClient,
@@ -55,9 +67,44 @@ import type {
 import type { FilterStrategy } from './query/filter-factory';
 import type { FacetStrategy } from './facet-strategies';
 import type { SidecarRequest } from './registry';
+import type { FlatGroupedRow } from './grouped/types';
 
 /** Max number of validation errors to log individually before summarizing */
 const MAX_VALIDATION_ERRORS_LOGGED = 5;
+
+// ---------------------------------------------------------------------------
+// Grouped-mode helpers (pure functions for ExpandedState diffing)
+// ---------------------------------------------------------------------------
+
+/** Safely extract expanded keys from an ExpandedState. */
+function getExpandedKeys(state: ExpandedState): Array<string> {
+  if (state === true) {
+    return [];
+  }
+  return Object.entries(state)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
+}
+
+/** Safely check if a specific key is expanded. */
+function isKeyExpanded(state: ExpandedState, key: string): boolean {
+  if (state === true) {
+    return true;
+  }
+  return !!state[key];
+}
+
+/** Find keys that are in newExpanded but not in oldExpanded. */
+function findNewlyExpandedKeys(
+  oldExpanded: ExpandedState,
+  newExpanded: ExpandedState,
+): Array<string> {
+  if (newExpanded === true) {
+    return [];
+  }
+  const newKeys = getExpandedKeys(newExpanded);
+  return newKeys.filter((k) => !isKeyExpanded(oldExpanded, k));
+}
 
 export function createMosaicDataTableClient<
   TData extends RowData,
@@ -97,6 +144,14 @@ export class MosaicDataTable<
 
   // Typed selection manager for row IDs (string or number)
   #rowSelectionManager?: MosaicSelectionManager<string | number>;
+
+  // --- Grouped-mode private state ---
+  #childrenCache: Map<string, Array<FlatGroupedRow>> = new Map();
+  #groupedRootRows: Array<FlatGroupedRow> = [];
+  #autoLeafColumnDefs: Array<ColumnDef<TData, any>> = [];
+  get #isGrouped(): boolean {
+    return !!this.options.groupBy;
+  }
 
   private lifecycle = createLifecycleManager(this);
 
@@ -161,7 +216,22 @@ export class MosaicDataTable<
 
   override queryError(error: Error): this {
     handleQueryError(`MosaicDataTable #${this.id}`, error);
+    if (this.#isGrouped) {
+      batch(() => {
+        this.store.setState((prev) => ({
+          ...prev,
+          _grouped: { ...prev._grouped, isRootLoading: false },
+        }));
+      });
+    }
     return this;
+  }
+
+  override get filterStable() {
+    if (this.#isGrouped) {
+      return true;
+    }
+    return super.filterStable;
   }
 
   /**
@@ -217,8 +287,18 @@ export class MosaicDataTable<
           ),
           rows: [],
           totalRows: undefined,
+          _grouped: {
+            expanded: {} as ExpandedState,
+            loadingGroupIds: [] as Array<string>,
+            totalRootRows: 0,
+            isRootLoading: false as boolean,
+          },
         }));
       });
+
+      this.#childrenCache.clear();
+      this.#groupedRootRows = [];
+      this.#autoLeafColumnDefs = [];
 
       this.tableFilterSelection.update({
         source: this,
@@ -262,6 +342,12 @@ export class MosaicDataTable<
         totalRows: undefined as ResolvedStore['totalRows'],
         columnDefs: options.columns ?? ([] as ResolvedStore['columnDefs']),
         _facetsUpdateCount: 0,
+        _grouped: {
+          expanded: {} as ExpandedState,
+          loadingGroupIds: [] as Array<string>,
+          totalRootRows: 0,
+          isRootLoading: false as boolean,
+        },
       });
     } else {
       if (options.columns !== undefined) {
@@ -341,6 +427,20 @@ export class MosaicDataTable<
   ): SelectQuery | null {
     if (!this.enabled) {
       return null;
+    }
+
+    if (this.#isGrouped) {
+      const groupBy = this.options.groupBy!;
+      return buildGroupedLevelQuery({
+        table: this.source as string,
+        groupBy: groupBy.levels,
+        depth: 0,
+        metrics: groupBy.metrics,
+        parentConstraints: {},
+        filterPredicate: primaryFilter ?? undefined,
+        additionalWhere: groupBy.additionalWhere ?? undefined,
+        limit: groupBy.pageSize ?? 200,
+      });
     }
 
     const source = this.resolveSource(primaryFilter);
@@ -491,6 +591,10 @@ export class MosaicDataTable<
   }
 
   override queryResult(table: unknown): this {
+    if (this.#isGrouped) {
+      return this.#handleGroupedQueryResult(table);
+    }
+
     if (isArrowTable(table)) {
       let totalRows: number | undefined = undefined;
       // Convert to array of objects
@@ -586,7 +690,7 @@ export class MosaicDataTable<
    * Prepares the client for execution.
    */
   override async prepare(): Promise<void> {
-    if (!this.enabled) {
+    if (!this.enabled || this.#isGrouped) {
       return Promise.resolve();
     }
 
@@ -634,6 +738,12 @@ export class MosaicDataTable<
       this.enabled = true;
     } else {
       this.enabled = false;
+    }
+
+    if (this.#isGrouped) {
+      // Coordinator handles filterBy changes via query/queryResult lifecycle.
+      // No manual selection listeners needed for grouped mode.
+      return;
     }
 
     this.sidecarManager.connectAll();
@@ -754,7 +864,7 @@ export class MosaicDataTable<
   }
 
   fields(): Array<FieldInfoRequest> {
-    if (!this.enabled) {
+    if (!this.enabled || this.#isGrouped) {
       return [];
     }
 
@@ -780,6 +890,10 @@ export class MosaicDataTable<
   getTableOptions(
     state: Store<MosaicDataTableStore<TData, TValue>>['state'],
   ): TableOptions<TData> {
+    if (this.#isGrouped) {
+      return this.#getGroupedTableOptions(state);
+    }
+
     const columns =
       state.columnDefs.length === 0
         ? this.schema.map((field) => {
@@ -974,5 +1088,619 @@ export class MosaicDataTable<
 
   get isEnabled() {
     return this.isConnected && this.enabled;
+  }
+
+  // ===========================================================================
+  // Grouped-mode private methods
+  // ===========================================================================
+
+  #handleGroupedQueryResult(table: unknown): this {
+    if (!isArrowTable(table)) {
+      return this;
+    }
+
+    const rawRows = arrowTableToObjects(table);
+    this.#groupedRootRows = rawRows.map((raw) =>
+      this.#toFlatGroupedRow(raw, 0, {}),
+    );
+
+    batch(() => {
+      this.store.setState((prev) => ({
+        ...prev,
+        _grouped: {
+          ...prev._grouped,
+          isRootLoading: false as boolean,
+          totalRootRows: this.#groupedRootRows.length,
+        },
+      }));
+    });
+
+    this.#refreshExpandedChildren();
+    this.#rebuildGroupedTree();
+    return this;
+  }
+
+  #getGroupedTableOptions(
+    state: MosaicDataTableStore<TData, TValue>,
+  ): TableOptions<TData> {
+    const groupBy = this.options.groupBy!;
+
+    // Merge user columns with auto-generated leaf columns
+    const columns =
+      this.#autoLeafColumnDefs.length > 0
+        ? ([...state.columnDefs, ...this.#autoLeafColumnDefs] as Array<
+            ColumnDef<TData, any>
+          >)
+        : state.columnDefs;
+
+    // Determine which columns are always visible (metrics + group levels)
+    const alwaysVisibleKeys = new Set([
+      ...groupBy.metrics.map((m) => m.id),
+      ...groupBy.levels.map((l) => l.column),
+    ]);
+
+    // Leaf columns are hidden until a leaf row is actually visible.
+    // Only toggle columns with accessorKey — custom cell columns (like the
+    // expand toggle) have no accessorKey and stay visible always.
+    const leafVisible = this.#hasExpandedLeafRows();
+    const columnVisibility: Record<string, boolean> = {};
+    for (const col of columns) {
+      const accessorKey = (
+        col as ColumnDef<TData, any> & { accessorKey?: string }
+      ).accessorKey;
+      if (accessorKey && !alwaysVisibleKeys.has(accessorKey)) {
+        columnVisibility[accessorKey] = leafVisible;
+      }
+    }
+
+    return {
+      data: state.rows,
+      columns,
+      state: {
+        expanded: state._grouped.expanded,
+        columnVisibility,
+      },
+      onExpandedChange: (updater: Updater<ExpandedState>) =>
+        this.#handleExpandedChange(updater),
+      getSubRows: (row) => {
+        const meta = (row as unknown as FlatGroupedRow)._groupMeta;
+        if (meta.type === 'group') {
+          return (row as unknown as FlatGroupedRow).subRows as
+            | Array<TData>
+            | undefined;
+        }
+        return undefined;
+      },
+      getRowId: (row) => (row as unknown as FlatGroupedRow)._groupMeta.id,
+      getRowCanExpand: (row) => {
+        const meta = (row.original as unknown as FlatGroupedRow)._groupMeta;
+        return meta.type === 'group';
+      },
+      getCoreRowModel: getCoreRowModel(),
+      getExpandedRowModel: getExpandedRowModel(),
+      manualPagination: true,
+      manualSorting: true,
+      ...state.tableOptions,
+    } as TableOptions<TData>;
+  }
+
+  #handleExpandedChange(updater: Updater<ExpandedState>): void {
+    const oldExpanded = this.store.state._grouped.expanded;
+    const newExpanded = functionalUpdate(updater, oldExpanded);
+
+    const newlyExpanded = findNewlyExpandedKeys(oldExpanded, newExpanded);
+
+    this.store.setState((prev) => ({
+      ...prev,
+      _grouped: { ...prev._grouped, expanded: newExpanded },
+    }));
+
+    this.#handleCollapses(oldExpanded, newExpanded);
+
+    for (const rowId of newlyExpanded) {
+      this.#loadChildrenIfNeeded(rowId);
+    }
+  }
+
+  #handleCollapses(
+    oldExpanded: ExpandedState,
+    newExpanded: ExpandedState,
+  ): void {
+    const oldKeys = getExpandedKeys(oldExpanded);
+    const collapsedKeys = oldKeys.filter((k) => !isKeyExpanded(newExpanded, k));
+
+    if (collapsedKeys.length === 0) {
+      return;
+    }
+
+    this.store.setState((prev) => {
+      if (prev._grouped.expanded === true) {
+        return prev;
+      }
+      const nextExpanded = { ...prev._grouped.expanded } as Record<
+        string,
+        boolean
+      >;
+
+      for (const collapsedId of collapsedKeys) {
+        delete nextExpanded[collapsedId];
+        for (const k of Object.keys(nextExpanded)) {
+          if (k.startsWith(collapsedId + GROUP_ID_SEPARATOR)) {
+            delete nextExpanded[k];
+          }
+        }
+      }
+
+      return {
+        ...prev,
+        _grouped: { ...prev._grouped, expanded: nextExpanded },
+      };
+    });
+
+    if (this.options.rowSelection?.selection) {
+      const sel = this.options.rowSelection.selection;
+      const currentVal = sel.value as Array<string> | null;
+      if (currentVal) {
+        const shouldClear = collapsedKeys.some((collapsedId) =>
+          currentVal.some(
+            (v) =>
+              v.startsWith(collapsedId + GROUP_ID_SEPARATOR) &&
+              v !== collapsedId,
+          ),
+        );
+        if (shouldClear) {
+          sel.update({
+            source: this,
+            value: null,
+            predicate: null,
+          });
+        }
+      }
+    }
+
+    this.#rebuildGroupedTree();
+  }
+
+  async #loadChildrenIfNeeded(rowId: string): Promise<void> {
+    if (this.#childrenCache.has(rowId)) {
+      this.#rebuildGroupedTree();
+      return;
+    }
+
+    const row = this.#findGroupedRowById(rowId);
+    if (!row || row._groupMeta.type !== 'group') {
+      return;
+    }
+
+    this.#setGroupLoading(rowId, true);
+
+    try {
+      const filterPredicate = this.#getGroupedFilterPredicate();
+      const meta = row._groupMeta;
+      const constraints = {
+        ...meta.parentConstraints,
+        [meta.groupColumn!]: meta.groupValue!,
+      };
+
+      const children = meta.isLeafParent
+        ? await this.#queryGroupLeafRows(constraints, filterPredicate)
+        : await this.#queryGroupLevel(
+            meta.depth + 1,
+            constraints,
+            filterPredicate,
+          );
+
+      this.#childrenCache.set(rowId, children);
+
+      // Auto-generate leaf column defs on first leaf load
+      if (
+        meta.isLeafParent &&
+        children.length > 0 &&
+        this.#autoLeafColumnDefs.length === 0
+      ) {
+        this.#generateAutoLeafColumns(children[0]!);
+      }
+    } catch (e) {
+      logger.warn('Grouped', `Failed to load children for ${rowId}`, {
+        error: e,
+      });
+      this.#childrenCache.set(rowId, []);
+    } finally {
+      this.#setGroupLoading(rowId, false);
+    }
+
+    this.#rebuildGroupedTree();
+  }
+
+  async #refreshExpandedChildren(): Promise<void> {
+    const expandedKeys = getExpandedKeys(this.store.state._grouped.expanded);
+    if (expandedKeys.length === 0) {
+      return;
+    }
+
+    const filterPredicate = this.#getGroupedFilterPredicate();
+    const validRootIds = new Set(
+      this.#groupedRootRows.map((r) => r._groupMeta.id),
+    );
+    const groupBy = this.options.groupBy!;
+
+    const queries: Array<{
+      parentId: string;
+      promise: Promise<Array<FlatGroupedRow>>;
+    }> = [];
+
+    for (const key of expandedKeys) {
+      if (key.includes('_leaf_')) {
+        continue;
+      }
+
+      const row = this.#findGroupedRowById(key);
+      if (row && row._groupMeta.type === 'group') {
+        const rootSegment = key.split(GROUP_ID_SEPARATOR)[0]!;
+        if (!validRootIds.has(rootSegment)) {
+          continue;
+        }
+
+        const meta = row._groupMeta;
+        const constraints = {
+          ...meta.parentConstraints,
+          [meta.groupColumn!]: meta.groupValue!,
+        };
+
+        if (meta.isLeafParent) {
+          queries.push({
+            parentId: key,
+            promise: this.#queryGroupLeafRows(constraints, filterPredicate),
+          });
+        } else {
+          queries.push({
+            parentId: key,
+            promise: this.#queryGroupLevel(
+              meta.depth + 1,
+              constraints,
+              filterPredicate,
+            ),
+          });
+        }
+        continue;
+      }
+
+      // Row not found — try to reconstruct from ID segments
+      const hasLeafColumns =
+        !!groupBy.leafColumns && groupBy.leafColumns.length > 0;
+      const segments = key.split(GROUP_ID_SEPARATOR);
+      const depth = segments.length - 1;
+
+      const isLeafParentRow =
+        depth === groupBy.levels.length - 1 && hasLeafColumns;
+      if (isLeafParentRow) {
+        continue;
+      }
+      if (depth >= groupBy.levels.length - 1) {
+        continue;
+      }
+
+      const rootSegment = segments[0]!;
+      if (!validRootIds.has(rootSegment)) {
+        continue;
+      }
+
+      const constraints: Record<string, string> = {};
+      for (let i = 0; i <= depth; i++) {
+        constraints[groupBy.levels[i]!.column] = segments[i]!;
+      }
+
+      queries.push({
+        parentId: key,
+        promise: this.#queryGroupLevel(depth + 1, constraints, filterPredicate),
+      });
+    }
+
+    const results = await Promise.allSettled(
+      queries.map(async (q) => ({
+        parentId: q.parentId,
+        children: await q.promise,
+      })),
+    );
+
+    const newCache = new Map<string, Array<FlatGroupedRow>>();
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        newCache.set(result.value.parentId, result.value.children);
+      }
+    }
+    this.#childrenCache = newCache;
+
+    // Prune expanded state for invalid roots
+    const prevExpanded = this.store.state._grouped.expanded;
+    if (prevExpanded !== true) {
+      const pruned: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(prevExpanded)) {
+        const rootSegment = k.split(GROUP_ID_SEPARATOR)[0]!;
+        if (v && validRootIds.has(rootSegment)) {
+          pruned[k] = true;
+        }
+      }
+      this.store.setState((prev) => ({
+        ...prev,
+        _grouped: { ...prev._grouped, expanded: pruned },
+      }));
+    }
+
+    this.#rebuildGroupedTree();
+  }
+
+  #rebuildGroupedTree(): void {
+    const cache = this.#childrenCache;
+
+    function attachChildren(
+      rows: Array<FlatGroupedRow>,
+    ): Array<FlatGroupedRow> {
+      return rows.map((row) => {
+        if (row._groupMeta.type === 'leaf') {
+          return row;
+        }
+
+        const cachedChildren = cache.get(row._groupMeta.id);
+        if (cachedChildren && cachedChildren.length > 0) {
+          return { ...row, subRows: attachChildren(cachedChildren) };
+        }
+
+        return { ...row, subRows: [] as Array<FlatGroupedRow> };
+      });
+    }
+
+    const treeData = attachChildren(this.#groupedRootRows);
+    batch(() => {
+      this.store.setState((prev) => ({
+        ...prev,
+        rows: treeData as Array<TData>,
+      }));
+    });
+  }
+
+  #toFlatGroupedRow(
+    raw: Record<string, unknown>,
+    depth: number,
+    parentConstraints: Record<string, string>,
+  ): FlatGroupedRow {
+    const groupBy = this.options.groupBy!;
+    const hasLeafColumns =
+      !!groupBy.leafColumns && groupBy.leafColumns.length > 0;
+    const level = groupBy.levels[depth]!;
+    const value = String(raw[level.column] ?? '');
+
+    const isDeepestLevel = depth === groupBy.levels.length - 1;
+    const isLeafParent = isDeepestLevel && hasLeafColumns;
+
+    const parentChain = Object.values(parentConstraints);
+    const id =
+      parentChain.length > 0
+        ? `${parentChain.join(GROUP_ID_SEPARATOR)}${GROUP_ID_SEPARATOR}${value}`
+        : value;
+
+    return {
+      ...raw,
+      _groupMeta: {
+        type: 'group',
+        id,
+        depth,
+        parentConstraints: { ...parentConstraints },
+        groupColumn: level.column,
+        groupValue: value,
+        isLeafParent,
+      },
+      subRows: [],
+    };
+  }
+
+  #toFlatLeafRow(
+    raw: Record<string, unknown>,
+    parentConstraints: Record<string, string>,
+    index: number,
+  ): FlatGroupedRow {
+    const parentChain = Object.values(parentConstraints);
+    const uniqueId = raw.unique_key ?? `row_${index}`;
+    const id =
+      parentChain.length > 0
+        ? `${parentChain.join(GROUP_ID_SEPARATOR)}${GROUP_ID_SEPARATOR}_leaf_${uniqueId}`
+        : `_leaf_${uniqueId}`;
+
+    const depth = Object.keys(parentConstraints).length;
+
+    return {
+      ...raw,
+      _groupMeta: {
+        type: 'leaf',
+        id,
+        depth,
+        parentConstraints: { ...parentConstraints },
+      },
+    };
+  }
+
+  async #queryGroupLevel(
+    depth: number,
+    parentConstraints: Record<string, string>,
+    filterPredicate: FilterExpr | null,
+  ): Promise<Array<FlatGroupedRow>> {
+    const groupBy = this.options.groupBy!;
+
+    const query = buildGroupedLevelQuery({
+      table: this.source as string,
+      groupBy: groupBy.levels,
+      depth,
+      metrics: groupBy.metrics,
+      parentConstraints,
+      filterPredicate,
+      additionalWhere: groupBy.additionalWhere ?? undefined,
+      limit: groupBy.pageSize ?? 200,
+    });
+
+    const result = await this.coordinator!.query(query.toString());
+    const rawRows = arrowTableToObjects(result);
+
+    return rawRows.map((raw) =>
+      this.#toFlatGroupedRow(raw, depth, parentConstraints),
+    );
+  }
+
+  async #queryGroupLeafRows(
+    parentConstraints: Record<string, string>,
+    filterPredicate: FilterExpr | null,
+  ): Promise<Array<FlatGroupedRow>> {
+    const groupBy = this.options.groupBy!;
+
+    if (!groupBy.leafColumns || groupBy.leafColumns.length === 0) {
+      return [];
+    }
+
+    const query = buildLeafRowsQuery({
+      table: this.source as string,
+      leafColumns: groupBy.leafColumns,
+      parentConstraints,
+      filterPredicate,
+      additionalWhere: groupBy.additionalWhere ?? undefined,
+      limit: groupBy.leafPageSize ?? 50,
+      selectAll: groupBy.leafSelectAll ?? false,
+    });
+
+    const result = await this.coordinator!.query(query.toString());
+    const rawRows = arrowTableToObjects(result);
+
+    return rawRows.map((raw, idx) =>
+      this.#toFlatLeafRow(raw, parentConstraints, idx),
+    );
+  }
+
+  #findGroupedRowById(rowId: string): FlatGroupedRow | null {
+    function search(rows: Array<FlatGroupedRow>): FlatGroupedRow | null {
+      for (const row of rows) {
+        if (row._groupMeta.id === rowId) {
+          return row;
+        }
+        if (row._groupMeta.type === 'group' && row.subRows) {
+          const found = search(row.subRows);
+          if (found) {
+            return found;
+          }
+        }
+      }
+      return null;
+    }
+
+    const fromRoot = search(this.#groupedRootRows);
+    if (fromRoot) {
+      return fromRoot;
+    }
+
+    for (const children of this.#childrenCache.values()) {
+      const found = search(children);
+      if (found) {
+        return found;
+      }
+    }
+
+    return null;
+  }
+
+  #setGroupLoading(groupId: string, loading: boolean): void {
+    this.store.setState((prev) => {
+      const ids = prev._grouped.loadingGroupIds;
+      const next = loading
+        ? ids.includes(groupId)
+          ? ids
+          : [...ids, groupId]
+        : ids.filter((id) => id !== groupId);
+      return {
+        ...prev,
+        _grouped: { ...prev._grouped, loadingGroupIds: next },
+      };
+    });
+  }
+
+  #getGroupedFilterPredicate(): FilterExpr | null {
+    return (this.filterBy?.predicate(null) as FilterExpr | null) ?? null;
+  }
+
+  /**
+   * Check if any currently-expanded row has leaf children visible.
+   * Used to toggle column visibility for leaf-specific columns.
+   */
+  #hasExpandedLeafRows(): boolean {
+    const expanded = this.store.state._grouped.expanded;
+    if (expanded === true) {
+      return false;
+    }
+
+    for (const [key, isExpanded] of Object.entries(expanded)) {
+      if (!isExpanded) {
+        continue;
+      }
+      const cached = this.#childrenCache.get(key);
+      if (
+        cached &&
+        cached.length > 0 &&
+        cached[0]!._groupMeta.type === 'leaf'
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Auto-generate column defs for leaf row keys not already covered by
+   * user-provided columns. Uses `leafColumns` labels when available,
+   * falls back to the raw key name.
+   */
+  #generateAutoLeafColumns(sampleRow: FlatGroupedRow): void {
+    const existingKeys = new Set(
+      this.store.state.columnDefs
+        .map(
+          (c) =>
+            (c as ColumnDef<TData, any> & { accessorKey?: string })
+              .accessorKey ?? c.id,
+        )
+        .filter(Boolean),
+    );
+
+    const groupBy = this.options.groupBy!;
+
+    // Also exclude metric IDs and level columns — those are group columns
+    const groupKeys = new Set([
+      ...groupBy.metrics.map((m) => m.id),
+      ...groupBy.levels.map((l) => l.column),
+    ]);
+
+    const leafKeys = Object.keys(sampleRow).filter(
+      (k) =>
+        k !== '_groupMeta' &&
+        k !== 'subRows' &&
+        !existingKeys.has(k) &&
+        !groupKeys.has(k),
+    );
+
+    this.#autoLeafColumnDefs = leafKeys.map((k) => {
+      const leafCol = groupBy.leafColumns?.find((lc) => lc.column === k);
+      return {
+        accessorKey: k,
+        header: leafCol?.label ?? k,
+      } as ColumnDef<TData, any>;
+    });
+  }
+
+  // --- Grouped-mode public accessors ---
+
+  get isGroupedMode(): boolean {
+    return this.#isGrouped;
+  }
+
+  get groupedState() {
+    return this.store.state._grouped;
+  }
+
+  isRowLoading(rowId: string): boolean {
+    return this.store.state._grouped.loadingGroupIds.includes(rowId);
   }
 }
