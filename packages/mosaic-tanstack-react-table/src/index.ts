@@ -4,4 +4,3 @@ export * from './facet-hook';
 export * from './filter-hook';
 export * from './histogram-hook';
 export * from './utils';
-export * from './grouped-table-hook';
