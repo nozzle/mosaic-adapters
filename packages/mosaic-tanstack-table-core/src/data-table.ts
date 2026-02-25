@@ -37,6 +37,7 @@ import { defaultFilterStrategies } from './query/filter-factory';
 import { defaultFacetStrategies } from './facet-strategies';
 import { createMosaicFeature } from './feature';
 import { arrowTableToObjects } from './grouped/arrow-utils';
+import { createGroupedTableFeature } from './grouped/feature';
 import {
   buildGroupedLevelQuery,
   buildLeafRowsQuery,
@@ -978,7 +979,13 @@ export class MosaicDataTable<
       manualFiltering: true,
       rowCount: state.totalRows,
       ...state.tableOptions,
-      _features: [createMosaicFeature(this)],
+      _features: [
+        ...(Array.isArray(state.tableOptions._features)
+          ? state.tableOptions._features
+          : []),
+        createMosaicFeature(this),
+        createGroupedTableFeature(this),
+      ],
     };
   }
 
@@ -1125,6 +1132,15 @@ export class MosaicDataTable<
   ): TableOptions<TData> {
     const groupBy = this.options.groupBy!;
 
+    const userFeatures = Array.isArray(state.tableOptions._features)
+      ? state.tableOptions._features
+      : [];
+    const features = [
+      ...userFeatures,
+      createMosaicFeature(this),
+      createGroupedTableFeature(this),
+    ];
+
     // Merge user columns with auto-generated leaf columns
     const columns =
       this.#autoLeafColumnDefs.length > 0
@@ -1181,6 +1197,7 @@ export class MosaicDataTable<
       manualPagination: true,
       manualSorting: true,
       ...state.tableOptions,
+      _features: features,
     } as TableOptions<TData>;
   }
 

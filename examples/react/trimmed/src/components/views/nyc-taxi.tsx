@@ -22,10 +22,11 @@ import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 
 const tableName = 'trips';
 
-// Data sources: WASM downloads from URL, Remote uses local server file
+// Data sources by mode.
 const DATA_SOURCES = {
   wasm: 'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet',
-  remote: '/data/nyc-rides-2010.parquet',
+  remote:
+    'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/nyc-rides-2010.parquet',
 } as const;
 
 // Constants for Hover Logic
