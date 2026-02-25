@@ -34,10 +34,11 @@ import { useAthletesTopology } from '@/hooks/useAthletesTopology';
 
 const tableName = 'athletes';
 
-// Data sources: WASM downloads from URL, Remote uses local server file
+// Data sources by mode.
 const DATA_SOURCES = {
   wasm: 'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet',
-  remote: '/data/athletes.parquet',
+  remote:
+    'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet',
 } as const;
 
 // Constants for Hover Logic
@@ -141,7 +142,6 @@ export function AthletesView() {
       try {
         setIsPending(true);
 
-        // Use local file path in remote mode, URL in WASM mode
         const fileURL = DATA_SOURCES[mode];
 
         await vg
@@ -526,8 +526,8 @@ const GROUPED_TABLE_COLUMNS: Array<ColumnDef<FlatGroupedRow, any>> = [
     id: 'group',
     header: 'Group',
     cell: ({ row }) => {
-      const meta = row.original._groupMeta;
-      if (meta.type !== 'group') {
+      const meta = row.getGroupMeta();
+      if (!meta || meta.type !== 'group') {
         return row.original.name != null ? String(row.original.name) : null;
       }
 

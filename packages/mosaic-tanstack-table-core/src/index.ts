@@ -1,4 +1,10 @@
+import './table-core';
+
 export * from './data-table';
+export {
+  __mosaicTableCoreAugmentation,
+  type MosaicTableCoreAugmentation,
+} from './table-core';
 export * from './facet-menu';
 export * from './selection-manager';
 export * from './filter-client';
@@ -21,5 +27,6 @@ export * from './constants';
 export * from './feature';
 export * from './filter-registry';
 export * from './grouped/types';
+export * from './grouped/feature';
 export * from './grouped/query-builder';
 export * from './grouped/arrow-utils';

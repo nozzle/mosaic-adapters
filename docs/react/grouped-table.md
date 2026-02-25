@@ -43,8 +43,8 @@ const COLUMNS: Array<ColumnDef<FlatGroupedRow, any>> = [
     id: 'group',
     header: 'Group',
     cell: ({ row }) => {
-      const meta = row.original._groupMeta;
-      if (meta.type !== 'group') {
+      const meta = row.getGroupMeta();
+      if (!meta || meta.type !== 'group') {
         return row.original.name != null ? String(row.original.name) : null;
       }
       const indent = row.depth * 20;
@@ -139,7 +139,7 @@ Child queries (on user expand) use `coordinator.query()` directly — these are 
 
 ## Data Model: FlatGroupedRow
 
-SQL result columns sit at the **top level** of each row, enabling standard TanStack `accessorKey` column definitions. Tree metadata lives under `_groupMeta`:
+SQL result columns sit at the **top level** of each row, enabling standard TanStack `accessorKey` column definitions. Tree metadata lives under `_groupMeta` (internal), and is exposed via row helper APIs like `row.getGroupMeta()`:
 
 ```ts
 // Group row from: SELECT nationality, COUNT(*) as count FROM athletes GROUP BY nationality
@@ -220,6 +220,31 @@ The `client` returned by `useMosaicReactTable` provides grouped-mode accessors:
 | `client.groupedState`     | `object`  | `{ expanded, loadingGroupIds, totalRootRows, isRootLoading }` |
 | `client.isRowLoading(id)` | `boolean` | Whether a specific row is loading children                    |
 
+## Table and Row Helpers (Custom Feature)
+
+Grouped tables register a custom TanStack feature that adds ergonomic helpers to the table and row instances. Prefer these over direct access to `row.original._groupMeta`.
+
+**Table helpers**
+
+| Helper                          | Return Type | Description                                |
+| ------------------------------- | ----------- | ------------------------------------------ |
+| `table.getIsGroupedMode`        | `boolean`   | Whether grouped mode is active             |
+| `table.getGroupedState`         | `object`    | Same shape as `client.groupedState`        |
+| `table.isGroupedRowLoading(id)` | `boolean`   | Whether a specific row is loading children |
+
+**Row helpers**
+
+| Helper                            | Return Type                      | Description                                           |
+| --------------------------------- | -------------------------------- | ----------------------------------------------------- |
+| `row.getGroupMeta()`              | `GroupMeta \| null`              | Returns group metadata or `null` for non-grouped rows |
+| `row.getIsGroupedRow()`           | `boolean`                        | True for group rows                                   |
+| `row.getIsLeafRow()`              | `boolean`                        | True for leaf rows                                    |
+| `row.getGroupId()`                | `string \| null`                 | Composite group ID                                    |
+| `row.getGroupDepth()`             | `number \| null`                 | Depth in the group hierarchy                          |
+| `row.getGroupValue()`             | `string \| null`                 | Group value (group rows only)                         |
+| `row.getGroupParentConstraints()` | `Record<string, string> \| null` | Ancestor constraints                                  |
+| `row.getIsLeafParent()`           | `boolean`                        | Whether expanding shows leaf rows                     |
+
 ## How It Works
 
 ```mermaid
@@ -243,11 +268,11 @@ graph TD
 
 **Children cache:** Fetched child rows are cached. When filters change and `queryResult` processes new root data, expanded children are refreshed via parallel `coordinator.query()` calls.
 
-**TanStack integration:** `onExpandedChange` intercepts TanStack's expand/collapse state changes, triggering lazy child queries for newly expanded rows. The `getSubRows` accessor wires the tree structure. Cell renderers defined in `columns` use `row.getIsExpanded()`, `row.depth`, and `row.original._groupMeta` for rendering.
+**TanStack integration:** `onExpandedChange` intercepts TanStack's expand/collapse state changes, triggering lazy child queries for newly expanded rows. The `getSubRows` accessor wires the tree structure. Cell renderers defined in `columns` use `row.getIsExpanded()`, `row.depth`, and `row.getGroupMeta()` for rendering.
 
 ## GroupMeta
 
-Each row's `_groupMeta` carries metadata for internal use and cell rendering:
+Each row's `_groupMeta` carries metadata for internal use and cell rendering. Prefer the row helpers (`row.getGroupMeta()`, `row.getIsGroupedRow()`, etc.) in UI code:
 
 | Field               | Type                     | Description                                                |
 | ------------------- | ------------------------ | ---------------------------------------------------------- |

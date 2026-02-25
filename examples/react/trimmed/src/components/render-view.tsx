@@ -63,15 +63,14 @@ type ViewConfig = ViewMap extends Map<infer _K, infer V> ? V : never;
 /**
  * Main application layout that sets up the Mosaic Provider hierarchy.
  *
- * It configures the MosaicConnectorProvider with secrets and endpoints injected
- * from the environment (e.g. Cloudflare Access Headers).
+ * It configures the MosaicConnectorProvider for direct remote auth
+ * (Bearer token + optional tenant ID) without a local proxy.
  */
 export function RenderView() {
-  // Load secrets from Vite environment variables (or defaults for local dev)
+  // Read Vite-exposed env vars (must be prefixed with VITE_).
   const REMOTE_URL =
-    import.meta.env.VITE_REMOTE_DB_URL || 'http://localhost:3001/query';
-  const CF_CLIENT_ID = import.meta.env.VITE_CF_CLIENT_ID;
-  const CF_CLIENT_SECRET = import.meta.env.VITE_CF_CLIENT_SECRET;
+    import.meta.env.VITE_REMOTE_DB_URL || 'http://localhost:3000';
+  const API_TOKEN = import.meta.env.VITE_API_TOKEN;
   const TENANT_ID = import.meta.env.VITE_TENANT_ID;
 
   // Memoize the factory separately — no `mode` in deps, stable reference
@@ -80,14 +79,11 @@ export function RenderView() {
       new HttpArrowConnector({
         url: REMOTE_URL,
         headers: {
-          ...(CF_CLIENT_ID ? { 'CF-Access-Client-Id': CF_CLIENT_ID } : {}),
-          ...(CF_CLIENT_SECRET
-            ? { 'CF-Access-Client-Secret': CF_CLIENT_SECRET }
-            : {}),
+          ...(API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {}),
           ...(TENANT_ID ? { 'X-Tenant-Id': TENANT_ID } : {}),
         },
       }),
-    [REMOTE_URL, CF_CLIENT_ID, CF_CLIENT_SECRET, TENANT_ID],
+    [REMOTE_URL, API_TOKEN, TENANT_ID],
   );
 
   return (
@@ -95,7 +91,7 @@ export function RenderView() {
       initialMode="wasm"
       remoteConnectorFactory={remoteConnectorFactory}
     >
-      <RenderViewWithProviders />
+      <RenderViewWithProviders remoteUrl={REMOTE_URL} />
     </MosaicConnectorProvider>
   );
 }
@@ -104,19 +100,19 @@ export function RenderView() {
  * Inner component that keys the SelectionRegistry and FilterProvider by connection ID.
  * This ensures all Selections and filter state are fresh when the connector changes (e.g. database swap).
  */
-function RenderViewWithProviders() {
+function RenderViewWithProviders({ remoteUrl }: { remoteUrl: string }) {
   const { connectionId } = useConnectorStatus();
 
   return (
     <SelectionRegistryProvider key={`registry-${connectionId}`}>
       <MosaicFilterProvider key={`filter-${connectionId}`}>
-        <RenderViewContent />
+        <RenderViewContent remoteUrl={remoteUrl} />
       </MosaicFilterProvider>
     </SelectionRegistryProvider>
   );
 }
 
-function RenderViewContent() {
+function RenderViewContent({ remoteUrl }: { remoteUrl: string }) {
   const [view, setView] = useURLSearchParam('dashboard', 'athletes', {
     reloadOnChange: true,
   });
@@ -151,6 +147,7 @@ function RenderViewContent() {
         mode={mode}
         status={status}
         error={error}
+        remoteUrl={remoteUrl}
       />
     </>
   );
@@ -161,11 +158,13 @@ function ViewContent({
   mode,
   status,
   error,
+  remoteUrl,
 }: {
   view: string;
   mode: ConnectorMode;
   status: 'connecting' | 'connected' | 'error';
   error: Error | null;
+  remoteUrl: string;
 }) {
   if (!view || !views.has(view)) {
     return (
@@ -186,8 +185,8 @@ function ViewContent({
         </p>
         {mode === 'remote' && (
           <p className="text-xs text-slate-500">
-            Make sure the proxy server is running:
-            <code>node proxy-server.js</code>
+            Verify the DuckDB server is running at <code>{remoteUrl}</code> and
+            your <code>VITE_API_TOKEN</code> is valid.
           </p>
         )}
         <button

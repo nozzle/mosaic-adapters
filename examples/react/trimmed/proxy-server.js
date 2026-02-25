@@ -6,6 +6,8 @@ const PORT = 3001;
 const REMOTE_DB_URL =
   process.env.REMOTE_DB_URL || 'https://trueprod.theopendatastack.com';
 const TENANT_ID = process.env.TENANT_ID;
+// Auth: API token takes precedence; falls back to Cloudflare Access headers
+const API_TOKEN = process.env.API_TOKEN;
 const CF_CLIENT_ID = process.env.CF_CLIENT_ID;
 const CF_CLIENT_SECRET = process.env.CF_CLIENT_SECRET;
 
@@ -72,10 +74,14 @@ const server = createServer(async (req, res) => {
       headers: {
         'Content-Type': 'application/json',
         ...(TENANT_ID ? { 'X-Tenant-Id': TENANT_ID } : {}),
-        ...(CF_CLIENT_ID ? { 'CF-Access-Client-Id': CF_CLIENT_ID } : {}),
-        ...(CF_CLIENT_SECRET
-          ? { 'CF-Access-Client-Secret': CF_CLIENT_SECRET }
-          : {}),
+        ...(API_TOKEN
+          ? { Authorization: `Bearer ${API_TOKEN}` }
+          : {
+              ...(CF_CLIENT_ID ? { 'CF-Access-Client-Id': CF_CLIENT_ID } : {}),
+              ...(CF_CLIENT_SECRET
+                ? { 'CF-Access-Client-Secret': CF_CLIENT_SECRET }
+                : {}),
+            }),
       },
       body: JSON.stringify(body),
     });
