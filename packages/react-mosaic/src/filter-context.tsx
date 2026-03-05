@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo } from 'react';
 import { MosaicFilterRegistry } from '@nozzleio/mosaic-tanstack-table-core';
-import { useStore } from '@tanstack/react-store';
+import { shallow, useStore } from '@tanstack/react-store';
 import type { ReactNode } from 'react';
 import type { Selection } from '@uwdata/mosaic-core';
 import type {
@@ -45,7 +45,7 @@ export function useFilterRegistry() {
  */
 export function useActiveFilters(): Array<ActiveFilter> {
   const registry = useFilterRegistry();
-  const state = useStore(registry.store);
+  const state = useStore(registry.store, (s) => s, shallow);
   return state.filters;
 }
 

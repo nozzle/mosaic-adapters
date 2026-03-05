@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { MosaicFacetMenu } from '@nozzleio/mosaic-tanstack-table-core';
-import { useStore } from '@tanstack/react-store';
+import { shallow, useStore } from '@tanstack/react-store';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import type { MosaicFacetMenuOptions } from '@nozzleio/mosaic-tanstack-table-core';
 
@@ -25,7 +25,7 @@ export function useMosaicTableFacetMenu(options: MosaicFacetMenuOptions) {
   }, [client, options, coordinator]);
 
   // 3. Subscribe to the store
-  const state = useStore(client.store);
+  const state = useStore(client.store, (s) => s, shallow);
 
   // 4. Connect/Disconnect lifecycle
   React.useEffect(() => {
