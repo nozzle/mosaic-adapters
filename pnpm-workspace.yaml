@@ -7,8 +7,8 @@ catalog:
   '@playwright/test': ^1.57.0
   '@tanstack/eslint-config': ^0.3.4
   '@tanstack/vite-config': ^0.4.3
-  '@tanstack/store': ^0.8.0
-  '@tanstack/react-store': ^0.8.0
+  '@tanstack/store': ^0.9.1
+  '@tanstack/react-store': ^0.9.1
   '@tanstack/table-core': ^8.17.3
   '@types/cors': ^2.8.17
   '@types/express': ^5.0.0
