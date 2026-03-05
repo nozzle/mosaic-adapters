@@ -20,7 +20,7 @@ import {
   getExpandedRowModel,
   getFacetedRowModel,
 } from '@tanstack/table-core';
-import { Store, batch } from '@tanstack/store';
+import { ReadonlyStore, Store, batch } from '@tanstack/store';
 import {
   functionalUpdate,
   seedInitialTableState,
@@ -150,6 +150,9 @@ export class MosaicDataTable<
   #childrenCache: Map<string, Array<FlatGroupedRow>> = new Map();
   #groupedRootRows: Array<FlatGroupedRow> = [];
   #autoLeafColumnDefs: Array<ColumnDef<TData, any>> = [];
+  #groupedStore!: ReadonlyStore<
+    MosaicDataTableStore<TData, TValue>['_grouped']
+  >;
   get #isGrouped(): boolean {
     return !!this.options.groupBy;
   }
@@ -350,6 +353,8 @@ export class MosaicDataTable<
           isRootLoading: false as boolean,
         },
       });
+
+      this.#groupedStore = new ReadonlyStore(() => this.#store.state._grouped);
     } else {
       if (options.columns !== undefined) {
         this.#store.setState((prev) => ({
@@ -1713,8 +1718,23 @@ export class MosaicDataTable<
     return this.#isGrouped;
   }
 
+  /**
+   * Reactive derived store for grouped-mode state.
+   * Use with `useStore` in React for subscribed updates:
+   *
+   *   const grouped = useStore(client.groupedStore, (s) => s)
+   *
+   * Or use the convenience hook `useGroupedTableState(client)`.
+   */
+  get groupedStore(): ReadonlyStore<
+    MosaicDataTableStore<TData, TValue>['_grouped']
+  > {
+    return this.#groupedStore;
+  }
+
+  /** Snapshot read of grouped state. Not reactive — prefer `groupedStore` in UI. */
   get groupedState() {
-    return this.store.state._grouped;
+    return this.#groupedStore.state;
   }
 
   isRowLoading(rowId: string): boolean {

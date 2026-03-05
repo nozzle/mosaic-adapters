@@ -1,10 +1,11 @@
 import * as React from 'react';
 import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-core';
-import { useStore } from '@tanstack/react-store';
+import { shallow, useStore } from '@tanstack/react-store';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import type {
   MosaicDataTable,
   MosaicDataTableOptions,
+  MosaicDataTableStore,
   PrimitiveSqlValue,
 } from '@nozzleio/mosaic-tanstack-table-core';
 import type { RowData, TableOptions } from '@tanstack/react-table';
@@ -62,7 +63,7 @@ export function useMosaicReactTable<
     return unsub;
   }, [client, coordinator, enabled]);
 
-  const store = useStore(client.store);
+  const store = useStore(client.store, (s) => s, shallow);
 
   const tableOptions = React.useMemo(
     () => ({
@@ -72,4 +73,18 @@ export function useMosaicReactTable<
   );
 
   return { tableOptions, client };
+}
+
+/**
+ * React hook that subscribes to the grouped-mode state of a MosaicDataTable.
+ * Returns reactive `expanded`, `loadingGroupIds`, `totalRootRows`, and `isRootLoading`.
+ *
+ * @example
+ * const { client } = useMosaicReactTable({ ... groupBy: { ... } });
+ * const { isRootLoading, totalRootRows } = useGroupedTableState(client);
+ */
+export function useGroupedTableState<TData extends RowData>(
+  client: MosaicDataTable<TData, any>,
+): MosaicDataTableStore<TData, any>['_grouped'] {
+  return useStore(client.groupedStore, (s) => s, shallow);
 }
