@@ -7,6 +7,7 @@ import {
   buildGroupedMultiSelectionPredicate,
 } from '../src/grouped/query-builder';
 import type { GroupLevel, GroupMetric, LeafColumn } from '../src/grouped/types';
+import { analyzeSql, expectValidSql } from './utils/sql-validator';
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -43,6 +44,11 @@ describe('buildGroupedLevelQuery', () => {
       parentConstraints: {},
     }).toString();
 
+    expectValidSql(sql);
+
+    const analysis = analyzeSql(sql);
+    expect(analysis.valid).toBe(true);
+
     expect(sql).toContain('FROM "athletes"');
     expect(sql).toContain('"country"');
     expect(sql).toContain('GROUP BY');
@@ -60,6 +66,7 @@ describe('buildGroupedLevelQuery', () => {
       parentConstraints: { country: 'USA' },
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain('"sport"');
     expect(sql).toContain('GROUP BY');
     expect(sql).toContain("'USA'");
@@ -77,6 +84,7 @@ describe('buildGroupedLevelQuery', () => {
       filterPredicate: filter,
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain('WHERE');
     expect(sql).toContain("'M'");
   });
@@ -92,6 +100,7 @@ describe('buildGroupedLevelQuery', () => {
       additionalWhere: extra,
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain('WHERE');
     expect(sql).toContain('IS NOT NULL');
   });
@@ -109,6 +118,7 @@ describe('buildGroupedLevelQuery', () => {
       additionalWhere: extra,
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain('AND');
     expect(sql).toContain("'USA'");
     expect(sql).toContain("'M'");
@@ -125,6 +135,7 @@ describe('buildGroupedLevelQuery', () => {
       limit: 50,
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain('LIMIT 50');
   });
 
@@ -138,6 +149,7 @@ describe('buildGroupedLevelQuery', () => {
       orderByMetric: 'total_gold',
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain('"total_gold"');
     expect(sql).toContain('DESC');
   });
@@ -175,6 +187,7 @@ describe('buildGroupedLevelQuery', () => {
       parentConstraints: {},
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain('"count"');
     expect(sql).toContain('"total_gold"');
   });
@@ -192,6 +205,7 @@ describe('buildLeafRowsQuery', () => {
       parentConstraints: { country: 'USA', sport: 'Swimming' },
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain('"name"');
     expect(sql).toContain('"height"');
     expect(sql).toContain('"weight"');
@@ -211,6 +225,7 @@ describe('buildLeafRowsQuery', () => {
       orderDir: 'asc',
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain('LIMIT 25');
     expect(sql).toContain('"height"');
     expect(sql).toContain('ASC');
@@ -224,6 +239,7 @@ describe('buildLeafRowsQuery', () => {
       selectAll: true,
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain('SELECT *');
   });
 
@@ -248,6 +264,7 @@ describe('buildLeafRowsQuery', () => {
       additionalWhere: extra,
     }).toString();
 
+    expectValidSql(sql);
     expect(sql).toContain("'F'");
     expect(sql).toContain('IS NOT NULL');
     expect(sql).toContain('AND');

@@ -23,7 +23,8 @@
     "build:all": "nx run-many --target=build --all",
     "watch": "pnpm run build:packages && nx watch --all -- pnpm run build:packages",
     "format": "prettier . --write",
-    "dev": "pnpm run watch"
+    "dev": "pnpm run watch",
+    "sql:report": "pnpm --filter example-react-trimmed run sql:report"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",
@@ -34,6 +35,7 @@
     "eslint-plugin-unused-imports": "catalog:",
     "jsdom": "catalog:",
     "nx": "^22.0.2",
+    "tsx": "catalog:",
     "prettier": "^3.6.2",
     "rimraf": "catalog:",
     "typescript": "catalog:",

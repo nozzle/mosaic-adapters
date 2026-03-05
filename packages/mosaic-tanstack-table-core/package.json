@@ -29,8 +29,10 @@
     "@uwdata/mosaic-sql": "catalog:"
   },
   "devDependencies": {
+    "@polyglot-sql/sdk": "catalog:",
     "eslint": "catalog:",
     "rimraf": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:"
   }
 }

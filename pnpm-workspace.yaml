@@ -28,7 +28,9 @@ catalog:
   typescript: ^5.9.3
   typescript-eslint: ^8.46.2
   vite: ^7.1.12
+  tsx: ^4.21.0
   vitest: ^4.0.17
+  '@polyglot-sql/sdk': ^0.1.2
 
 onlyBuiltDependencies:
   - esbuild
