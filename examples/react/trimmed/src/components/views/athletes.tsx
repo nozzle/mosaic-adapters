@@ -14,6 +14,7 @@ import {
   coerceNumber,
   createMosaicColumnHelper,
   createMosaicMapping,
+  useGroupedTableState,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { useConnectorStatus } from '@nozzleio/react-mosaic';
@@ -570,7 +571,7 @@ function AthletesGroupedTable({
   });
 
   const table = useReactTable(tableOptions);
-  const { isRootLoading, totalRootRows } = client.groupedState;
+  const { isRootLoading, totalRootRows } = useGroupedTableState(client);
 
   if (isRootLoading && table.getRowModel().rows.length === 0) {
     return <div>Loading grouped data...</div>;
