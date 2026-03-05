@@ -168,7 +168,7 @@ export class MosaicFilterRegistry {
       return pA - pB;
     });
 
-    this.store.setState({ filters: allFilters });
+    this.store.setState(() => ({ filters: allFilters }));
   };
 
   private addActiveFilter(
@@ -288,6 +288,6 @@ export class MosaicFilterRegistry {
     }
     this.registrations.clear();
     this.groups.clear();
-    this.store.setState({ filters: [] });
+    this.store.setState(() => ({ filters: [] }));
   }
 }
