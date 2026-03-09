@@ -243,6 +243,7 @@ export class MosaicDataTable<
    */
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
     const sourceChanged = this.source !== options.table;
+    const prevEnabled = this.enabled;
 
     this.options = options;
     this.source = options.table;
@@ -397,8 +398,12 @@ export class MosaicDataTable<
       // Columns might be inferred from mapping if not explicitly provided
     }
 
-    // Trigger update if enabled status changed to true
-    if (this.enabled) {
+    // Only trigger a re-query when enabled transitions from false → true.
+    // Without this guard, every call to updateOptions (which happens on every
+    // React render due to unstable option object references) would kick off a
+    // coordinator query, whose queryResult updates the store, which triggers
+    // another React render — creating an infinite render loop.
+    if (this.enabled && !prevEnabled) {
       this.requestUpdate();
     }
   }
