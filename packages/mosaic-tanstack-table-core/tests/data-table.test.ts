@@ -316,6 +316,39 @@ describe('MosaicDataTable characterization', () => {
     );
   });
 
+  test('only reacts to meaningful table state changes and refreshes sidecars on filter changes', () => {
+    const { client } = createFlatClient();
+    const requestUpdateSpy = vi
+      .spyOn(client, 'requestUpdate')
+      .mockImplementation(() => client as never);
+    const refreshAllSpy = vi
+      .spyOn(client.sidecarManager, 'refreshAll')
+      .mockImplementation(() => undefined);
+
+    const tableOptions = client.getTableOptions(client.store.state);
+
+    tableOptions.onStateChange?.((previousState) => previousState);
+
+    expect(requestUpdateSpy).not.toHaveBeenCalled();
+    expect(refreshAllSpy).not.toHaveBeenCalled();
+
+    tableOptions.onStateChange?.((previousState) => ({
+      ...previousState,
+      pagination: { ...previousState.pagination, pageIndex: 1 },
+    }));
+
+    expect(requestUpdateSpy).toHaveBeenCalledTimes(1);
+    expect(refreshAllSpy).not.toHaveBeenCalled();
+
+    tableOptions.onStateChange?.((previousState) => ({
+      ...previousState,
+      columnFilters: [{ id: 'status', value: 'active' }],
+    }));
+
+    expect(requestUpdateSpy).toHaveBeenCalledTimes(2);
+    expect(refreshAllSpy).toHaveBeenCalledTimes(1);
+  });
+
   test('excludes the active facet column from sidecar queries and stores returned facet values', async () => {
     const { client, coordinator } = createFlatClient();
 
