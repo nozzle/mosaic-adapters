@@ -3,9 +3,9 @@ packages:
   - examples/react/*
 
 catalog:
-  '@eslint-react/eslint-plugin': ^2.2.4
+  '@eslint-react/eslint-plugin': ^3.0.0
   '@playwright/test': ^1.57.0
-  '@tanstack/eslint-config': ^0.3.4
+  '@tanstack/eslint-config': ^0.4.0
   '@tanstack/vite-config': ^0.4.3
   '@tanstack/store': ^0.9.1
   '@tanstack/react-store': ^0.9.1
@@ -18,7 +18,7 @@ catalog:
   '@uwdata/vgplot': ^0.21.1
   '@vitejs/plugin-react': ^5.1.0
   cors: 2.8.6
-  eslint: ^9.39.0
+  eslint: ^10.1.0
   eslint-plugin-react-hooks: ^7.0.1
   eslint-plugin-unused-imports: ^4.3.0
   express: 4.22.1
