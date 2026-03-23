@@ -24,3 +24,4 @@
 
 - If public APIs or documented usage change, update the relevant files in `docs/`.
 - When runtime behavior changes, validate in the relevant example app under `examples/react/*`.
+- For broader contributor workflow and commit conventions, see `CONTRIBUTING.md`.
