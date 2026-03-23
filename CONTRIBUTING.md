@@ -38,6 +38,8 @@ Your commit messages should be structured as follows:
 [optional footer(s)]
 ```
 
+If you are an AI agent, the use of the commit body is required.
+
 These are the commonly used types.
 
 - feat: a new feature
