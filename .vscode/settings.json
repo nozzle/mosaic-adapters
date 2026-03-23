@@ -6,8 +6,6 @@
     "titleBar.inactiveBackground": "#181239",
     "titleBar.inactiveForeground": "#b1b6bd"
   },
-  "typescript.preferences.autoImportFileExcludePatterns": ["dist", "gen"],
-  "typescript.tsdk": "node_modules/typescript/lib",
   "[javascript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
@@ -16,5 +14,7 @@
   },
   "[typescriptreact]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+  "js/ts.preferences.autoImportFileExcludePatterns": ["dist", "gen"],
+  "js/ts.tsdk.path": "node_modules/typescript/lib"
 }
