@@ -33,7 +33,7 @@
     "eslint-plugin-react-hooks": "catalog:",
     "eslint-plugin-unused-imports": "catalog:",
     "jsdom": "catalog:",
-    "nx": "^22.0.2",
+    "nx": "^22.6.1",
     "prettier": "^3.6.2",
     "rimraf": "catalog:",
     "typescript": "catalog:",
