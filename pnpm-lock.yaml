@@ -228,25 +228,13 @@ importers:
       '@nozzleio/mosaic-tanstack-table-core':
         specifier: workspace:*
         version: link:../mosaic-tanstack-table-core
-      '@nozzleio/react-mosaic':
-        specifier: workspace:*
-        version: link:../react-mosaic
       '@tanstack/react-store':
         specifier: 'catalog:'
         version: 0.9.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/react-table':
         specifier: '>=8.17.3'
         version: 8.21.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@tanstack/table-core':
-        specifier: 'catalog:'
-        version: 8.21.3
       '@uwdata/mosaic-core':
-        specifier: 'catalog:'
-        version: 0.21.1
-      '@uwdata/mosaic-sql':
-        specifier: 'catalog:'
-        version: 0.21.1
-      '@uwdata/vgplot':
         specifier: 'catalog:'
         version: 0.21.1
       react:
@@ -259,6 +247,9 @@ importers:
       '@eslint-react/eslint-plugin':
         specifier: 'catalog:'
         version: 3.0.0(eslint@10.1.0(jiti@2.6.1))(typescript@5.9.3)
+      '@nozzleio/react-mosaic':
+        specifier: workspace:*
+        version: link:../react-mosaic
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14
