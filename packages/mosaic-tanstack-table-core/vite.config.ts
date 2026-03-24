@@ -17,7 +17,12 @@ export default mergeConfig(
   packageConfig,
   tanstackViteConfig({
     cjs: false,
-    entry: ['src/index.ts'],
+    entry: [
+      'src/index.ts',
+      'src/filter-registry.ts',
+      'src/grouped/index.ts',
+      'src/sidecar.ts',
+    ],
     srcDir: './src',
   }),
 );

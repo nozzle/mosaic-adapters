@@ -12,6 +12,24 @@
         "default": "./dist/esm/index.js"
       }
     },
+    "./filter-registry": {
+      "import": {
+        "types": "./dist/esm/filter-registry.d.ts",
+        "default": "./dist/esm/filter-registry.js"
+      }
+    },
+    "./grouped": {
+      "import": {
+        "types": "./dist/esm/grouped/index.d.ts",
+        "default": "./dist/esm/grouped/index.js"
+      }
+    },
+    "./sidecar": {
+      "import": {
+        "types": "./dist/esm/sidecar.d.ts",
+        "default": "./dist/esm/sidecar.js"
+      }
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
