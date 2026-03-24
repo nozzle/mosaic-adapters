@@ -44,6 +44,7 @@ function SelectFilter({
   const [isOpen, setIsOpen] = useState(false);
 
   const {
+    clear, // Clear all values
     displayOptions, // Current option list
     selectedValues, // Currently selected values
     loading, // Loading state
@@ -77,9 +78,7 @@ function SelectFilter({
             onChange={(e) => setSearchTerm(e.target.value)}
           />
           <ul>
-            <li onClick={() => toggle(null)}>
-              All {selectedValues.length === 0 && '✓'}
-            </li>
+            <li onClick={clear}>All {selectedValues.length === 0 && '✓'}</li>
             {displayOptions.map((opt) => (
               <li key={String(opt)} onClick={() => toggle(String(opt))}>
                 {String(opt)}
@@ -111,13 +110,20 @@ function SelectFilter({
 
 ### Multi-Select vs Single-Select
 
-The hook supports multi-select by default. For single-select:
+The hook supports multi-select by default. For single-select, use the built-in `select()` helper:
 
 ```tsx
+const { select, clear } = useMosaicTableFacetMenu({
+  // ...
+});
+
 const handleSelect = (value: string | null) => {
-  // Clear all first, then select new value
-  toggle(null);
-  if (value) toggle(value);
+  if (value === null) {
+    clear();
+    return;
+  }
+
+  select(value);
 };
 ```
 

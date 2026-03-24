@@ -188,6 +188,62 @@ function CoordinatorProbe({
 }
 
 describe('MosaicConnectorProvider', () => {
+  test('keeps handled connector failures out of the console by default', async () => {
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    const view = render(
+      <MosaicConnectorProvider
+        initialMode="remote"
+        remoteConnectorFactory={() =>
+          createRemoteConnector({
+            failHealthCheck: new Error('remote offline'),
+          }) as unknown as Connector
+        }
+      >
+        <div />
+      </MosaicConnectorProvider>,
+    );
+
+    await flushEffects();
+
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    view.unmount();
+    errorSpy.mockRestore();
+  });
+
+  test('logs connector failures when debug logging is enabled', async () => {
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    const view = render(
+      <MosaicConnectorProvider
+        debug
+        initialMode="remote"
+        remoteConnectorFactory={() =>
+          createRemoteConnector({
+            failHealthCheck: new Error('remote offline'),
+          }) as unknown as Connector
+        }
+      >
+        <div />
+      </MosaicConnectorProvider>,
+    );
+
+    await flushEffects();
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[MosaicConnector] Init failed:',
+      expect.any(Error),
+    );
+
+    view.unmount();
+    errorSpy.mockRestore();
+  });
+
   test('keeps the previous global coordinator when remote initialization fails', async () => {
     const mosaicCore = await getMockMosaicCore();
     const baseline = mosaicCore.coordinator() as unknown as MockCoordinator;

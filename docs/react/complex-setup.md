@@ -351,6 +351,7 @@ function ResetButton() {
 Show users what filters are active with the filter registry:
 
 ```tsx
+import { useEffect } from 'react';
 import {
   MosaicFilterProvider,
   useActiveFilters,
@@ -363,10 +364,23 @@ import {
   <App />
 </MosaicFilterProvider>;
 
-// Register selections with labels
-useRegisterFilterSource(topology.inputs.domain, 'global', {
-  labelMap: { domain: 'Domain' },
-});
+function DashboardFilters({ topology }) {
+  const registry = useFilterRegistry();
+
+  useEffect(() => {
+    registry.registerGroup({
+      id: 'global',
+      label: 'Global Controls',
+      priority: 1,
+    });
+  }, [registry]);
+
+  useRegisterFilterSource(topology.inputs.domain, 'global', {
+    labelMap: { domain: 'Domain' },
+  });
+
+  return null;
+}
 
 // Display active filters
 function ActiveFilterBar() {
@@ -386,9 +400,9 @@ function ActiveFilterBar() {
     </div>
   );
 }
+```
 
 For a full version (group registration, labels, and UI), see `examples/react/trimmed/src/components/views/nozzle-paa.tsx` and `examples/react/trimmed/src/components/active-filter-bar.tsx`.
-```
 
 ## KPI Queries (Value Helpers)
 

@@ -1,73 +1,47 @@
-# React + TypeScript + Vite
+# `example-react-trimmed`
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Trimmed React example app for the publishable Mosaic adapter packages.
 
-Currently, two official plugins are available:
+## Dashboards
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- `athletes`: full dashboard with charts, histograms, table filters, and grouped rows
+- `athletes-simple`: first-principles table setup without the mapping helper
+- `nyc-taxi`: aggregation-driven summary/detail pattern
+- `nozzle-paa`: multi-table topology with active filter chips and KPI queries
 
-## React Compiler
+## What it demonstrates
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `@nozzleio/react-mosaic` for connector state, coordinator context, and selection lifecycle
+- `@nozzleio/mosaic-tanstack-react-table` for table hooks and active-filter APIs
+- connection-scoped `SelectionRegistryProvider` and `MosaicFilterProvider` keyed by `connectionId`
+- dual-mode execution with browser WASM and remote HTTP Arrow queries
 
-## Expanding the ESLint configuration
+## Run it
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
+```bash
+pnpm --filter example-react-trimmed dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Other useful commands:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x';
-import reactDom from 'eslint-plugin-react-dom';
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
+```bash
+pnpm --filter example-react-trimmed build
+pnpm --filter example-react-trimmed test:e2e
 ```
+
+Workspace-wide `pnpm test:types` also covers this example through Nx.
+
+## Remote mode environment
+
+The app reads these Vite env vars:
+
+- `VITE_REMOTE_DB_URL`: remote query endpoint, defaults to `http://localhost:3000`
+- `VITE_API_TOKEN`: optional bearer token for remote requests
+- `VITE_TENANT_ID`: optional tenant header for remote requests
+
+Remote mode uses `HttpArrowConnector` directly. The Nozzle PAA dashboard still uses the local `/data-proxy/*` route in WASM mode so the browser can fetch the parquet fixture without CORS issues.
+
+## Notes
+
+- Active-filter helpers intentionally come from `@nozzleio/mosaic-tanstack-react-table`, not `@nozzleio/react-mosaic`.
+- If you change connector inputs, `RenderView` passes a `connectionKey` so the provider reconnects with the latest remote config.
