@@ -24,9 +24,7 @@ describe('active filter hooks', () => {
     const citySelection = Selection.intersect();
     const statusSelection = Selection.intersect();
     const snapshots: Array<Array<{ label: string; value: unknown }>> = [];
-    let registry:
-      | ReturnType<typeof useFilterRegistry>
-      | undefined;
+    let registry: ReturnType<typeof useFilterRegistry> | undefined;
     let latestFilters: ReturnType<typeof useActiveFilters> = [];
 
     function Probe() {

@@ -41,11 +41,7 @@ import type {
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ReadonlyStore } from '@tanstack/store';
-import type {
-  RowData,
-  Table,
-  TableOptions,
-} from '@tanstack/table-core';
+import type { RowData, Table, TableOptions } from '@tanstack/table-core';
 import type {
   IMosaicClient,
   MosaicColumnDef,

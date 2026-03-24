@@ -176,7 +176,9 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
     return this.mapping[key];
   }
 
-  public getColumnDef(sqlColumn: string): MosaicColumnDef<TData, TValue> | undefined {
+  public getColumnDef(
+    sqlColumn: string,
+  ): MosaicColumnDef<TData, TValue> | undefined {
     return this.sqlToDefMap.get(sqlColumn);
   }
 

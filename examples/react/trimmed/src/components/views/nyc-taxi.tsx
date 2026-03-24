@@ -7,9 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
-import {
-  useMosaicReactTable,
-} from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
 import {
   coerceNumber,
   coerceSafeTimestamp,

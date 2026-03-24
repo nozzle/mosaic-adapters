@@ -182,7 +182,9 @@ function CoordinatorProbe({
     setMode: snapshot.setMode,
   });
 
-  return client && snapshot.coordinator ? <ClientProbe client={client} /> : null;
+  return client && snapshot.coordinator ? (
+    <ClientProbe client={client} />
+  ) : null;
 }
 
 describe('MosaicConnectorProvider', () => {

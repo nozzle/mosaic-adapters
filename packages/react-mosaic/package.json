@@ -16,8 +16,16 @@
   "bugs": {
     "url": "https://github.com/nozzle/mosaic-adapters/issues"
   },
-  "keywords": ["mosaic", "react", "selection", "coordinator"],
-  "files": ["dist", "README.md"],
+  "keywords": [
+    "mosaic",
+    "react",
+    "selection",
+    "coordinator"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
   "exports": {
     ".": {
