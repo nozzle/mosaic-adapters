@@ -1,15 +1,57 @@
 # `@nozzleio/react-mosaic`
 
-React bindings for Mosaic coordinator and selection primitives.
+React bindings for Mosaic coordinators, connector lifecycle, and selections.
+
+This package owns the shared React context used by the Mosaic adapters. Use it to create or switch coordinators, create stable selections, observe selection values, and register selections for reset flows.
+
+## Install
+
+```bash
+npm install @nozzleio/react-mosaic react
+```
 
 ## What lives here
 
 - `MosaicContext`, `useCoordinator`, `useOptionalCoordinator`
 - `MosaicConnectorProvider`, `useConnectorStatus`, `useMosaicCoordinator`
-- `HttpArrowConnector`
-- selection hooks such as `useMosaicSelection`, `useMosaicSelections`, `useCascadingContexts`, `useMosaicSelectionValue`
+- `useRequireMode`
+- `useMosaicSelection`, `useMosaicSelections`, `useCascadingContexts`
+- `useMosaicSelectionValue`, `useSelectionListener`
 - `SelectionRegistryProvider`, `useSelectionRegistry`, `useRegisterSelections`
+- `useMosaicClient`
+- `HttpArrowConnector`
 
-## What does not live here
+```tsx
+import {
+  MosaicConnectorProvider,
+  useConnectorStatus,
+  useMosaicSelection,
+  useRequireMode,
+} from '@nozzleio/react-mosaic';
 
-Active-filter registry helpers are table-oriented and are exported from `@nozzleio/mosaic-tanstack-react-table`.
+function RemoteView() {
+  const ready = useRequireMode('remote');
+  const { status } = useConnectorStatus();
+  const selection = useMosaicSelection();
+
+  if (!ready || status !== 'connected') {
+    return null;
+  }
+
+  return <button onClick={() => selection.reset()}>Reset selection</button>;
+}
+
+function App() {
+  return (
+    <MosaicConnectorProvider initialMode="wasm">
+      <RemoteView />
+    </MosaicConnectorProvider>
+  );
+}
+```
+
+## Notes
+
+- `useRequireMode()` returns a boolean readiness signal. Components that query immediately should still guard on that result before using coordinator-dependent clients.
+- `HttpArrowConnector` is exported from the package root for now even though it is not itself a React hook.
+- Table-specific active-filter helpers do not live here. Import `MosaicFilterProvider`, `useFilterRegistry`, `useActiveFilters`, and `useRegisterFilterSource` from `@nozzleio/mosaic-tanstack-react-table`.
