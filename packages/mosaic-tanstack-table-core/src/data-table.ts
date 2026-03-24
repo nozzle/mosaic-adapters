@@ -42,13 +42,13 @@ import type {
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ReadonlyStore } from '@tanstack/store';
 import type {
-  ColumnDef,
   RowData,
   Table,
   TableOptions,
 } from '@tanstack/table-core';
 import type {
   IMosaicClient,
+  MosaicColumnDef,
   MosaicDataTableOptions,
   MosaicDataTableStore,
   MosaicTableSource,
@@ -444,7 +444,7 @@ export class MosaicDataTable<
           accessorKey: field.column,
           id: field.column,
           meta: { dataType: field.type },
-        })) as Array<ColumnDef<TData, TValue>>;
+        })) as Array<MosaicColumnDef<TData, TValue>>;
 
         if (!this.#columnMapper) {
           this.#columnMapper = new ColumnMapper(inferredColumns);
@@ -722,7 +722,7 @@ export class MosaicDataTable<
     return this.#columnMapper?.getSqlColumn(columnId)?.toString();
   }
 
-  getColumnDef(sqlColumn: string): ColumnDef<TData, TValue> | undefined {
+  getColumnDef(sqlColumn: string): MosaicColumnDef<TData, TValue> | undefined {
     return this.#columnMapper?.getColumnDef(sqlColumn);
   }
 

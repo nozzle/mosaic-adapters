@@ -54,6 +54,15 @@ export type PrimitiveSqlValue =
   | null
   | undefined;
 
+/**
+ * TanStack tables commonly mix value types across columns, so table-level
+ * column collections should not force one shared TValue.
+ */
+export type MosaicColumnDef<TData extends RowData, TValue = never> = ColumnDef<
+  TData,
+  TValue | any
+>;
+
 export type ConditionComparableValue = Exclude<
   PrimitiveSqlValue,
   null | undefined
@@ -295,7 +304,7 @@ export interface MosaicDataTableOptions<
     columnType?: ColumnType;
   };
   tableFilterSelection?: Selection | undefined;
-  columns?: Array<ColumnDef<TData, TValue>>;
+  columns?: Array<MosaicColumnDef<TData, TValue>>;
   tableOptions?: Partial<SubsetTableOptions<TData>>;
   totalRowsColumnName?: string;
   totalRowsMode?: 'split' | 'window';
@@ -363,7 +372,7 @@ export interface StrictMosaicDataTableOptions<
 }
 
 export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
-  columnDefs: Array<ColumnDef<TData, TValue>>;
+  columnDefs: Array<MosaicColumnDef<TData, TValue>>;
   tableState: TableState;
   rows: Array<TData>;
   totalRows: number | undefined;

@@ -13,9 +13,9 @@ const items = [
  * Main component for rendering tables with swappable views (Shadcn vs Bare).
  * Supports row click and row hover interactions.
  */
-export function RenderTable<TData extends RowData, TValue>(props: {
+export function RenderTable<TData extends RowData>(props: {
   table: Table<TData>;
-  columns: Array<ColumnDef<TData, TValue>>;
+  columns: Array<ColumnDef<TData, any>>;
   onRowClick?: (row: Row<TData>) => void;
   onRowHover?: (row: Row<TData> | null) => void;
 }) {

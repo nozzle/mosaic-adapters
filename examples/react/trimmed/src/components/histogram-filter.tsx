@@ -95,7 +95,7 @@ export function HistogramFilter({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => filter.setValue(null)}
+            onClick={() => filter.setValue([null, null])}
             className="h-5 px-1 text-[10px] text-slate-400 hover:text-red-500 gap-1"
           >
             <X className="size-3" />

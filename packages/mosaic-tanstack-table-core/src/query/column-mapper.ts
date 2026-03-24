@@ -1,8 +1,8 @@
 import { logger } from '../logger';
 import { SqlIdentifier } from '../domain/sql-identifier';
-import type { ColumnDef, RowData } from '@tanstack/table-core';
+import type { RowData } from '@tanstack/table-core';
 import type { FieldInfoRequest } from '@uwdata/mosaic-core';
-import type { MosaicColumnMapping } from '../types';
+import type { MosaicColumnDef, MosaicColumnMapping } from '../types';
 
 export interface SelectColumnInfo {
   id: string; // The Table State ID (used for filtering/sorting)
@@ -13,7 +13,7 @@ export interface SelectColumnInfo {
 export class ColumnMapper<TData extends RowData, TValue = unknown> {
   public readonly id: string;
   private idToSqlMap = new Map<string, SqlIdentifier>();
-  private sqlToDefMap = new Map<string, ColumnDef<TData, TValue>>();
+  private sqlToDefMap = new Map<string, MosaicColumnDef<TData, TValue>>();
 
   // Store pairs of (Table ID -> SQL Column) for generating the SELECT clause
   private selectList: Array<SelectColumnInfo> = [];
@@ -21,7 +21,7 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
   public shouldSearchAllColumns = false;
 
   constructor(
-    columnDefs: Array<ColumnDef<TData, TValue>>,
+    columnDefs: Array<MosaicColumnDef<TData, TValue>>,
     private mapping?: MosaicColumnMapping<TData>,
   ) {
     // Generate stateless ID for debug logs without relying on global module state
@@ -32,7 +32,7 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
   /**
    * Introspects the ColumnDefs to build internal lookup maps.
    */
-  private parse(defs: Array<ColumnDef<TData, TValue>>) {
+  private parse(defs: Array<MosaicColumnDef<TData, TValue>>) {
     this.idToSqlMap.clear();
     this.sqlToDefMap.clear();
     this.selectList = [];
@@ -176,7 +176,7 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
     return this.mapping[key];
   }
 
-  public getColumnDef(sqlColumn: string): ColumnDef<TData, TValue> | undefined {
+  public getColumnDef(sqlColumn: string): MosaicColumnDef<TData, TValue> | undefined {
     return this.sqlToDefMap.get(sqlColumn);
   }
 

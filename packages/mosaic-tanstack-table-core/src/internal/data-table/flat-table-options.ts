@@ -7,9 +7,12 @@ import { getFlatTableStateChanges } from './flat-table-state';
 
 import type { MosaicSelectionManager } from '../../selection-manager';
 import type { MosaicDataTable } from '../../data-table';
-import type { MosaicDataTableStore, PrimitiveSqlValue } from '../../types';
 import type {
-  ColumnDef,
+  MosaicColumnDef,
+  MosaicDataTableStore,
+  PrimitiveSqlValue,
+} from '../../types';
+import type {
   RowData,
   TableOptions,
   Updater,
@@ -21,18 +24,16 @@ function resolveFlatColumns<
 >(
   state: MosaicDataTableStore<TData, TValue>,
   schema: Array<{ column: string }>,
-): Array<ColumnDef<TData, TValue>> {
+): Array<MosaicColumnDef<TData, TValue>> {
   if (state.columnDefs.length > 0) {
-    return state.columnDefs.map((column) => {
-      return column satisfies ColumnDef<TData, TValue>;
-    });
+    return state.columnDefs;
   }
 
   return schema.map((field) => {
     return {
       accessorKey: field.column,
       header: field.column,
-    } satisfies ColumnDef<TData, TValue>;
+    } satisfies MosaicColumnDef<TData, TValue>;
   });
 }
 
