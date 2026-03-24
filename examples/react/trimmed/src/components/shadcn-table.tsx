@@ -59,9 +59,9 @@ import {
  * A Shadcn UI implementation of the TanStack table.
  * Supports sorting, filtering, pagination, column visibility, row click, and row hover interactions.
  */
-export function ShadcnTable<TData extends RowData, TValue>(props: {
+export function ShadcnTable<TData extends RowData>(props: {
   table: TanStackTable<TData>;
-  columns: Array<ColumnDef<TData, TValue>>;
+  columns: Array<ColumnDef<TData, any>>;
   onRowClick?: (row: Row<TData>) => void;
   onRowHover?: (row: Row<TData> | null) => void;
 }) {

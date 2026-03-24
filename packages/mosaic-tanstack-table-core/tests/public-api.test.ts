@@ -1,6 +1,7 @@
 import { expect, expectTypeOf, test } from 'vitest';
 import { HistogramStrategy } from '../src/facet-strategies';
 import { createTypedSidecarClient } from '../src/sidecar';
+import { createMosaicColumnHelper } from '../src/utils';
 import * as core from '../src/index';
 import * as filterRegistry from '../src/filter-registry';
 import * as grouped from '../src/grouped';
@@ -15,6 +16,12 @@ import type {
 
 type ExampleRow = RowData & {
   id: string;
+};
+
+type MixedRow = RowData & {
+  createdAt: Date | null;
+  label: string;
+  amount: number;
 };
 
 test('keeps specialized helpers off the root export surface', () => {
@@ -42,4 +49,22 @@ test('publishes the tightened facet and sidecar type contracts', () => {
   expectTypeOf<
     ConstructorParameters<typeof TypedHistogramClient>[0]
   >().toMatchObjectType<{ options: { step: number } }>();
+});
+
+test('accepts heterogeneous column value types in table options', () => {
+  const helper = createMosaicColumnHelper<MixedRow>();
+  const columns = [
+    helper.accessor('createdAt', { header: 'Created' }),
+    helper.accessor('label', { header: 'Label' }),
+    helper.accessor('amount', { header: 'Amount' }),
+  ];
+
+  const options = {
+    table: 'mixed_rows',
+    columns,
+  } satisfies MosaicDataTableOptions<MixedRow>;
+
+  expectTypeOf(options.columns).toMatchTypeOf<
+    MosaicDataTableOptions<MixedRow>['columns']
+  >();
 });
