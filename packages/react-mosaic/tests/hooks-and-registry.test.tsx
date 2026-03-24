@@ -13,7 +13,11 @@ import {
 import { useRegisterSelections } from '../src/hooks/use-register-selections';
 import { flushEffects, render } from './test-utils';
 
-function updateSelection(selection: Selection, value: unknown, reset?: () => void) {
+function updateSelection(
+  selection: Selection,
+  value: unknown,
+  reset?: () => void,
+) {
   selection.update(
     clausePoint('value', value, {
       source: reset ? { reset } : {},

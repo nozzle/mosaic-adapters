@@ -5,9 +5,7 @@ import {
   useMosaicTableFilter,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { HistogramController } from '@nozzleio/mosaic-tanstack-react-table/controllers';
-import {
-  isRangeTuple,
-} from '@nozzleio/mosaic-tanstack-react-table/helpers';
+import { isRangeTuple } from '@nozzleio/mosaic-tanstack-react-table/helpers';
 import { useMosaicSelectionValue } from '@nozzleio/react-mosaic';
 import type { Selection } from '@uwdata/mosaic-core';
 import { cn } from '@/lib/utils';

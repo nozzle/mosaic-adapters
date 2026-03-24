@@ -26,9 +26,7 @@ export function useMosaicTableFacetMenu(options: MosaicFacetMenuOptions) {
     [contextCoordinator, options],
   );
 
-  const [client] = React.useState(
-    () => new MosaicFacetMenu(normalizedOptions),
-  );
+  const [client] = React.useState(() => new MosaicFacetMenu(normalizedOptions));
 
   React.useEffect(() => {
     client.updateOptions(normalizedOptions);

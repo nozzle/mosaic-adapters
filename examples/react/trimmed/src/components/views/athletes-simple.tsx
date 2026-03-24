@@ -14,9 +14,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
-import {
-  useMosaicReactTable,
-} from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
 import {
   coerceDate,
   coerceNumber,

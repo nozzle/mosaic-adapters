@@ -17,11 +17,7 @@ import type {
   SelectionRegistration,
 } from '@nozzleio/mosaic-tanstack-table-core/filter-registry';
 
-export type {
-  ActiveFilter,
-  FilterGroupConfig,
-  SelectionRegistration,
-};
+export type { ActiveFilter, FilterGroupConfig, SelectionRegistration };
 
 export type RegisterFilterSourceOptions = Partial<
   Omit<SelectionRegistration, 'selection' | 'groupId'>

@@ -12,10 +12,10 @@ If you are building a React app, the primary library is `@nozzleio/mosaic-tansta
 
 **Packages you install:**
 
-| Package                                 | Purpose                                                              |
-| --------------------------------------- | -------------------------------------------------------------------- |
-| `@nozzleio/mosaic-tanstack-table-core`  | Framework-agnostic core: curated headless table APIs and controllers |
-| `@nozzleio/mosaic-tanstack-react-table` | React bindings: hooks for tables, facets, filters, histograms        |
+| Package                                 | Purpose                                                                      |
+| --------------------------------------- | ---------------------------------------------------------------------------- |
+| `@nozzleio/mosaic-tanstack-table-core`  | Framework-agnostic core: curated headless table APIs and controllers         |
+| `@nozzleio/mosaic-tanstack-react-table` | React bindings: hooks for tables, facets, filters, histograms                |
 | `@nozzleio/react-mosaic`                | React primitives: coordinator context, selection helpers, selection registry |
 
 ## Coordinator

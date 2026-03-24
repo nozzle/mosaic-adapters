@@ -91,13 +91,13 @@ function Dashboard() {
 
 ## MosaicConnectorProvider Props
 
-| Prop                     | Type                 | Default  | Description                                     |
-| ------------------------ | -------------------- | -------- | ----------------------------------------------- |
-| `initialMode`            | `'wasm' \| 'remote'` | `'wasm'` | Starting execution mode                         |
-| `remoteConnectorFactory` | `() => Connector`    | —        | Factory for remote connector (called on switch) |
-| `wasmOptions`            | `object \| null`     | `{}`     | Options for wasmConnector. `null` = defer init  |
+| Prop                     | Type                 | Default  | Description                                           |
+| ------------------------ | -------------------- | -------- | ----------------------------------------------------- |
+| `initialMode`            | `'wasm' \| 'remote'` | `'wasm'` | Starting execution mode                               |
+| `remoteConnectorFactory` | `() => Connector`    | —        | Factory for remote connector (called on switch)       |
+| `wasmOptions`            | `object \| null`     | `{}`     | Options for wasmConnector. `null` = defer init        |
 | `connectionKey`          | `string \| number`   | —        | Explicit reconnect token for updated connector inputs |
-| `debug`                  | `boolean`            | `false`  | Enable verbose coordinator logging              |
+| `debug`                  | `boolean`            | `false`  | Enable verbose coordinator logging                    |
 
 ## HttpArrowConnector
 

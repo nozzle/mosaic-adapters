@@ -40,20 +40,30 @@ test('publishes the narrowed adapter hook contracts', () => {
   expectTypeOf<MosaicTableFilterMode>().toEqualTypeOf<
     'TEXT' | 'MATCH' | 'SELECT' | 'DATE_RANGE' | 'RANGE'
   >();
-  expectTypeOf<MosaicTableFilterOptions<'TEXT'>['mode']>().toEqualTypeOf<'TEXT'>();
-  expectTypeOf<MosaicTableFilterOptions<'TEXT'>['column']>().toEqualTypeOf<string>();
-  expectTypeOf<Parameters<FilterRegistryApi['registerGroup']>[0]>().toEqualTypeOf<{
+  expectTypeOf<
+    MosaicTableFilterOptions<'TEXT'>['mode']
+  >().toEqualTypeOf<'TEXT'>();
+  expectTypeOf<
+    MosaicTableFilterOptions<'TEXT'>['column']
+  >().toEqualTypeOf<string>();
+  expectTypeOf<
+    Parameters<FilterRegistryApi['registerGroup']>[0]
+  >().toEqualTypeOf<{
     id: string;
     label: string;
     priority: number;
   }>();
-  expectTypeOf<Parameters<FilterRegistryApi['clearGroup']>[0]>().toEqualTypeOf<string>();
+  expectTypeOf<
+    Parameters<FilterRegistryApi['clearGroup']>[0]
+  >().toEqualTypeOf<string>();
   expectTypeOf<UseMosaicHistogramResult['bins']>().toEqualTypeOf<
     Array<{ bin: number; count: number }>
   >();
   expectTypeOf<UseMosaicHistogramResult['loading']>().toEqualTypeOf<boolean>();
-  expectTypeOf<UseMosaicHistogramResult['error']>().toEqualTypeOf<Error | null>();
-  expectTypeOf<UseMosaicHistogramResult['client']>().toEqualTypeOf<
-    MosaicHistogramClient | null
-  >();
+  expectTypeOf<
+    UseMosaicHistogramResult['error']
+  >().toEqualTypeOf<Error | null>();
+  expectTypeOf<
+    UseMosaicHistogramResult['client']
+  >().toEqualTypeOf<MosaicHistogramClient | null>();
 });

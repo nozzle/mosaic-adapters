@@ -116,7 +116,9 @@ vi.mock('@nozzleio/mosaic-tanstack-table-core/sidecar', () => {
     public coordinator: unknown;
     public runtimeOptions: unknown;
 
-    constructor(public readonly config: { onResult: (result: unknown) => void }) {
+    constructor(
+      public readonly config: { onResult: (result: unknown) => void },
+    ) {
       mockState.histogramClients.push(this);
     }
 
@@ -230,9 +232,7 @@ describe('useMosaicTableFacetMenu', () => {
       selectedValues: Array<unknown>;
       hasMore: boolean;
     }> = [];
-    let controls:
-      | ReturnType<typeof useMosaicTableFacetMenu>
-      | undefined;
+    let controls: ReturnType<typeof useMosaicTableFacetMenu> | undefined;
 
     function Probe({ enabled }: { enabled: boolean }) {
       controls = useMosaicTableFacetMenu({

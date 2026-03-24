@@ -12,11 +12,7 @@ import type {
   MosaicDataTableStore,
   PrimitiveSqlValue,
 } from '../../types';
-import type {
-  RowData,
-  TableOptions,
-  Updater,
-} from '@tanstack/table-core';
+import type { RowData, TableOptions, Updater } from '@tanstack/table-core';
 
 function resolveFlatColumns<
   TData extends RowData,
