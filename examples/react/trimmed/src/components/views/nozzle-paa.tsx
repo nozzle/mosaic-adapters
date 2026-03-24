@@ -2,7 +2,6 @@
  * View component for the Nozzle PAA dataset.
  * Features: KPI Cards, Complex Filtering, and Multi-Table Cross-Filtering.
  */
-import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
@@ -10,14 +9,11 @@ import {
   coerceNumber,
   createMosaicColumnHelper,
   createMosaicMapping,
-  useMosaicReactTable,
-} from '@nozzleio/mosaic-tanstack-react-table';
-import {
-  useConnectorStatus,
-  useCoordinator,
   useFilterRegistry,
+  useMosaicReactTable,
   useRegisterFilterSource,
-} from '@nozzleio/react-mosaic';
+} from '@nozzleio/mosaic-tanstack-react-table';
+import { useConnectorStatus, useCoordinator } from '@nozzleio/react-mosaic';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import type { Selection } from '@uwdata/mosaic-core';

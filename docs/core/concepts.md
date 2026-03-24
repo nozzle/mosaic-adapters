@@ -16,7 +16,7 @@ If you are building a React app, the primary library is `@nozzleio/mosaic-tansta
 | --------------------------------------- | -------------------------------------------------------------------- |
 | `@nozzleio/mosaic-tanstack-table-core`  | Framework-agnostic core: curated headless table APIs and controllers |
 | `@nozzleio/mosaic-tanstack-react-table` | React bindings: hooks for tables, facets, filters, histograms        |
-| `@nozzleio/react-mosaic`                | React primitives: coordinator context, selection helpers, registries |
+| `@nozzleio/react-mosaic`                | React primitives: coordinator context, selection helpers, selection registry |
 
 ## Coordinator
 
@@ -215,7 +215,7 @@ Tracks active filter state for **active filter bar** UI (showing chips/badges of
 import {
   MosaicFilterProvider,
   useRegisterFilterSource,
-} from '@nozzleio/react-mosaic';
+} from '@nozzleio/mosaic-tanstack-react-table';
 
 <MosaicFilterProvider>
   <App />
