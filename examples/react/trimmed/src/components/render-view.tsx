@@ -1,13 +1,12 @@
-import * as React from 'react';
 import { useMemo } from 'react';
 import {
   HttpArrowConnector,
   MosaicConnectorProvider,
-  MosaicFilterProvider,
   SelectionRegistryProvider,
   useConnectorStatus,
   useMosaicCoordinator,
 } from '@nozzleio/react-mosaic';
+import { MosaicFilterProvider } from '@nozzleio/mosaic-tanstack-react-table';
 import { TableStyleSwitcher } from './render-table';
 import type { ConnectorMode } from '@nozzleio/react-mosaic';
 import { Button } from '@/components/ui/button';
@@ -89,6 +88,7 @@ export function RenderView() {
   return (
     <MosaicConnectorProvider
       initialMode="wasm"
+      connectionKey={`${REMOTE_URL}:${API_TOKEN ?? ''}:${TENANT_ID ?? ''}`}
       remoteConnectorFactory={remoteConnectorFactory}
     >
       <RenderViewWithProviders remoteUrl={REMOTE_URL} />

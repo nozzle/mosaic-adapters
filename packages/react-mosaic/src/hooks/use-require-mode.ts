@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useMosaicCoordinator } from '../context/connector-provider';
 import type { ConnectorMode } from '../context/connector-provider';
 
@@ -14,19 +14,16 @@ export function useRequireMode(
   enabled: boolean = true,
 ) {
   const { mode, setMode } = useMosaicCoordinator();
-  const pendingSwitch = useRef(false);
 
   useEffect(() => {
     if (!enabled) {
-      pendingSwitch.current = false;
       return;
     }
 
-    if (mode !== requiredMode && !pendingSwitch.current) {
-      pendingSwitch.current = true;
+    if (mode !== requiredMode) {
       setMode(requiredMode);
-    } else if (mode === requiredMode) {
-      pendingSwitch.current = false;
     }
   }, [mode, requiredMode, setMode, enabled]);
+
+  return !enabled || mode === requiredMode;
 }

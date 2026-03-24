@@ -96,6 +96,7 @@ function Dashboard() {
 | `initialMode`            | `'wasm' \| 'remote'` | `'wasm'` | Starting execution mode                         |
 | `remoteConnectorFactory` | `() => Connector`    | —        | Factory for remote connector (called on switch) |
 | `wasmOptions`            | `object \| null`     | `{}`     | Options for wasmConnector. `null` = defer init  |
+| `connectionKey`          | `string \| number`   | —        | Explicit reconnect token for updated connector inputs |
 | `debug`                  | `boolean`            | `false`  | Enable verbose coordinator logging              |
 
 ## HttpArrowConnector
@@ -160,7 +161,7 @@ const { mode, setMode, status, error, connectionId } = useConnectorStatus();
 
 ### useRequireMode
 
-Conditional rendering based on mode:
+Ensures the requested mode is active and returns `true` once the switch is complete:
 
 ```tsx
 import { useRequireMode } from '@nozzleio/react-mosaic';
@@ -268,6 +269,8 @@ The recommended provider structure:
   </SelectionRegistryProvider>
 </MosaicConnectorProvider>
 ```
+
+Import `MosaicFilterProvider` from `@nozzleio/mosaic-tanstack-react-table`; keep `SelectionRegistryProvider` and the connector APIs in `@nozzleio/react-mosaic`.
 
 Access `connectionId` via `useConnectorStatus()` to key providers:
 
