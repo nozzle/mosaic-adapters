@@ -1,8 +1,8 @@
 import { expect, expectTypeOf, test } from 'vitest';
-import { HistogramStrategy } from '../src/facet-strategies';
 import { createTypedSidecarClient } from '../src/sidecar';
 import { createMosaicColumnHelper } from '../src/utils';
 import * as core from '../src/index';
+import * as facetStrategies from '../src/facet-strategies';
 import * as filterRegistry from '../src/filter-registry';
 import * as grouped from '../src/grouped';
 
@@ -27,13 +27,18 @@ type MixedRow = RowData & {
 test('keeps specialized helpers off the root export surface', () => {
   expect(core).toHaveProperty('MosaicDataTable');
   expect(core).toHaveProperty('createMosaicMapping');
+  expect(core).toHaveProperty('createMosaicColumnHelper');
   expect(core).not.toHaveProperty('MosaicFilterRegistry');
   expect(core).not.toHaveProperty('buildGroupedLevelQuery');
   expect(core).not.toHaveProperty('createTypedSidecarClient');
+  expect(core).not.toHaveProperty('HistogramStrategy');
+  expect(core).not.toHaveProperty('createMosaicFeature');
+  expect(core).not.toHaveProperty('functionalUpdate');
 
   expect(filterRegistry).toHaveProperty('MosaicFilterRegistry');
   expect(grouped).toHaveProperty('buildGroupedLevelQuery');
   expect(grouped).toHaveProperty('arrowTableToObjects');
+  expect(facetStrategies).toHaveProperty('HistogramStrategy');
 });
 
 test('publishes the tightened facet and sidecar type contracts', () => {
@@ -45,7 +50,9 @@ test('publishes the tightened facet and sidecar type contracts', () => {
     NonNullable<MosaicDataTableOptions<ExampleRow>['facetStrategies']>
   >().toEqualTypeOf<Partial<FacetStrategyMap>>();
 
-  const TypedHistogramClient = createTypedSidecarClient(HistogramStrategy);
+  const TypedHistogramClient = createTypedSidecarClient(
+    facetStrategies.HistogramStrategy,
+  );
   expectTypeOf<
     ConstructorParameters<typeof TypedHistogramClient>[0]
   >().toMatchObjectType<{ options: { step: number } }>();

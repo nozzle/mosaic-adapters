@@ -1,12 +1,10 @@
 import * as React from 'react';
-import { HistogramStrategy } from '@nozzleio/mosaic-tanstack-table-core';
+import { HistogramStrategy } from '@nozzleio/mosaic-tanstack-table-core/facet-strategies';
 import { createTypedSidecarClient } from '@nozzleio/mosaic-tanstack-table-core/sidecar';
 import { useCoordinator } from '@nozzleio/react-mosaic';
-import type {
-  HistogramOutput,
-  MosaicTableSource,
-} from '@nozzleio/mosaic-tanstack-table-core';
+import type { MosaicTableSource } from '@nozzleio/mosaic-tanstack-table-core';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
+import type { HistogramOutput } from '@nozzleio/mosaic-tanstack-table-core/facet-strategies';
 
 const EMPTY_HISTOGRAM: HistogramOutput = [];
 const TypedHistogramClient = createTypedSidecarClient(HistogramStrategy);
