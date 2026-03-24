@@ -1,10 +1,24 @@
 {
   "name": "@nozzleio/react-mosaic",
   "version": "0.0.0",
+  "description": "React bindings for Mosaic coordinators and selections.",
+  "license": "MIT",
   "type": "module",
   "main": "dist/esm/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nozzle/mosaic-adapters.git",
+    "directory": "packages/react-mosaic"
+  },
+  "homepage": "https://github.com/nozzle/mosaic-adapters/tree/main/packages/react-mosaic",
+  "bugs": {
+    "url": "https://github.com/nozzle/mosaic-adapters/issues"
+  },
+  "keywords": ["mosaic", "react", "selection", "coordinator"],
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
   "exports": {
     ".": {
       "import": {
@@ -25,8 +39,6 @@
     "test:lint": "pnpm run lint"
   },
   "dependencies": {
-    "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
-    "@tanstack/react-store": "catalog:",
     "@uwdata/mosaic-core": "catalog:"
   },
   "peerDependencies": {
@@ -35,9 +47,11 @@
   "devDependencies": {
     "@eslint-react/eslint-plugin": "catalog:",
     "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
+    "react-dom": "^19.2.4",
     "rimraf": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"
