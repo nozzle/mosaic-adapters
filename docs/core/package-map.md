@@ -10,7 +10,7 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 
 `@nozzleio/react-mosaic` provides React bindings for Mosaic primitives (coordinator context, selection helpers, registries).
 
-`@nozzleio/mosaic-tanstack-table-core` is framework-agnostic logic used internally by the React package.
+`@nozzleio/mosaic-tanstack-table-core` is framework-agnostic logic used internally by the React package. Its root export is intentionally smaller than before; lower-level grouped and filter-registry helpers now live on explicit subpaths.
 
 ## Package Matrix
 
@@ -43,6 +43,12 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 - `useRequireMode`
 - `SelectionRegistryProvider`, `useRegisterSelections`
 - `MosaicFilterProvider`, `useRegisterFilterSource`, `useActiveFilters`
+
+`@nozzleio/mosaic-tanstack-table-core`
+
+- Root: `MosaicDataTable`, `createMosaicDataTableClient`, `MosaicFacetMenu`, `MosaicFilter`, `createMosaicMapping`, `createMosaicColumnHelper`
+- `@nozzleio/mosaic-tanstack-table-core/grouped`: grouped query helpers and grouped row types
+- `@nozzleio/mosaic-tanstack-table-core/filter-registry`: active-filter registry types and implementation
 
 ## Where to Start
 

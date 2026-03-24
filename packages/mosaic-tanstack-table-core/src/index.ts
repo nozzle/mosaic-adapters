@@ -6,27 +6,14 @@ export {
   type MosaicTableCoreAugmentation,
 } from './table-core';
 export * from './facet-menu';
-export * from './selection-manager';
 export * from './filter-client';
 export * from './aggregation-bridge';
 export * from './types/index';
 export * from './logger';
 export * from './utils';
-export * from './selection-utils';
 export * from './facet-strategies';
-export * from './query/filter-factory';
-export * from './registry';
-export * from './sidecar-client';
-export * from './sidecar-manager';
-export * from './sidecar-factory';
 export * from './controllers/histogram-controller';
-export * from './domain/sql-identifier';
 export * from './schema';
-export * from './schema/factory';
-export * from './constants';
+export { createMosaicMapping } from './schema/factory';
 export * from './feature';
-export * from './filter-registry';
 export * from './grouped/types';
-export * from './grouped/feature';
-export * from './grouped/query-builder';
-export * from './grouped/arrow-utils';

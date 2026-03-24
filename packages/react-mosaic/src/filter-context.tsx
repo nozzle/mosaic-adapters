@@ -1,12 +1,12 @@
 import { createContext, useContext, useEffect, useMemo } from 'react';
-import { MosaicFilterRegistry } from '@nozzleio/mosaic-tanstack-table-core';
+import { MosaicFilterRegistry } from '@nozzleio/mosaic-tanstack-table-core/filter-registry';
 import { shallow, useStore } from '@tanstack/react-store';
 import type { ReactNode } from 'react';
 import type { Selection } from '@uwdata/mosaic-core';
 import type {
   ActiveFilter,
   SelectionRegistration,
-} from '@nozzleio/mosaic-tanstack-table-core';
+} from '@nozzleio/mosaic-tanstack-table-core/filter-registry';
 
 const FilterContext = createContext<MosaicFilterRegistry | null>(null);
 

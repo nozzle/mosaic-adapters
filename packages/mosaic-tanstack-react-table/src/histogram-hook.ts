@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  HistogramStrategy,
-  createTypedSidecarClient,
-} from '@nozzleio/mosaic-tanstack-table-core';
+import { HistogramStrategy } from '@nozzleio/mosaic-tanstack-table-core';
+import { createTypedSidecarClient } from '@nozzleio/mosaic-tanstack-table-core/sidecar';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import type {
   HistogramOutput,

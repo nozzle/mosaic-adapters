@@ -296,7 +296,7 @@ To make the grouped table a cross-filter _source_, pass `rowSelection` with a Se
 
 ## Query Builder API (Advanced)
 
-The core package exports 4 pure functions for building SQL queries:
+Import these grouped helpers from `@nozzleio/mosaic-tanstack-table-core/grouped`.
 
 ### buildGroupedLevelQuery
 
