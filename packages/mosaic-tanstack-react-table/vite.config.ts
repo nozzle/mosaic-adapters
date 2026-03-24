@@ -19,7 +19,12 @@ export default mergeConfig(
   packageConfig,
   tanstackViteConfig({
     cjs: false,
-    entry: ['src/index.ts'],
+    entry: [
+      'src/index.ts',
+      'src/helpers.ts',
+      'src/controllers.ts',
+      'src/debug.ts',
+    ],
     srcDir: './src',
   }),
 );

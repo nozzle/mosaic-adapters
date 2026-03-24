@@ -28,11 +28,11 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 - `useMosaicTableFilter`
 - `useMosaicTableFacetMenu`
 - `useMosaicHistogram`
-- `createMosaicMapping`
-- `createMosaicColumnHelper`
-- `HistogramController`
-- `useServerGroupedTable`
+- `useGroupedTableState`
 - `MosaicFilterProvider`, `useFilterRegistry`, `useActiveFilters`, `useRegisterFilterSource`
+- `@nozzleio/mosaic-tanstack-react-table/helpers`: mapping helpers and coercion utilities
+- `@nozzleio/mosaic-tanstack-react-table/controllers`: headless controllers such as `AggregationBridge` and `HistogramController`
+- `@nozzleio/mosaic-tanstack-react-table/debug`: `logger`
 
 `@nozzleio/react-mosaic`
 
@@ -46,7 +46,7 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 
 `@nozzleio/mosaic-tanstack-table-core`
 
-- Root: `MosaicDataTable`, `createMosaicDataTableClient`, `MosaicFacetMenu`, `MosaicFilter`, `createMosaicMapping`, `createMosaicColumnHelper`
+- Root: `MosaicDataTable`, `createMosaicDataTableClient`, `MosaicFacetMenu`, `MosaicFilter`
 - `@nozzleio/mosaic-tanstack-table-core/grouped`: grouped query helpers and grouped row types
 - `@nozzleio/mosaic-tanstack-table-core/filter-registry`: active-filter registry types and implementation
 

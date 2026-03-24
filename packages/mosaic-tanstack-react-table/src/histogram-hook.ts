@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import * as React from 'react';
 import { HistogramStrategy } from '@nozzleio/mosaic-tanstack-table-core';
 import { createTypedSidecarClient } from '@nozzleio/mosaic-tanstack-table-core/sidecar';
 import { useCoordinator } from '@nozzleio/react-mosaic';
@@ -6,14 +6,18 @@ import type {
   HistogramOutput,
   MosaicTableSource,
 } from '@nozzleio/mosaic-tanstack-table-core';
-import type { Selection } from '@uwdata/mosaic-core';
+import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 
-interface UseMosaicHistogramOptions {
+const EMPTY_HISTOGRAM: HistogramOutput = [];
+const TypedHistogramClient = createTypedSidecarClient(HistogramStrategy);
+
+export interface UseMosaicHistogramOptions {
   table: MosaicTableSource;
   column: string;
   step: number;
   /** The global filter (Input) to respect */
   filterBy?: Selection;
+  coordinator?: Coordinator;
   /**
    * If false, the histogram client will not issue queries.
    * @default true
@@ -21,8 +25,95 @@ interface UseMosaicHistogramOptions {
   enabled?: boolean;
 }
 
-// Create the strongly typed client class outside the hook
-const TypedHistogramClient = createTypedSidecarClient(HistogramStrategy);
+export type MosaicHistogramClient = InstanceType<typeof TypedHistogramClient>;
+
+export interface UseMosaicHistogramResult {
+  bins: HistogramOutput;
+  stats: {
+    maxCount: number;
+    totalCount: number;
+  };
+  loading: boolean;
+  error: Error | null;
+  client: MosaicHistogramClient | null;
+}
+
+type HistogramState = {
+  bins: HistogramOutput;
+  loading: boolean;
+  error: Error | null;
+};
+
+function createInitialHistogramState(): HistogramState {
+  return {
+    bins: EMPTY_HISTOGRAM,
+    loading: false,
+    error: null,
+  };
+}
+
+class ReactHistogramClient extends TypedHistogramClient {
+  constructor(
+    config: ConstructorParameters<typeof TypedHistogramClient>[0],
+    private callbacks: {
+      onPending: () => void;
+      onError: (error: Error) => void;
+    },
+  ) {
+    super(config);
+  }
+
+  override queryPending() {
+    this.callbacks.onPending();
+    return this;
+  }
+
+  override queryError(error: Error) {
+    this.callbacks.onError(error);
+    return super.queryError(error);
+  }
+}
+
+function createHistogramClient({
+  table,
+  column,
+  step,
+  filterBy,
+  setState,
+}: UseMosaicHistogramOptions & {
+  setState: React.Dispatch<React.SetStateAction<HistogramState>>;
+}) {
+  return new ReactHistogramClient(
+    {
+      source: table,
+      column,
+      filterBy,
+      getFilters: () => [],
+      options: { step },
+      onResult: (result) =>
+        setState({
+          bins: result,
+          loading: false,
+          error: null,
+        }),
+      __debugName: `Histogram:${column}`,
+    },
+    {
+      onPending: () =>
+        setState((previous) => ({
+          ...previous,
+          loading: true,
+          error: null,
+        })),
+      onError: (error) =>
+        setState((previous) => ({
+          ...previous,
+          loading: false,
+          error,
+        })),
+    },
+  );
+}
 
 /**
  * A specialized hook for fetching histogram data via a Sidecar Client.
@@ -35,48 +126,82 @@ export function useMosaicHistogram({
   column,
   step,
   filterBy,
+  coordinator: providedCoordinator,
   enabled = true,
-}: UseMosaicHistogramOptions) {
-  const coordinator = useCoordinator();
-  const [data, setData] = useState<HistogramOutput>([]);
+}: UseMosaicHistogramOptions): UseMosaicHistogramResult {
+  const contextCoordinator = useCoordinator();
+  const coordinator = providedCoordinator ?? contextCoordinator;
+  const [state, setState] = React.useState<HistogramState>(
+    createInitialHistogramState,
+  );
+  const [client, setClient] = React.useState<MosaicHistogramClient | null>(
+    null,
+  );
+  const getInitialStep = React.useEffectEvent(() => step);
 
-  // Memoize stats to avoid recalculation on every render
-  const stats = useMemo(() => {
-    const maxCount = Math.max(...data.map((d) => d.count), 0);
-    const totalCount = data.reduce((sum, d) => sum + d.count, 0);
-    return { maxCount, totalCount };
-  }, [data]);
+  React.useEffect(() => {
+    const nextClient = createHistogramClient({
+      table,
+      column,
+      step: getInitialStep(),
+      filterBy,
+      setState,
+    });
 
-  useEffect(() => {
-    if (!enabled) {
+    setState(createInitialHistogramState());
+    setClient(nextClient);
+
+    return () => {
+      nextClient.disconnect();
+    };
+  }, [column, filterBy, table]);
+
+  React.useEffect(() => {
+    if (!client) {
       return;
     }
 
-    // Instantiate the Typed Client
-    // This enforces that 'options' contains 'step' as a number
-    const client = new TypedHistogramClient({
-      source: table,
-      column: column,
-      filterBy: filterBy,
-      // Histogram usually listens to ALL filters to show current distribution
-      getFilters: () => [],
-      // Type Safety: options is strictly typed to HistogramInput
-      options: { step },
-      onResult: (result) => setData(result),
-      __debugName: `Histogram:${column}`,
-    });
-
     client.setCoordinator(coordinator);
-    const cleanup = client.connect();
+  }, [client, coordinator]);
 
-    // Trigger initial fetch
+  React.useEffect(() => {
+    if (!client || !enabled) {
+      return;
+    }
+
+    client.updateRuntimeOptions({
+      options: { step },
+    });
+  }, [client, enabled, step]);
+
+  React.useEffect(() => {
+    if (!client) {
+      return;
+    }
+
+    if (!enabled) {
+      client.disconnect();
+      setState(createInitialHistogramState());
+      return;
+    }
+
+    const cleanup = client.connect();
     client.requestUpdate();
 
-    return () => {
-      cleanup();
-      client.disconnect();
-    };
-  }, [table, column, step, filterBy, coordinator, enabled]);
+    return cleanup;
+  }, [client, enabled]);
 
-  return { bins: data, stats };
+  const stats = React.useMemo(() => {
+    const maxCount = Math.max(...state.bins.map((d) => d.count), 0);
+    const totalCount = state.bins.reduce((sum, d) => sum + d.count, 0);
+    return { maxCount, totalCount };
+  }, [state.bins]);
+
+  return {
+    bins: state.bins,
+    stats,
+    loading: state.loading,
+    error: state.error,
+    client,
+  };
 }

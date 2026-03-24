@@ -10,7 +10,7 @@ import {
   useMosaicSelection,
   useRegisterSelections,
 } from '@nozzleio/react-mosaic';
-import { AggregationBridge } from '@nozzleio/mosaic-tanstack-react-table';
+import { AggregationBridge } from '@nozzleio/mosaic-tanstack-react-table/controllers';
 
 export function useNycTaxiTopology() {
   // 1. Instantiate Selections (Stable Identitites)

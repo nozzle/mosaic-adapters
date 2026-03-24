@@ -199,7 +199,6 @@ function TextFilter({ label, column, selection }: TextFilterProps) {
 | `RANGE`      | `[number \| null, number \| null]` | `column BETWEEN min AND max` |
 | `DATE_RANGE` | `[string \| null, string \| null]` | Date range comparison        |
 | `SELECT`     | `string \| number \| boolean`      | `column = value`             |
-| `CONDITION`  | Complex object                     | Custom operator-based filter |
 
 ## Date Range Filter
 
@@ -254,7 +253,11 @@ function DateRangeFilter({ label, column, selection }) {
 Use `useMosaicHistogram` to get binned data for brushable histogram charts:
 
 ```tsx
-import { useMosaicHistogram } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  useMosaicHistogram,
+  useMosaicTableFilter,
+} from '@nozzleio/mosaic-tanstack-react-table';
+import { HistogramController } from '@nozzleio/mosaic-tanstack-react-table/controllers';
 import type { Selection } from '@uwdata/mosaic-core';
 
 interface HistogramProps {
@@ -272,31 +275,45 @@ function HistogramFilter({
   selection,
   filterBy,
 }: HistogramProps) {
-  const { bins, stats } = useMosaicHistogram({
+  const { bins, stats, loading, error } = useMosaicHistogram({
     table,
     column,
     step,
     filterBy,
   });
 
-  // bins: Array<{ x0: number, x1: number, count: number }>
+  const controller = new HistogramController(
+    useMosaicTableFilter({ selection, column, mode: 'RANGE' }),
+  );
+
+  // bins: Array<{ bin: number, count: number }>
   // stats: { maxCount: number, totalCount: number }
+  // loading: true while a query is in flight
+  // error: the last query error, if any
 
   return (
     <div className="histogram">
+      {error ? <div>{error.message}</div> : null}
       <svg width={200} height={60}>
         {bins.map((bin, i) => (
           <rect
             key={i}
             x={i * 10}
-            y={60 - (bin.count / stats.maxCount) * 60}
+            y={60 - (bin.count / Math.max(stats.maxCount, 1)) * 60}
             width={8}
-            height={(bin.count / stats.maxCount) * 60}
+            height={(bin.count / Math.max(stats.maxCount, 1)) * 60}
             fill="steelblue"
+            onClick={() =>
+              controller.handleBinClick(
+                bin.bin,
+                bin.bin + step,
+                selection.value as [number, number] | null,
+              )
+            }
           />
         ))}
       </svg>
-      {/* Add brush interaction here */}
+      {loading ? <div>Loading…</div> : null}
     </div>
   );
 }
@@ -433,6 +450,8 @@ See `examples/react/trimmed/src/components/paa/paa-filters.tsx` (`ArraySelectFil
 The `HistogramController` encapsulates click-to-toggle logic. This removes boilerplate and keeps the histogram view simple:
 
 ```tsx
+import { HistogramController } from '@nozzleio/mosaic-tanstack-react-table/controllers';
+
 const filter = useMosaicTableFilter({ selection, column, mode: 'RANGE' });
 const controller = new HistogramController(filter);
 
