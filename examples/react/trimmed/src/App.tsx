@@ -1,4 +1,4 @@
-import { logger } from '@nozzleio/mosaic-tanstack-react-table';
+import { logger } from '@nozzleio/mosaic-tanstack-react-table/debug';
 import { RenderView } from '@/components/render-view';
 
 function App() {

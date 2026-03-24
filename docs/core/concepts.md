@@ -98,7 +98,7 @@ This is the foundation of the **topology** pattern covered in [Data Flow](./data
 A **Mapping** defines how TypeScript data keys correspond to SQL columns. It enforces type safety and controls filter behavior.
 
 ```ts
-import { createMosaicMapping } from '@nozzleio/mosaic-tanstack-react-table';
+import { createMosaicMapping } from '@nozzleio/mosaic-tanstack-react-table/helpers';
 
 interface AthleteRowData {
   id: number;

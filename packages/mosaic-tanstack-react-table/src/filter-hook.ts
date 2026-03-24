@@ -5,12 +5,16 @@ import type {
   MosaicFilterOptions,
 } from '@nozzleio/mosaic-tanstack-table-core';
 
+export type MosaicTableFilterMode = Exclude<FilterMode, 'CONDITION'>;
+export type MosaicTableFilterOptions<TMode extends MosaicTableFilterMode> =
+  MosaicFilterOptions<TMode>;
+
 /**
  * React hook to create a stable MosaicFilter instance.
  * Strictly typed with the FilterMode generic to ensure type safety for input values.
  */
-export function useMosaicTableFilter<TMode extends FilterMode>(
-  options: MosaicFilterOptions<TMode>,
+export function useMosaicTableFilter<TMode extends MosaicTableFilterMode>(
+  options: MosaicTableFilterOptions<TMode>,
 ) {
   const { selection, column, mode, debounceTime, id } = options;
 

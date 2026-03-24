@@ -6,13 +6,15 @@ import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
 import {
-  coerceNumber,
-  createMosaicColumnHelper,
-  createMosaicMapping,
   useFilterRegistry,
   useMosaicReactTable,
   useRegisterFilterSource,
 } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  coerceNumber,
+  createMosaicColumnHelper,
+  createMosaicMapping,
+} from '@nozzleio/mosaic-tanstack-react-table/helpers';
 import { useConnectorStatus, useCoordinator } from '@nozzleio/react-mosaic';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';

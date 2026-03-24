@@ -174,10 +174,8 @@ The `useMosaicReactTable` hook connects everything:
 
 ```tsx
 import { useReactTable } from '@tanstack/react-table';
-import {
-  useMosaicReactTable,
-  coerceNumber,
-} from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import { coerceNumber } from '@nozzleio/mosaic-tanstack-react-table/helpers';
 
 function AthletesTable() {
   const columns = useMemo(
@@ -263,7 +261,7 @@ For better type safety, use `createMosaicMapping` instead of inline metadata:
 import {
   createMosaicMapping,
   createMosaicColumnHelper,
-} from '@nozzleio/mosaic-tanstack-react-table';
+} from '@nozzleio/mosaic-tanstack-react-table/helpers';
 
 const AthleteMapping = createMosaicMapping<AthleteRowData>({
   id: { sqlColumn: 'id', type: 'INTEGER', filterType: 'EQUALS' },
@@ -382,10 +380,10 @@ const { tableOptions } = useMosaicReactTable({
 });
 ```
 
-You can also import the logger:
+You can also import the logger from the adapter debug subpath:
 
 ```ts
-import { logger } from '@nozzleio/mosaic-tanstack-react-table';
+import { logger } from '@nozzleio/mosaic-tanstack-react-table/debug';
 ```
 
 ## Complete Example

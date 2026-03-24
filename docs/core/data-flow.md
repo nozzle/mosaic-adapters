@@ -284,10 +284,10 @@ function handleRowHover(row) {
 
 ## Debugging Tips
 
-1. **Enable logging**: The adapter has a built-in logger
+1. **Enable logging**: The adapter exposes a debug subpath for logging
 
    ```ts
-   import { logger } from '@nozzleio/mosaic-tanstack-react-table';
+   import { logger } from '@nozzleio/mosaic-tanstack-react-table/debug';
    // Logger output appears in browser console
    ```
 

@@ -10,13 +10,15 @@ import { flexRender, useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import {
+  useGroupedTableState,
+  useMosaicReactTable,
+} from '@nozzleio/mosaic-tanstack-react-table';
+import {
   coerceDate,
   coerceNumber,
   createMosaicColumnHelper,
   createMosaicMapping,
-  useGroupedTableState,
-  useMosaicReactTable,
-} from '@nozzleio/mosaic-tanstack-react-table';
+} from '@nozzleio/mosaic-tanstack-react-table/helpers';
 import { useConnectorStatus } from '@nozzleio/react-mosaic';
 import type { ColumnDef, Row } from '@tanstack/react-table';
 import type {

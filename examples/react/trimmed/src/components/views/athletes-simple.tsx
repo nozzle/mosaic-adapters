@@ -15,10 +15,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import {
-  coerceDate,
-  coerceNumber,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  coerceDate,
+  coerceNumber,
+} from '@nozzleio/mosaic-tanstack-react-table/helpers';
 import { useRegisterSelections } from '@nozzleio/react-mosaic';
 import type { ColumnDef } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';

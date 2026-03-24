@@ -8,12 +8,14 @@ import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import * as mSql from '@uwdata/mosaic-sql';
 import {
+  useMosaicReactTable,
+} from '@nozzleio/mosaic-tanstack-react-table';
+import {
   coerceNumber,
   coerceSafeTimestamp,
   createMosaicColumnHelper,
   createMosaicMapping,
-  useMosaicReactTable,
-} from '@nozzleio/mosaic-tanstack-react-table';
+} from '@nozzleio/mosaic-tanstack-react-table/helpers';
 import { useConnectorStatus, useCoordinator } from '@nozzleio/react-mosaic';
 import { useNycTaxiTopology } from '@/hooks/useNycTaxiTopology';
 import { RenderTable } from '@/components/render-table';

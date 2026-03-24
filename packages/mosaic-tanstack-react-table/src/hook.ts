@@ -3,14 +3,29 @@ import { createMosaicDataTableClient } from '@nozzleio/mosaic-tanstack-table-cor
 import { shallow, useStore } from '@tanstack/react-store';
 import { useCoordinator } from '@nozzleio/react-mosaic';
 import type {
+  FlatGroupedRow,
+  GroupLevel,
+  GroupMetric,
+  LeafColumn,
   MosaicDataTable,
+  MosaicDataTableColumnDefMetaOptions,
   MosaicDataTableOptions,
   MosaicDataTableStore,
   PrimitiveSqlValue,
 } from '@nozzleio/mosaic-tanstack-table-core';
 import type { RowData, TableOptions } from '@tanstack/react-table';
 
-export type * from '@nozzleio/mosaic-tanstack-table-core';
+export type {
+  FlatGroupedRow,
+  GroupLevel,
+  GroupMetric,
+  LeafColumn,
+  MosaicDataTable,
+  MosaicDataTableColumnDefMetaOptions,
+  MosaicDataTableOptions,
+  MosaicDataTableStore,
+  PrimitiveSqlValue,
+};
 
 /**
  * React hook to instantiate and manage a MosaicDataTable client.
@@ -32,36 +47,32 @@ export function useMosaicReactTable<
   client: MosaicDataTable<TData, TValue>;
 } {
   const contextCoordinator = useCoordinator();
-  const coordinator = options.coordinator ?? contextCoordinator;
-  const enabled = options.enabled ?? true;
-
-  const [client] = React.useState(() =>
-    createMosaicDataTableClient<TData, TValue>(options),
+  const normalizedOptions = React.useMemo(
+    () => ({
+      ...options,
+      coordinator: options.coordinator ?? contextCoordinator,
+      enabled: options.enabled ?? true,
+    }),
+    [contextCoordinator, options],
   );
 
-  // Only set coordinator when enabled - prevents reconnection to wrong backend
-  React.useEffect(() => {
-    if (!enabled) {
-      return;
-    }
-    client.setCoordinator(coordinator);
-  }, [client, coordinator, enabled]);
+  const [client] = React.useState(() =>
+    createMosaicDataTableClient<TData, TValue>(normalizedOptions),
+  );
 
   React.useEffect(() => {
-    client.updateOptions(options);
-  }, [options, client]);
+    client.updateOptions(normalizedOptions);
+  }, [client, normalizedOptions]);
 
-  // Connect/disconnect based on enabled state
   React.useEffect(() => {
-    if (!enabled) {
-      // Disconnect when disabled to stop any pending queries
+    if (!normalizedOptions.enabled) {
       client.disconnect();
       return;
     }
 
     const unsub = client.connect();
     return unsub;
-  }, [client, coordinator, enabled]);
+  }, [client, normalizedOptions.enabled]);
 
   const store = useStore(client.store, (s) => s, shallow);
 

@@ -2,7 +2,12 @@ import * as React from 'react';
 import { MosaicFacetMenu } from '@nozzleio/mosaic-tanstack-table-core';
 import { shallow, useStore } from '@tanstack/react-store';
 import { useCoordinator } from '@nozzleio/react-mosaic';
-import type { MosaicFacetMenuOptions } from '@nozzleio/mosaic-tanstack-table-core';
+import type {
+  FacetValue,
+  MosaicFacetMenuOptions,
+} from '@nozzleio/mosaic-tanstack-table-core';
+
+export type { FacetValue, MosaicFacetMenuOptions };
 
 /**
  * React hook to manage the state and lifecycle of a Mosaic Facet Menu.
@@ -12,26 +17,54 @@ import type { MosaicFacetMenuOptions } from '@nozzleio/mosaic-tanstack-table-cor
  */
 export function useMosaicTableFacetMenu(options: MosaicFacetMenuOptions) {
   const contextCoordinator = useCoordinator();
-  const coordinator = options.coordinator ?? contextCoordinator;
-
-  // 1. Instantiate the stable client
-  const [client] = React.useState(
-    () => new MosaicFacetMenu({ ...options, coordinator }),
+  const normalizedOptions = React.useMemo(
+    () => ({
+      ...options,
+      coordinator: options.coordinator ?? contextCoordinator,
+      enabled: options.enabled ?? true,
+    }),
+    [contextCoordinator, options],
   );
 
-  // 2. Sync options updates
-  React.useEffect(() => {
-    client.updateOptions({ ...options, coordinator });
-  }, [client, options, coordinator]);
+  const [client] = React.useState(
+    () => new MosaicFacetMenu(normalizedOptions),
+  );
 
-  // 3. Subscribe to the store
-  const state = useStore(client.store, (s) => s, shallow);
-
-  // 4. Connect/Disconnect lifecycle
   React.useEffect(() => {
+    client.updateOptions(normalizedOptions);
+  }, [client, normalizedOptions]);
+
+  const state = useStore(
+    client.store,
+    (store) => ({
+      options: store.options,
+      displayOptions: store.displayOptions,
+      loading: store.loading,
+      selectedValues: store.selectedValues,
+      hasMore: store.hasMore,
+    }),
+    shallow,
+  );
+
+  React.useEffect(() => {
+    if (!normalizedOptions.enabled) {
+      client.disconnect();
+      return;
+    }
+
     const cleanup = client.connect();
-    return () => cleanup();
-  }, [client, coordinator]);
+    return cleanup;
+  }, [client, normalizedOptions.enabled]);
+
+  const select = React.useCallback(
+    (value: FacetValue) => {
+      client.clear();
+      if (value !== null) {
+        client.toggle(value);
+      }
+    },
+    [client],
+  );
 
   return {
     options: state.options,
@@ -40,8 +73,9 @@ export function useMosaicTableFacetMenu(options: MosaicFacetMenuOptions) {
     selectedValues: state.selectedValues,
     hasMore: state.hasMore,
     setSearchTerm: (term: string) => client.setSearchTerm(term),
-    toggle: (value: string | number | null) => client.toggle(value),
-    select: (value: string | null) => client.toggle(value),
+    toggle: (value: FacetValue) => client.toggle(value),
+    select,
+    clear: () => client.clear(),
     loadMore: () => client.loadMore(),
     client,
   };
