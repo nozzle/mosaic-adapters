@@ -35,9 +35,23 @@ export interface MosaicConnectorProviderProps {
   remoteConnectorFactory?: () => Connector;
   /** Options passed to wasmConnector (e.g. { duckdb: db }). Pass `null` to defer init. */
   wasmOptions?: Record<string, unknown> | null;
+  /** Change this value to force an explicit reconnect with the latest connector inputs. */
+  connectionKey?: string | number;
   /** Enable verbose Coordinator logging to the console. @default false */
   debug?: boolean;
   children: ReactNode;
+}
+
+function createConnectionId() {
+  return Math.random().toString(36);
+}
+
+function disposeCoordinator(coordinator: Coordinator | null) {
+  if (!coordinator) {
+    return;
+  }
+
+  coordinator.clear({ clients: true, cache: true });
 }
 
 /**
@@ -49,6 +63,7 @@ export function MosaicConnectorProvider({
   initialMode = 'wasm',
   remoteConnectorFactory,
   wasmOptions,
+  connectionKey,
   debug = false,
   children,
 }: MosaicConnectorProviderProps) {
@@ -58,7 +73,7 @@ export function MosaicConnectorProvider({
   );
   const [error, setError] = useState<Error | null>(null);
   const [connectionId, setConnectionId] = useState<string>(() =>
-    Math.random().toString(36),
+    createConnectionId(),
   );
 
   // Track { instance, mode } tuple for stale filtering
@@ -85,6 +100,8 @@ export function MosaicConnectorProvider({
   wasmOptionsRef.current = wasmOptions;
   const debugRef = useRef(debug);
   debugRef.current = debug;
+  const providerCoordinatorRef = useRef<Coordinator | null>(null);
+  const previousGlobalCoordinatorRef = useRef<Coordinator | null>(null);
 
   // Derive a boolean that is true when wasm prerequisites are met.
   // undefined (not passed) = "use defaults", null = "defer init"
@@ -92,6 +109,7 @@ export function MosaicConnectorProvider({
 
   useEffect(() => {
     setError(null);
+    setCoordinatorState(null);
 
     // WASM gating: wait for wasmOptions when explicitly null (deferred)
     if (mode === 'wasm' && wasmOptionsRef.current === null) {
@@ -99,6 +117,7 @@ export function MosaicConnectorProvider({
     }
 
     let active = true;
+    let nextCoordinator: Coordinator | null = null;
     setStatus('connecting');
 
     async function init() {
@@ -120,12 +139,12 @@ export function MosaicConnectorProvider({
           });
         }
 
-        const coord = new Coordinator(connector, {
+        nextCoordinator = new Coordinator(connector, {
           preagg: { enabled: true },
         });
 
         if (debugRef.current) {
-          coord.logger({
+          nextCoordinator.logger({
             log: (...args: Array<unknown>) => console.log('[Mosaic]', ...args),
             info: (...args: Array<unknown>) =>
               console.info('[Mosaic]', ...args),
@@ -142,20 +161,31 @@ export function MosaicConnectorProvider({
           });
         }
 
-        // Register as global singleton
-        globalCoordinator(coord);
-
-        // Health Check: Block for Remote, Optimistic for WASM
         if (mode === 'remote') {
-          await coord.query('SELECT 1');
+          await nextCoordinator.query('SELECT 1');
         }
 
-        if (active) {
-          setCoordinatorState({ instance: coord, mode });
-          setStatus('connected');
-          setConnectionId(Math.random().toString(36));
+        if (!active) {
+          disposeCoordinator(nextCoordinator);
+          nextCoordinator = null;
+          return;
         }
+
+        if (previousGlobalCoordinatorRef.current === null) {
+          previousGlobalCoordinatorRef.current = globalCoordinator();
+        }
+
+        disposeCoordinator(providerCoordinatorRef.current);
+        providerCoordinatorRef.current = nextCoordinator;
+        globalCoordinator(nextCoordinator);
+
+        setCoordinatorState({ instance: nextCoordinator, mode });
+        setStatus('connected');
+        setConnectionId(createConnectionId());
       } catch (err: unknown) {
+        disposeCoordinator(nextCoordinator);
+        nextCoordinator = null;
+
         if (active) {
           console.error('[MosaicConnector] Init failed:', err);
           setError(err instanceof Error ? err : new Error(String(err)));
@@ -168,12 +198,25 @@ export function MosaicConnectorProvider({
     init();
     return () => {
       active = false;
+
+      const currentCoordinator = providerCoordinatorRef.current;
+      if (currentCoordinator) {
+        const currentGlobal = globalCoordinator();
+        if (currentGlobal === currentCoordinator) {
+          const previousGlobal = previousGlobalCoordinatorRef.current;
+          if (previousGlobal) {
+            globalCoordinator(previousGlobal);
+          }
+        }
+
+        disposeCoordinator(currentCoordinator);
+        providerCoordinatorRef.current = null;
+      }
     };
     // `mode` — re-init when switching wasm ↔ remote
     // `wasmReady` — re-init when wasm prerequisites appear (false→true)
-    // Props are read from refs, so changes to remoteConnectorFactory or
-    // wasmOptions reference do NOT cause spurious re-initialization.
-  }, [mode, wasmReady]);
+    // `connectionKey` — explicit reconnect signal for updated connector inputs.
+  }, [mode, wasmReady, connectionKey]);
 
   // Derived: only expose the coordinator if its mode matches the current mode
   const activeCoordinator =
