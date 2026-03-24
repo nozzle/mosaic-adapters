@@ -8,7 +8,7 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 
 ## Supporting Libraries
 
-`@nozzleio/react-mosaic` provides React bindings for Mosaic primitives (coordinator context, selection helpers, registries).
+`@nozzleio/react-mosaic` provides React bindings for Mosaic primitives (coordinator context, selection helpers, selection registry, connector helpers).
 
 `@nozzleio/mosaic-tanstack-table-core` is framework-agnostic logic used internally by the React package. Its root export is intentionally smaller than before; lower-level grouped and filter-registry helpers now live on explicit subpaths.
 
@@ -17,7 +17,7 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 | Package                                 | Role                           | When you use it                                                |
 | --------------------------------------- | ------------------------------ | -------------------------------------------------------------- |
 | `@nozzleio/mosaic-tanstack-react-table` | TanStack Table adapter + hooks | Tables, filters, facets, histograms, row selection, pagination |
-| `@nozzleio/react-mosaic`                | React bindings for Mosaic      | Coordinator context, selection helpers, registries             |
+| `@nozzleio/react-mosaic`                | React bindings for Mosaic      | Coordinator context, selection helpers, selection registry     |
 | `@nozzleio/mosaic-tanstack-table-core`  | Core engine                    | Extending or using the adapter outside React                   |
 
 ## Key Exports (By Package)
@@ -32,6 +32,7 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 - `createMosaicColumnHelper`
 - `HistogramController`
 - `useServerGroupedTable`
+- `MosaicFilterProvider`, `useFilterRegistry`, `useActiveFilters`, `useRegisterFilterSource`
 
 `@nozzleio/react-mosaic`
 
@@ -42,7 +43,6 @@ Most users should start with `@nozzleio/mosaic-tanstack-react-table`. It provide
 - `useCascadingContexts`
 - `useRequireMode`
 - `SelectionRegistryProvider`, `useRegisterSelections`
-- `MosaicFilterProvider`, `useRegisterFilterSource`, `useActiveFilters`
 
 `@nozzleio/mosaic-tanstack-table-core`
 

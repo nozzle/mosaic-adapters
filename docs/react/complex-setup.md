@@ -356,7 +356,7 @@ import {
   useActiveFilters,
   useRegisterFilterSource,
   useFilterRegistry,
-} from '@nozzleio/react-mosaic';
+} from '@nozzleio/mosaic-tanstack-react-table';
 
 // Wrap app
 <MosaicFilterProvider>
@@ -379,8 +379,8 @@ function ActiveFilterBar() {
     <div className="flex gap-2">
       {filters.map((filter) => (
         <span key={filter.id} className="badge">
-          {filter.label}: {filter.displayValue}
-          <button onClick={() => registry.clearFilter(filter.id)}>×</button>
+          {filter.label}: {filter.formattedValue}
+          <button onClick={() => registry.removeFilter(filter)}>×</button>
         </span>
       ))}
     </div>

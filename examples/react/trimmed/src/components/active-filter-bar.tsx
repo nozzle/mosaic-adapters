@@ -1,9 +1,9 @@
 import { FilterX, X } from 'lucide-react';
+import { useSelectionRegistry } from '@nozzleio/react-mosaic';
 import {
   useActiveFilters,
   useFilterRegistry,
-  useSelectionRegistry,
-} from '@nozzleio/react-mosaic';
+} from '@nozzleio/mosaic-tanstack-react-table';
 import { Button } from '@/components/ui/button';
 
 /**
