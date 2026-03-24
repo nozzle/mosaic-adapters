@@ -64,6 +64,8 @@ const $combined = vg.Selection.intersect({
 });
 ```
 
+For this single-mode setup, raw vgplot selections are fine. If you plan to switch connectors or use connection-scoped provider remounting, create selections inside React hooks instead; the dual-mode guide shows that pattern.
+
 ### 4. Load Data into DuckDB
 
 Before querying, load your data. This typically happens in a `useEffect`:

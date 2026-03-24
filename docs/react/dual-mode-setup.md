@@ -161,16 +161,18 @@ const { mode, setMode, status, error, connectionId } = useConnectorStatus();
 
 ### useRequireMode
 
-Ensures the requested mode is active and returns `true` once the switch is complete:
+Requests a specific mode and returns `true` once the provider is currently in that mode. Pair it with `isMosaicInitialized` or your hook-level `enabled` guards before firing queries:
 
 ```tsx
-import { useRequireMode } from '@nozzleio/react-mosaic';
+import { useMosaicCoordinator, useRequireMode } from '@nozzleio/react-mosaic';
 
 function RemoteOnlyFeature() {
-  const isRemote = useRequireMode('remote');
+  const modeReady = useRequireMode('remote');
+  const { isMosaicInitialized } = useMosaicCoordinator();
+  const isReady = modeReady && isMosaicInitialized;
 
-  if (!isRemote) {
-    return <div>This feature requires remote mode</div>;
+  if (!isReady) {
+    return <div>Switching to remote mode…</div>;
   }
 
   return <AdvancedAnalytics />;
@@ -254,20 +256,21 @@ When mode changes, the provider keys child components by `connectionId`, forcing
 
 ## Provider Hierarchy
 
-The recommended provider structure:
+The recommended provider structure is a connector provider plus an inner component that keys connection-scoped state from `connectionId`:
 
 ```tsx
-<MosaicConnectorProvider
-  initialMode="wasm"
-  remoteConnectorFactory={remoteFactory}
->
-  {/* These re-key on connection changes */}
-  <SelectionRegistryProvider key={connectionId}>
-    <MosaicFilterProvider key={connectionId}>
-      <App />
-    </MosaicFilterProvider>
-  </SelectionRegistryProvider>
-</MosaicConnectorProvider>
+function AppProviders() {
+  return (
+    <MosaicConnectorProvider
+      initialMode="wasm"
+      remoteConnectorFactory={remoteFactory}
+    >
+      <ConnectionScopedProviders>
+        <App />
+      </ConnectionScopedProviders>
+    </MosaicConnectorProvider>
+  );
+}
 ```
 
 Import `MosaicFilterProvider` from `@nozzleio/mosaic-tanstack-react-table`; keep `SelectionRegistryProvider` and the connector APIs in `@nozzleio/react-mosaic`.
@@ -275,7 +278,7 @@ Import `MosaicFilterProvider` from `@nozzleio/mosaic-tanstack-react-table`; keep
 Access `connectionId` via `useConnectorStatus()` to key providers:
 
 ```tsx
-function ProvidersWithKey({ children }) {
+function ConnectionScopedProviders({ children }) {
   const { connectionId } = useConnectorStatus();
 
   return (

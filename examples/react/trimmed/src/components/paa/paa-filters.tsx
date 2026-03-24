@@ -68,18 +68,24 @@ export function SearchableSelectFilter({
   const [searchValue, setSearchValue] = useState('');
 
   // Pass enabled: isOpen to suppress background queries when the menu is closed
-  const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
-    useMosaicTableFacetMenu({
-      table,
-      column,
-      selection,
-      filterBy,
-      additionalContext: externalContext,
-      limit: 50,
-      sortMode: 'count',
-      enabled: isOpen,
-      __debugName: `Facet:${label}`,
-    });
+  const {
+    clear,
+    displayOptions,
+    loading,
+    select,
+    selectedValues,
+    setSearchTerm,
+  } = useMosaicTableFacetMenu({
+    table,
+    column,
+    selection,
+    filterBy,
+    additionalContext: externalContext,
+    limit: 50,
+    sortMode: 'count',
+    enabled: isOpen,
+    __debugName: `Facet:${label}`,
+  });
 
   // Clear search state when selection is cleared (e.g. Global Reset)
   useEffect(() => {
@@ -95,10 +101,13 @@ export function SearchableSelectFilter({
   };
 
   const handleSelect = (val: string | null) => {
-    toggle(val);
     if (val === null) {
+      clear();
       setIsOpen(false);
+      return;
     }
+
+    select(val);
   };
 
   const renderTriggerLabel = () => {
@@ -146,7 +155,7 @@ export function SearchableSelectFilter({
                 className="h-6 w-6"
                 onClick={(e) => {
                   e.stopPropagation();
-                  toggle(null);
+                  clear();
                 }}
               >
                 <X className="h-4 w-4" />
@@ -203,22 +212,25 @@ export function SelectFilter({
   const [isOpen, setIsOpen] = useState(false);
 
   // Use local isOpen state for the Radix Select
-  const { displayOptions, toggle, selectedValues } = useMosaicTableFacetMenu({
-    table,
-    column,
-    selection,
-    filterBy,
-    additionalContext: externalContext,
-    limit: 50,
-    sortMode: 'count',
-    enabled: isOpen,
-  });
+  const { clear, displayOptions, select, selectedValues } =
+    useMosaicTableFacetMenu({
+      table,
+      column,
+      selection,
+      filterBy,
+      additionalContext: externalContext,
+      limit: 50,
+      sortMode: 'count',
+      enabled: isOpen,
+    });
 
   const handleChange = (val: string) => {
-    toggle(null);
-    if (val !== 'ALL') {
-      toggle(val);
+    if (val === 'ALL') {
+      clear();
+      return;
     }
+
+    select(val);
   };
 
   const valueForSelect =
@@ -262,19 +274,25 @@ export function ArraySelectFilter({
   const [searchValue, setSearchValue] = useState('');
 
   // Pass enabled: isOpen to suppress background queries when the menu is closed
-  const { displayOptions, setSearchTerm, toggle, selectedValues, loading } =
-    useMosaicTableFacetMenu({
-      table,
-      column,
-      selection,
-      filterBy,
-      additionalContext: externalContext,
-      limit: 100,
-      sortMode: 'alpha',
-      columnType: 'array',
-      enabled: isOpen,
-      __debugName: `FacetArray:${label}`,
-    });
+  const {
+    clear,
+    displayOptions,
+    loading,
+    selectedValues,
+    setSearchTerm,
+    toggle,
+  } = useMosaicTableFacetMenu({
+    table,
+    column,
+    selection,
+    filterBy,
+    additionalContext: externalContext,
+    limit: 100,
+    sortMode: 'alpha',
+    columnType: 'array',
+    enabled: isOpen,
+    __debugName: `FacetArray:${label}`,
+  });
 
   // Clear search state when selection is cleared (e.g. Global Reset)
   useEffect(() => {
@@ -341,7 +359,7 @@ export function ArraySelectFilter({
                 className="h-6 w-6"
                 onClick={(e) => {
                   e.stopPropagation();
-                  toggle(null);
+                  clear();
                 }}
               >
                 <X className="h-4 w-4" />

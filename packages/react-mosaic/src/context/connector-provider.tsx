@@ -187,7 +187,9 @@ export function MosaicConnectorProvider({
         nextCoordinator = null;
 
         if (active) {
-          console.error('[MosaicConnector] Init failed:', err);
+          if (debugRef.current) {
+            console.error('[MosaicConnector] Init failed:', err);
+          }
           setError(err instanceof Error ? err : new Error(String(err)));
           setStatus('error');
           setCoordinatorState(null);

@@ -210,11 +210,13 @@ Calling `resetAll()` clears all registered selections at once.
 
 ### Filter Registry
 
-Tracks active filter state for **active filter bar** UI (showing chips/badges of current filters):
+Tracks active filter state for **active filter bar** UI (showing chips/badges of current filters). In React apps, use the table package root API rather than the headless core subpath:
 
 ```tsx
 import {
   MosaicFilterProvider,
+  useActiveFilters,
+  useFilterRegistry,
   useRegisterFilterSource,
 } from '@nozzleio/mosaic-tanstack-react-table';
 
@@ -226,6 +228,17 @@ import {
 useRegisterFilterSource($domainFilter, 'global', {
   labelMap: { domain: 'Domain' },
 });
+
+function ActiveFilterBar() {
+  const filters = useActiveFilters();
+  const registry = useFilterRegistry();
+
+  return filters.map((filter) => (
+    <button key={filter.id} onClick={() => registry.removeFilter(filter)}>
+      {filter.label}: {filter.formattedValue}
+    </button>
+  ));
+}
 ```
 
 ## Glossary
