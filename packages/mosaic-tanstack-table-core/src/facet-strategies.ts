@@ -3,6 +3,7 @@ import { isParam } from '@uwdata/mosaic-core';
 import { assertIsArray, assertIsNumber } from './validation';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { MosaicTableSource } from './types';
+import type { FacetStrategyMap } from './registry';
 
 export interface FacetQueryContext<TInput = unknown> {
   /** The table or subquery used as the source for the facet query. */
@@ -47,6 +48,15 @@ export interface FacetStrategy<TInput = unknown, TOutput = unknown> {
    * Should throw an error if the data does not match TOutput.
    */
   validate: (data: unknown) => TOutput;
+}
+
+function getNestedValue(row: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>((value, key) => {
+    if (!value || typeof value !== 'object') {
+      return undefined;
+    }
+    return (value as Record<string, unknown>)[key];
+  }, row);
 }
 
 export interface HistogramInput {
@@ -115,7 +125,7 @@ export const UniqueValuesStrategy: FacetStrategy<void, Array<unknown>> = {
       let val = row[col];
       // Handle struct access in results (e.g. "struct.field")
       if (val === undefined && col.includes('.')) {
-        val = col.split('.').reduce((obj: any, k: string) => obj?.[k], row);
+        val = getNestedValue(row, col);
       }
       values.push(val);
     });
@@ -326,7 +336,7 @@ export const HistogramStrategy: FacetStrategy<HistogramInput, HistogramOutput> =
     },
   };
 
-export const defaultFacetStrategies: Record<string, FacetStrategy<any, any>> = {
+export const defaultFacetStrategies: FacetStrategyMap = {
   unique: UniqueValuesStrategy,
   minmax: MinMaxStrategy,
   totalCount: TotalCountStrategy,

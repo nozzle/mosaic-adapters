@@ -3,7 +3,7 @@ import { createStructAccess } from './utils';
 import { SqlIdentifier } from './domain/sql-identifier';
 import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
-import type { ColumnType } from './types';
+import type { ColumnType, PrimitiveSqlValue } from './types';
 
 export interface SelectionManagerOptions {
   /** The Mosaic Selection to manage */
@@ -25,7 +25,9 @@ export interface SelectionManagerOptions {
  *
  * @template TValue - The type of value being managed (e.g., string, number, Date).
  */
-export class MosaicSelectionManager<TValue = unknown> {
+export class MosaicSelectionManager<
+  TValue extends PrimitiveSqlValue = PrimitiveSqlValue,
+> {
   private selection: Selection;
   private client: MosaicClient;
   private column: string;
@@ -103,28 +105,28 @@ export class MosaicSelectionManager<TValue = unknown> {
       if (this.columnType === 'array') {
         // list_has_any(col, ['val1', 'val2'])
         // Manually construct the comma-separated list expression via reduce.
+        const [firstValue, ...rest] = values;
+        if (firstValue === undefined) {
+          return;
+        }
 
-        // Fix: Explicitly type reduce<any> because the accumulator changes from
-        // LiteralNode (initial) to FragmentNode (result of mSql.sql).
-        // This prevents TS from inferring the accumulator as TValue.
-        const listContent = values.slice(1).reduce<any>(
-          (acc, v) => {
-            return mSql.sql`${acc}, ${mSql.literal(v as any)}`;
-          },
-          mSql.literal(values[0] as any),
-        );
+        const listContent = rest.reduce<
+          ReturnType<typeof mSql.literal> | ReturnType<typeof mSql.sql>
+        >((acc, v) => {
+          return mSql.sql`${acc}, ${mSql.literal(v)}`;
+        }, mSql.literal(firstValue));
 
         const listLiteral = mSql.sql`[${listContent}]`;
         predicate = mSql.listHasAny(colExpr, listLiteral);
       } else {
         if (values.length === 1) {
           // col = 'val'
-          predicate = mSql.eq(colExpr, mSql.literal(values[0] as any));
+          predicate = mSql.eq(colExpr, mSql.literal(values[0]));
         } else {
           // col IN ('val1', 'val2')
           predicate = mSql.isIn(
             colExpr,
-            values.map((v) => mSql.literal(v as any)),
+            values.map((v) => mSql.literal(v)),
           );
         }
       }
@@ -135,7 +137,7 @@ export class MosaicSelectionManager<TValue = unknown> {
       // Critical: Exclude self from the filter so menus/tables don't filter themselves empty
       clients: new Set([this.client]),
       value: values,
-      predicate: predicate!,
+      predicate,
     });
   }
 }

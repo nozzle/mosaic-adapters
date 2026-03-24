@@ -41,7 +41,12 @@ import type {
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ReadonlyStore } from '@tanstack/store';
-import type { ColumnDef, RowData, Table, TableOptions } from '@tanstack/table-core';
+import type {
+  ColumnDef,
+  RowData,
+  Table,
+  TableOptions,
+} from '@tanstack/table-core';
 import type {
   IMosaicClient,
   MosaicDataTableOptions,
@@ -50,8 +55,16 @@ import type {
   PrimitiveSqlValue,
 } from './types';
 import type { FilterStrategy } from './query/filter-factory';
-import type { FacetStrategy } from './facet-strategies';
-import type { SidecarRequest } from './registry';
+import type {
+  FacetStrategyKey,
+  FacetStrategyKeyWithoutInput,
+  FacetStrategyMap,
+  SidecarRequest,
+} from './registry';
+
+type SelectExpression =
+  | ReturnType<typeof mSql.column>
+  | ReturnType<typeof mSql.sql>;
 
 export function createMosaicDataTableClient<
   TData extends RowData,
@@ -86,8 +99,8 @@ export class MosaicDataTable<
   #groupedController = new GroupedTableController(this);
 
   public sidecarManager: SidecarManager<TData, TValue>;
-  public filterRegistry: StrategyRegistry<FilterStrategy>;
-  public facetRegistry: StrategyRegistry<FacetStrategy<any, any>>;
+  public filterRegistry: StrategyRegistry<Record<string, FilterStrategy>>;
+  public facetRegistry: StrategyRegistry<FacetStrategyMap>;
 
   get #isGrouped(): boolean {
     return !!this.options.groupBy;
@@ -141,7 +154,7 @@ export class MosaicDataTable<
     this.lifecycle.disconnect(this.coordinator);
   }
 
-  override requestQuery(query?: any): Promise<any> | null {
+  override requestQuery(query?: SelectQuery): Promise<unknown> | null {
     if (!this.coordinator) {
       return Promise.resolve();
     }
@@ -212,7 +225,7 @@ export class MosaicDataTable<
     this.sidecarManager.requestAuxiliary(config);
   }
 
-  public requestFacet(columnId: string, type: string) {
+  public requestFacet(columnId: string, type: FacetStrategyKeyWithoutInput) {
     this.sidecarManager.requestFacet(columnId, type);
   }
 
@@ -295,7 +308,9 @@ export class MosaicDataTable<
         filterRegistry: this.filterRegistry,
       });
     } else {
-      const selects: Record<string, any> = { '*': mSql.column('*') };
+      const selects: Record<string, SelectExpression> = {
+        '*': mSql.column('*'),
+      };
 
       if (this.options.totalRowsMode === 'window') {
         selects[this.#sqlTotalRows] = mSql.sql`COUNT(*) OVER()`;
@@ -613,7 +628,7 @@ export class MosaicDataTable<
   getFacetedUniqueValues<TItem extends RowData>(): (
     table: Table<TItem>,
     columnId: string,
-  ) => () => Map<any, number> {
+  ) => () => Map<unknown, number> {
     return (_table, columnId) => {
       return () => {
         const values = this.getFacetValue<Array<unknown>>(
@@ -621,16 +636,16 @@ export class MosaicDataTable<
           Array.isArray,
         );
         if (!values) {
-          return new Map<any, number>();
+          return new Map<unknown, number>();
         }
         if (Array.isArray(values)) {
-          const map = new Map<any, number>();
+          const map = new Map<unknown, number>();
           values.forEach((value) => {
             map.set(value, 1);
           });
           return map;
         }
-        return new Map<any, number>();
+        return new Map<unknown, number>();
       };
     };
   }
@@ -638,7 +653,7 @@ export class MosaicDataTable<
   getFacetedMinMaxValues<TItem extends RowData>(): (
     table: Table<TItem>,
     columnId: string,
-  ) => () => [any, any] | undefined {
+  ) => () => [number, number] | undefined {
     return (_table, columnId) => {
       return () => {
         const values = this.getFacetValue<Array<unknown>>(
@@ -739,9 +754,7 @@ export class MosaicDataTable<
     }
   }
 
-  #applyStateChangeMode(
-    options: MosaicDataTableOptions<TData, TValue>,
-  ): void {
+  #applyStateChangeMode(options: MosaicDataTableOptions<TData, TValue>): void {
     if (options.onTableStateChange) {
       this.#onTableStateChange = options.onTableStateChange;
     }
@@ -755,7 +768,7 @@ export class MosaicDataTable<
     }
     if (options.facetStrategies) {
       Object.entries(options.facetStrategies).forEach(([key, strategy]) =>
-        this.facetRegistry.register(key, strategy),
+        this.facetRegistry.register(key as FacetStrategyKey, strategy),
       );
     }
   }
@@ -783,7 +796,9 @@ export class MosaicDataTable<
     batch(() => {
       this.store.setState((previousState) => ({
         ...previousState,
-        tableState: seedInitialTableState<TData>(options.tableOptions?.initialState),
+        tableState: seedInitialTableState<TData>(
+          options.tableOptions?.initialState,
+        ),
         rows: [],
         totalRows: undefined,
         _grouped: createInitialGroupedState<TData, TValue>(),

@@ -15,6 +15,10 @@ import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ColumnType, IMosaicClient, MosaicTableSource } from './types';
 
+type SourceWithId = {
+  id?: string;
+};
+
 export type FacetValue = string | number | boolean | Date | null;
 
 export interface MosaicFacetMenuOptions {
@@ -58,6 +62,26 @@ export interface MosaicFacetMenuState {
   selectedValues: Array<FacetValue>;
   /** Total number of available options matching the search (if known) */
   hasMore: boolean;
+}
+
+function getNestedValue(row: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>((value, key) => {
+    if (!value || typeof value !== 'object') {
+      return undefined;
+    }
+    return (value as Record<string, unknown>)[key];
+  }, row);
+}
+
+function hasToArray(value: unknown): value is {
+  toArray: () => Array<Record<string, unknown>>;
+} {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'toArray' in value &&
+    typeof value.toArray === 'function'
+  );
 }
 
 /**
@@ -223,12 +247,10 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
 
     // Detect Global Reset Signal
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    const src = active ? (active.source as any) : null;
+    const src = active?.source as SourceWithId | undefined;
     const isGlobalReset =
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      active &&
-      active.value === null &&
-      (src === null || src?.id === GLOBAL_RESET_ID);
+      active && active.value === null && (!src || src.id === GLOBAL_RESET_ID);
 
     if (isGlobalReset) {
       this.selectionManager.select(null);
@@ -346,7 +368,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
 
   // --- QUERY LOGIC ---
 
-  override requestQuery(query?: any): Promise<any> | null {
+  override requestQuery(query?: SelectQuery): Promise<unknown> | null {
     if (this.options.enabled === false) {
       return Promise.resolve();
     }
@@ -481,7 +503,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     return this;
   }
 
-  override queryResult(data: any) {
+  override queryResult(data: unknown) {
     const { column, columnType, isArrayColumn } = this.options;
     const isArray = columnType === 'array' || isArrayColumn === true;
     const values: Array<FacetValue> = [];
@@ -489,7 +511,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
 
     let hasMore = false;
 
-    if (data && typeof data.toArray === 'function') {
+    if (hasToArray(data)) {
       const rows = data.toArray();
 
       // Check if we got more rows than the limit
@@ -504,7 +526,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       for (const row of rows) {
         let val = row[key];
         if (val === undefined && key.includes('.')) {
-          val = key.split('.').reduce((obj: any, k: string) => obj?.[k], row);
+          val = getNestedValue(row, key);
         }
         if (val !== null && val !== undefined) {
           values.push(val as FacetValue);

@@ -2,8 +2,13 @@ import { MosaicClient } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import { createStructAccess } from './utils';
 import { SqlIdentifier } from './domain/sql-identifier';
-import type { Selection } from '@uwdata/mosaic-core';
+import type { Selection, SelectionClause } from '@uwdata/mosaic-core';
 import type { FilterInput, FilterMode } from './types';
+
+type FilterValueFor<TMode extends FilterMode> = Extract<
+  FilterInput,
+  { mode: TMode }
+>['value'];
 
 export interface MosaicFilterOptions<TMode extends FilterMode> {
   /** The selection instance to update */
@@ -45,28 +50,26 @@ export class MosaicFilter<TMode extends FilterMode> extends MosaicClient {
    * Sets the filter value. Triggers debounce.
    * Strictly typed to match the Filter Mode.
    */
-  public setValue(value: Extract<FilterInput, { mode: TMode }>['value']) {
+  public setValue(value: FilterValueFor<TMode>) {
     if (this.timer) {
       clearTimeout(this.timer);
     }
 
     this.timer = setTimeout(() => {
-      // Fixed: Cast value as any because TS distribution logic struggles with Extract types across method calls,
-      // but it is type-safe due to the Class Generic enforcement at the entry point.
-      this.apply(value as any);
+      this.apply(value);
     }, this.debounceTime);
   }
 
   /**
    * Immediate update (bypassing debounce).
    */
-  public apply(value: Extract<FilterInput, { mode: TMode }>['value']) {
+  public apply(value: FilterValueFor<TMode>) {
     const predicate = this.generatePredicate(value);
 
     this.selection.update({
       source: this,
       value: value,
-      predicate: predicate as any,
+      predicate,
     });
   }
 
@@ -84,8 +87,10 @@ export class MosaicFilter<TMode extends FilterMode> extends MosaicClient {
     });
   }
 
-  private generatePredicate(value: any): mSql.FilterExpr | null {
-    if (value === null || value === undefined || value === '') {
+  private generatePredicate(
+    value: FilterValueFor<TMode>,
+  ): SelectionClause['predicate'] {
+    if (value === undefined || value === '') {
       return null;
     }
 

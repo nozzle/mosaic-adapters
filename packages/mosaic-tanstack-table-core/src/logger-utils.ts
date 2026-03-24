@@ -9,14 +9,14 @@
  * Useful for reducing log noise by only emitting state deltas.
  */
 export function getObjectDiff(
-  oldObj: any,
-  newObj: any,
-): Record<string, any> | null {
+  oldObj: Record<string, unknown> | null | undefined,
+  newObj: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
   if (!oldObj || !newObj) {
-    return newObj;
+    return newObj ?? null;
   }
 
-  const diff: Record<string, any> = {};
+  const diff: Record<string, unknown> = {};
   let hasChanges = false;
 
   const allKeys = new Set([...Object.keys(oldObj), ...Object.keys(newObj)]);
@@ -41,7 +41,7 @@ export function getObjectDiff(
  */
 export function llmFriendlyReplacer() {
   const seen = new WeakSet();
-  return (key: string, value: any) => {
+  return (key: string, value: unknown) => {
     // 1. Handle BigInt (Common in DuckDB / Apache Arrow)
     if (typeof value === 'bigint') {
       return `${value.toString()}n`;

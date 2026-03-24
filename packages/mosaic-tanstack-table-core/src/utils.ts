@@ -261,7 +261,7 @@ export function createMosaicColumnHelper<TData extends RowData>() {
             // Constrain the filterVariant based on TData[TKey]
             filterVariant?: FilterVariantFor<TData[TKey]>;
           };
-        } & Record<string, any>;
+        } & Record<string, unknown>;
       } = {},
     ): ColumnDef<TData, TData[TKey]> => {
       return {

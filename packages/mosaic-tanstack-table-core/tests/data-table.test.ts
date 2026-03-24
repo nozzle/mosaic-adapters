@@ -6,8 +6,7 @@ const { queryFieldInfoMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@uwdata/mosaic-core', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('@uwdata/mosaic-core')>();
+  const actual = await importOriginal<typeof import('@uwdata/mosaic-core')>();
 
   return {
     ...actual,
@@ -19,10 +18,7 @@ import { Selection } from '@uwdata/mosaic-core';
 import { MosaicDataTable } from '../src/data-table';
 import { GROUP_ID_SEPARATOR } from '../src/grouped/types';
 
-import type {
-  MosaicDataTableOptions,
-  PrimitiveSqlValue,
-} from '../src/types';
+import type { MosaicDataTableOptions, PrimitiveSqlValue } from '../src/types';
 
 type AthleteRow = {
   id: string;
@@ -54,9 +50,7 @@ class FakeCoordinator {
     [];
   #responses: Array<{
     matcher: QueryMatcher;
-    value:
-      | unknown
-      | ((sql: string) => unknown | Promise<unknown>);
+    value: unknown | ((sql: string) => unknown | Promise<unknown>);
   }> = [];
 
   connect(client: {
@@ -161,7 +155,8 @@ function createFlatClient(
     MosaicDataTableOptions<AthleteRow, PrimitiveSqlValue>
   > = {},
 ) {
-  const coordinator = (overrides.coordinator as FakeCoordinator | undefined) ??
+  const coordinator =
+    (overrides.coordinator as FakeCoordinator | undefined) ??
     new FakeCoordinator();
 
   const client = new MosaicDataTable<AthleteRow>({
@@ -239,7 +234,9 @@ describe('MosaicDataTable characterization', () => {
     expect(sql).toContain('COUNT(*) OVER()');
     expect(sql).toContain('"status" = \'active\'');
     expect(sql).toContain('"athlete_name" ILIKE \'%alex%\'');
-    expect(sql).toContain('TRY_CAST("profile"."age" AS DOUBLE) BETWEEN 10 AND 30');
+    expect(sql).toContain(
+      'TRY_CAST("profile"."age" AS DOUBLE) BETWEEN 10 AND 30',
+    );
     expect(sql).toContain('ORDER BY "profile"."age" DESC');
     expect(sql).toContain('LIMIT 25');
     expect(sql).toContain('OFFSET 50');
@@ -262,7 +259,9 @@ describe('MosaicDataTable characterization', () => {
 
     coordinator.enqueueResponse(
       'FROM "athletes"',
-      createArrowTable([{ id: '1', name: 'Alice', age: 31, country: 'NZ', status: 'active' }]),
+      createArrowTable([
+        { id: '1', name: 'Alice', age: 31, country: 'NZ', status: 'active' },
+      ]),
     );
 
     client.connect();
@@ -312,7 +311,7 @@ describe('MosaicDataTable characterization', () => {
     });
     expect(rowSelection.valueFor(client)).toEqual(['2', '7']);
     expect(rowSelection.active?.predicate?.toString()).toContain(
-      '"id" IN (\'2\', \'7\')',
+      "\"id\" IN ('2', '7')",
     );
   });
 
@@ -403,21 +402,19 @@ describe('MosaicDataTable characterization', () => {
 
     coordinator.enqueueResponse(
       (sql) =>
-        sql.includes('GROUP BY "country"') &&
-        !sql.includes('GROUP BY "sport"'),
+        sql.includes('GROUP BY "country"') && !sql.includes('GROUP BY "sport"'),
       createArrowTable([{ country: 'USA', count: 2 }]),
     );
     coordinator.enqueueResponse(
-      (sql) =>
-        sql.includes('GROUP BY "sport"') && sql.includes('\'USA\''),
+      (sql) => sql.includes('GROUP BY "sport"') && sql.includes("'USA'"),
       createArrowTable([{ sport: 'Swimming', count: 2 }]),
     );
     coordinator.enqueueResponse(
       (sql) =>
         sql.includes('"unique_key"') &&
         sql.includes('"name"') &&
-        sql.includes('\'USA\'') &&
-        sql.includes('\'Swimming\''),
+        sql.includes("'USA'") &&
+        sql.includes("'Swimming'"),
       createArrowTable([
         { unique_key: 'u1', name: 'Alice' },
         { unique_key: 'u2', name: 'Bob' },

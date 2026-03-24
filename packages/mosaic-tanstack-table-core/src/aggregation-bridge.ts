@@ -3,13 +3,9 @@
  * Used for "Cross-Filtering Aggregations" where a summary table filters a detail table via a subquery.
  */
 
-import type { Selection } from '@uwdata/mosaic-core';
+import type { Selection, SelectionClause } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { SelectionSource } from './types';
-
-// Extract the exact Predicate type expected by Mosaic's Selection.update method
-// This works even if ExprNode is not exported by the package
-type MosaicSelectionPredicate = Parameters<Selection['update']>[0]['predicate'];
 
 export interface AggregationBridgeOptions {
   /** Identity source for cross-filtering */
@@ -62,7 +58,7 @@ export class AggregationBridge {
       // Only clear if not already empty to avoid loops
       if (outputSelection.value !== null) {
         outputSelection.update({
-          source: source as any,
+          source,
           value: null,
           predicate: null,
         });
@@ -78,10 +74,9 @@ export class AggregationBridge {
 
     // 3. Update Output
     outputSelection.update({
-      source: source as any,
+      source,
       value: 'custom', // Arbitrary value, we rely on the predicate
-      // Casting to unknown first then to the derived Mosaic type to strict-ify the type
-      predicate: resultPredicate as unknown as MosaicSelectionPredicate,
+      predicate: resultPredicate as SelectionClause['predicate'],
     });
   };
 

@@ -8,20 +8,28 @@ import type { RowData } from '@tanstack/table-core';
 import type {
   MosaicDataTableColumnDefMetaOptions,
   MosaicDataTableStore,
+  PrimitiveSqlValue,
 } from './types';
 import type { MosaicDataTable } from './data-table';
 import type { GroupMeta } from './grouped/types';
+import type { FacetStrategyKeyWithoutInput } from './registry';
 
 declare module '@tanstack/table-core' {
   // Extend the Table Instance with the first-class Mosaic API
   interface Table<TData extends RowData> {
     mosaicDataTable: {
-      requestFacet: (columnId: string, type: string) => void;
+      requestFacet: (
+        columnId: string,
+        type: FacetStrategyKeyWithoutInput,
+      ) => void;
       requestTotalCount: () => void;
-      client: MosaicDataTable<TData, any>;
+      client: MosaicDataTable<TData, PrimitiveSqlValue>;
     };
     getIsGroupedMode: () => boolean;
-    getGroupedState: () => MosaicDataTableStore<TData, any>['_grouped'];
+    getGroupedState: () => MosaicDataTableStore<
+      TData,
+      PrimitiveSqlValue
+    >['_grouped'];
     isGroupedRowLoading: (rowId: string) => boolean;
   }
 

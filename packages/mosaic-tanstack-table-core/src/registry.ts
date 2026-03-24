@@ -4,15 +4,28 @@
  *
  * Implements strict type contracts for Inputs and Outputs of strategies.
  */
-import type { HistogramInput, HistogramOutput } from './facet-strategies';
+import type {
+  FacetStrategy,
+  HistogramInput,
+  HistogramOutput,
+} from './facet-strategies';
 
-export class StrategyRegistry<T> {
-  private strategies = new Map<string, T>();
+export class StrategyRegistry<TStrategies extends Record<string, unknown>> {
+  private strategies = new Map<
+    keyof TStrategies,
+    TStrategies[keyof TStrategies]
+  >();
 
-  constructor(defaults?: Record<string, T>) {
+  constructor(defaults?: Partial<TStrategies>) {
     if (defaults) {
       Object.entries(defaults).forEach(([key, value]) => {
-        this.register(key, value);
+        if (value === undefined) {
+          return;
+        }
+        this.register(
+          key as keyof TStrategies,
+          value as TStrategies[keyof TStrategies],
+        );
       });
     }
   }
@@ -22,7 +35,10 @@ export class StrategyRegistry<T> {
    * @param name - The unique identifier for the strategy (e.g., 'spatial-contains').
    * @param impl - The implementation of the strategy.
    */
-  register(name: string, impl: T): void {
+  register<TKey extends keyof TStrategies>(
+    name: TKey,
+    impl: TStrategies[TKey],
+  ): void {
     this.strategies.set(name, impl);
   }
 
@@ -31,14 +47,16 @@ export class StrategyRegistry<T> {
    * @param name - The unique identifier.
    * @returns The strategy implementation, or undefined if not found.
    */
-  get(name: string): T | undefined {
-    return this.strategies.get(name);
+  get<TKey extends keyof TStrategies>(
+    name: TKey,
+  ): TStrategies[TKey] | undefined {
+    return this.strategies.get(name) as TStrategies[TKey] | undefined;
   }
 
   /**
    * Unregister a strategy.
    */
-  unregister(name: string): void {
+  unregister<TKey extends keyof TStrategies>(name: TKey): void {
     this.strategies.delete(name);
   }
 }
@@ -69,6 +87,18 @@ export interface MosaicFacetRegistry {
 }
 
 export type FacetStrategyKey = keyof MosaicFacetRegistry;
+export type FacetStrategyKeyWithoutInput = {
+  [K in FacetStrategyKey]: MosaicFacetRegistry[K]['input'] extends void
+    ? K
+    : never;
+}[FacetStrategyKey];
+
+export type FacetStrategyMap = {
+  [K in FacetStrategyKey]: FacetStrategy<
+    MosaicFacetRegistry[K]['input'],
+    MosaicFacetRegistry[K]['output']
+  >;
+};
 
 /**
  * Discriminated Union for Sidecar Requests.
