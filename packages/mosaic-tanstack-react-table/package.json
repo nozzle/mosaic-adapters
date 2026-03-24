@@ -67,18 +67,16 @@
   "dependencies": {
     "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@tanstack/react-store": "catalog:",
-    "@tanstack/table-core": "catalog:",
-    "@uwdata/mosaic-core": "catalog:",
-    "@uwdata/mosaic-sql": "catalog:",
-    "@uwdata/vgplot": "catalog:",
-    "@nozzleio/react-mosaic": "workspace:*"
+    "@uwdata/mosaic-core": "catalog:"
   },
   "peerDependencies": {
+    "@nozzleio/react-mosaic": "workspace:*",
     "@tanstack/react-table": ">=8.17.3",
     "react": ">=19.2.4",
     "react-dom": ">=19.2.4"
   },
   "devDependencies": {
+    "@nozzleio/react-mosaic": "workspace:*",
     "@eslint-react/eslint-plugin": "catalog:",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

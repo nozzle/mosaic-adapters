@@ -81,7 +81,6 @@ vi.mock('@nozzleio/mosaic-tanstack-table-core', async () => {
   }
 
   return {
-    HistogramStrategy: { key: 'histogram' },
     createMosaicDataTableClient: (options: unknown) => {
       const client = new MockTableClient(options);
       mockState.tableClients.push(client);
@@ -96,6 +95,10 @@ vi.mock('@nozzleio/mosaic-tanstack-table-core', async () => {
     MosaicFilter: MockMosaicFilter,
   };
 });
+
+vi.mock('@nozzleio/mosaic-tanstack-table-core/facet-strategies', () => ({
+  HistogramStrategy: { key: 'histogram' },
+}));
 
 vi.mock('@nozzleio/mosaic-tanstack-table-core/sidecar', () => {
   class MockHistogramClient {

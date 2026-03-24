@@ -1,10 +1,32 @@
 {
   "name": "@nozzleio/mosaic-tanstack-table-core",
   "version": "0.0.0",
+  "description": "Framework-agnostic core APIs for the Mosaic TanStack table adapter.",
+  "license": "MIT",
   "type": "module",
   "main": "dist/esm/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nozzle/mosaic-adapters.git",
+    "directory": "packages/mosaic-tanstack-table-core"
+  },
+  "homepage": "https://github.com/nozzle/mosaic-adapters/tree/main/packages/mosaic-tanstack-table-core",
+  "bugs": {
+    "url": "https://github.com/nozzle/mosaic-adapters/issues"
+  },
+  "keywords": [
+    "mosaic",
+    "tanstack-table",
+    "duckdb",
+    "headless"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
   "exports": {
     ".": {
       "import": {
@@ -22,6 +44,12 @@
       "import": {
         "types": "./dist/esm/grouped/index.d.ts",
         "default": "./dist/esm/grouped/index.js"
+      }
+    },
+    "./facet-strategies": {
+      "import": {
+        "types": "./dist/esm/facet-strategies.d.ts",
+        "default": "./dist/esm/facet-strategies.js"
       }
     },
     "./sidecar": {

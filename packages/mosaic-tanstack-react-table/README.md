@@ -2,6 +2,8 @@
 
 React bindings for the Mosaic TanStack table adapter.
 
+Install this package alongside `@nozzleio/react-mosaic`; the table hooks consume the shared React Mosaic context exposed there.
+
 This package exports the React-facing table hooks and active-filter helpers:
 
 - `useMosaicReactTable`

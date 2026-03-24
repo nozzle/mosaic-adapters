@@ -10,13 +10,14 @@ The **Mosaic adapters** in this repo extend Mosaic to work seamlessly with TanSt
 
 If you are building a React app, the primary library is `@nozzleio/mosaic-tanstack-react-table`. The `@nozzleio/react-mosaic` package provides React bindings around Mosaic primitives. See the package overview in [Package Map](./package-map.md).
 
-**Packages you install:**
+**Most React apps install:**
 
 | Package                                 | Purpose                                                                      |
 | --------------------------------------- | ---------------------------------------------------------------------------- |
-| `@nozzleio/mosaic-tanstack-table-core`  | Framework-agnostic core: curated headless table APIs and controllers         |
 | `@nozzleio/mosaic-tanstack-react-table` | React bindings: hooks for tables, facets, filters, histograms                |
 | `@nozzleio/react-mosaic`                | React primitives: coordinator context, selection helpers, selection registry |
+
+Install `@nozzleio/mosaic-tanstack-table-core` directly only if you are extending the headless adapter outside the React wrapper package or consuming its explicit low-level subpaths.
 
 ## Coordinator
 
