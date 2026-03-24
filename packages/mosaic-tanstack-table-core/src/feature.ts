@@ -1,6 +1,7 @@
 import type { RowData, Table, TableFeature } from '@tanstack/table-core';
 import type { MosaicDataTable } from './data-table';
 import type { PrimitiveSqlValue } from './types';
+import type { FacetStrategyKeyWithoutInput } from './registry';
 
 /**
  * Creates a TanStack Table Feature that injects the Mosaic Client API
@@ -19,8 +20,10 @@ export const createMosaicFeature = <
     createTable: (table: Table<TData>) => {
       Object.assign(table, {
         mosaicDataTable: {
-          requestFacet: (columnId: string, type: string) =>
-            client.requestFacet(columnId, type),
+          requestFacet: (
+            columnId: string,
+            type: FacetStrategyKeyWithoutInput,
+          ) => client.requestFacet(columnId, type),
           requestTotalCount: () => client.sidecarManager.requestTotalCount(),
           client: client,
         },

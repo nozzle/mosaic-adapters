@@ -10,41 +10,59 @@ import type { MosaicDataTable } from './data-table';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type { RowData } from '@tanstack/table-core';
 import type { MosaicTableSource, PrimitiveSqlValue } from './types';
-import type { SidecarRequest, StrategyRegistry } from './registry';
-import type { FacetStrategy } from './facet-strategies';
+import type {
+  FacetStrategyKey,
+  FacetStrategyKeyWithoutInput,
+  FacetStrategyMap,
+  MosaicFacetRegistry,
+  SidecarRequest,
+  StrategyRegistry,
+} from './registry';
+
+type ManagedSidecar = {
+  setCoordinator: (coordinator: Coordinator) => void;
+  connect: () => () => void;
+  disconnect: () => void;
+  requestUpdate: () => void;
+};
 
 export class SidecarManager<
   TData extends RowData,
   TValue extends PrimitiveSqlValue = PrimitiveSqlValue,
 > {
-  private clients = new Map<string, SidecarClient<any, any>>();
+  private clients = new Map<string, ManagedSidecar>();
 
   constructor(
     private host: MosaicDataTable<TData, TValue>,
-    private facetRegistry: StrategyRegistry<FacetStrategy<any, any>>,
+    private facetRegistry: StrategyRegistry<FacetStrategyMap>,
   ) {}
 
-  requestFacet(columnId: string, type: string) {
+  requestFacet(columnId: string, type: FacetStrategyKeyWithoutInput) {
     this.requestAuxiliary({
       id: `${columnId}:${type}`,
-      type: type as any,
-      column: columnId as any,
+      type,
+      column: columnId,
       excludeColumnId: columnId,
       options: undefined,
       onResult: (val: unknown) => {
         this.host.updateFacetValue(columnId, val);
       },
-    } as SidecarRequest<TData>);
+    });
   }
 
-  requestAuxiliary(config: SidecarRequest<TData>) {
+  requestAuxiliary<TKey extends FacetStrategyKey>(
+    config: Extract<SidecarRequest<TData>, { type: TKey }>,
+  ) {
     if (this.clients.has(config.id)) {
       return;
     }
 
     // Retrieve strategy from registry. Discriminated unions in SidecarRequest
     // ensure that config.type matches an available strategy in the registry.
-    const strategy = this.facetRegistry.get(config.type)!;
+    const strategy = this.facetRegistry.get(config.type);
+    if (!strategy) {
+      return;
+    }
 
     const sqlColumn =
       this.host.getColumnSqlName(config.column) || config.column;
@@ -52,18 +70,18 @@ export class SidecarManager<
     const colDef = this.host.getColumnDef(sqlColumn);
     const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
 
-    // We cast to any here because config.options is strictly typed based on the current
-    // strategies in the registry.
-    const strategyInput = config.options;
-
-    // Do not spread strategyInput. It belongs in the 'options' property of the context.
-    // This ensures ctx.options is populated for strategies that require inputs (like step for histograms).
-    const queryOptions = {
+    const query = {
       sortMode,
-      options: strategyInput,
+      options: config.options,
     };
+    const onResult = config.onResult as
+      | ((result: MosaicFacetRegistry[TKey]['output']) => void)
+      | undefined;
 
-    const client = new SidecarClient(
+    const client = new SidecarClient<
+      MosaicFacetRegistry[TKey]['input'],
+      MosaicFacetRegistry[TKey]['output']
+    >(
       {
         source: this.host.source,
         column: sqlColumn,
@@ -73,13 +91,13 @@ export class SidecarManager<
             excludeColumnId: config.excludeColumnId,
           }),
         onResult: (val) => {
-          if (config.onResult) {
-            config.onResult(val);
+          if (onResult) {
+            onResult(val);
           } else {
             this.host.updateFacetValue(config.id, val);
           }
         },
-        options: queryOptions,
+        query,
         __debugName: `${this.host.options.__debugName || 'Table'}:Aux:${config.id}`,
       },
       strategy,

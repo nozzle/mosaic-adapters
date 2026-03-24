@@ -14,7 +14,22 @@ import type { RowData, TableState } from '@tanstack/table-core';
 import type { ColumnMapper } from './column-mapper';
 import type { StrategyRegistry } from '../registry';
 import type { FilterStrategy } from './filter-factory';
-import type { FilterInput, MosaicColumnMapping } from '../types';
+import type { FilterInput, FilterMode, MosaicColumnMapping } from '../types';
+
+type SelectValue =
+  | ReturnType<typeof mSql.column>
+  | ReturnType<typeof mSql.literal>
+  | ReturnType<typeof mSql.max>
+  | ReturnType<typeof mSql.sql>;
+
+function hasFilterMode(value: unknown): value is { mode: FilterMode } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'mode' in value &&
+    typeof value.mode === 'string'
+  );
+}
 
 export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   source: string | SelectQuery;
@@ -26,7 +41,7 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   excludeColumnId?: string; // For cascading facets
   highlightPredicate?: mSql.FilterExpr | null;
   manualHighlight?: boolean;
-  filterRegistry: StrategyRegistry<FilterStrategy>;
+  filterRegistry: StrategyRegistry<Record<string, FilterStrategy>>;
 }
 
 export function buildTableQuery<TData extends RowData, TValue>(
@@ -62,7 +77,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
     return mSql.column(colStr);
   });
 
-  const extraSelects: Record<string, any> = {};
+  const extraSelects: Record<string, SelectValue> = {};
 
   if (totalRowsMode === 'window') {
     extraSelects[totalRowsColumnName] = mSql.sql`COUNT(*) OVER()`;
@@ -140,7 +155,7 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
   tableState: TableState;
   mapper: ColumnMapper<TData, TValue>;
   mapping: MosaicColumnMapping<TData> | undefined; // Enforce explicit undefined if missing
-  filterRegistry: StrategyRegistry<FilterStrategy>;
+  filterRegistry: StrategyRegistry<Record<string, FilterStrategy>>;
   excludeColumnId?: string;
 }): Array<mSql.FilterExpr> {
   const clauses: Array<mSql.FilterExpr> = [];
@@ -165,12 +180,8 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
     // DYNAMIC OVERRIDE:
     // If the UI passed a full FilterInput object (which has a 'mode'), use that mode
     // to determine the strategy, ignoring the static column config.
-    if (
-      typeof rawValue === 'object' &&
-      rawValue !== null &&
-      'mode' in rawValue
-    ) {
-      const dynamicMode = (rawValue as any).mode;
+    if (hasFilterMode(rawValue)) {
+      const dynamicMode = rawValue.mode;
       const strategy = options.filterRegistry.get(dynamicMode);
 
       if (strategy) {

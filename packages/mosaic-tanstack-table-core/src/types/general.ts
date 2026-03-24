@@ -3,7 +3,12 @@
  * Defines configuration options, store structures, and metadata extensions.
  */
 
-import type { Coordinator, Param, Selection } from '@uwdata/mosaic-core';
+import type {
+  ClauseSource,
+  Coordinator,
+  Param,
+  Selection,
+} from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
@@ -12,9 +17,9 @@ import type {
   TableOptions,
   TableState,
 } from '@tanstack/table-core';
-import type { FacetStrategy } from '../facet-strategies';
 import type { FilterStrategy } from '../query/filter-factory';
 import type { GroupLevel, GroupMetric, LeafColumn } from '../grouped/types';
+import type { FacetStrategyMap } from '../registry';
 
 export type MosaicDataTableSqlFilterType =
   | 'EQUALS'
@@ -48,6 +53,15 @@ export type PrimitiveSqlValue =
   | Date
   | null
   | undefined;
+
+export type ConditionComparableValue = Exclude<
+  PrimitiveSqlValue,
+  null | undefined
+>;
+
+export type ConditionValue =
+  | ConditionComparableValue
+  | Array<ConditionComparableValue>;
 
 export type FilterOperator =
   | 'eq'
@@ -187,14 +201,14 @@ export type FilterInput =
   | {
       mode: 'CONDITION';
       operator: FilterOperator;
-      value: any;
-      valueTo?: any;
+      value?: ConditionValue | null;
+      valueTo?: ConditionComparableValue | null;
       dataType?: 'string' | 'number' | 'date' | 'boolean';
     };
 
 export type FilterMode = FilterInput['mode'];
 
-export type SelectionSource = object;
+export type SelectionSource = ClauseSource;
 
 export interface IMosaicClient {
   readonly isConnected: boolean;
@@ -289,7 +303,7 @@ export interface MosaicDataTableOptions<
   __debugName?: string;
 
   filterStrategies?: Record<string, FilterStrategy>;
-  facetStrategies?: Record<string, FacetStrategy<any, any>>;
+  facetStrategies?: Partial<FacetStrategyMap>;
 
   /**
    * Optional validator function to ensure row data matches expected schema.
@@ -368,7 +382,7 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   };
 };
 
-export type FacetClientConfig<TResult extends Array<any>> = {
+export type FacetClientConfig<TResult extends ReadonlyArray<unknown>> = {
   filterBy?: Selection;
   coordinator?: Coordinator | null;
   source: MosaicTableSource;

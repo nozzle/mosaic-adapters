@@ -1,5 +1,54 @@
 import { Store } from '@tanstack/store';
-import type { Selection } from '@uwdata/mosaic-core';
+import type {
+  ClauseSource,
+  Selection,
+  SelectionClause,
+} from '@uwdata/mosaic-core';
+
+type SelectionArrayItem = {
+  id: string;
+  value: unknown;
+};
+
+type FilterSourceDescriptor = ClauseSource & {
+  rowSelectionColumn?: string;
+  column?: string;
+  options?: {
+    column?: string;
+  };
+  debugName?: string;
+};
+
+function isSelectionArrayItem(value: unknown): value is SelectionArrayItem {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    'value' in value
+  );
+}
+
+function resolveSourceId(sourceClient: ClauseSource | undefined): string {
+  if (!sourceClient) {
+    return 'unknown';
+  }
+
+  const descriptor = sourceClient as FilterSourceDescriptor;
+  if (descriptor.rowSelectionColumn) {
+    return descriptor.rowSelectionColumn;
+  }
+  if (descriptor.column) {
+    return descriptor.column;
+  }
+  if (descriptor.options?.column) {
+    return descriptor.options.column;
+  }
+  if (descriptor.debugName) {
+    return descriptor.debugName;
+  }
+
+  return 'unknown';
+}
 
 /**
  * Configuration for a logical group of filters.
@@ -35,7 +84,7 @@ export interface ActiveFilter {
   formattedValue: string;
   selection: Selection;
   /** The original source object that generated this filter */
-  sourceObject: unknown;
+  sourceObject: ClauseSource;
   /** If this is part of a larger object (like Table Filters), identifying key */
   subId?: string;
 }
@@ -91,10 +140,9 @@ export class MosaicFilterRegistry {
     const allFilters: Array<ActiveFilter> = [];
 
     for (const [selection, config] of this.registrations.entries()) {
-      // Access internal clauses of the selection.
-      const clauses = (selection as any).clauses || [];
+      const clauses = selection.clauses;
 
-      clauses.forEach((clause: any) => {
+      clauses.forEach((clause: SelectionClause) => {
         const sourceClient = clause.source;
         const rawValue = clause.value;
 
@@ -104,49 +152,30 @@ export class MosaicFilterRegistry {
         }
 
         // --- Logic to resolve Source ID ---
-        let sourceId = 'unknown';
-
-        if (sourceClient) {
-          if (sourceClient.rowSelectionColumn) {
-            // Case: MosaicDataTable (Summary Row Selection)
-            sourceId = sourceClient.rowSelectionColumn;
-          } else if (sourceClient.column) {
-            // Case: MosaicFacetMenu or similar
-            sourceId = sourceClient.column;
-          } else if (sourceClient.options?.column) {
-            sourceId = sourceClient.options.column;
-          } else if (sourceClient.debugName) {
-            sourceId = sourceClient.debugName;
-          }
-        }
+        const sourceId = resolveSourceId(sourceClient);
 
         // --- Logic to explode TanStack Filter Arrays (Detail Table) ---
         // Heuristic: Array of objects with { id, value }
         const isTanStackFilterArray =
           Array.isArray(rawValue) &&
           rawValue.length > 0 &&
-          typeof rawValue[0] === 'object' && // Check if item is object (Fix for "Cannot use 'in' operator")
-          rawValue[0] !== null &&
-          'id' in rawValue[0] &&
-          'value' in rawValue[0];
+          isSelectionArrayItem(rawValue[0]);
 
         if (isTanStackFilterArray) {
-          (rawValue as Array<{ id: string; value: unknown }>).forEach(
-            (item) => {
-              const itemSourceId = item.id;
-              const itemValue = item.value;
+          rawValue.forEach((item) => {
+            const itemSourceId = item.id;
+            const itemValue = item.value;
 
-              this.addActiveFilter(
-                allFilters,
-                config,
-                itemSourceId,
-                itemValue,
-                selection,
-                sourceClient,
-                itemSourceId, // subId
-              );
-            },
-          );
+            this.addActiveFilter(
+              allFilters,
+              config,
+              itemSourceId,
+              itemValue,
+              selection,
+              sourceClient,
+              itemSourceId,
+            );
+          });
         } else {
           // Standard Single Value
           this.addActiveFilter(
@@ -177,7 +206,7 @@ export class MosaicFilterRegistry {
     sourceId: string,
     value: unknown,
     selection: Selection,
-    sourceObject: unknown,
+    sourceObject: ClauseSource,
     subId?: string,
   ) {
     let label = sourceId;
@@ -240,28 +269,25 @@ export class MosaicFilterRegistry {
    * Supports granular removal for Table Filters by mutating the array and writing back.
    */
   removeFilter(filter: ActiveFilter) {
-    if (!filter.sourceObject) {
-      return;
-    }
-
     // Check if this is a sub-filter (part of an array, like Table Column Filters)
-    if (filter.subId && Array.isArray((filter.selection as any).value)) {
-      const currentVal = (filter.selection as any).value as Array<{
-        id: string;
-        value: unknown;
-      }>;
+    if (
+      filter.subId &&
+      Array.isArray(filter.selection.value) &&
+      filter.selection.value.every(isSelectionArrayItem)
+    ) {
+      const currentVal = filter.selection.value;
       // Filter out the specific item
       const nextVal = currentVal.filter((item) => item.id !== filter.subId);
 
       filter.selection.update({
-        source: filter.sourceObject as object,
-        value: nextVal, // Write back the modified array
-        predicate: null, // Let the source (Table) regenerate the predicate internally if needed, or pass null to force a refresh cycle
+        source: filter.sourceObject,
+        value: nextVal,
+        predicate: null,
       });
     } else {
       // Standard clearing
       filter.selection.update({
-        source: filter.sourceObject as object,
+        source: filter.sourceObject,
         value: null,
         predicate: null,
       });

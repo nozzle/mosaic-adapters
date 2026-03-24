@@ -72,7 +72,11 @@ export function materializeFlatQueryResult<
   }
 
   const typedRows = materializedRows as Array<TData>;
-  const totalRows = readWindowTotalRows(typedRows, options, totalRowsColumnName);
+  const totalRows = readWindowTotalRows(
+    typedRows,
+    options,
+    totalRowsColumnName,
+  );
 
   return {
     rows: typedRows,

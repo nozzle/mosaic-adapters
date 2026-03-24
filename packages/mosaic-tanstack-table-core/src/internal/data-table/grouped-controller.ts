@@ -12,10 +12,7 @@ import { createMosaicFeature } from '../../feature';
 import { functionalUpdate } from '../../utils';
 
 import type { MosaicDataTable } from '../../data-table';
-import type {
-  MosaicDataTableStore,
-  PrimitiveSqlValue,
-} from '../../types';
+import type { MosaicDataTableStore, PrimitiveSqlValue } from '../../types';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type {
   ColumnDef,
@@ -320,7 +317,9 @@ export class GroupedTableController<
   }
 
   async #refreshExpandedChildren(): Promise<void> {
-    const expandedKeys = getExpandedKeys(this.client.store.state._grouped.expanded);
+    const expandedKeys = getExpandedKeys(
+      this.client.store.state._grouped.expanded,
+    );
     if (expandedKeys.length === 0) {
       return;
     }
@@ -664,7 +663,9 @@ export class GroupedTableController<
     );
 
     this.#autoLeafColumnDefs = leafKeys.map((key) => {
-      const leafColumn = groupBy.leafColumns?.find((item) => item.column === key);
+      const leafColumn = groupBy.leafColumns?.find(
+        (item) => item.column === key,
+      );
       return {
         accessorKey: key,
         header: leafColumn?.label ?? key,

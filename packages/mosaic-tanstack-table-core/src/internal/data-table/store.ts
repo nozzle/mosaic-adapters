@@ -26,7 +26,9 @@ export function createInitialDataTableStore<
   options: MosaicDataTableOptions<TData, TValue>,
 ): MosaicDataTableStore<TData, TValue> {
   return {
-    tableState: seedInitialTableState<TData>(options.tableOptions?.initialState),
+    tableState: seedInitialTableState<TData>(
+      options.tableOptions?.initialState,
+    ),
     tableOptions: {
       ...(options.tableOptions ?? {}),
     } as MosaicDataTableStore<TData, TValue>['tableOptions'],

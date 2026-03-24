@@ -2,6 +2,12 @@ import { SidecarClient } from './sidecar-client';
 import type { FacetStrategy } from './facet-strategies';
 import type { SidecarConfig } from './sidecar-client';
 
+type TypedSidecarConfig<TInput, TOutput> = Omit<
+  SidecarConfig<TInput, TOutput>,
+  'query'
+> &
+  ([TInput] extends [void] ? { options?: undefined } : { options: TInput });
+
 /**
  * Creates a strongly-typed SidecarClient class for a specific Strategy.
  * Enforces that the constructor options match the Strategy's TInput requirement.
@@ -12,23 +18,17 @@ import type { SidecarConfig } from './sidecar-client';
 export function createTypedSidecarClient<TInput, TOutput>(
   strategy: FacetStrategy<TInput, TOutput>,
 ): new (
-  config: Omit<SidecarConfig<TInput, TOutput>, 'options'> & {
-    options: TInput extends void ? void | undefined : TInput;
-  },
+  config: TypedSidecarConfig<TInput, TOutput>,
 ) => SidecarClient<TInput, TOutput> {
-  // Define the strict config type based on TInput
-  type TypedConfig = Omit<SidecarConfig<TInput, TOutput>, 'options'> & {
-    options: TInput extends void ? void | undefined : TInput;
-  };
-
   class TypedSidecar extends SidecarClient<TInput, TOutput> {
-    constructor(config: TypedConfig) {
-      // Nest options inside an 'options' property so they are spread correctly into ctx.options.
-      // SidecarClient spreads `config.options` into the context.
-      // FacetQueryContext expects `options: TInput`.
-      // Therefore, we must pass `{ options: config.options }`.
+    constructor(config: TypedSidecarConfig<TInput, TOutput>) {
       super(
-        { ...config, options: { options: config.options } as any },
+        {
+          ...config,
+          query: {
+            options: config.options,
+          },
+        },
         strategy,
       );
     }

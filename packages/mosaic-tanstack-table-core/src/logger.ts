@@ -26,8 +26,18 @@ interface LogEntry {
   lvl: LogLevel;
   cat: LogCategory;
   msg: string;
-  meta?: any;
+  meta?: unknown;
 }
+
+type ViteImportMeta = ImportMeta & {
+  env?: {
+    VITE_DEBUG_MODE?: string;
+  };
+};
+
+type WindowWithLogger = Window & {
+  __MOSAIC_LOGGER__?: LogManager;
+};
 
 class LogManager {
   private logs: Array<LogEntry> = [];
@@ -36,12 +46,12 @@ class LogManager {
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   // Cache strictly for calculating diffs between log events
-  private stateCache = new Map<string, any>();
+  private stateCache = new Map<string, Record<string, unknown>>();
 
   // Check debug mode from environment (supports Vite and Node.js)
   private isDebug =
     (typeof import.meta !== 'undefined' &&
-      (import.meta as any).env?.VITE_DEBUG_MODE === 'true') ||
+      (import.meta as ViteImportMeta).env.VITE_DEBUG_MODE === 'true') ||
     (typeof process !== 'undefined' &&
       typeof process.env !== 'undefined' &&
       process.env.DEBUG === 'true');
@@ -49,7 +59,7 @@ class LogManager {
   constructor() {
     // Auto-enable verbose logging in dev environments if needed
     if (typeof window !== 'undefined') {
-      (window as any).__MOSAIC_LOGGER__ = this;
+      (window as WindowWithLogger).__MOSAIC_LOGGER__ = this;
     }
   }
 
@@ -57,7 +67,7 @@ class LogManager {
     level: LogLevel,
     category: LogCategory,
     message: string,
-    meta?: any,
+    meta?: unknown,
   ) {
     // 1. Console Output (Keep it rich for developers)
     this.printToConsole(level, category, message, meta);
@@ -67,19 +77,35 @@ class LogManager {
 
     // Special handling for State Updates (Diffing)
     // If an ID is provided, we track changes over time instead of full dumps.
-    if (message.includes('State Change') && meta?.id) {
-      const prev = this.stateCache.get(meta.id);
+    if (
+      message.includes('State Change') &&
+      meta &&
+      typeof meta === 'object' &&
+      'id' in meta &&
+      'newState' in meta
+    ) {
+      const stateMeta = meta as {
+        id: string;
+        newState: Record<string, unknown>;
+      };
+      const prev = this.stateCache.get(stateMeta.id);
       if (prev) {
-        const diff = getObjectDiff(prev, meta.newState);
+        const diff = getObjectDiff(prev, stateMeta.newState);
         storedMeta = { diff }; // Only store what changed
       } else {
-        storedMeta = { initialState: meta.newState };
+        storedMeta = { initialState: stateMeta.newState };
       }
       // Update cache for next time
-      this.stateCache.set(meta.id, meta.newState);
+      this.stateCache.set(stateMeta.id, stateMeta.newState);
     }
     // Handle SQL: Just store the string, drop the heavy AST objects
-    else if (category === 'SQL' && typeof meta?.sql === 'string') {
+    else if (
+      category === 'SQL' &&
+      meta &&
+      typeof meta === 'object' &&
+      'sql' in meta &&
+      typeof meta.sql === 'string'
+    ) {
       storedMeta = { sql: meta.sql };
     }
 
@@ -105,7 +131,7 @@ class LogManager {
     level: LogLevel,
     category: LogCategory,
     message: string,
-    meta?: any,
+    meta?: unknown,
   ) {
     // Only log to console if debug mode is enabled
     if (!this.isDebug) {
@@ -133,7 +159,7 @@ class LogManager {
     level: LogLevel,
     category: LogCategory,
     message: string,
-    meta?: any,
+    meta?: unknown,
   ) {
     if (this.debounceTimers.has(id)) {
       clearTimeout(this.debounceTimers.get(id));
@@ -148,16 +174,16 @@ class LogManager {
   }
 
   // Public API
-  debug(category: LogCategory, message: string, meta?: any) {
+  debug(category: LogCategory, message: string, meta?: unknown) {
     this.add('debug', category, message, meta);
   }
-  info(category: LogCategory, message: string, meta?: any) {
+  info(category: LogCategory, message: string, meta?: unknown) {
     this.add('info', category, message, meta);
   }
-  warn(category: LogCategory, message: string, meta?: any) {
+  warn(category: LogCategory, message: string, meta?: unknown) {
     this.add('warn', category, message, meta);
   }
-  error(category: LogCategory, message: string, meta?: any) {
+  error(category: LogCategory, message: string, meta?: unknown) {
     this.add('error', category, message, meta);
   }
 

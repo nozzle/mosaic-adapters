@@ -10,18 +10,18 @@ import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { IMosaicClient, MosaicTableSource } from './types';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 
+export type SidecarQueryOptions<TInput> = Pick<
+  FacetQueryContext<TInput>,
+  'searchTerm' | 'limit' | 'sortMode' | 'options'
+>;
+
 export interface SidecarConfig<TInput, TOutput> {
   source: MosaicTableSource;
   column: string;
   getFilters: () => Array<FilterExpr>;
   onResult: (data: TOutput) => void;
   filterBy?: Selection;
-  options?: Partial<
-    Omit<
-      FacetQueryContext<TInput>,
-      'source' | 'column' | 'cascadingFilters' | 'primaryFilter'
-    >
-  >;
+  query?: SidecarQueryOptions<TInput>;
   __debugName?: string;
 }
 
@@ -73,19 +73,12 @@ export class SidecarClient<TInput, TOutput>
     }
   }
 
-  updateRuntimeOptions(
-    opts: Partial<
-      Omit<
-        FacetQueryContext<TInput>,
-        'source' | 'column' | 'cascadingFilters' | 'primaryFilter'
-      >
-    >,
-  ) {
-    this.config.options = { ...this.config.options, ...opts };
+  updateRuntimeOptions(opts: Partial<SidecarQueryOptions<TInput>>) {
+    this.config.query = { ...this.config.query, ...opts };
     this.requestUpdate();
   }
 
-  override requestQuery(query?: any): Promise<any> | null {
+  override requestQuery(query?: SelectQuery): Promise<unknown> | null {
     if (!this.coordinator) {
       return Promise.resolve();
     }
@@ -106,7 +99,7 @@ export class SidecarClient<TInput, TOutput>
       column: this.config.column,
       cascadingFilters,
       primaryFilter,
-      ...(this.config.options as any),
+      ...this.config.query,
     };
 
     const statement = this.strategy.buildQuery(ctx);
