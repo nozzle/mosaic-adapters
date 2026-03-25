@@ -28,6 +28,13 @@ jobs:
       - name: Setup Tools
         uses: tanstack/config/.github/setup@main
 
+      - name: Configure npm registry for trusted publishing
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+
       - name: Run CI checks
         run: pnpm run test:ci
 
