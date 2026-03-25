@@ -9,7 +9,7 @@
   "types": "dist/esm/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nozzle/mosaic-adapters.git",
+    "url": "git+https://github.com/nozzle/mosaic-adapters.git",
     "directory": "packages/mosaic-tanstack-react-table"
   },
   "homepage": "https://github.com/nozzle/mosaic-adapters/tree/main/packages/mosaic-tanstack-react-table",
