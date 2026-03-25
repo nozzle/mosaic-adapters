@@ -37,6 +37,7 @@ Package releases are managed with Changesets and GitHub Actions trusted publishi
 - Changesets maintains a separate `CHANGELOG.md` for each published package.
 - The release workflow on `main` opens or updates a versioning PR until the version changes are merged.
 - After versioned changes land on `main`, the same workflow publishes to npm through GitHub Actions OIDC.
+- npm trusted publishing currently requires npm CLI `11.5.1` or newer. Keep `.nvmrc` on a Node release that bundles a compatible npm version so the release workflow can publish without extra npm bootstrapping.
 - npm trusted publishers should reference `.github/workflows/release.yml`.
 
 This project is friendly towards contributors using AI tools to assist in code generation and improvements. If you are using AI assisted tooling, please point it to the [AGENTS.md](./AGENTS.md) file for guidelines on code style, testing, and overall development workflow.
