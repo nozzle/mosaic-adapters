@@ -44,18 +44,15 @@ jobs:
       - name: Run CI checks
         run: pnpm run test:ci
 
-      - name: Create release PR
+      - name: Create release PR or publish to npm
         id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm run changeset:version
+          publish: pnpm run changeset:publish
           commit: 'ci: version packages'
           title: 'ci: version packages'
+          createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to npm
-        if: steps.changesets.outputs.hasChangesets == 'false'
-        run: pnpm run changeset:publish
-        env:
           NPM_CONFIG_PROVENANCE: true
