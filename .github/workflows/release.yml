@@ -35,6 +35,12 @@ jobs:
           package-manager-cache: false
           registry-url: https://registry.npmjs.org
 
+      - name: Show release tool versions
+        run: |
+          node --version
+          npm --version
+          pnpm --version
+
       - name: Run CI checks
         run: pnpm run test:ci
 
