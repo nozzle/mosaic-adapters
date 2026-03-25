@@ -25,18 +25,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          cache: pnpm
-          node-version-file: .nvmrc
-          registry-url: https://registry.npmjs.org
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Setup Tools
+        uses: tanstack/config/.github/setup@main
 
       - name: Run CI checks
         run: pnpm run test:ci
