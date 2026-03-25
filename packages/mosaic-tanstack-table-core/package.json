@@ -1,6 +1,6 @@
 {
   "name": "@nozzleio/mosaic-tanstack-table-core",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Framework-agnostic core APIs for the Mosaic TanStack table adapter.",
   "license": "MIT",
   "type": "module",
