@@ -9,7 +9,7 @@
   "types": "dist/esm/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nozzle/mosaic-adapters.git",
+    "url": "git+https://github.com/nozzle/mosaic-adapters.git",
     "directory": "packages/react-mosaic"
   },
   "homepage": "https://github.com/nozzle/mosaic-adapters/tree/main/packages/react-mosaic",
