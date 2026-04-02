@@ -21,10 +21,7 @@ function detachIncludedSelection(source: Selection, derived: Selection) {
   relay.delete(derived);
 }
 
-function seedContext(
-  includedSelections: Array<Selection>,
-  context: Selection,
-) {
+function seedContext(includedSelections: Array<Selection>, context: Selection) {
   includedSelections.forEach((selection) => {
     selection.clauses.forEach((clause) => {
       context.update(clause);

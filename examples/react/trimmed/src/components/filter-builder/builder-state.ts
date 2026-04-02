@@ -89,5 +89,7 @@ export function removeFilter(
     return activeFilterIds;
   }
 
-  return activeFilterIds.filter((activeFilterId) => activeFilterId !== filterId);
+  return activeFilterIds.filter(
+    (activeFilterId) => activeFilterId !== filterId,
+  );
 }

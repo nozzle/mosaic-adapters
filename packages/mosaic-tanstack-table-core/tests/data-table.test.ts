@@ -313,9 +313,7 @@ describe('MosaicDataTable characterization', () => {
     expect(rowSelection.valueFor(client)).toEqual(['2', '7']);
     const rowSelectionPredicate = rowSelection.active.predicate;
     expect(rowSelectionPredicate).not.toBeNull();
-    expect(rowSelectionPredicate!.toString()).toContain(
-      "\"id\" IN ('2', '7')",
-    );
+    expect(rowSelectionPredicate!.toString()).toContain("\"id\" IN ('2', '7')");
   });
 
   test('only reacts to meaningful table state changes and refreshes sidecars on filter changes', () => {

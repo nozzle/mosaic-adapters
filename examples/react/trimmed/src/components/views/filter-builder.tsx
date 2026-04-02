@@ -81,13 +81,7 @@ const pageDefinitions: Array<FilterDefinition> = [
     label: 'Athlete',
     column: 'name',
     valueKind: 'text',
-    operators: [
-      'contains',
-      'equals',
-      'not_equals',
-      'is_empty',
-      'is_not_empty',
-    ],
+    operators: ['contains', 'equals', 'not_equals', 'is_empty', 'is_not_empty'],
     defaultOperator: 'contains',
     dataType: 'string',
     description: 'Page-level text filter',
@@ -225,15 +219,18 @@ export function FilterBuilderView() {
   );
   const widgetActiveFilters = useMemo(
     () =>
-      widgetActiveFilterIds.reduce<Array<FilterRuntime>>((filters, filterId) => {
-        const runtime = widget.getFilter(filterId);
-        if (!runtime) {
-          return filters;
-        }
+      widgetActiveFilterIds.reduce<Array<FilterRuntime>>(
+        (filters, filterId) => {
+          const runtime = widget.getFilter(filterId);
+          if (!runtime) {
+            return filters;
+          }
 
-        filters.push(runtime);
-        return filters;
-      }, []),
+          filters.push(runtime);
+          return filters;
+        },
+        [],
+      ),
     [widget, widgetActiveFilterIds],
   );
 
@@ -295,8 +292,8 @@ export function FilterBuilderView() {
           <div className="grid gap-1">
             <h3 className="text-lg font-semibold">Page Filter Scope</h3>
             <p className="max-w-3xl text-sm text-slate-600">
-              These controls write into the page scope. The scatter plot and
-              the roster table both consume <code>page.context</code>.
+              These controls write into the page scope. The scatter plot and the
+              roster table both consume <code>page.context</code>.
             </p>
           </div>
           <AddFilterMenu
@@ -361,8 +358,8 @@ export function FilterBuilderView() {
           <div className="grid gap-1">
             <h3 className="text-lg font-semibold">Widget Filter Scope</h3>
             <p className="max-w-3xl text-sm text-slate-600">
-              This widget adds a local filter section. The medal table reads
-              the explicit intersection of <code>page.context</code> and{' '}
+              This widget adds a local filter section. The medal table reads the
+              explicit intersection of <code>page.context</code> and{' '}
               <code>widget.context</code>.
             </p>
           </div>

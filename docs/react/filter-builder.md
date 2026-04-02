@@ -70,30 +70,35 @@ builder instead of a hardcoded filter form.
 Keep the active filter list in example-local UI state:
 
 ```tsx
-const [pageActiveFilterIds, setPageActiveFilterIds] = useState(['name', 'sport']);
+const [pageActiveFilterIds, setPageActiveFilterIds] = useState([
+  'name',
+  'sport',
+]);
 const [widgetActiveFilterIds, setWidgetActiveFilterIds] = useState(['sex']);
 ```
 
 Then render rows by resolving runtimes from the scope:
 
 ```tsx
-{pageActiveFilterIds.map((id) => {
-  const filter = page.getFilter(id);
-  if (!filter) {
-    return null;
-  }
+{
+  pageActiveFilterIds.map((id) => {
+    const filter = page.getFilter(id);
+    if (!filter) {
+      return null;
+    }
 
-  return (
-    <ActiveFilterRow
-      key={id}
-      filter={filter}
-      filterBy={pageFacetContexts[id]}
-      onRemoveFilter={(filterId) => {
-        setPageActiveFilterIds((ids) => removeFilter(ids, filterId));
-      }}
-    />
-  );
-})}
+    return (
+      <ActiveFilterRow
+        key={id}
+        filter={filter}
+        filterBy={pageFacetContexts[id]}
+        onRemoveFilter={(filterId) => {
+          setPageActiveFilterIds((ids) => removeFilter(ids, filterId));
+        }}
+      />
+    );
+  });
+}
 ```
 
 This first pass intentionally keeps one active instance per filter definition

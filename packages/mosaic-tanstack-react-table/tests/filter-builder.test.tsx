@@ -464,10 +464,7 @@ describe('filter builder hooks', () => {
     expect(probeState.runtime?.selection.value).toMatchObject({
       value: ['Cycling', 'Basketball'],
     });
-    expect(probeState.facet?.selectedValues).toEqual([
-      'Cycling',
-      'Basketball',
-    ]);
+    expect(probeState.facet?.selectedValues).toEqual(['Cycling', 'Basketball']);
 
     act(() => {
       probeState.facet?.clear();
