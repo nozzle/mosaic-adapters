@@ -20,7 +20,9 @@ For schema-driven builder UIs, use the filter-builder hooks instead:
 | `useFilterBinding` | Bind text, date, and number inputs without raw predicate code |
 | `useFilterFacet`   | Resolve facet options for builder-defined facet filters       |
 
-See [Filter Builder](./filter-builder.md) for the page-scope/widget-scope pattern and native HTML examples.
+See [Filter Builder](./filter-builder.md) for the page-scope/widget-scope
+pattern, native HTML examples, and the trimmed dynamic builder example that
+adds and removes active filter rows from a catalog.
 
 All inputs follow the same pattern:
 

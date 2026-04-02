@@ -62,6 +62,59 @@ const widgetContext = useComposedSelection([page.context, widget.context]);
 `page.context` affects every consumer that reads it. `widget.context` stays
 local until you explicitly compose it with the page scope.
 
+## Dynamic Builder Pattern
+
+The trimmed React example now uses the same hooks to drive a primitive dynamic
+builder instead of a hardcoded filter form.
+
+Keep the active filter list in example-local UI state:
+
+```tsx
+const [pageActiveFilterIds, setPageActiveFilterIds] = useState(['name', 'sport']);
+const [widgetActiveFilterIds, setWidgetActiveFilterIds] = useState(['sex']);
+```
+
+Then render rows by resolving runtimes from the scope:
+
+```tsx
+{pageActiveFilterIds.map((id) => {
+  const filter = page.getFilter(id);
+  if (!filter) {
+    return null;
+  }
+
+  return (
+    <ActiveFilterRow
+      key={id}
+      filter={filter}
+      filterBy={pageFacetContexts[id]}
+      onRemoveFilter={(filterId) => {
+        setPageActiveFilterIds((ids) => removeFilter(ids, filterId));
+      }}
+    />
+  );
+})}
+```
+
+This first pass intentionally keeps one active instance per filter definition
+per scope. `useMosaicFilters` creates one `Selection` for each `definition.id`,
+so the example hides already-active definitions from the Add Filter menu.
+
+Keep scope topology explicit:
+
+- page rows write into page selections
+- widget rows write into widget selections
+- page consumers read `page.context`
+- widget consumers read `useComposedSelection([page.context, widget.context])`
+
+When removing a row, clear the selection first and then remove the id from the
+local active list so UI state and Mosaic state stay in sync:
+
+```tsx
+binding.clear();
+setPageActiveFilterIds((ids) => removeFilter(ids, filter.definition.id));
+```
+
 ## Native HTML Controls
 
 ### Text Input
@@ -153,7 +206,8 @@ Keep the topology explicit:
 
 The trimmed example includes a dedicated `Filter Builder` view that shows:
 
-- page-level native HTML controls
+- page-level Add Filter and widget-local Add Filter catalogs
+- active filters rendered from definitions instead of hardcoded fields
 - a chart using `page.context`
 - a page-scoped table
 - a widget-local filter section and table using `page.context + widget.context`
