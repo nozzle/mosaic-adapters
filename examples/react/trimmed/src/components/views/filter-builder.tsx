@@ -3,8 +3,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import {
-  useFilterBinding,
-  useFilterFacet,
   useMosaicFilters,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
@@ -25,19 +23,21 @@ import type {
   FilterRuntime,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import type { Selection as MosaicSelection } from '@uwdata/mosaic-core';
+import { ActiveFilterRow } from '@/components/filter-builder/active-filter-row';
+import { AddFilterMenu } from '@/components/filter-builder/add-filter-menu';
+import {
+  addFilter,
+  getAvailableFiltersForScope,
+  removeFilter,
+} from '@/components/filter-builder/builder-state';
 import { RenderTable } from '@/components/render-table';
 import { simpleDateFormatter } from '@/lib/utils';
 
 const fileURL =
   'https://pub-1da360b43ceb401c809f68ca37c7f8a4.r2.dev/data/athletes.parquet';
 const tableName = 'athletes_filter_builder';
-
-const OPERATOR_LABELS: Record<string, string> = {
-  contains: 'contains',
-  between: 'between',
-  before: 'before',
-  after: 'after',
-};
+const DEFAULT_PAGE_ACTIVE_FILTER_IDS = ['name', 'sport'];
+const DEFAULT_WIDGET_ACTIVE_FILTER_IDS = ['sex'];
 
 interface AthleteRowData {
   id: number;
@@ -81,7 +81,13 @@ const pageDefinitions: Array<FilterDefinition> = [
     label: 'Athlete',
     column: 'name',
     valueKind: 'text',
-    operators: ['contains'],
+    operators: [
+      'contains',
+      'equals',
+      'not_equals',
+      'is_empty',
+      'is_not_empty',
+    ],
     defaultOperator: 'contains',
     dataType: 'string',
     description: 'Page-level text filter',
@@ -91,7 +97,7 @@ const pageDefinitions: Array<FilterDefinition> = [
     label: 'Sport',
     column: 'sport',
     valueKind: 'facet-single',
-    operators: ['is'],
+    operators: ['is', 'is_not', 'is_empty', 'is_not_empty'],
     defaultOperator: 'is',
     dataType: 'string',
     facet: {
@@ -105,8 +111,8 @@ const pageDefinitions: Array<FilterDefinition> = [
     label: 'Nationality',
     column: 'nationality',
     valueKind: 'facet-multi',
-    operators: ['is'],
-    defaultOperator: 'is',
+    operators: ['any_of', 'none_of', 'is_empty', 'is_not_empty'],
+    defaultOperator: 'any_of',
     dataType: 'string',
     facet: {
       table: tableName,
@@ -119,9 +125,18 @@ const pageDefinitions: Array<FilterDefinition> = [
     label: 'Born',
     column: 'date_of_birth',
     valueKind: 'date-range',
-    operators: ['between', 'before', 'after'],
+    operators: ['between', 'before', 'after', 'is_empty', 'is_not_empty'],
     defaultOperator: 'between',
     dataType: 'date',
+  },
+  {
+    id: 'height',
+    label: 'Height',
+    column: 'height',
+    valueKind: 'number-range',
+    operators: ['between', 'after', 'is_empty', 'is_not_empty'],
+    defaultOperator: 'between',
+    dataType: 'number',
   },
 ];
 
@@ -131,7 +146,7 @@ const widgetDefinitions: Array<FilterDefinition> = [
     label: 'Gender',
     column: 'sex',
     valueKind: 'facet-single',
-    operators: ['is'],
+    operators: ['is', 'is_not', 'is_empty', 'is_not_empty'],
     defaultOperator: 'is',
     dataType: 'string',
     facet: {
@@ -145,7 +160,7 @@ const widgetDefinitions: Array<FilterDefinition> = [
     label: 'Gold Medals',
     column: 'gold',
     valueKind: 'number-range',
-    operators: ['between', 'after'],
+    operators: ['between', 'after', 'is_empty', 'is_not_empty'],
     defaultOperator: 'between',
     dataType: 'number',
   },
@@ -153,6 +168,14 @@ const widgetDefinitions: Array<FilterDefinition> = [
 
 export function FilterBuilderView() {
   const [isReady, setIsReady] = useState(false);
+  const [pageActiveFilterIds, setPageActiveFilterIds] = useState(
+    DEFAULT_PAGE_ACTIVE_FILTER_IDS,
+  );
+  const [widgetActiveFilterIds, setWidgetActiveFilterIds] = useState(
+    DEFAULT_WIDGET_ACTIVE_FILTER_IDS,
+  );
+  const [pageSearchTerm, setPageSearchTerm] = useState('');
+  const [widgetSearchTerm, setWidgetSearchTerm] = useState('');
   const chartRef = useRef<HTMLDivElement | null>(null);
   const rosterColumns = useRosterColumns();
   const widgetColumns = useWidgetColumns();
@@ -169,6 +192,50 @@ export function FilterBuilderView() {
     page.context,
   ]);
   const widgetContext = useComposedSelection([page.context, widget.context]);
+  const pageAvailableDefinitions = useMemo(
+    () =>
+      getAvailableFiltersForScope(
+        pageDefinitions,
+        pageActiveFilterIds,
+        pageSearchTerm,
+      ),
+    [pageActiveFilterIds, pageSearchTerm],
+  );
+  const widgetAvailableDefinitions = useMemo(
+    () =>
+      getAvailableFiltersForScope(
+        widgetDefinitions,
+        widgetActiveFilterIds,
+        widgetSearchTerm,
+      ),
+    [widgetActiveFilterIds, widgetSearchTerm],
+  );
+  const pageActiveFilters = useMemo(
+    () =>
+      pageActiveFilterIds.reduce<Array<FilterRuntime>>((filters, filterId) => {
+        const runtime = page.getFilter(filterId);
+        if (!runtime) {
+          return filters;
+        }
+
+        filters.push(runtime);
+        return filters;
+      }, []),
+    [page, pageActiveFilterIds],
+  );
+  const widgetActiveFilters = useMemo(
+    () =>
+      widgetActiveFilterIds.reduce<Array<FilterRuntime>>((filters, filterId) => {
+        const runtime = widget.getFilter(filterId);
+        if (!runtime) {
+          return filters;
+        }
+
+        filters.push(runtime);
+        return filters;
+      }, []),
+    [widget, widgetActiveFilterIds],
+  );
 
   useEffect(() => {
     if (!chartRef.current || chartRef.current.hasChildNodes()) {
@@ -220,19 +287,42 @@ export function FilterBuilderView() {
 
   return (
     <div className="grid gap-6">
-      <section className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <div className="grid gap-1">
-          <h3 className="text-lg font-semibold">Page Filter Scope</h3>
-          <p className="text-sm text-slate-600">
-            These controls write into the page scope. The scatter plot and the
-            roster table both consume <code>page.context</code>.
-          </p>
+      <section
+        className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4"
+        data-testid="page-filter-scope"
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="grid gap-1">
+            <h3 className="text-lg font-semibold">Page Filter Scope</h3>
+            <p className="max-w-3xl text-sm text-slate-600">
+              These controls write into the page scope. The scatter plot and
+              the roster table both consume <code>page.context</code>.
+            </p>
+          </div>
+          <AddFilterMenu
+            scopeId="page"
+            title="Page Filter Catalog"
+            availableDefinitions={pageAvailableDefinitions}
+            searchTerm={pageSearchTerm}
+            onSearchTermChange={setPageSearchTerm}
+            onAddFilter={(filterId) => {
+              setPageActiveFilterIds((previousFilterIds) =>
+                addFilter(previousFilterIds, filterId),
+              );
+            }}
+          />
         </div>
-        <FilterGrid
-          filters={pageDefinitions.map(
-            (definition) => page.getFilter(definition.id)!,
-          )}
+        <DynamicFilterList
+          emptyText="No page filters are active."
+          filters={pageActiveFilters}
           facetContexts={pageFacetContexts}
+          scopeLabel="page"
+          scopeId="page"
+          onRemoveFilter={(filterId) => {
+            setPageActiveFilterIds((previousFilterIds) =>
+              removeFilter(previousFilterIds, filterId),
+            );
+          }}
         />
       </section>
 
@@ -263,20 +353,43 @@ export function FilterBuilderView() {
         />
       </div>
 
-      <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="grid gap-1">
-          <h3 className="text-lg font-semibold">Widget Filter Scope</h3>
-          <p className="text-sm text-slate-600">
-            This widget adds a local filter section. The medal table reads the
-            explicit intersection of <code>page.context</code> and{' '}
-            <code>widget.context</code>.
-          </p>
+      <section
+        className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4"
+        data-testid="widget-filter-scope"
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="grid gap-1">
+            <h3 className="text-lg font-semibold">Widget Filter Scope</h3>
+            <p className="max-w-3xl text-sm text-slate-600">
+              This widget adds a local filter section. The medal table reads
+              the explicit intersection of <code>page.context</code> and{' '}
+              <code>widget.context</code>.
+            </p>
+          </div>
+          <AddFilterMenu
+            scopeId="widget"
+            title="Widget Filter Catalog"
+            availableDefinitions={widgetAvailableDefinitions}
+            searchTerm={widgetSearchTerm}
+            onSearchTermChange={setWidgetSearchTerm}
+            onAddFilter={(filterId) => {
+              setWidgetActiveFilterIds((previousFilterIds) =>
+                addFilter(previousFilterIds, filterId),
+              );
+            }}
+          />
         </div>
-        <FilterGrid
-          filters={widgetDefinitions.map(
-            (definition) => widget.getFilter(definition.id)!,
-          )}
+        <DynamicFilterList
+          emptyText="No widget-local filters are active."
+          filters={widgetActiveFilters}
           facetContexts={widgetFacetContexts}
+          scopeLabel="widget"
+          scopeId="widget"
+          onRemoveFilter={(filterId) => {
+            setWidgetActiveFilterIds((previousFilterIds) =>
+              removeFilter(previousFilterIds, filterId),
+            );
+          }}
         />
         <AthleteTableCard
           cardId="widget-medals"
@@ -291,13 +404,52 @@ export function FilterBuilderView() {
   );
 }
 
+function DynamicFilterList({
+  emptyText,
+  filters,
+  facetContexts,
+  scopeLabel,
+  scopeId,
+  onRemoveFilter,
+}: {
+  emptyText: string;
+  filters: Array<FilterRuntime>;
+  facetContexts: Record<string, MosaicSelection>;
+  scopeLabel: string;
+  scopeId: string;
+  onRemoveFilter: (id: string) => void;
+}) {
+  if (filters.length === 0) {
+    return (
+      <p className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
+        {emptyText}
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      {filters.map((filter) => (
+        <ActiveFilterRow
+          key={filter.definition.id}
+          filter={filter}
+          filterBy={facetContexts[filter.definition.id]}
+          scopeId={scopeId}
+          scopeLabel={scopeLabel}
+          onRemoveFilter={onRemoveFilter}
+        />
+      ))}
+    </div>
+  );
+}
+
 function useRosterColumns() {
   const columnHelper = useMemo(
     () => createMosaicColumnHelper<AthleteRowData>(),
     [],
   );
 
-  return useMemo<Array<ColumnDef<AthleteRowData, any>>>(
+  return useMemo<Array<ColumnDef<AthleteRowData, unknown>>>(
     () => [
       columnHelper.accessor('name', {
         header: 'Athlete',
@@ -333,7 +485,7 @@ function useWidgetColumns() {
     [],
   );
 
-  return useMemo<Array<ColumnDef<AthleteRowData, any>>>(
+  return useMemo<Array<ColumnDef<AthleteRowData, unknown>>>(
     () => [
       columnHelper.accessor('name', {
         header: 'Athlete',
@@ -370,7 +522,7 @@ function AthleteTableCard({
   title: string;
   description: string;
   filterBy: MosaicSelection;
-  columns: Array<ColumnDef<AthleteRowData, any>>;
+  columns: Array<ColumnDef<AthleteRowData, unknown>>;
   debugName: string;
 }) {
   const { client, tableOptions } = useMosaicReactTable<AthleteRowData>({
@@ -442,215 +594,6 @@ function AthleteTableCard({
         </p>
       </div>
       <RenderTable table={table} columns={columns} />
-    </div>
-  );
-}
-
-function FilterGrid({
-  filters,
-  facetContexts,
-}: {
-  filters: Array<FilterRuntime>;
-  facetContexts: Record<string, MosaicSelection>;
-}) {
-  return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {filters.map((filter) => (
-        <NativeFilterCard
-          key={filter.definition.id}
-          filter={filter}
-          filterBy={facetContexts[filter.definition.id]}
-        />
-      ))}
-    </div>
-  );
-}
-
-function NativeFilterCard({
-  filter,
-  filterBy,
-}: {
-  filter: FilterRuntime;
-  filterBy?: MosaicSelection;
-}) {
-  const binding = useFilterBinding(filter);
-  const facet = useFilterFacet({
-    filter,
-    filterBy,
-    enabled:
-      filter.definition.valueKind === 'facet-single' ||
-      filter.definition.valueKind === 'facet-multi',
-  });
-  const showOperator =
-    filter.definition.operators.length > 1 &&
-    filter.definition.valueKind !== 'facet-single' &&
-    filter.definition.valueKind !== 'facet-multi';
-  const value = binding.value;
-  const rangeValue = (Array.isArray(value) ? value : [null, null]) as [
-    string | number | null,
-    string | number | null,
-  ];
-
-  return (
-    <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="grid gap-1">
-        <label className="text-sm font-medium text-slate-900">
-          {filter.definition.label}
-        </label>
-        {filter.definition.description && (
-          <p className="text-xs text-slate-500">
-            {filter.definition.description}
-          </p>
-        )}
-      </div>
-
-      {showOperator && (
-        <select
-          aria-label={`${filter.definition.label} operator`}
-          className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
-          value={binding.operator ?? ''}
-          onChange={(event) => binding.setOperator(event.target.value)}
-        >
-          {filter.definition.operators.map((operator) => (
-            <option key={operator} value={operator}>
-              {OPERATOR_LABELS[operator] ?? operator}
-            </option>
-          ))}
-        </select>
-      )}
-
-      {filter.definition.valueKind === 'text' && (
-        <input
-          type="text"
-          aria-label={filter.definition.label}
-          className="h-9 rounded-md border border-slate-300 px-3 text-sm"
-          value={String(value ?? '')}
-          placeholder="Contains…"
-          onChange={(event) => binding.setValue(event.target.value)}
-          onBlur={binding.apply}
-        />
-      )}
-
-      {filter.definition.valueKind === 'facet-single' && (
-        <select
-          aria-label={filter.definition.label}
-          className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
-          value={String(facet.selectedValues[0] ?? '')}
-          onChange={(event) => facet.select(event.target.value || null)}
-        >
-          <option value="">All</option>
-          {facet.options.map((option) => (
-            <option key={String(option)} value={String(option ?? '')}>
-              {String(option)}
-            </option>
-          ))}
-        </select>
-      )}
-
-      {filter.definition.valueKind === 'facet-multi' && (
-        <fieldset className="grid gap-2">
-          <div className="max-h-40 overflow-auto rounded-md border border-slate-200 p-2">
-            {facet.options.map((option) => {
-              const checked = facet.selectedValues.some((selectedValue) =>
-                Object.is(selectedValue, option),
-              );
-
-              return (
-                <label
-                  key={String(option)}
-                  className="flex items-center gap-2 py-1 text-sm text-slate-700"
-                >
-                  <input
-                    type="checkbox"
-                    aria-label={`${filter.definition.label}: ${String(option)}`}
-                    checked={checked}
-                    onChange={() => facet.toggle(option)}
-                  />
-                  <span>{String(option)}</span>
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
-      )}
-
-      {filter.definition.valueKind === 'date-range' && (
-        <div className="grid gap-2">
-          <input
-            type="date"
-            aria-label={`${filter.definition.label} start`}
-            className="h-9 rounded-md border border-slate-300 px-3 text-sm"
-            value={String(rangeValue[0] ?? '')}
-            onChange={(event) =>
-              binding.setValue([event.target.value || null, rangeValue[1]])
-            }
-          />
-          {binding.operator === 'between' && (
-            <input
-              type="date"
-              aria-label={`${filter.definition.label} end`}
-              className="h-9 rounded-md border border-slate-300 px-3 text-sm"
-              value={String(rangeValue[1] ?? '')}
-              onChange={(event) =>
-                binding.setValue([rangeValue[0], event.target.value || null])
-              }
-            />
-          )}
-          <button
-            type="button"
-            className="h-9 rounded-md border border-slate-300 bg-slate-900 px-3 text-sm font-medium text-white"
-            onClick={binding.apply}
-          >
-            Apply
-          </button>
-        </div>
-      )}
-
-      {filter.definition.valueKind === 'number-range' && (
-        <div className="grid gap-2">
-          <input
-            type="number"
-            aria-label={`${filter.definition.label} start`}
-            className="h-9 rounded-md border border-slate-300 px-3 text-sm"
-            value={String(rangeValue[0] ?? '')}
-            onChange={(event) =>
-              binding.setValue([
-                event.target.value === '' ? null : Number(event.target.value),
-                rangeValue[1],
-              ])
-            }
-          />
-          {binding.operator === 'between' && (
-            <input
-              type="number"
-              aria-label={`${filter.definition.label} end`}
-              className="h-9 rounded-md border border-slate-300 px-3 text-sm"
-              value={String(rangeValue[1] ?? '')}
-              onChange={(event) =>
-                binding.setValue([
-                  rangeValue[0],
-                  event.target.value === '' ? null : Number(event.target.value),
-                ])
-              }
-            />
-          )}
-          <button
-            type="button"
-            className="h-9 rounded-md border border-slate-300 bg-slate-900 px-3 text-sm font-medium text-white"
-            onClick={binding.apply}
-          >
-            Apply
-          </button>
-        </div>
-      )}
-
-      <button
-        type="button"
-        className="h-8 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700"
-        onClick={binding.clear}
-      >
-        Clear
-      </button>
     </div>
   );
 }
