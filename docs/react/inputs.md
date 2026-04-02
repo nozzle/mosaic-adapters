@@ -12,6 +12,16 @@ The adapter provides three main hooks for inputs:
 | `useMosaicTableFilter`    | Text input, date range, numeric range      |
 | `useMosaicHistogram`      | Histogram data for brushable charts        |
 
+For schema-driven builder UIs, use the filter-builder hooks instead:
+
+| Hook               | Purpose                                                       |
+| ------------------ | ------------------------------------------------------------- |
+| `useMosaicFilters` | Create page or widget filter scopes backed by `Selection`s    |
+| `useFilterBinding` | Bind text, date, and number inputs without raw predicate code |
+| `useFilterFacet`   | Resolve facet options for builder-defined facet filters       |
+
+See [Filter Builder](./filter-builder.md) for the page-scope/widget-scope pattern and native HTML examples.
+
 All inputs follow the same pattern:
 
 1. **Write** to a selection (updates filter state)
