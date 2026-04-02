@@ -5,7 +5,7 @@
 ### Patch Changes
 
 - Updated dependencies [[`82ca7ff`](https://github.com/nozzle/mosaic-adapters/commit/82ca7ff9c0c558ee7e0b80b5b59eff6f8f5238ef)]:
-  - @nozzleio/mosaic-tanstack-react-table@1.0.0
+  - @nozzleio/mosaic-tanstack-react-table@0.1.0
   - @nozzleio/react-mosaic@0.1.0
 
 ## 0.0.2
