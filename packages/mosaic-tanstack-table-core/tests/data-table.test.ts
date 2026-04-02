@@ -1,24 +1,23 @@
 import * as mSql from '@uwdata/mosaic-sql';
+import { Selection } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { buildConditionPredicate } from '../src/condition-predicate';
+import { MosaicDataTable } from '../src/data-table';
+import { GROUP_ID_SEPARATOR } from '../src/grouped/types';
+import type { MosaicDataTableOptions, PrimitiveSqlValue } from '../src/types';
 
 const { queryFieldInfoMock } = vi.hoisted(() => ({
   queryFieldInfoMock: vi.fn(),
 }));
 
 vi.mock('@uwdata/mosaic-core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@uwdata/mosaic-core')>();
+  const actual = await importOriginal();
 
-  return {
-    ...actual,
+  return Object.assign({}, actual, {
     queryFieldInfo: queryFieldInfoMock,
-  };
+  });
 });
-
-import { Selection } from '@uwdata/mosaic-core';
-import { MosaicDataTable } from '../src/data-table';
-import { GROUP_ID_SEPARATOR } from '../src/grouped/types';
-
-import type { MosaicDataTableOptions, PrimitiveSqlValue } from '../src/types';
 
 type AthleteRow = {
   id: string;
@@ -95,13 +94,13 @@ class FakeCoordinator {
     return Promise.resolve(client);
   }
 
-  async query(query: unknown) {
+  query(query: unknown) {
     const sql = toSqlString(query);
     this.requestLog.push({ kind: 'query', sql });
     return this.#resolve(sql);
   }
 
-  async #resolve(sql: string) {
+  #resolve(sql: string) {
     const index = this.#responses.findIndex(({ matcher }) =>
       typeof matcher === 'string'
         ? sql.includes(matcher)
@@ -245,10 +244,12 @@ describe('MosaicDataTable characterization', () => {
       { id: 'name', value: 'alex' },
       { id: 'age', value: ['10', '30'] },
     ]);
-    expect(tableFilterSelection.active?.predicate?.toString()).toContain(
+    const tableFilterPredicate = tableFilterSelection.active.predicate;
+    expect(tableFilterPredicate).not.toBeNull();
+    expect(tableFilterPredicate!.toString()).toContain(
       '"athlete_name" ILIKE \'%alex%\'',
     );
-    expect(tableFilterSelection.active?.predicate?.toString()).toContain(
+    expect(tableFilterPredicate!.toString()).toContain(
       'TRY_CAST("profile"."age" AS DOUBLE) BETWEEN 10 AND 30',
     );
   });
@@ -310,7 +311,9 @@ describe('MosaicDataTable characterization', () => {
       '7': true,
     });
     expect(rowSelection.valueFor(client)).toEqual(['2', '7']);
-    expect(rowSelection.active?.predicate?.toString()).toContain(
+    const rowSelectionPredicate = rowSelection.active.predicate;
+    expect(rowSelectionPredicate).not.toBeNull();
+    expect(rowSelectionPredicate!.toString()).toContain(
       "\"id\" IN ('2', '7')",
     );
   });
@@ -523,5 +526,60 @@ describe('MosaicDataTable characterization', () => {
     );
 
     expect(client.store.state.totalRows).toBe(7);
+  });
+
+  test('re-subscribes when filterBy identity changes', async () => {
+    const firstFilter = Selection.intersect();
+    const secondFilter = Selection.intersect();
+    const coordinator = new FakeCoordinator();
+
+    const client = new MosaicDataTable({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [{ accessorKey: 'name', header: 'Name' }],
+      filterBy: firstFilter,
+    });
+
+    client.connect();
+    await client.pending;
+
+    client.updateOptions({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [{ accessorKey: 'name', header: 'Name' }],
+      filterBy: secondFilter,
+    });
+
+    await waitFor(() => {
+      expect(client.filterBy).toBe(secondFilter);
+    });
+
+    expect(client.filterBy).toBe(secondFilter);
+  });
+
+  test('buildConditionPredicate preserves falsy comparable values', () => {
+    const equalsZero = buildConditionPredicate({
+      column: 'gold',
+      operator: 'eq',
+      value: 0,
+      dataType: 'number',
+    });
+    const betweenZeroAndFive = buildConditionPredicate({
+      column: 'gold',
+      operator: 'between',
+      value: 0,
+      valueTo: 5,
+      dataType: 'number',
+    });
+    const equalsFalse = buildConditionPredicate({
+      column: 'active',
+      operator: 'eq',
+      value: false,
+      dataType: 'boolean',
+    });
+
+    expect(equalsZero?.toString()).toContain('= 0');
+    expect(betweenZeroAndFive?.toString()).toContain('BETWEEN 0 AND 5');
+    expect(equalsFalse?.toString()).toMatch(/=\s*(FALSE|false)/);
   });
 });

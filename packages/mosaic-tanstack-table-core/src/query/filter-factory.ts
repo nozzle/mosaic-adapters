@@ -5,6 +5,7 @@ import {
   createTypedAccess,
   escapeSqlLikePattern,
 } from '../utils';
+import { buildConditionPredicate } from '../condition-predicate';
 import type { SqlIdentifier } from '../domain/sql-identifier';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { FilterInput, FilterOptions } from '../types';
@@ -35,113 +36,13 @@ const strategies: Record<string, FilterStrategy> = {
       `[FilterStrategy:CONDITION] Building filter for ${columnId}. DataType: ${dataType}`,
       input,
     );
-
-    // 1. Get Base Column Expression
-    const rawCol = createStructAccess(columnAccessor);
-
-    // 2. Apply "Just-In-Time" Casting via TRY_CAST logic in utils
-    const col = createTypedAccess(rawCol, dataType);
-
-    // 3. Prepare Value Literal
-    const isValidVal = value !== null && value !== undefined && value !== '';
-    const isValidTo =
-      valueTo !== null && valueTo !== undefined && valueTo !== '';
-
-    // Create literals only if valid.
-    const val = isValidVal ? mSql.literal(value) : null;
-    const valTo = isValidTo ? mSql.literal(valueTo) : null;
-
-    let expr: FilterExpr | undefined;
-
-    switch (operator) {
-      // Unary
-      case 'is_null':
-        expr = mSql.sql`${rawCol} IS NULL`; // No cast needed for null check
-        break;
-      case 'not_null':
-        expr = mSql.sql`${rawCol} IS NOT NULL`;
-        break;
-
-      // Binary
-      case 'eq':
-        expr = val ? mSql.eq(col, val) : undefined;
-        break;
-      case 'neq':
-        expr = val ? mSql.sql`${col} != ${val}` : undefined;
-        break;
-      case 'gt':
-        expr = val ? mSql.gt(col, val) : undefined;
-        break;
-      case 'gte':
-        expr = val ? mSql.gte(col, val) : undefined;
-        break;
-      case 'lt':
-        expr = val ? mSql.lt(col, val) : undefined;
-        break;
-      case 'lte':
-        expr = val ? mSql.lte(col, val) : undefined;
-        break;
-
-      // String specific
-      case 'contains':
-        expr = val
-          ? mSql.sql`${rawCol} ILIKE ${mSql.literal(`%${value}%`)}`
-          : undefined;
-        break;
-      case 'not_contains':
-        expr = val
-          ? mSql.sql`${rawCol} NOT ILIKE ${mSql.literal(`%${value}%`)}`
-          : undefined;
-        break;
-      case 'starts_with':
-        expr = val
-          ? mSql.sql`${rawCol} ILIKE ${mSql.literal(`${value}%`)}`
-          : undefined;
-        break;
-      case 'not_starts_with':
-        expr = val
-          ? mSql.sql`${rawCol} NOT ILIKE ${mSql.literal(`${value}%`)}`
-          : undefined;
-        break;
-      case 'ends_with':
-        expr = val
-          ? mSql.sql`${rawCol} ILIKE ${mSql.literal(`%${value}`)}`
-          : undefined;
-        break;
-      case 'not_ends_with':
-        expr = val
-          ? mSql.sql`${rawCol} NOT ILIKE ${mSql.literal(`%${value}`)}`
-          : undefined;
-        break;
-
-      // Ternary
-      case 'between':
-        if (val && valTo) {
-          expr = mSql.isBetween(col, [val, valTo]);
-        }
-        break;
-
-      // List (Array) Operations
-      case 'in':
-        if (Array.isArray(value) && value.length > 0) {
-          expr = mSql.isIn(
-            col,
-            value.map((v) => mSql.literal(v)),
-          );
-        }
-        break;
-      case 'not_in':
-        if (Array.isArray(value) && value.length > 0) {
-          const list = value.map((v) => mSql.literal(v));
-          // NOT IN logic
-          const listSql = mSql.sql`(${list.join(', ')})`;
-          expr = mSql.sql`${col} NOT IN ${listSql}`;
-        }
-        break;
-
-      default:
-        expr = undefined;
-    }
+    const expr = buildConditionPredicate({
+      column: columnAccessor,
+      operator,
+      value,
+      valueTo,
+      dataType,
+    });
 
     if (expr) {
       logger.debug(

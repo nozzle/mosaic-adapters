@@ -178,9 +178,11 @@ export class MosaicDataTable<
   updateOptions(options: MosaicDataTableOptions<TData, TValue>): void {
     const sourceChanged = this.source !== options.table;
     const wasEnabled = this.enabled;
+    const filterByChanged = this.filterBy !== options.filterBy;
 
     this.options = options;
     this.source = options.table;
+    this._filterBy = options.filterBy;
 
     this.#applyEnabledOption(options);
     this.#applyStateChangeMode(options);
@@ -211,6 +213,12 @@ export class MosaicDataTable<
     }
 
     this.#configureColumns(options, sourceChanged);
+
+    if (filterByChanged && this.isConnected) {
+      this.disconnect();
+      this.connect();
+      return;
+    }
 
     if (this.enabled && !wasEnabled) {
       this.requestUpdate();

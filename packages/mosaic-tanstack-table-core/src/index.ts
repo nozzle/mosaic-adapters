@@ -7,6 +7,7 @@ export {
 } from './table-core';
 export * from './facet-menu';
 export * from './filter-client';
+export * from './condition-predicate';
 export * from './aggregation-bridge';
 export * from './types/index';
 export * from './logger';
