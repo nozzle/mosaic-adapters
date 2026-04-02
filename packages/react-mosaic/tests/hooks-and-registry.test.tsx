@@ -57,7 +57,9 @@ describe('selection hooks', () => {
     const externalTwo = Selection.intersect();
 
     const probeState: {
-      currentContexts?: ReturnType<typeof useCascadingContexts<'left' | 'right'>>;
+      currentContexts?: ReturnType<
+        typeof useCascadingContexts<'left' | 'right'>
+      >;
     } = {};
 
     function Probe({ external }: { external: Selection }) {
@@ -86,8 +88,9 @@ describe('selection hooks', () => {
     updateSelection(externalOne, 'stale-external');
     await flushEffects();
     expect(probeState.currentContexts?.left.value).toBe('second-external');
-    expect(probeState.currentContexts?.left.clauses.map((clause) => clause.value))
-      .toEqual(['second-external']);
+    expect(
+      probeState.currentContexts?.left.clauses.map((clause) => clause.value),
+    ).toEqual(['second-external']);
 
     view.unmount();
   });

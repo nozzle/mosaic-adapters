@@ -46,7 +46,9 @@ export function ActiveFilterRow({
           {filter.definition.label}
         </p>
         {filter.definition.description && (
-          <p className="text-xs text-slate-500">{filter.definition.description}</p>
+          <p className="text-xs text-slate-500">
+            {filter.definition.description}
+          </p>
         )}
       </div>
 
@@ -73,7 +75,9 @@ export function ActiveFilterRow({
           </select>
         ) : (
           <div className="flex h-9 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600">
-            {OPERATOR_LABELS[binding.operator ?? ''] ?? binding.operator ?? 'n/a'}
+            {OPERATOR_LABELS[binding.operator ?? ''] ??
+              binding.operator ??
+              'n/a'}
           </div>
         )}
       </div>

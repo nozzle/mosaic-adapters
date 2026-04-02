@@ -48,10 +48,7 @@ function attachIncludedSelection(source: Selection, derived: Selection) {
   relay.add(derived);
 }
 
-function seedContext(
-  includedSelections: Array<Selection>,
-  context: Selection,
-) {
+function seedContext(includedSelections: Array<Selection>, context: Selection) {
   includedSelections.forEach((selection) => {
     selection.clauses.forEach((clause) => {
       context.update(clause);
@@ -80,7 +77,9 @@ function getContextSources(
   key: string,
 ) {
   const self = inputs[key];
-  const others = Object.values(inputs).filter((selection) => selection !== self);
+  const others = Object.values(inputs).filter(
+    (selection) => selection !== self,
+  );
   return [...others, ...externals];
 }
 

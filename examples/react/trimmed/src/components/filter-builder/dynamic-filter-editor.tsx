@@ -239,7 +239,9 @@ export function DynamicFilterEditor({
                   <p className="text-sm text-slate-500">Loading options…</p>
                 )}
                 {!facet.loading && facet.options.length === 0 && (
-                  <p className="text-sm text-slate-500">No facet options found.</p>
+                  <p className="text-sm text-slate-500">
+                    No facet options found.
+                  </p>
                 )}
               </div>
             </div>
