@@ -1,9 +1,11 @@
+import React from 'react';
 import { describe, expect, test, vi } from 'vitest';
-import { clausePoint, Selection } from '@uwdata/mosaic-core';
+import { Selection, clausePoint } from '@uwdata/mosaic-core';
 
 import { useMosaicSelectionValue } from '../src/hooks/use-mosaic-selection-value';
 import {
   useCascadingContexts,
+  useComposedSelection,
   useMosaicSelections,
 } from '../src/hooks/use-topology-helpers';
 import {
@@ -54,13 +56,18 @@ describe('selection hooks', () => {
     const externalOne = Selection.intersect();
     const externalTwo = Selection.intersect();
 
-    let currentContexts:
-      | ReturnType<typeof useCascadingContexts<'left' | 'right'>>
-      | undefined;
+    const probeState: {
+      currentContexts?: ReturnType<typeof useCascadingContexts<'left' | 'right'>>;
+    } = {};
 
     function Probe({ external }: { external: Selection }) {
       const inputs = useMosaicSelections(['left', 'right'] as const);
-      currentContexts = useCascadingContexts(inputs, [external]);
+      const contexts = useCascadingContexts(inputs, [external]);
+
+      React.useEffect(() => {
+        probeState.currentContexts = contexts;
+      }, [contexts]);
+
       return null;
     }
 
@@ -68,17 +75,83 @@ describe('selection hooks', () => {
 
     updateSelection(externalOne, 'first-external');
     await flushEffects();
-    expect(currentContexts?.left.value).toBe('first-external');
+    expect(probeState.currentContexts?.left.value).toBe('first-external');
 
     view.rerender(<Probe external={externalTwo} />);
 
     updateSelection(externalTwo, 'second-external');
     await flushEffects();
-    expect(currentContexts?.left.value).toBe('second-external');
+    expect(probeState.currentContexts?.left.value).toBe('second-external');
 
     updateSelection(externalOne, 'stale-external');
     await flushEffects();
-    expect(currentContexts?.left.value).toBe('second-external');
+    expect(probeState.currentContexts?.left.value).toBe('second-external');
+    expect(probeState.currentContexts?.left.clauses.map((clause) => clause.value))
+      .toEqual(['second-external']);
+
+    view.unmount();
+  });
+
+  test('useCascadingContexts stays attached under StrictMode effect replay', async () => {
+    const probeState: {
+      contexts?: ReturnType<typeof useCascadingContexts<'left' | 'right'>>;
+      inputs?: ReturnType<typeof useMosaicSelections<'left' | 'right'>>;
+    } = {};
+
+    function Probe() {
+      const inputs = useMosaicSelections(['left', 'right'] as const);
+      const contexts = useCascadingContexts(inputs);
+
+      React.useEffect(() => {
+        probeState.contexts = contexts;
+        probeState.inputs = inputs;
+      }, [contexts, inputs]);
+
+      return null;
+    }
+
+    const view = render(
+      <React.StrictMode>
+        <Probe />
+      </React.StrictMode>,
+    );
+    await flushEffects();
+
+    updateSelection(probeState.inputs!.right, 'strict-mode');
+    await flushEffects();
+
+    expect(probeState.contexts?.left.value).toBe('strict-mode');
+
+    view.unmount();
+  });
+
+  test('useComposedSelection seeds already-active upstream selections on mount', async () => {
+    const page = Selection.intersect();
+    const widget = Selection.intersect();
+    const probeState: {
+      context?: Selection;
+    } = {};
+
+    updateSelection(page, 'page-active');
+    updateSelection(widget, 'widget-active');
+
+    function Probe() {
+      const context = useComposedSelection([page, widget]);
+
+      React.useEffect(() => {
+        probeState.context = context;
+      }, [context]);
+
+      return null;
+    }
+
+    const view = render(<Probe />);
+    await flushEffects();
+
+    expect(probeState.context?.clauses.map((clause) => clause.value)).toEqual([
+      'page-active',
+      'widget-active',
+    ]);
 
     view.unmount();
   });
@@ -88,10 +161,17 @@ describe('selection registry', () => {
   test('resetAll ignores selections that have been unregistered on unmount', () => {
     const selection = Selection.intersect();
     const resetSpy = vi.fn();
-    let resetAll: (() => void) | undefined;
+    const controlsState: {
+      resetAll?: () => void;
+    } = {};
 
     function Controls() {
-      resetAll = useSelectionRegistry().resetAll;
+      const { resetAll } = useSelectionRegistry();
+
+      React.useEffect(() => {
+        controlsState.resetAll = resetAll;
+      }, [resetAll]);
+
       return null;
     }
 
@@ -115,7 +195,7 @@ describe('selection registry', () => {
       </SelectionRegistryProvider>,
     );
 
-    resetAll?.();
+    controlsState.resetAll?.();
 
     expect(resetSpy).not.toHaveBeenCalled();
     expect(selection.value).toBe('active');

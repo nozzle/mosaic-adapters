@@ -6,6 +6,7 @@ test('keeps table-specific filter helpers off the react-mosaic root surface', ()
   expect(reactMosaic).toHaveProperty('MosaicContext');
   expect(reactMosaic).toHaveProperty('MosaicConnectorProvider');
   expect(reactMosaic).toHaveProperty('SelectionRegistryProvider');
+  expect(reactMosaic).toHaveProperty('useComposedSelection');
   expect(reactMosaic).toHaveProperty('useMosaicSelections');
   expect(reactMosaic).toHaveProperty('HttpArrowConnector');
 

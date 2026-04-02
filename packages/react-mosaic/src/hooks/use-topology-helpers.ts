@@ -1,8 +1,13 @@
 import { useEffect, useMemo } from 'react';
 import { Selection } from '@uwdata/mosaic-core';
 
+import type { SelectionClause } from '@uwdata/mosaic-core';
+
 type SelectionType = 'intersect' | 'union' | 'single' | 'crossfilter';
 type LinkedSelection = Selection & { _relay: Set<Selection> };
+
+const SELECTION_IDS = new WeakMap<Selection, number>();
+let nextSelectionId = 1;
 
 function createSelection(type: SelectionType) {
   switch (type) {
@@ -18,9 +23,84 @@ function createSelection(type: SelectionType) {
   }
 }
 
+function getSelectionId(selection: Selection) {
+  const existingId = SELECTION_IDS.get(selection);
+  if (existingId) {
+    return existingId;
+  }
+
+  const nextId = nextSelectionId++;
+  SELECTION_IDS.set(selection, nextId);
+  return nextId;
+}
+
+function getSelectionListKey(selections: Array<Selection>) {
+  return selections.map((selection) => getSelectionId(selection)).join('\0');
+}
+
 function detachIncludedSelection(source: Selection, derived: Selection) {
   const relay = (source as LinkedSelection)._relay;
   relay.delete(derived);
+}
+
+function attachIncludedSelection(source: Selection, derived: Selection) {
+  const relay = (source as LinkedSelection)._relay;
+  relay.add(derived);
+}
+
+function seedContext(
+  includedSelections: Array<Selection>,
+  context: Selection,
+) {
+  includedSelections.forEach((selection) => {
+    selection.clauses.forEach((clause) => {
+      context.update(clause);
+    });
+  });
+}
+
+function clearSeededClauses(
+  includedSelections: Array<Selection>,
+  context: Selection,
+) {
+  includedSelections.forEach((selection) => {
+    selection.clauses.forEach((clause) => {
+      context.update({
+        source: clause.source,
+        value: null,
+        predicate: null,
+      } as SelectionClause);
+    });
+  });
+}
+
+function getContextSources(
+  inputs: Record<string, Selection>,
+  externals: Array<Selection>,
+  key: string,
+) {
+  const self = inputs[key];
+  const others = Object.values(inputs).filter((selection) => selection !== self);
+  return [...others, ...externals];
+}
+
+function attachContexts(
+  inputs: Record<string, Selection>,
+  externals: Array<Selection>,
+  contexts: Record<string, Selection>,
+) {
+  for (const key of Object.keys(inputs)) {
+    const context = contexts[key];
+    if (!context) {
+      continue;
+    }
+
+    const sources = getContextSources(inputs, externals, key);
+    sources.forEach((source) => {
+      attachIncludedSelection(source, context);
+    });
+    seedContext(sources, context);
+  }
 }
 
 function detachContexts(
@@ -49,19 +129,12 @@ function detachContexts(
 
 function createCascadingContextMap<TKey extends string>(
   inputs: Record<TKey, Selection>,
-  externals: Array<Selection>,
 ) {
   const map = {} as Record<TKey, Selection>;
   const keys = Object.keys(inputs) as Array<TKey>;
-  const inputValues: Array<Selection> = Object.values(inputs);
 
   keys.forEach((key) => {
-    const self = inputs[key];
-    const others = inputValues.filter((selection) => selection !== self);
-
-    map[key] = Selection.intersect({
-      include: [...others, ...externals],
-    });
+    map[key] = Selection.intersect();
   });
 
   return map;
@@ -111,14 +184,62 @@ export function useCascadingContexts<TKey extends string>(
   inputs: Record<TKey, Selection>,
   externals: Array<Selection> = [],
 ): Record<TKey, Selection> {
-  const contexts = useMemo(
-    () => createCascadingContextMap(inputs, externals),
-    [inputs, externals],
+  const externalsKey = getSelectionListKey(externals);
+  const stableExternals = useMemo(
+    () => externals,
+    // The key fully captures identity/order for this selection list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [externalsKey],
   );
+  const contexts = useMemo(() => createCascadingContextMap(inputs), [inputs]);
 
   useEffect(() => {
-    return () => detachContexts(inputs, externals, contexts);
-  }, [inputs, externals, contexts]);
+    attachContexts(inputs, stableExternals, contexts);
+
+    return () => {
+      detachContexts(inputs, stableExternals, contexts);
+
+      for (const key of Object.keys(inputs)) {
+        clearSeededClauses(
+          getContextSources(inputs, stableExternals, key),
+          contexts[key as TKey],
+        );
+      }
+    };
+  }, [contexts, inputs, stableExternals]);
 
   return contexts;
+}
+
+export function useComposedSelection(
+  includedSelections: Array<Selection>,
+): Selection {
+  const includedSelectionsKey = getSelectionListKey(includedSelections);
+  const stableIncludedSelections = useMemo(
+    () => includedSelections,
+    // The key fully captures identity/order for this selection list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [includedSelectionsKey],
+  );
+  const context = useMemo(() => Selection.intersect(), []);
+
+  useEffect(() => {
+    if (stableIncludedSelections.length === 0) {
+      return;
+    }
+
+    stableIncludedSelections.forEach((selection) => {
+      attachIncludedSelection(selection, context);
+    });
+    seedContext(stableIncludedSelections, context);
+
+    return () => {
+      stableIncludedSelections.forEach((selection) => {
+        detachIncludedSelection(selection, context);
+      });
+      clearSeededClauses(stableIncludedSelections, context);
+    };
+  }, [context, stableIncludedSelections]);
+
+  return context;
 }
