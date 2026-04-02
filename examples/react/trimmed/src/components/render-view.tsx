@@ -12,6 +12,7 @@ import type { ConnectorMode } from '@nozzleio/react-mosaic';
 import { Button } from '@/components/ui/button';
 import { AthletesView } from '@/components/views/athletes';
 import { AthletesViewSimple } from '@/components/views/athletes-simple';
+import { FilterBuilderView } from '@/components/views/filter-builder';
 import { NycTaxiView } from '@/components/views/nyc-taxi';
 import { NozzlePaaView } from '@/components/views/nozzle-paa';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
@@ -31,6 +32,13 @@ const views = new Map([
     {
       title: 'Athletes (No Helper)',
       Component: AthletesViewSimple,
+    },
+  ],
+  [
+    'filter-builder',
+    {
+      title: 'Filter Builder',
+      Component: FilterBuilderView,
     },
   ],
   [
