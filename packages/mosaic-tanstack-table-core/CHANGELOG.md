@@ -1,5 +1,24 @@
 # @nozzleio/mosaic-tanstack-table-core
 
+## 0.1.0
+
+### Minor Changes
+
+- [#103](https://github.com/nozzle/mosaic-adapters/pull/103) [`82ca7ff`](https://github.com/nozzle/mosaic-adapters/commit/82ca7ff9c0c558ee7e0b80b5b59eff6f8f5238ef) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Add schema-driven filter-builder primitives for page and widget filter scopes.
+
+  `@nozzleio/mosaic-tanstack-react-table`
+  - add `FilterDefinition`-based filter-builder types
+  - add `useMosaicFilters` for creating page and widget filter scopes
+  - add `useFilterBinding` for operator/value binding
+  - add `useFilterFacet` for facet-backed filter options
+  - add docs and a trimmed example showing dynamic filter scope composition
+
+  `@nozzleio/react-mosaic`
+  - add `useComposedSelection` for explicit selection composition in React
+
+  `@nozzleio/mosaic-tanstack-table-core`
+  - add reusable condition predicate construction for filter-builder-backed condition filters
+
 ## 0.0.3
 
 ### Patch Changes
