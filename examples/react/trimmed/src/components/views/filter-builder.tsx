@@ -446,7 +446,7 @@ function useRosterColumns() {
     [],
   );
 
-  return useMemo<Array<ColumnDef<AthleteRowData, unknown>>>(
+  return useMemo<Array<ColumnDef<AthleteRowData, any>>>(
     () => [
       columnHelper.accessor('name', {
         header: 'Athlete',
@@ -482,7 +482,7 @@ function useWidgetColumns() {
     [],
   );
 
-  return useMemo<Array<ColumnDef<AthleteRowData, unknown>>>(
+  return useMemo<Array<ColumnDef<AthleteRowData, any>>>(
     () => [
       columnHelper.accessor('name', {
         header: 'Athlete',
@@ -519,7 +519,7 @@ function AthleteTableCard({
   title: string;
   description: string;
   filterBy: MosaicSelection;
-  columns: Array<ColumnDef<AthleteRowData, unknown>>;
+  columns: Array<ColumnDef<AthleteRowData, any>>;
   debugName: string;
 }) {
   const { client, tableOptions } = useMosaicReactTable<AthleteRowData>({
