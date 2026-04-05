@@ -1,6 +1,6 @@
 {
   "name": "@nozzleio/mosaic-tanstack-react-table",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React bindings for the Mosaic TanStack table adapter.",
   "license": "MIT",
   "type": "module",
