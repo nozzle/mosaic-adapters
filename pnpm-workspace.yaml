@@ -11,9 +11,9 @@ catalog:
   '@tanstack/table-core': ^8.17.3
   '@tanstack/vite-config': ^0.5.2
   '@types/node': ^25.0.8
-  '@uwdata/mosaic-core': ^0.21.1
-  '@uwdata/mosaic-sql': ^0.21.1
-  '@uwdata/vgplot': ^0.21.1
+  '@uwdata/mosaic-core': ^0.23.1
+  '@uwdata/mosaic-sql': ^0.23.0
+  '@uwdata/vgplot': ^0.23.1
   '@vitejs/plugin-react': ^6.0.1
   eslint: ^10.1.0
   eslint-plugin-react-hooks: ^7.0.1
