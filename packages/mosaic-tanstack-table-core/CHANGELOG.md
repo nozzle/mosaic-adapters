@@ -1,5 +1,11 @@
 # @nozzleio/mosaic-tanstack-table-core
 
+## 0.2.0
+
+### Minor Changes
+
+- [#110](https://github.com/nozzle/mosaic-adapters/pull/110) [`9d6eb8f`](https://github.com/nozzle/mosaic-adapters/commit/9d6eb8f66ec620660bd45b97f39e33b1ab86db50) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - feat: add public filter condition registries
+
 ## 0.1.1
 
 ### Patch Changes
