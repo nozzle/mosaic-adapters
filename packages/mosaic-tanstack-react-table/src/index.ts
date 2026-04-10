@@ -1,6 +1,7 @@
 export * from './hook';
 export * from './facet-hook';
 export * from './filter-hook';
+export * from './filter-conditions';
 export * from './filter-builder-types';
 export * from './filter-scope-hook';
 export * from './filter-binding-hook';

@@ -2,7 +2,11 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { Selection } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { buildConditionPredicate } from '../src/condition-predicate';
+import {
+  buildCollectionPredicate,
+  buildConditionPredicate,
+  buildEmptyValuePredicate,
+} from '../src/condition-predicate';
 import { MosaicDataTable } from '../src/data-table';
 import { GROUP_ID_SEPARATOR } from '../src/grouped/types';
 import type { MosaicDataTableOptions, PrimitiveSqlValue } from '../src/types';
@@ -579,5 +583,91 @@ describe('MosaicDataTable characterization', () => {
     expect(equalsZero?.toString()).toContain('= 0');
     expect(betweenZeroAndFive?.toString()).toContain('BETWEEN 0 AND 5');
     expect(equalsFalse?.toString()).toMatch(/=\s*(FALSE|false)/);
+  });
+
+  test('buildConditionPredicate escapes wildcard characters for text operators', () => {
+    const containsEscaped = buildConditionPredicate({
+      column: 'nickname',
+      operator: 'contains',
+      value: '100%_real',
+    });
+    const notContainsEscaped = buildConditionPredicate({
+      column: 'nickname',
+      operator: 'not_contains',
+      value: '100%_real',
+    });
+
+    expect(containsEscaped?.toString()).toContain(
+      "ILIKE '%100\\%\\_real%' ESCAPE '\\'",
+    );
+    expect(notContainsEscaped?.toString()).toContain(
+      "NOT ILIKE '%100\\%\\_real%' ESCAPE '\\'",
+    );
+  });
+
+  test('buildEmptyValuePredicate applies type-aware semantics for scalar and array columns', () => {
+    const textEmpty = buildEmptyValuePredicate({
+      column: 'country',
+      dataType: 'string',
+    });
+    const stringNotEmpty = buildEmptyValuePredicate({
+      column: 'country',
+      dataType: 'string',
+      negate: true,
+    });
+    const numberEmpty = buildEmptyValuePredicate({
+      column: 'gold',
+      dataType: 'number',
+    });
+    const arrayEmpty = buildEmptyValuePredicate({
+      column: 'tags',
+      columnType: 'array',
+    });
+
+    expect(textEmpty.toString()).toContain('IS NULL OR');
+    expect(textEmpty.toString()).toContain("= ''");
+    expect(stringNotEmpty.toString()).toContain('IS NOT NULL AND');
+    expect(stringNotEmpty.toString()).toContain("!= ''");
+    expect(numberEmpty.toString()).toContain('IS NULL');
+    expect(arrayEmpty.toString()).toContain('array_length');
+  });
+
+  test('buildCollectionPredicate supports scalar and array collection semantics', () => {
+    const scalarAny = buildCollectionPredicate({
+      column: 'country',
+      values: ['NZL', 'USA'],
+      match: 'any',
+    });
+    const scalarNotAny = buildCollectionPredicate({
+      column: 'country',
+      values: ['NZL', 'USA'],
+      match: 'any',
+      negate: true,
+    });
+    const arrayAny = buildCollectionPredicate({
+      column: 'tags',
+      values: ['alpha', 'beta'],
+      columnType: 'array',
+      match: 'any',
+    });
+    const arrayAll = buildCollectionPredicate({
+      column: 'tags',
+      values: ['alpha', 'beta'],
+      columnType: 'array',
+      match: 'all',
+    });
+    const arrayExcludes = buildCollectionPredicate({
+      column: 'tags',
+      values: ['alpha', 'beta'],
+      columnType: 'array',
+      match: 'any',
+      negate: true,
+    });
+
+    expect(scalarAny?.toString()).toContain('IN');
+    expect(scalarNotAny?.toString()).toContain('NOT IN');
+    expect(arrayAny?.toString()).toContain('list_has_any');
+    expect(arrayAll?.toString()).toContain('list_has_all');
+    expect(arrayExcludes?.toString()).toContain('NOT (list_has_any');
   });
 });

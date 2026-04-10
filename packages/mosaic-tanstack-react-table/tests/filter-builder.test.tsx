@@ -8,6 +8,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import * as facetHookModule from '../src/facet-hook';
 import {
+  MULTISELECT_ARRAY_CONDITIONS,
+  MULTISELECT_SCALAR_CONDITIONS,
+  SELECT_CONDITIONS,
+  TEXT_CONDITIONS,
   useFilterBinding,
   useFilterFacet,
   useMosaicFilters,
@@ -32,16 +36,16 @@ describe('filter builder hooks', () => {
         label: 'Name',
         column: 'name',
         valueKind: 'text',
-        operators: ['contains'],
-        defaultOperator: 'contains',
+        operators: [TEXT_CONDITIONS.CONTAINS],
+        defaultOperator: TEXT_CONDITIONS.CONTAINS,
       },
       {
         id: 'sport',
         label: 'Sport',
         column: 'sport',
         valueKind: 'facet-single',
-        operators: ['is'],
-        defaultOperator: 'is',
+        operators: [SELECT_CONDITIONS.IS],
+        defaultOperator: SELECT_CONDITIONS.IS,
       },
     ];
     const scopes: Array<ReturnType<typeof useMosaicFilters>> = [];
@@ -119,8 +123,8 @@ describe('filter builder hooks', () => {
         label: 'Sport',
         column: 'sport',
         valueKind: 'facet-single',
-        operators: ['is'],
-        defaultOperator: 'is',
+        operators: [SELECT_CONDITIONS.IS],
+        defaultOperator: SELECT_CONDITIONS.IS,
       },
     ];
     const probeState: {
@@ -380,8 +384,8 @@ describe('filter builder hooks', () => {
         label: 'Sport',
         column: 'sport',
         valueKind: 'facet-multi',
-        operators: ['is'],
-        defaultOperator: 'is',
+        operators: [MULTISELECT_SCALAR_CONDITIONS.IS_ANY_OF],
+        defaultOperator: MULTISELECT_SCALAR_CONDITIONS.IS_ANY_OF,
         facet: {
           table: 'athletes',
           sortMode: 'count',
@@ -442,7 +446,7 @@ describe('filter builder hooks', () => {
 
     expect(probeState.runtime?.selection.value).toMatchObject({
       mode: 'CONDITION',
-      operator: 'is',
+      operator: 'is_any_of',
       value: ['Cycling'],
     });
     expect(probeState.facet?.selectedValues).toEqual(['Cycling']);
@@ -473,6 +477,307 @@ describe('filter builder hooks', () => {
 
     expect(probeState.runtime?.selection.value).toBeNull();
     expect(probeState.facet?.selectedValues).toEqual([]);
+    view.unmount();
+  });
+
+  test('useFilterBinding supports new text condition ids and preserves the stored operator id', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'nickname',
+        label: 'Nickname',
+        column: 'nickname',
+        valueKind: 'text',
+        operators: [
+          TEXT_CONDITIONS.DOES_NOT_CONTAIN,
+          TEXT_CONDITIONS.IS_EXACTLY,
+        ],
+        defaultOperator: TEXT_CONDITIONS.DOES_NOT_CONTAIN,
+      },
+    ];
+    const probeState: {
+      binding?: FilterBinding;
+      runtime?: FilterRuntime;
+    } = {};
+
+    function Probe() {
+      const scope = useMosaicFilters({
+        scopeId: 'page',
+        definitions,
+      });
+      const runtime = scope.getFilter('nickname');
+      const binding = useFilterBinding(runtime!);
+
+      React.useEffect(() => {
+        probeState.binding = binding;
+        probeState.runtime = runtime;
+      }, [binding, runtime]);
+
+      return null;
+    }
+
+    const view = render(
+      <SelectionRegistryProvider>
+        <Probe />
+      </SelectionRegistryProvider>,
+    );
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.setValue('100%_real');
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(probeState.runtime?.selection.value).toMatchObject({
+      operator: 'does_not_contain',
+      value: '100%_real',
+    });
+    expect(probeState.runtime?.selection.predicate(null)?.toString()).toContain(
+      "NOT ILIKE '%100\\%\\_real%'",
+    );
+
+    act(() => {
+      probeState.binding?.setOperator(TEXT_CONDITIONS.IS_EXACTLY);
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(probeState.runtime?.selection.value).toMatchObject({
+      operator: 'is_exactly',
+      value: '100%_real',
+    });
+    expect(probeState.runtime?.selection.predicate(null)?.toString()).toContain(
+      "= '100%_real'",
+    );
+
+    view.unmount();
+  });
+
+  test('useFilterBinding supports scalar multiselect aliases and type-aware empty semantics', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'country',
+        label: 'Country',
+        column: 'country',
+        valueKind: 'facet-multi',
+        operators: [
+          MULTISELECT_SCALAR_CONDITIONS.IS_ANY_OF,
+          MULTISELECT_SCALAR_CONDITIONS.IS_NOT_ANY_OF,
+          MULTISELECT_SCALAR_CONDITIONS.IS_EMPTY,
+        ],
+        defaultOperator: MULTISELECT_SCALAR_CONDITIONS.IS_ANY_OF,
+        dataType: 'string',
+      },
+    ];
+    const probeState: {
+      binding?: FilterBinding;
+      runtime?: FilterRuntime;
+    } = {};
+
+    function Probe() {
+      const scope = useMosaicFilters({
+        scopeId: 'widget',
+        definitions,
+      });
+      const runtime = scope.getFilter('country');
+      const binding = useFilterBinding(runtime!);
+
+      React.useEffect(() => {
+        probeState.binding = binding;
+        probeState.runtime = runtime;
+      }, [binding, runtime]);
+
+      return null;
+    }
+
+    const view = render(
+      <SelectionRegistryProvider>
+        <Probe />
+      </SelectionRegistryProvider>,
+    );
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.setValue(['NZL', 'USA']);
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(probeState.runtime?.selection.value).toMatchObject({
+      operator: 'is_any_of',
+      value: ['NZL', 'USA'],
+    });
+    expect(probeState.runtime?.selection.predicate(null)?.toString()).toContain(
+      'IN',
+    );
+
+    act(() => {
+      probeState.binding?.setOperator(
+        MULTISELECT_SCALAR_CONDITIONS.IS_NOT_ANY_OF,
+      );
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(probeState.runtime?.selection.value).toMatchObject({
+      operator: 'is_not_any_of',
+      value: ['NZL', 'USA'],
+    });
+    expect(probeState.runtime?.selection.predicate(null)?.toString()).toContain(
+      'NOT IN',
+    );
+
+    act(() => {
+      probeState.binding?.setOperator(MULTISELECT_SCALAR_CONDITIONS.IS_EMPTY);
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.setValue([]);
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(probeState.runtime?.selection.predicate(null)?.toString()).toContain(
+      'IS NULL OR',
+    );
+    expect(probeState.runtime?.selection.predicate(null)?.toString()).toContain(
+      "= ''",
+    );
+
+    view.unmount();
+  });
+
+  test('useFilterBinding supports array multiselect collection operators', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'tags',
+        label: 'Tags',
+        column: 'tags',
+        valueKind: 'facet-multi',
+        columnType: 'array',
+        operators: [
+          MULTISELECT_ARRAY_CONDITIONS.IS_ANY_OF,
+          MULTISELECT_ARRAY_CONDITIONS.INCLUDES_ALL,
+          MULTISELECT_ARRAY_CONDITIONS.EXCLUDES_ALL,
+          MULTISELECT_ARRAY_CONDITIONS.IS_EMPTY,
+        ],
+        defaultOperator: MULTISELECT_ARRAY_CONDITIONS.IS_ANY_OF,
+      },
+    ];
+    const probeState: {
+      binding?: FilterBinding;
+      runtime?: FilterRuntime;
+    } = {};
+
+    function Probe() {
+      const scope = useMosaicFilters({
+        scopeId: 'widget',
+        definitions,
+      });
+      const runtime = scope.getFilter('tags');
+      const binding = useFilterBinding(runtime!);
+
+      React.useEffect(() => {
+        probeState.binding = binding;
+        probeState.runtime = runtime;
+      }, [binding, runtime]);
+
+      return null;
+    }
+
+    const view = render(
+      <SelectionRegistryProvider>
+        <Probe />
+      </SelectionRegistryProvider>,
+    );
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.setValue(['alpha', 'beta']);
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(probeState.runtime?.selection.predicate(null)?.toString()).toContain(
+      'list_has_any',
+    );
+
+    act(() => {
+      probeState.binding?.setOperator(
+        MULTISELECT_ARRAY_CONDITIONS.INCLUDES_ALL,
+      );
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(probeState.runtime?.selection.predicate(null)?.toString()).toContain(
+      'list_has_all',
+    );
+
+    act(() => {
+      probeState.binding?.setOperator(
+        MULTISELECT_ARRAY_CONDITIONS.EXCLUDES_ALL,
+      );
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(probeState.runtime?.selection.predicate(null)?.toString()).toContain(
+      'NOT (list_has_any',
+    );
+
+    act(() => {
+      probeState.binding?.setOperator(MULTISELECT_ARRAY_CONDITIONS.IS_EMPTY);
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.setValue([]);
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(probeState.runtime?.selection.predicate(null)?.toString()).toContain(
+      'array_length',
+    );
+
     view.unmount();
   });
 });

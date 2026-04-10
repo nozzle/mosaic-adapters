@@ -4,6 +4,17 @@ import type {
   MosaicTableSource,
 } from '@nozzleio/mosaic-tanstack-table-core';
 import type { Selection } from '@uwdata/mosaic-core';
+import type {
+  ArrayMultiselectConditionOperatorId,
+  DateConditionOperatorId,
+  DateRangeConditionOperatorId,
+  FilterOperatorId,
+  NumberConditionOperatorId,
+  NumberRangeConditionOperatorId,
+  ScalarMultiselectConditionOperatorId,
+  SelectConditionOperatorId,
+  TextConditionOperatorId,
+} from './filter-conditions';
 
 export type FilterValueKind =
   | 'text'
@@ -14,25 +25,82 @@ export type FilterValueKind =
   | 'number'
   | 'number-range';
 
-export type FilterOperatorId = string;
-
-export interface FilterDefinition {
+type FilterDefinitionBase<
+  TValueKind extends FilterValueKind,
+  TOperator extends FilterOperatorId,
+> = {
   id: string;
   label: string;
   column: string;
-  valueKind: FilterValueKind;
-  operators: Array<FilterOperatorId>;
-  defaultOperator?: FilterOperatorId;
-  facet?: {
-    table: MosaicTableSource;
-    sortMode?: FacetSortMode;
-    columnType?: ColumnType;
-    limit?: number;
-  };
+  valueKind: TValueKind;
+  operators: Array<TOperator>;
+  defaultOperator?: TOperator;
   dataType?: 'string' | 'number' | 'date' | 'boolean';
   groupId?: string;
   description?: string;
-}
+  columnType?: ColumnType;
+  facet?: {
+    table: MosaicTableSource;
+    sortMode?: FacetSortMode;
+    /** @deprecated Prefer top-level FilterDefinition.columnType. */
+    columnType?: ColumnType;
+    limit?: number;
+  };
+};
+
+export type TextFilterDefinition = FilterDefinitionBase<
+  'text',
+  TextConditionOperatorId
+>;
+
+export type SelectFilterDefinition = FilterDefinitionBase<
+  'facet-single',
+  SelectConditionOperatorId
+>;
+
+export type ScalarMultiselectFilterDefinition = FilterDefinitionBase<
+  'facet-multi',
+  ScalarMultiselectConditionOperatorId
+> & {
+  columnType?: 'scalar';
+};
+
+export type ArrayMultiselectFilterDefinition = FilterDefinitionBase<
+  'facet-multi',
+  ArrayMultiselectConditionOperatorId
+> & {
+  columnType: 'array';
+};
+
+export type DateFilterDefinition = FilterDefinitionBase<
+  'date',
+  DateConditionOperatorId
+>;
+
+export type DateRangeFilterDefinition = FilterDefinitionBase<
+  'date-range',
+  DateRangeConditionOperatorId
+>;
+
+export type NumberFilterDefinition = FilterDefinitionBase<
+  'number',
+  NumberConditionOperatorId
+>;
+
+export type NumberRangeFilterDefinition = FilterDefinitionBase<
+  'number-range',
+  NumberRangeConditionOperatorId
+>;
+
+export type FilterDefinition =
+  | TextFilterDefinition
+  | SelectFilterDefinition
+  | ScalarMultiselectFilterDefinition
+  | ArrayMultiselectFilterDefinition
+  | DateFilterDefinition
+  | DateRangeFilterDefinition
+  | NumberFilterDefinition
+  | NumberRangeFilterDefinition;
 
 export interface FilterCollection {
   id: string;
