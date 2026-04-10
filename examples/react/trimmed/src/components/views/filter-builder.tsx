@@ -3,6 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import {
+  DATE_RANGE_CONDITIONS,
+  MULTISELECT_SCALAR_CONDITIONS,
+  NUMBER_RANGE_CONDITIONS,
+  SELECT_CONDITIONS,
+  TEXT_CONDITIONS,
   useMosaicFilters,
   useMosaicReactTable,
 } from '@nozzleio/mosaic-tanstack-react-table';
@@ -81,8 +86,16 @@ const pageDefinitions: Array<FilterDefinition> = [
     label: 'Athlete',
     column: 'name',
     valueKind: 'text',
-    operators: ['contains', 'equals', 'not_equals', 'is_empty', 'is_not_empty'],
-    defaultOperator: 'contains',
+    operators: [
+      TEXT_CONDITIONS.CONTAINS,
+      TEXT_CONDITIONS.EQUALS,
+      TEXT_CONDITIONS.NOT_EQUALS,
+      TEXT_CONDITIONS.IS_EMPTY,
+      TEXT_CONDITIONS.IS_NOT_EMPTY,
+      TEXT_CONDITIONS.STARTS_WITH,
+      TEXT_CONDITIONS.ENDS_WITH,
+    ],
+    defaultOperator: TEXT_CONDITIONS.CONTAINS,
     dataType: 'string',
     description: 'Page-level text filter',
   },
@@ -91,8 +104,13 @@ const pageDefinitions: Array<FilterDefinition> = [
     label: 'Sport',
     column: 'sport',
     valueKind: 'facet-single',
-    operators: ['is', 'is_not', 'is_empty', 'is_not_empty'],
-    defaultOperator: 'is',
+    operators: [
+      SELECT_CONDITIONS.IS,
+      SELECT_CONDITIONS.IS_NOT,
+      SELECT_CONDITIONS.IS_EMPTY,
+      SELECT_CONDITIONS.IS_NOT_EMPTY,
+    ],
+    defaultOperator: SELECT_CONDITIONS.IS,
     dataType: 'string',
     facet: {
       table: tableName,
@@ -105,8 +123,13 @@ const pageDefinitions: Array<FilterDefinition> = [
     label: 'Nationality',
     column: 'nationality',
     valueKind: 'facet-multi',
-    operators: ['any_of', 'none_of', 'is_empty', 'is_not_empty'],
-    defaultOperator: 'any_of',
+    operators: [
+      MULTISELECT_SCALAR_CONDITIONS.ANY_OF,
+      MULTISELECT_SCALAR_CONDITIONS.NONE_OF,
+      MULTISELECT_SCALAR_CONDITIONS.IS_EMPTY,
+      MULTISELECT_SCALAR_CONDITIONS.IS_NOT_EMPTY,
+    ],
+    defaultOperator: MULTISELECT_SCALAR_CONDITIONS.ANY_OF,
     dataType: 'string',
     facet: {
       table: tableName,
@@ -119,8 +142,14 @@ const pageDefinitions: Array<FilterDefinition> = [
     label: 'Born',
     column: 'date_of_birth',
     valueKind: 'date-range',
-    operators: ['between', 'before', 'after', 'is_empty', 'is_not_empty'],
-    defaultOperator: 'between',
+    operators: [
+      DATE_RANGE_CONDITIONS.BETWEEN,
+      DATE_RANGE_CONDITIONS.BEFORE,
+      DATE_RANGE_CONDITIONS.AFTER,
+      DATE_RANGE_CONDITIONS.IS_EMPTY,
+      DATE_RANGE_CONDITIONS.IS_NOT_EMPTY,
+    ],
+    defaultOperator: DATE_RANGE_CONDITIONS.BETWEEN,
     dataType: 'date',
   },
   {
@@ -128,8 +157,13 @@ const pageDefinitions: Array<FilterDefinition> = [
     label: 'Height',
     column: 'height',
     valueKind: 'number-range',
-    operators: ['between', 'after', 'is_empty', 'is_not_empty'],
-    defaultOperator: 'between',
+    operators: [
+      NUMBER_RANGE_CONDITIONS.BETWEEN,
+      NUMBER_RANGE_CONDITIONS.AFTER,
+      NUMBER_RANGE_CONDITIONS.IS_EMPTY,
+      NUMBER_RANGE_CONDITIONS.IS_NOT_EMPTY,
+    ],
+    defaultOperator: NUMBER_RANGE_CONDITIONS.BETWEEN,
     dataType: 'number',
   },
 ];
@@ -140,8 +174,13 @@ const widgetDefinitions: Array<FilterDefinition> = [
     label: 'Gender',
     column: 'sex',
     valueKind: 'facet-single',
-    operators: ['is', 'is_not', 'is_empty', 'is_not_empty'],
-    defaultOperator: 'is',
+    operators: [
+      SELECT_CONDITIONS.IS,
+      SELECT_CONDITIONS.IS_NOT,
+      SELECT_CONDITIONS.IS_EMPTY,
+      SELECT_CONDITIONS.IS_NOT_EMPTY,
+    ],
+    defaultOperator: SELECT_CONDITIONS.IS,
     dataType: 'string',
     facet: {
       table: tableName,
@@ -154,8 +193,13 @@ const widgetDefinitions: Array<FilterDefinition> = [
     label: 'Gold Medals',
     column: 'gold',
     valueKind: 'number-range',
-    operators: ['between', 'after', 'is_empty', 'is_not_empty'],
-    defaultOperator: 'between',
+    operators: [
+      NUMBER_RANGE_CONDITIONS.BETWEEN,
+      NUMBER_RANGE_CONDITIONS.AFTER,
+      NUMBER_RANGE_CONDITIONS.IS_EMPTY,
+      NUMBER_RANGE_CONDITIONS.IS_NOT_EMPTY,
+    ],
+    defaultOperator: NUMBER_RANGE_CONDITIONS.BETWEEN,
     dataType: 'number',
   },
 ];

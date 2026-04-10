@@ -24,6 +24,21 @@ See [Filter Builder](./filter-builder.md) for the page-scope/widget-scope
 pattern, native HTML examples, and the trimmed dynamic builder example that
 adds and removes active filter rows from a catalog.
 
+When using `FilterDefinition.operators`, prefer the exported condition helper
+objects from `@nozzleio/mosaic-tanstack-react-table`, for example:
+
+- `TEXT_CONDITIONS`
+- `SELECT_CONDITIONS`
+- `MULTISELECT_SCALAR_CONDITIONS`
+- `MULTISELECT_ARRAY_CONDITIONS`
+- `DATE_CONDITIONS`
+- `DATE_RANGE_CONDITIONS`
+- `NUMBER_CONDITIONS`
+- `NUMBER_RANGE_CONDITIONS`
+
+Raw string ids still work for compatibility, but the helper exports are the
+canonical public registry of package-supported conditions.
+
 All inputs follow the same pattern:
 
 1. **Write** to a selection (updates filter state)

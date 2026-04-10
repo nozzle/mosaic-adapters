@@ -8,6 +8,8 @@ controls, and keep passing the resulting context into `filterBy`.
 
 ```tsx
 import {
+  DATE_RANGE_CONDITIONS,
+  SELECT_CONDITIONS,
   useFilterBinding,
   useFilterFacet,
   useMosaicFilters,
@@ -24,8 +26,8 @@ const pageDefinitions = [
     label: 'Status',
     column: 'status',
     valueKind: 'facet-single',
-    operators: ['is'],
-    defaultOperator: 'is',
+    operators: [SELECT_CONDITIONS.IS],
+    defaultOperator: SELECT_CONDITIONS.IS,
     facet: {
       table: 'tasks',
       sortMode: 'count',
@@ -36,12 +38,19 @@ const pageDefinitions = [
     label: 'Created',
     column: 'created_at',
     valueKind: 'date-range',
-    operators: ['between', 'before', 'after'],
-    defaultOperator: 'between',
+    operators: [
+      DATE_RANGE_CONDITIONS.BETWEEN,
+      DATE_RANGE_CONDITIONS.BEFORE,
+      DATE_RANGE_CONDITIONS.AFTER,
+    ],
+    defaultOperator: DATE_RANGE_CONDITIONS.BETWEEN,
     dataType: 'date',
   },
 ] as const;
 ```
+
+Raw string ids like `'is'` and `'between'` still work, but the exported
+condition objects are the preferred source of truth for consumer code.
 
 ### Create Scopes
 

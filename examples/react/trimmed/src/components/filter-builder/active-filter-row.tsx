@@ -7,17 +7,33 @@ import { DynamicFilterEditor } from '@/components/filter-builder/dynamic-filter-
 
 const OPERATOR_LABELS: Record<string, string> = {
   contains: 'contains',
+  does_not_contain: 'does not contain',
+  starts_with: 'starts with',
+  ends_with: 'ends with',
+  is_exactly: 'is exactly',
   equals: 'equals',
   not_equals: 'does not equal',
+  eq: 'equals',
+  neq: 'does not equal',
+  gt: 'is greater than',
+  gte: 'is at least',
+  lt: 'is before',
+  lte: 'is at most',
   is_empty: 'is empty',
   is_not_empty: 'is not empty',
   is: 'is',
   is_not: 'is not',
+  is_any_of: 'is any of',
+  is_not_any_of: 'is not any of',
   any_of: 'is any of',
   none_of: 'is not any of',
+  includes_all: 'includes all',
+  excludes_all: 'excludes all',
   between: 'between',
   before: 'before',
   after: 'after',
+  on_or_before: 'on or before',
+  on_or_after: 'on or after',
 };
 
 export function ActiveFilterRow({

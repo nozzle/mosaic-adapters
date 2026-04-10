@@ -103,6 +103,20 @@ interface FilterDefinition {
 }
 ```
 
+Preferred consumer usage should come from exported condition helpers such as:
+
+- `TEXT_CONDITIONS`
+- `SELECT_CONDITIONS`
+- `MULTISELECT_SCALAR_CONDITIONS`
+- `MULTISELECT_ARRAY_CONDITIONS`
+- `DATE_CONDITIONS`
+- `DATE_RANGE_CONDITIONS`
+- `NUMBER_CONDITIONS`
+- `NUMBER_RANGE_CONDITIONS`
+
+Raw string ids remain supported for compatibility, but docs and examples should
+prefer the exported helper objects.
+
 This schema is intentionally UI-oriented. It tells the consumer what they can render without forcing them to understand table internals.
 
 ### 2. Filter Collections
@@ -127,8 +141,13 @@ const pageFilters: FilterCollection = {
       label: 'Status',
       column: 'status',
       valueKind: 'facet-single',
-      operators: ['is', 'is_not', 'is_empty', 'is_not_empty'],
-      defaultOperator: 'is',
+      operators: [
+        SELECT_CONDITIONS.IS,
+        SELECT_CONDITIONS.IS_NOT,
+        SELECT_CONDITIONS.IS_EMPTY,
+        SELECT_CONDITIONS.IS_NOT_EMPTY,
+      ],
+      defaultOperator: SELECT_CONDITIONS.IS,
       dataType: 'string',
       facet: {
         table: 'tasks',
@@ -140,8 +159,14 @@ const pageFilters: FilterCollection = {
       label: 'Created',
       column: 'created_at',
       valueKind: 'date-range',
-      operators: ['between', 'before', 'after', 'is_empty', 'is_not_empty'],
-      defaultOperator: 'between',
+      operators: [
+        DATE_RANGE_CONDITIONS.BETWEEN,
+        DATE_RANGE_CONDITIONS.BEFORE,
+        DATE_RANGE_CONDITIONS.AFTER,
+        DATE_RANGE_CONDITIONS.IS_EMPTY,
+        DATE_RANGE_CONDITIONS.IS_NOT_EMPTY,
+      ],
+      defaultOperator: DATE_RANGE_CONDITIONS.BETWEEN,
       dataType: 'date',
     },
   ],
@@ -908,8 +933,8 @@ Before implementation starts, the assignee should confirm:
 - Should `useFilterBinding` auto-apply on every keystroke, or be explicit?
   - Recommendation: support both; default to explicit `apply()` for builder-style UIs.
 
-- Should operators be free-form strings now, or typed ids from a shipped registry?
-  - Recommendation: typed ids eventually, but string ids are acceptable for the first pass if we keep mapping centralized.
+- Operators should come from shipped condition registries.
+  - Recommendation: export typed helper objects and derived unions, while still accepting raw string literals for compatibility.
 
 ## Recommendation
 
