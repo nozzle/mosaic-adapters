@@ -1,6 +1,11 @@
-import { buildConditionPredicate } from '@nozzleio/mosaic-tanstack-table-core';
+import {
+  buildCollectionPredicate,
+  buildConditionPredicate,
+  buildEmptyValuePredicate,
+} from '@nozzleio/mosaic-tanstack-table-core';
 
 import type {
+  ColumnType,
   ConditionComparableValue,
   ConditionValue,
   FilterOperator,
@@ -13,6 +18,28 @@ import type {
 } from './filter-builder-types';
 
 type FilterBuilderDataType = 'string' | 'number' | 'date' | 'boolean';
+
+type ResolvedFilter =
+  | {
+      kind: 'condition';
+      operator: FilterOperator;
+      value?: ConditionValue | null;
+      valueTo?: ConditionComparableValue | null;
+    }
+  | {
+      kind: 'collection';
+      columnType: ColumnType;
+      dataType: FilterBuilderDataType;
+      values: Array<ConditionComparableValue>;
+      match: 'any' | 'all';
+      negate: boolean;
+    }
+  | {
+      kind: 'empty';
+      columnType: ColumnType;
+      dataType: FilterBuilderDataType;
+      negate: boolean;
+    };
 
 export interface FilterBindingState {
   operator: string | null;
@@ -63,7 +90,7 @@ const DIRECT_OPERATOR_IDS = new Set<FilterOperator>([
   'not_in',
 ]);
 
-const UNARY_OPERATOR_IDS = new Set([
+const EMPTY_OPERATOR_IDS = new Set([
   'is_empty',
   'is_not_empty',
   'is_null',
@@ -107,6 +134,22 @@ function inferDataType(definition: FilterDefinition): FilterBuilderDataType {
   }
 }
 
+function getDefinitionColumnType(definition: FilterDefinition): ColumnType {
+  if ('columnType' in definition && definition.columnType) {
+    return definition.columnType;
+  }
+
+  return definition.facet?.columnType ?? 'scalar';
+}
+
+function getEffectiveColumnType(definition: FilterDefinition): ColumnType {
+  if (definition.valueKind !== 'facet-multi') {
+    return 'scalar';
+  }
+
+  return getDefinitionColumnType(definition);
+}
+
 export function getDefaultFilterOperator(
   definition: FilterDefinition,
 ): string | null {
@@ -123,13 +166,18 @@ export function getDefaultFilterOperator(
     case 'text':
       return 'contains';
     case 'facet-single':
-    case 'facet-multi':
       return 'is';
+    case 'facet-multi':
+      return 'is_any_of';
+    case 'date':
+      return 'equals';
     case 'date-range':
     case 'number-range':
       return 'between';
-    default:
+    case 'number':
       return 'eq';
+    default:
+      return null;
   }
 }
 
@@ -230,12 +278,21 @@ function toComparableValue(value: unknown): ConditionComparableValue | null {
   return null;
 }
 
-function toConditionValue(value: unknown): ConditionValue | null {
-  if (Array.isArray(value)) {
-    const values = value
-      .map((item) => toComparableValue(item))
-      .filter((item): item is ConditionComparableValue => item !== null);
+function toComparableValues(value: unknown): Array<ConditionComparableValue> {
+  if (!Array.isArray(value)) {
+    const comparableValue = toComparableValue(value);
+    return comparableValue === null ? [] : [comparableValue];
+  }
 
+  return value
+    .map((item) => toComparableValue(item))
+    .filter((item): item is ConditionComparableValue => item !== null);
+}
+
+function toConditionValue(value: unknown): ConditionValue | null {
+  const values = toComparableValues(value);
+
+  if (Array.isArray(value)) {
     if (values.length === 0) {
       return null;
     }
@@ -243,7 +300,57 @@ function toConditionValue(value: unknown): ConditionValue | null {
     return values;
   }
 
+  return values[0] ?? null;
+}
+
+function getComparableBound(
+  definition: FilterDefinition,
+  value: unknown,
+  valueTo: unknown,
+  bound: 'from' | 'to' = 'from',
+) {
+  if (isRangeValueKind(definition.valueKind)) {
+    const [rangeFrom, rangeTo] = normalizeRangeTuple(value, valueTo);
+    return toComparableValue(bound === 'from' ? rangeFrom : rangeTo);
+  }
+
   return toComparableValue(value);
+}
+
+function resolveRangeCondition(
+  definition: FilterDefinition,
+  value: unknown,
+  valueTo: unknown,
+): ResolvedFilter | null {
+  const fromValue = getComparableBound(definition, value, valueTo, 'from');
+  const toValue = getComparableBound(definition, value, valueTo, 'to');
+
+  if (fromValue !== null && toValue !== null) {
+    return {
+      kind: 'condition',
+      operator: 'between',
+      value: fromValue,
+      valueTo: toValue,
+    };
+  }
+
+  if (fromValue !== null) {
+    return {
+      kind: 'condition',
+      operator: 'gte',
+      value: fromValue,
+    };
+  }
+
+  if (toValue !== null) {
+    return {
+      kind: 'condition',
+      operator: 'lte',
+      value: toValue,
+    };
+  }
+
+  return null;
 }
 
 function resolveOperatorAlias(
@@ -251,53 +358,30 @@ function resolveOperatorAlias(
   operator: string | null,
   value: unknown,
   valueTo: unknown,
-): {
-  operator: FilterOperator;
-  value?: ConditionValue | null;
-  valueTo?: ConditionComparableValue | null;
-} | null {
+): ResolvedFilter | null {
   if (!operator) {
     return null;
   }
 
-  if (UNARY_OPERATOR_IDS.has(operator)) {
+  const dataType = inferDataType(definition);
+  const columnType = getEffectiveColumnType(definition);
+
+  if (EMPTY_OPERATOR_IDS.has(operator)) {
     return {
-      operator: operator === 'is_empty' ? 'is_null' : 'not_null',
+      kind: 'empty',
+      columnType,
+      dataType,
+      negate: operator === 'is_not_empty' || operator === 'not_null',
     };
   }
 
   if (DIRECT_OPERATOR_IDS.has(operator as FilterOperator)) {
     if (operator === 'between' && isRangeValueKind(definition.valueKind)) {
-      const [rangeFrom, rangeTo] = normalizeRangeTuple(value, valueTo);
-      const fromValue = toComparableValue(rangeFrom);
-      const toValue = toComparableValue(rangeTo);
-
-      if (fromValue !== null && toValue !== null) {
-        return {
-          operator: 'between',
-          value: fromValue,
-          valueTo: toValue,
-        };
-      }
-
-      if (fromValue !== null) {
-        return {
-          operator: 'gte',
-          value: fromValue,
-        };
-      }
-
-      if (toValue !== null) {
-        return {
-          operator: 'lte',
-          value: toValue,
-        };
-      }
-
-      return null;
+      return resolveRangeCondition(definition, value, valueTo);
     }
 
     return {
+      kind: 'condition',
       operator: operator as FilterOperator,
       value: toConditionValue(value),
       valueTo: toComparableValue(valueTo),
@@ -305,83 +389,110 @@ function resolveOperatorAlias(
   }
 
   switch (operator) {
+    case 'does_not_contain':
+      return {
+        kind: 'condition',
+        operator: 'not_contains',
+        value: toConditionValue(value),
+      };
+    case 'is_exactly':
+    case 'equals':
+      return {
+        kind: 'condition',
+        operator: 'eq',
+        value: toConditionValue(value),
+      };
+    case 'not_equals':
+      return {
+        kind: 'condition',
+        operator: 'neq',
+        value: toConditionValue(value),
+      };
     case 'is':
       if (definition.valueKind === 'facet-multi') {
         return {
-          operator: 'in',
-          value: toConditionValue(value),
+          kind: 'collection',
+          columnType,
+          dataType,
+          values: toComparableValues(value),
+          match: 'any',
+          negate: false,
         };
       }
       return {
+        kind: 'condition',
         operator: 'eq',
         value: toConditionValue(value),
       };
     case 'is_not':
       if (definition.valueKind === 'facet-multi') {
         return {
-          operator: 'not_in',
-          value: toConditionValue(value),
+          kind: 'collection',
+          columnType,
+          dataType,
+          values: toComparableValues(value),
+          match: 'any',
+          negate: true,
         };
       }
       return {
+        kind: 'condition',
         operator: 'neq',
         value: toConditionValue(value),
+      };
+    case 'is_any_of':
+    case 'any_of':
+      return {
+        kind: 'collection',
+        columnType,
+        dataType,
+        values: toComparableValues(value),
+        match: 'any',
+        negate: false,
+      };
+    case 'is_not_any_of':
+    case 'none_of':
+    case 'excludes_all':
+      return {
+        kind: 'collection',
+        columnType,
+        dataType,
+        values: toComparableValues(value),
+        match: 'any',
+        negate: true,
+      };
+    case 'includes_all':
+      return {
+        kind: 'collection',
+        columnType,
+        dataType,
+        values: toComparableValues(value),
+        match: 'all',
+        negate: false,
       };
     case 'before':
       return {
+        kind: 'condition',
         operator: 'lt',
-        value: toConditionValue(
-          isRangeValueKind(definition.valueKind)
-            ? normalizeRangeTuple(value, valueTo)[0]
-            : value,
-        ),
+        value: getComparableBound(definition, value, valueTo),
       };
     case 'after':
       return {
+        kind: 'condition',
         operator: 'gt',
-        value: toConditionValue(
-          isRangeValueKind(definition.valueKind)
-            ? normalizeRangeTuple(value, valueTo)[0]
-            : value,
-        ),
+        value: getComparableBound(definition, value, valueTo),
       };
     case 'on_or_before':
       return {
+        kind: 'condition',
         operator: 'lte',
-        value: toConditionValue(
-          isRangeValueKind(definition.valueKind)
-            ? normalizeRangeTuple(value, valueTo)[0]
-            : value,
-        ),
+        value: getComparableBound(definition, value, valueTo),
       };
     case 'on_or_after':
       return {
+        kind: 'condition',
         operator: 'gte',
-        value: toConditionValue(
-          isRangeValueKind(definition.valueKind)
-            ? normalizeRangeTuple(value, valueTo)[0]
-            : value,
-        ),
-      };
-    case 'equals':
-      return {
-        operator: 'eq',
-        value: toConditionValue(value),
-      };
-    case 'not_equals':
-      return {
-        operator: 'neq',
-        value: toConditionValue(value),
-      };
-    case 'any_of':
-      return {
-        operator: 'in',
-        value: toConditionValue(value),
-      };
-    case 'none_of':
-      return {
-        operator: 'not_in',
-        value: toConditionValue(value),
+        value: getComparableBound(definition, value, valueTo),
       };
     default:
       return null;
@@ -494,6 +605,38 @@ export function clearFilterSelection(filter: FilterRuntime): void {
   });
 }
 
+function buildResolvedPredicate(
+  filter: FilterRuntime,
+  resolvedFilter: ResolvedFilter,
+) {
+  switch (resolvedFilter.kind) {
+    case 'condition':
+      return buildConditionPredicate({
+        column: filter.definition.column,
+        operator: resolvedFilter.operator,
+        value: resolvedFilter.value,
+        valueTo: resolvedFilter.valueTo,
+        dataType: inferDataType(filter.definition),
+      });
+    case 'empty':
+      return buildEmptyValuePredicate({
+        column: filter.definition.column,
+        dataType: resolvedFilter.dataType,
+        columnType: resolvedFilter.columnType,
+        negate: resolvedFilter.negate,
+      });
+    case 'collection':
+      return buildCollectionPredicate({
+        column: filter.definition.column,
+        values: resolvedFilter.values,
+        dataType: resolvedFilter.dataType,
+        columnType: resolvedFilter.columnType,
+        match: resolvedFilter.match,
+        negate: resolvedFilter.negate,
+      });
+  }
+}
+
 export function applyFilterSelection(
   filter: FilterRuntime,
   state: FilterBindingState,
@@ -506,11 +649,9 @@ export function applyFilterSelection(
     return;
   }
 
-  if (!UNARY_OPERATOR_IDS.has(operator)) {
-    const normalizedValue = normalizeStoredValue(
-      filter.definition,
-      state.value,
-    );
+  const normalizedValue = normalizeStoredValue(filter.definition, state.value);
+
+  if (!EMPTY_OPERATOR_IDS.has(operator)) {
     if (isValueEmpty(normalizedValue) && isValueEmpty(state.valueTo)) {
       clearFilterSelection(filter);
       return;
@@ -529,13 +670,10 @@ export function applyFilterSelection(
     return;
   }
 
-  const predicate = buildConditionPredicate({
-    column: filter.definition.column,
-    operator: resolvedOperator.operator,
-    value: resolvedOperator.value,
-    valueTo: resolvedOperator.valueTo,
-    dataType: inferDataType(filter.definition),
-  }) as SelectionClause['predicate'];
+  const predicate = buildResolvedPredicate(
+    filter,
+    resolvedOperator,
+  ) as SelectionClause['predicate'];
 
   if (!predicate) {
     clearFilterSelection(filter);
@@ -546,7 +684,7 @@ export function applyFilterSelection(
     source: getFilterSource(filter),
     value: createStoredFilterValue(filter, {
       operator,
-      value: normalizeStoredValue(filter.definition, state.value),
+      value: normalizedValue,
       valueTo: state.valueTo,
     }),
     predicate,

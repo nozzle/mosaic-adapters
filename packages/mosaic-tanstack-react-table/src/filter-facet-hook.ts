@@ -45,7 +45,7 @@ export function useFilterFacet(options: UseFilterFacetOptions) {
     filterBy: options.filterBy,
     additionalContext: options.additionalContext,
     sortMode: facetConfig?.sortMode,
-    columnType: facetConfig?.columnType,
+    columnType: filter.definition.columnType ?? facetConfig?.columnType,
     limit: facetConfig?.limit,
     enabled: enabled && Boolean(facetConfig),
   });
