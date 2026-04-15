@@ -53,5 +53,6 @@ function App() {
 ## Notes
 
 - `useRequireMode()` returns a boolean readiness signal. Components that query immediately should still guard on that result before using coordinator-dependent clients.
+- `useMosaicSelectionValue(selection, { source })` can read a source-scoped selection snapshot when a component needs the value for a specific Mosaic client instead of the shared selection value.
 - `HttpArrowConnector` is exported from the package root for now even though it is not itself a React hook.
 - Table-specific active-filter helpers do not live here. Import `MosaicFilterProvider`, `useFilterRegistry`, `useActiveFilters`, and `useRegisterFilterSource` from `@nozzleio/mosaic-tanstack-react-table`.

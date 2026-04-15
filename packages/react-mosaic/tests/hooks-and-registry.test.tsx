@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, test, vi } from 'vitest';
-import { Selection, clausePoint } from '@uwdata/mosaic-core';
+import { MosaicClient, Selection, clausePoint } from '@uwdata/mosaic-core';
 
 import { useMosaicSelectionValue } from '../src/hooks/use-mosaic-selection-value';
 import {
@@ -27,6 +27,12 @@ function updateSelection(
   );
 }
 
+class TestClient extends MosaicClient {
+  override query() {
+    return null;
+  }
+}
+
 describe('selection hooks', () => {
   test('useMosaicSelectionValue switches snapshots when the selection instance changes', async () => {
     const first = Selection.intersect();
@@ -48,6 +54,35 @@ describe('selection hooks', () => {
     await flushEffects();
 
     expect(values.at(-1)).toBe('second');
+
+    view.unmount();
+  });
+
+  test('useMosaicSelectionValue reads a source-scoped snapshot when provided', async () => {
+    const selection = Selection.intersect();
+    const firstSource = new TestClient();
+    const secondSource = new TestClient();
+    const values: Array<string | null> = [];
+
+    selection.update(
+      clausePoint('value', 'first-scoped', { source: firstSource }),
+    );
+    selection.update(
+      clausePoint('value', 'second-scoped', { source: secondSource }),
+    );
+    await flushEffects();
+
+    function Probe({ source }: { source: MosaicClient }) {
+      const value = useMosaicSelectionValue<string>(selection, { source });
+      values.push(value);
+      return null;
+    }
+
+    const view = render(<Probe source={firstSource} />);
+    view.rerender(<Probe source={secondSource} />);
+    await flushEffects();
+
+    expect(values.at(-1)).toBe('second-scoped');
 
     view.unmount();
   });
