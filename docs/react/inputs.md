@@ -505,6 +505,16 @@ const selectionValue = useMosaicSelectionValue<[number, number]>(selection);
 
 This avoids manual event listeners and keeps the UI in sync with global resets.
 
+If a component needs the value for one specific Mosaic client instead of the shared selection snapshot, pass a `source` option:
+
+```tsx
+const scopedValue = useMosaicSelectionValue<string[]>(selection, {
+  source: client,
+});
+```
+
+This reads `selection.valueFor(client)` and normalizes missing values to `null`, which is useful for client-local UI such as summary-card selection strips.
+
 ## Row Selection (Summary Tables)
 
 Summary tables often act as filters. Use `rowSelection` to write a selection based on row clicks:
@@ -527,6 +537,15 @@ const { tableOptions } = useMosaicReactTable<GroupByRow>({
 
 See `examples/react/trimmed/src/components/views/nozzle-paa.tsx` for the full summary table pattern.
 
+If you surface summary selections in an active-filter bar, register the selection with `explodeArrayValues: true` so multi-select row picks render as separate removable chips instead of one combined value:
+
+```tsx
+useRegisterFilterSource($summarySelection, 'summary', {
+  labelMap: { key: 'Selected Keyword' },
+  explodeArrayValues: true,
+});
+```
+
 ## Complete Examples
 
 - **Searchable select**: `examples/react/trimmed/src/components/paa/paa-filters.tsx` (`SearchableSelectFilter`)
@@ -541,22 +560,3 @@ See `examples/react/trimmed/src/components/views/nozzle-paa.tsx` for the full su
 - [Real-World Examples](./real-world-examples.md) – PAA and Athletes dashboards
 - [Data Flow](../core/data-flow.md) – How inputs propagate to queries
 - [Concepts](../core/concepts.md) – Review selections and contexts
-If you surface summary selections in an active-filter bar, register the selection with `explodeArrayValues: true` so multi-select row picks render as separate removable chips instead of one combined value:
-
-```tsx
-useRegisterFilterSource($summarySelection, 'summary', {
-  labelMap: { key: 'Selected Keyword' },
-  explodeArrayValues: true,
-});
-```
-
-If a component needs the value for one specific Mosaic client instead of the shared selection snapshot, pass a `source` option:
-
-```tsx
-const scopedValue = useMosaicSelectionValue<string[]>(selection, {
-  source: client,
-});
-```
-
-This reads `selection.valueFor(client)` and normalizes missing values to `null`, which is useful for client-local UI such as summary-card selection strips.
-

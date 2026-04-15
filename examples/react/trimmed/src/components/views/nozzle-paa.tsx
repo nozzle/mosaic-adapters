@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
+import { X } from 'lucide-react';
 import {
   useFilterRegistry,
   useMosaicReactTable,
@@ -15,7 +16,11 @@ import {
   createMosaicColumnHelper,
   createMosaicMapping,
 } from '@nozzleio/mosaic-tanstack-react-table/helpers';
-import { useConnectorStatus, useCoordinator } from '@nozzleio/react-mosaic';
+import {
+  useConnectorStatus,
+  useCoordinator,
+  useMosaicSelectionValue,
+} from '@nozzleio/react-mosaic';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import type { Selection } from '@uwdata/mosaic-core';
@@ -31,6 +36,7 @@ import {
 } from '@/components/paa/paa-filters';
 import { SparklineCell } from '@/components/paa/sparkline';
 import { ActiveFilterBar } from '@/components/active-filter-bar';
+import { Button } from '@/components/ui/button';
 
 const TABLE_NAME = 'nozzle_paa';
 
@@ -140,15 +146,19 @@ export function NozzlePaaView() {
   // Register Summary Table Output Selections
   useRegisterFilterSource(topology.selections.phrase, 'summary', {
     labelMap: { phrase: 'Selected Keyword' },
+    explodeArrayValues: true,
   });
   useRegisterFilterSource(topology.selections.question, 'summary', {
     labelMap: { 'related_phrase.phrase': 'Selected Question' },
+    explodeArrayValues: true,
   });
   useRegisterFilterSource(topology.selections.domain, 'summary', {
     labelMap: { domain: 'Selected Domain' },
+    explodeArrayValues: true,
   });
   useRegisterFilterSource(topology.selections.url, 'summary', {
     labelMap: { url: 'Selected URL' },
+    explodeArrayValues: true,
   });
 
   // Register Detail Table Column Filters
@@ -417,6 +427,35 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
 
 type AggregationFactory = (expression?: any) => AggregateNode;
 
+function getGroupByExpression(groupBy: string) {
+  if (groupBy.includes('.')) {
+    const [col, field] = groupBy.split('.');
+    return mSql.sql`${mSql.column(col!)}.${mSql.sql([field!] as any)}`;
+  }
+
+  return mSql.column(groupBy);
+}
+
+function buildSummarySelectionPredicate(
+  groupBy: string,
+  values: Array<string | number>,
+): ReturnType<typeof mSql.eq> | ReturnType<typeof mSql.isIn> | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const columnExpr = getGroupByExpression(groupBy);
+
+  if (values.length === 1) {
+    return mSql.eq(columnExpr, mSql.literal(values[0]));
+  }
+
+  return mSql.isIn(
+    columnExpr,
+    values.map((value) => mSql.literal(value)),
+  );
+}
+
 function SummaryTable({
   title,
   groupBy,
@@ -442,13 +481,7 @@ function SummaryTable({
 }) {
   const queryFactory = useMemo(
     () => (filter: FilterExpr | null | undefined) => {
-      let groupKey;
-      if (groupBy.includes('.')) {
-        const [col, field] = groupBy.split('.');
-        groupKey = mSql.sql`${mSql.column(col!)}.${mSql.sql([field!] as any)}`;
-      } else {
-        groupKey = mSql.column(groupBy);
-      }
+      const groupKey = getGroupByExpression(groupBy);
 
       const highlightPred = selection.predicate(null);
       let highlightCol;
@@ -554,7 +587,7 @@ function SummaryTable({
     [groupBy, title, metricLabel, helper, sparkline, filterBy, enabled],
   );
 
-  const { tableOptions } = useMosaicReactTable<GroupByRow>({
+  const { tableOptions, client } = useMosaicReactTable<GroupByRow>({
     table: queryFactory,
     filterBy: filterBy,
     manualHighlight: true,
@@ -586,13 +619,82 @@ function SummaryTable({
     enabled,
   });
 
+  const selectedValue = useMosaicSelectionValue<
+    Array<string | number> | string | number | null
+  >(selection, {
+    source: client,
+  });
+  const selectedValues = useMemo(() => {
+    if (selectedValue === null) {
+      return [] as Array<string | number>;
+    }
+
+    return Array.isArray(selectedValue) ? selectedValue : [selectedValue];
+  }, [selectedValue]);
+
   const table = useReactTable(tableOptions);
 
+  const updateSelectionValues = (nextValues: Array<string | number>) => {
+    selection.update({
+      source: client,
+      clients: new Set([client]),
+      value: nextValues.length > 0 ? nextValues : null,
+      predicate: buildSummarySelectionPredicate(groupBy, nextValues),
+    });
+  };
+
+  const clearSelection = () => {
+    updateSelectionValues([]);
+  };
+
+  const removeSelectedValue = (valueToRemove: string | number) => {
+    const nextValues = selectedValues.filter(
+      (value) => !Object.is(value, valueToRemove),
+    );
+    updateSelectionValues(nextValues);
+  };
+
   return (
-    <div className="bg-white border rounded-lg shadow-sm flex flex-col h-[350px] overflow-hidden">
+    <div className="bg-white border rounded-lg shadow-sm flex flex-col h-[700px] overflow-hidden">
       <div className="px-4 py-3 border-b bg-slate-50 text-sm font-bold text-slate-700 uppercase tracking-wide">
         {title}
       </div>
+      {selectedValues.length > 0 ? (
+        <div className="px-4 py-3 border-b bg-blue-50/60 flex flex-wrap items-center gap-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
+            Selected ({selectedValues.length})
+          </div>
+          {selectedValues.map((value) => (
+            <div
+              key={String(value)}
+              className="flex items-center gap-1 rounded-full border border-blue-200 bg-white pl-2 pr-1 py-1 text-xs text-blue-900 shadow-sm"
+            >
+              <span className="max-w-[180px] truncate" title={String(value)}>
+                {String(value)}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 rounded-full text-blue-700 hover:bg-blue-100"
+                aria-label={`Remove ${title} selection ${String(value)}`}
+                onClick={() => removeSelectedValue(value)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+          <div className="flex-1" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-xs text-blue-900 hover:bg-blue-100"
+            aria-label={`Clear ${title} selections`}
+            onClick={clearSelection}
+          >
+            Clear
+          </Button>
+        </div>
+      ) : null}
       <div className="flex-1 overflow-auto p-2">
         <RenderTable
           table={table}
