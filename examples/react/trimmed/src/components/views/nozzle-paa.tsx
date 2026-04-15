@@ -19,6 +19,7 @@ import { useConnectorStatus, useCoordinator } from '@nozzleio/react-mosaic';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AggregateNode, FilterExpr } from '@uwdata/mosaic-sql';
 import type { Selection } from '@uwdata/mosaic-core';
+import type { SparklineCellConfig } from '@/components/paa/sparkline';
 import { usePaaTopology } from '@/hooks/usePaaTopology';
 import { RenderTable } from '@/components/render-table';
 import { useMosaicValue } from '@/hooks/useMosaicValue';
@@ -28,6 +29,7 @@ import {
   SearchableSelectFilter,
   TextFilter,
 } from '@/components/paa/paa-filters';
+import { SparklineCell } from '@/components/paa/sparkline';
 import { ActiveFilterBar } from '@/components/active-filter-bar';
 
 const TABLE_NAME = 'nozzle_paa';
@@ -292,6 +294,11 @@ export function NozzlePaaView() {
           metric="search_volume"
           metricLabel="Search Vol"
           aggFn={maxAgg}
+          sparkline={{
+            metric: 'search_volume',
+            dateColumn: 'requested',
+            aggMode: 'max',
+          }}
           filterBy={topology.phraseContext}
           selection={topology.selections.phrase}
           enabled={isReady}
@@ -420,6 +427,7 @@ function SummaryTable({
   filterBy,
   selection,
   enabled,
+  sparkline,
 }: {
   title: string;
   groupBy: string;
@@ -430,6 +438,7 @@ function SummaryTable({
   filterBy: Selection;
   selection: Selection;
   enabled: boolean;
+  sparkline?: SparklineCellConfig;
 }) {
   const queryFactory = useMemo(
     () => (filter: FilterExpr | null | undefined) => {
@@ -511,6 +520,27 @@ function SummaryTable({
         cell: (info) => info.getValue()?.toLocaleString(),
         enableColumnFilter: false,
       }),
+      ...(sparkline
+        ? [
+            {
+              id: 'trend',
+              header: 'Trend',
+              size: 120,
+              enableSorting: false,
+              enableColumnFilter: false,
+              cell: ({ row }: { row: { original: GroupByRow } }) => (
+                <SparklineCell
+                  tableName={TABLE_NAME}
+                  groupByColumn={groupBy}
+                  keyValue={row.original.key}
+                  filterBy={filterBy}
+                  config={sparkline}
+                  enabled={enabled}
+                />
+              ),
+            } as ColumnDef<GroupByRow, unknown>,
+          ]
+        : []),
       helper.accessor('__is_highlighted', {
         id: '__is_highlighted',
         header: '',
@@ -521,7 +551,7 @@ function SummaryTable({
         },
       }),
     ],
-    [groupBy, title, metricLabel, helper],
+    [groupBy, title, metricLabel, helper, sparkline, filterBy, enabled],
   );
 
   const { tableOptions } = useMosaicReactTable<GroupByRow>({
