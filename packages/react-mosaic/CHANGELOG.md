@@ -1,5 +1,17 @@
 # @nozzleio/react-mosaic
 
+## 0.2.0
+
+### Minor Changes
+
+- [#115](https://github.com/nozzle/mosaic-adapters/pull/115) [`53d8c34`](https://github.com/nozzle/mosaic-adapters/commit/53d8c3410d6224cfb9b6a5553cf12380f9353b18) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - feat(react-mosaic): add source-scoped selection value reads
+
+### Patch Changes
+
+- [#117](https://github.com/nozzle/mosaic-adapters/pull/117) [`d79ebb3`](https://github.com/nozzle/mosaic-adapters/commit/d79ebb3a62ec877e4fe40a92eebb948112a31e3e) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - chore(react-mosaic): make mosaic-core a peer dependency
+
+- [#117](https://github.com/nozzle/mosaic-adapters/pull/117) [`11f58c4`](https://github.com/nozzle/mosaic-adapters/commit/11f58c44eda51e0824d2b94683cec6d21ac2e30c) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - chore(deps): upgrade @uwdata/mosaic packages to 0.24.2
+
 ## 0.1.1
 
 ### Patch Changes

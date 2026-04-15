@@ -1,5 +1,22 @@
 # @nozzleio/mosaic-tanstack-react-table
 
+## 0.3.0
+
+### Minor Changes
+
+- [#115](https://github.com/nozzle/mosaic-adapters/pull/115) [`661955f`](https://github.com/nozzle/mosaic-adapters/commit/661955fa18efaebca447c49424c56f654ca022ca) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - feat(table-core,react-table): support removable active chips for row-selection arrays
+
+### Patch Changes
+
+- [#117](https://github.com/nozzle/mosaic-adapters/pull/117) [`95911d9`](https://github.com/nozzle/mosaic-adapters/commit/95911d93697470c32e1c84f0eb0bb2ff4b8744c6) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - chore(react-table): make mosaic packages peer dependencies
+
+- [#113](https://github.com/nozzle/mosaic-adapters/pull/113) [`513995a`](https://github.com/nozzle/mosaic-adapters/commit/513995a6d134e88a67fe9cdd04cd43af1f876f87) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - refactor: add useMosaicSparkline hook for per-row sparkline data
+
+- [#117](https://github.com/nozzle/mosaic-adapters/pull/117) [`11f58c4`](https://github.com/nozzle/mosaic-adapters/commit/11f58c44eda51e0824d2b94683cec6d21ac2e30c) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - chore(deps): upgrade @uwdata/mosaic packages to 0.24.2
+
+- Updated dependencies [[`7fa4fc0`](https://github.com/nozzle/mosaic-adapters/commit/7fa4fc08bcfd3fcc55a1ee001277e3dda29ab730), [`661955f`](https://github.com/nozzle/mosaic-adapters/commit/661955fa18efaebca447c49424c56f654ca022ca), [`11f58c4`](https://github.com/nozzle/mosaic-adapters/commit/11f58c44eda51e0824d2b94683cec6d21ac2e30c), [`0f0c841`](https://github.com/nozzle/mosaic-adapters/commit/0f0c841a420ae855ed06e1b2c7650a90f95edf19)]:
+  - @nozzleio/mosaic-tanstack-table-core@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
