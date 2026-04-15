@@ -550,3 +550,13 @@ useRegisterFilterSource($summarySelection, 'summary', {
 });
 ```
 
+If a component needs the value for one specific Mosaic client instead of the shared selection snapshot, pass a `source` option:
+
+```tsx
+const scopedValue = useMosaicSelectionValue<string[]>(selection, {
+  source: client,
+});
+```
+
+This reads `selection.valueFor(client)` and normalizes missing values to `null`, which is useful for client-local UI such as summary-card selection strips.
+

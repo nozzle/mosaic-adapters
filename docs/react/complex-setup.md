@@ -490,3 +490,14 @@ useRegisterFilterSource($phraseSelection, 'summary', {
 
 For row-selection-backed summary filters, use `explodeArrayValues: true` during registration so the bar shows one chip per selected scalar value and removing one chip rebuilds the remaining predicate instead of clearing the whole selection.
 
+## Client-Scoped Selection UI
+
+Some complex dashboards need to show selection state for one specific table client, not the shared global selection snapshot. Use `useMosaicSelectionValue(selection, { source: client })` for that case:
+
+```tsx
+const selectedValues = useMosaicSelectionValue<string[]>(selection, {
+  source: client,
+});
+```
+
+This is the pattern used by the Nozzle PAA summary cards to keep a local `Selected (N)` strip visible even when peer cross-filtering removes those rows from the current table body.
