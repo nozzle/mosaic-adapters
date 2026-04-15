@@ -479,3 +479,14 @@ vg.dot(vg.from('data', { filterBy: $hover }), {
 - [Data Flow](../core/data-flow.md) – Deep dive into query lifecycle
 - [Concepts](../core/concepts.md) – Review core primitives
 - [Grouped Table](./grouped-table.md) – Server-side hierarchical grouping with lazy expand
+For summary selections that also appear in an active-filter bar, register them with `explodeArrayValues: true` so each selected row value becomes its own removable chip:
+
+```tsx
+useRegisterFilterSource($phraseSelection, 'summary', {
+  labelMap: { phrase: 'Selected Keyword' },
+  explodeArrayValues: true,
+});
+```
+
+For row-selection-backed summary filters, use `explodeArrayValues: true` during registration so the bar shows one chip per selected scalar value and removing one chip rebuilds the remaining predicate instead of clearing the whole selection.
+

@@ -84,6 +84,7 @@ export class MosaicDataTable<
   source: MosaicTableSource;
   schema: Array<FieldInfo> = [];
   tableFilterSelection: Selection = new Selection();
+  rowSelectionColumn?: string;
   options: MosaicDataTableOptions<TData, TValue>;
 
   #store: Store<MosaicDataTableStore<TData, TValue>> | null = null;
@@ -820,9 +821,11 @@ export class MosaicDataTable<
   #configureRowSelection(options: MosaicDataTableOptions<TData, TValue>): void {
     if (!options.rowSelection) {
       this.#rowSelectionManager = undefined;
+      this.rowSelectionColumn = undefined;
       return;
     }
 
+    this.rowSelectionColumn = options.rowSelection.column;
     this.#rowSelectionManager = new MosaicSelectionManager<string | number>({
       client: this,
       column: options.rowSelection.column,

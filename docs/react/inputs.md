@@ -541,3 +541,12 @@ See `examples/react/trimmed/src/components/views/nozzle-paa.tsx` for the full su
 - [Real-World Examples](./real-world-examples.md) – PAA and Athletes dashboards
 - [Data Flow](../core/data-flow.md) – How inputs propagate to queries
 - [Concepts](../core/concepts.md) – Review selections and contexts
+If you surface summary selections in an active-filter bar, register the selection with `explodeArrayValues: true` so multi-select row picks render as separate removable chips instead of one combined value:
+
+```tsx
+useRegisterFilterSource($summarySelection, 'summary', {
+  labelMap: { key: 'Selected Keyword' },
+  explodeArrayValues: true,
+});
+```
+
