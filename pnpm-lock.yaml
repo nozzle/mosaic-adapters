@@ -240,9 +240,6 @@ importers:
       '@tanstack/react-table':
         specifier: '>=8.17.3'
         version: 8.21.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@uwdata/mosaic-core':
-        specifier: 'catalog:'
-        version: 0.23.1
       react:
         specifier: '>=19.2.4'
         version: 19.2.4
@@ -262,6 +259,12 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
+      '@uwdata/mosaic-core':
+        specifier: 'catalog:'
+        version: 0.23.1
+      '@uwdata/mosaic-sql':
+        specifier: 'catalog:'
+        version: 0.23.0
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.0.1(vite@8.0.2(@types/node@25.0.9)(esbuild@0.27.2)(jiti@2.6.1)(yaml@2.8.2))
