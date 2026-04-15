@@ -8,3 +8,4 @@ export * from './filter-binding-hook';
 export * from './filter-facet-hook';
 export * from './filter-registry';
 export * from './histogram-hook';
+export * from './sparkline-hook';
