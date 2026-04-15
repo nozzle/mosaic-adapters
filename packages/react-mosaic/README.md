@@ -7,7 +7,7 @@ This package owns the shared React context used by the Mosaic adapters. Use it t
 ## Install
 
 ```bash
-npm install @nozzleio/react-mosaic react
+npm install @nozzleio/react-mosaic @uwdata/mosaic-core react
 ```
 
 ## What lives here
