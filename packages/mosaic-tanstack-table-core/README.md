@@ -7,7 +7,7 @@ Use this package when you want the core table client, filter/facet clients, mapp
 ## Install
 
 ```bash
-npm install @nozzleio/mosaic-tanstack-table-core
+npm install @nozzleio/mosaic-tanstack-table-core @uwdata/mosaic-core @uwdata/mosaic-sql
 ```
 
 ## Root exports

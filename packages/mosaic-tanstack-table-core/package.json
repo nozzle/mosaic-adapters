@@ -65,11 +65,15 @@
   },
   "dependencies": {
     "@tanstack/store": "catalog:",
-    "@tanstack/table-core": "catalog:",
-    "@uwdata/mosaic-core": "catalog:",
-    "@uwdata/mosaic-sql": "catalog:"
+    "@tanstack/table-core": "catalog:"
+  },
+  "peerDependencies": {
+    "@uwdata/mosaic-core": ">=0.23.1 <1",
+    "@uwdata/mosaic-sql": ">=0.23.0 <1"
   },
   "devDependencies": {
+    "@uwdata/mosaic-core": "catalog:",
+    "@uwdata/mosaic-sql": "catalog:",
     "eslint": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:"
