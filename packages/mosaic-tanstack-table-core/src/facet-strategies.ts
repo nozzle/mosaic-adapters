@@ -336,6 +336,88 @@ export const HistogramStrategy: FacetStrategy<HistogramInput, HistogramOutput> =
     },
   };
 
+// --- Sparkline Strategy ---
+
+export type SparklineAggMode = 'max' | 'min' | 'count' | 'sum' | 'avg';
+
+export type SparklineInput = {
+  /** Date/time column to group by. */
+  dateColumn: string;
+  /** Aggregation mode for the metric column. */
+  aggMode: SparklineAggMode;
+};
+
+export type SparklineOutput = Array<{ date: string; value: number }>;
+
+const sparklineAggFns: Record<SparklineAggMode, typeof mSql.count> = {
+  max: mSql.max as typeof mSql.count,
+  min: mSql.min as typeof mSql.count,
+  count: mSql.count,
+  sum: mSql.sum as typeof mSql.count,
+  avg: mSql.avg as typeof mSql.count,
+};
+
+/**
+ * Strategy for fetching time-series sparkline data.
+ * Groups by a date column and aggregates a metric column.
+ */
+export const SparklineStrategy: FacetStrategy<SparklineInput, SparklineOutput> =
+  {
+    buildQuery: (ctx) => {
+      const { dateColumn, aggMode } = ctx.options!;
+      const aggFn = sparklineAggFns[aggMode];
+
+      let src: string | SelectQuery;
+      const outerFilters: Array<FilterExpr> = [];
+
+      if (typeof ctx.source === 'function') {
+        src = ctx.source(ctx.primaryFilter);
+        if (ctx.cascadingFilters.length > 0) {
+          outerFilters.push(...ctx.cascadingFilters);
+        }
+      } else {
+        src = isParam(ctx.source)
+          ? (ctx.source.value as string)
+          : (ctx.source as string);
+
+        if (ctx.primaryFilter) {
+          outerFilters.push(ctx.primaryFilter);
+        }
+        if (ctx.cascadingFilters.length > 0) {
+          outerFilters.push(...ctx.cascadingFilters);
+        }
+      }
+
+      const dateCol = mSql.column(dateColumn);
+      const valueExpr = aggMode === 'count' ? aggFn() : aggFn(ctx.column);
+
+      const statement = mSql.Query.from(src)
+        .select({ date: dateCol, value: valueExpr })
+        .groupby(dateCol)
+        .orderby(mSql.asc(dateCol));
+
+      if (outerFilters.length > 0) {
+        statement.where(mSql.and(...outerFilters));
+      }
+
+      return statement;
+    },
+
+    transformResult: (rows) => {
+      return rows.map((row) => ({
+        date: String(row['date']),
+        value: Number(row['value']),
+      }));
+    },
+
+    validate: (data) => {
+      if (!Array.isArray(data)) {
+        throw new Error('Sparkline data must be an array');
+      }
+      return data as SparklineOutput;
+    },
+  };
+
 export const defaultFacetStrategies: FacetStrategyMap = {
   unique: UniqueValuesStrategy,
   minmax: MinMaxStrategy,
