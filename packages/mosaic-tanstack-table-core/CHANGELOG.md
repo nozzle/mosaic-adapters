@@ -1,5 +1,19 @@
 # @nozzleio/mosaic-tanstack-table-core
 
+## 0.3.0
+
+### Minor Changes
+
+- [#115](https://github.com/nozzle/mosaic-adapters/pull/115) [`661955f`](https://github.com/nozzle/mosaic-adapters/commit/661955fa18efaebca447c49424c56f654ca022ca) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - feat(table-core,react-table): support removable active chips for row-selection arrays
+
+### Patch Changes
+
+- [#117](https://github.com/nozzle/mosaic-adapters/pull/117) [`7fa4fc0`](https://github.com/nozzle/mosaic-adapters/commit/7fa4fc08bcfd3fcc55a1ee001277e3dda29ab730) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - chore(table-core): make mosaic packages peer dependencies
+
+- [#117](https://github.com/nozzle/mosaic-adapters/pull/117) [`11f58c4`](https://github.com/nozzle/mosaic-adapters/commit/11f58c44eda51e0824d2b94683cec6d21ac2e30c) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - chore(deps): upgrade @uwdata/mosaic packages to 0.24.2
+
+- [#113](https://github.com/nozzle/mosaic-adapters/pull/113) [`0f0c841`](https://github.com/nozzle/mosaic-adapters/commit/0f0c841a420ae855ed06e1b2c7650a90f95edf19) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - refactor: add SparklineStrategy for time-series facet queries
+
 ## 0.2.0
 
 ### Minor Changes
