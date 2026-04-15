@@ -49,10 +49,8 @@
     "test:lib": "vitest",
     "test:lint": "pnpm run lint"
   },
-  "dependencies": {
-    "@uwdata/mosaic-core": "catalog:"
-  },
   "peerDependencies": {
+    "@uwdata/mosaic-core": ">=0.23.1 <1",
     "react": ">=19.2.0"
   },
   "devDependencies": {
@@ -60,6 +58,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "catalog:",
+    "@uwdata/mosaic-core": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
     "react-dom": "^19.2.4",
