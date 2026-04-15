@@ -98,6 +98,7 @@ vi.mock('@nozzleio/mosaic-tanstack-table-core', async () => {
 
 vi.mock('@nozzleio/mosaic-tanstack-table-core/facet-strategies', () => ({
   HistogramStrategy: { key: 'histogram' },
+  SparklineStrategy: { key: 'sparkline' },
 }));
 
 vi.mock('@nozzleio/mosaic-tanstack-table-core/sidecar', () => {
