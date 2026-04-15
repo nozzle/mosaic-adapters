@@ -69,7 +69,8 @@ function areRegisterFilterSourceOptionsEqual(
 
   return (
     areRecordValuesEqual(previous.labelMap, next.labelMap) &&
-    areRecordValuesEqual(previous.formatterMap, next.formatterMap)
+    areRecordValuesEqual(previous.formatterMap, next.formatterMap) &&
+    previous.explodeArrayValues === next.explodeArrayValues
   );
 }
 

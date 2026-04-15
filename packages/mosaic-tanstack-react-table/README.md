@@ -55,6 +55,7 @@ import { logger } from '@nozzleio/mosaic-tanstack-react-table/debug';
 ## Notes
 
 - `useFilterRegistry()` returns the narrowed React-facing action API, not the raw core `MosaicFilterRegistry` instance.
+- `useRegisterFilterSource()` accepts `explodeArrayValues: true` when a selection stores scalar arrays and the active-filter UI should expose them as individually removable chips.
 - `useMosaicTableFilter()` supports the runtime filter modes `TEXT`, `MATCH`, `SELECT`, `DATE_RANGE`, and `RANGE`.
 - `useMosaicTableFacetMenu()` exposes `toggle()`, `select()`, `clear()`, and `loadMore()`. Use `select()` for single-select facet UI and `clear()` to reset a facet.
 - This package does not re-export the full core package from the root. If you need headless-only APIs, import them from `@nozzleio/mosaic-tanstack-table-core` or its explicit subpaths.

@@ -314,6 +314,7 @@ describe('MosaicDataTable characterization', () => {
       '2': true,
       '7': true,
     });
+    expect(client.rowSelectionColumn).toBe('id');
     expect(rowSelection.valueFor(client)).toEqual(['2', '7']);
     const rowSelectionPredicate = rowSelection.active.predicate;
     expect(rowSelectionPredicate).not.toBeNull();

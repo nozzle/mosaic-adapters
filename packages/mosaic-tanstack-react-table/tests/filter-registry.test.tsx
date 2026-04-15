@@ -98,4 +98,78 @@ describe('active filter hooks', () => {
 
     view.unmount();
   });
+
+  test('splits row-selection arrays into individually labeled active filters and removes them independently', async () => {
+    const phraseSelection = Selection.intersect();
+    let registry: ReturnType<typeof useFilterRegistry> | undefined;
+    let latestFilters: ReturnType<typeof useActiveFilters> = [];
+
+    function Probe() {
+      registry = useFilterRegistry();
+      latestFilters = useActiveFilters();
+
+      useRegisterFilterSource(phraseSelection, 'summary', {
+        labelMap: { phrase: 'Selected Keyword' },
+        explodeArrayValues: true,
+      });
+
+      React.useEffect(() => {
+        registry?.registerGroup({
+          id: 'summary',
+          label: 'Summary',
+          priority: 1,
+        });
+      }, [registry]);
+
+      return null;
+    }
+
+    const view = render(
+      <MosaicFilterProvider>
+        <Probe />
+      </MosaicFilterProvider>,
+    );
+    await flushEffects();
+
+    await act(async () => {
+      phraseSelection.update({
+        source: { rowSelectionColumn: 'phrase' } as never,
+        value: ['gasoline stove', 'gaz stove'],
+        predicate: {} as never,
+      });
+    });
+    await flushEffects();
+
+    expect(
+      latestFilters.map((filter) => ({
+        label: filter.label,
+        value: filter.value,
+      })),
+    ).toEqual([
+      { label: 'Selected Keyword', value: 'gasoline stove' },
+      { label: 'Selected Keyword', value: 'gaz stove' },
+    ]);
+
+    const gasFilter = latestFilters.find(
+      (filter) => filter.value === 'gasoline stove',
+    );
+    if (!gasFilter) {
+      throw new Error('Expected gasoline stove filter to be active.');
+    }
+
+    await act(async () => {
+      registry?.removeFilter(gasFilter);
+    });
+    await flushEffects();
+
+    expect(phraseSelection.value).toEqual(['gaz stove']);
+    expect(
+      latestFilters.map((filter) => ({
+        label: filter.label,
+        value: filter.value,
+      })),
+    ).toEqual([{ label: 'Selected Keyword', value: 'gaz stove' }]);
+
+    view.unmount();
+  });
 });

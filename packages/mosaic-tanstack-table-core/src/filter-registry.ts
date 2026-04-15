@@ -1,4 +1,7 @@
+import * as mSql from '@uwdata/mosaic-sql';
 import { Store } from '@tanstack/store';
+import { SqlIdentifier } from './domain/sql-identifier';
+import { createStructAccess } from './utils';
 import type {
   ClauseSource,
   Selection,
@@ -50,6 +53,26 @@ function resolveSourceId(sourceClient: ClauseSource | undefined): string {
   return 'unknown';
 }
 
+function buildScalarSelectionPredicate(
+  column: string,
+  values: Array<unknown>,
+): ReturnType<typeof mSql.eq> | ReturnType<typeof mSql.isIn> | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const columnExpr = createStructAccess(SqlIdentifier.from(column));
+
+  if (values.length === 1) {
+    return mSql.eq(columnExpr, mSql.literal(values[0]));
+  }
+
+  return mSql.isIn(
+    columnExpr,
+    values.map((value) => mSql.literal(value)),
+  );
+}
+
 /**
  * Configuration for a logical group of filters.
  * Used to sort the display of active filters in the UI.
@@ -70,6 +93,8 @@ export interface SelectionRegistration {
   labelMap?: Record<string, string>;
   /** Optional map to format values for specific source IDs */
   formatterMap?: Record<string, (val: unknown) => string>;
+  /** When true, scalar array values are shown as individually removable filters. */
+  explodeArrayValues?: boolean;
 }
 
 /**
@@ -160,6 +185,11 @@ export class MosaicFilterRegistry {
           Array.isArray(rawValue) &&
           rawValue.length > 0 &&
           isSelectionArrayItem(rawValue[0]);
+        const shouldExplodeArrayValues =
+          config.explodeArrayValues &&
+          Array.isArray(rawValue) &&
+          rawValue.length > 0 &&
+          !isSelectionArrayItem(rawValue[0]);
 
         if (isTanStackFilterArray) {
           rawValue.forEach((item) => {
@@ -174,6 +204,18 @@ export class MosaicFilterRegistry {
               selection,
               sourceClient,
               itemSourceId,
+            );
+          });
+        } else if (shouldExplodeArrayValues) {
+          rawValue.forEach((itemValue) => {
+            this.addActiveFilter(
+              allFilters,
+              config,
+              sourceId,
+              itemValue,
+              selection,
+              sourceClient,
+              sourceId,
             );
           });
         } else {
@@ -283,6 +325,20 @@ export class MosaicFilterRegistry {
         source: filter.sourceObject,
         value: nextVal,
         predicate: null,
+      });
+    } else if (
+      filter.subId &&
+      Array.isArray(filter.selection.value) &&
+      !filter.selection.value.every(isSelectionArrayItem)
+    ) {
+      const nextVal = filter.selection.value.filter(
+        (item) => !Object.is(item, filter.value),
+      );
+
+      filter.selection.update({
+        source: filter.sourceObject,
+        value: nextVal.length > 0 ? nextVal : null,
+        predicate: buildScalarSelectionPredicate(filter.sourceId, nextVal),
       });
     } else {
       // Standard clearing

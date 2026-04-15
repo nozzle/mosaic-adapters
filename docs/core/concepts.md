@@ -229,6 +229,13 @@ useRegisterFilterSource($domainFilter, 'global', {
   labelMap: { domain: 'Domain' },
 });
 
+// For row-selection-backed multi-select filters, expose one removable
+// chip per selected scalar value.
+useRegisterFilterSource($summarySelection, 'summary', {
+  labelMap: { phrase: 'Selected Keyword' },
+  explodeArrayValues: true,
+});
+
 function ActiveFilterBar() {
   const filters = useActiveFilters();
   const registry = useFilterRegistry();
