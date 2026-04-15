@@ -7,7 +7,7 @@ This guide walks through setting up a basic Mosaic-powered table in React. We'll
 Install the required packages:
 
 ```bash
-pnpm add @nozzleio/mosaic-tanstack-react-table @nozzleio/react-mosaic @tanstack/react-table @uwdata/vgplot @uwdata/mosaic-core
+pnpm add @nozzleio/mosaic-tanstack-react-table @nozzleio/react-mosaic @tanstack/react-table @uwdata/vgplot @uwdata/mosaic-core @uwdata/mosaic-sql
 ```
 
 ## Basic Setup
