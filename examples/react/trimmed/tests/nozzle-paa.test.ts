@@ -13,5 +13,48 @@ test.describe('nozzle-paa page', () => {
       name: 'Nozzle PAA Report',
     });
     await expect(heading).toBeVisible();
+    await expect(page.getByText(/^Selected \(\d+\)$/)).toHaveCount(0);
+    await expect(page.getByText('undefined')).toHaveCount(0);
+  });
+
+  test('keeps narrowed summary selections visible and removable outside the table body', async ({
+    page,
+  }) => {
+    await init(page);
+
+    const keywordTable = page.locator('table').nth(0);
+    const questionTable = page.locator('table').nth(1);
+
+    await keywordTable.locator('tbody tr').nth(0).click();
+    await keywordTable.locator('tbody tr').nth(1).click();
+
+    await questionTable.locator('tbody tr').nth(0).click();
+
+    await expect(page.getByText('unknown:')).toHaveCount(0);
+    await expect(page.getByText('Selected Keyword:').first()).toBeVisible();
+    await expect(page.getByText('Selected Question:').first()).toBeVisible();
+
+    await expect(
+      keywordTable.locator('tbody tr').filter({ hasText: 'gaz stove' }),
+    ).toHaveCount(0);
+
+    const hiddenSelectionButton = page.getByRole('button', {
+      name: 'Remove Keyword Phrase selection gaz stove',
+    });
+    await expect(hiddenSelectionButton).toBeVisible();
+
+    await hiddenSelectionButton.click();
+
+    await expect(hiddenSelectionButton).toHaveCount(0);
+    await expect(
+      page.getByRole('button', {
+        name: 'Remove Keyword Phrase selection gasoline stove',
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: 'Clear Keyword Phrase selections',
+      }),
+    ).toBeVisible();
   });
 });

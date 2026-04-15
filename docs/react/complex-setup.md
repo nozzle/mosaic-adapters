@@ -243,6 +243,15 @@ const { tableOptions } = useMosaicReactTable<GroupByRow>({
 
 When users select rows, the adapter updates `$phraseSelection` with predicates like `phrase IN ('value1', 'value2')`.
 
+For summary selections that also appear in an active-filter bar, register them with `explodeArrayValues: true` so each selected row value becomes its own removable chip:
+
+```tsx
+useRegisterFilterSource($phraseSelection, 'summary', {
+  labelMap: { phrase: 'Selected Keyword' },
+  explodeArrayValues: true,
+});
+```
+
 ## Total Rows Modes
 
 Large tables often need a reliable total row count. The adapter supports two strategies:
@@ -319,6 +328,8 @@ const { tableOptions } = useMosaicReactTable({
 Then style rows based on the hidden `__is_highlighted` column.
 
 This pattern is used in `examples/react/trimmed/src/components/views/nozzle-paa.tsx` to keep summary tables highlighted without filtering out rows.
+
+One subtle consequence of this topology is that a peer summary table can still narrow the visible rows in the current summary table. If users need to remove selections that are no longer visible in the table body, add a local selected-values strip outside the table body rather than relying only on row visibility.
 
 ## Global Reset
 
@@ -404,6 +415,20 @@ function ActiveFilterBar() {
 
 For a full version (group registration, labels, and UI), see `examples/react/trimmed/src/components/views/nozzle-paa.tsx` and `examples/react/trimmed/src/components/active-filter-bar.tsx`.
 
+For row-selection-backed summary filters, use `explodeArrayValues: true` during registration so the bar shows one chip per selected scalar value and removing one chip rebuilds the remaining predicate instead of clearing the whole selection.
+
+## Client-Scoped Selection UI
+
+Some complex dashboards need to show selection state for one specific table client, not the shared global selection snapshot. Use `useMosaicSelectionValue(selection, { source: client })` for that case:
+
+```tsx
+const selectedValues = useMosaicSelectionValue<string[]>(selection, {
+  source: client,
+});
+```
+
+This is the pattern used by the Nozzle PAA summary cards to keep a local `Selected (N)` strip visible even when peer cross-filtering removes those rows from the current table body.
+
 ## KPI Queries (Value Helpers)
 
 For KPIs, use a query factory + `useMosaicValue` to return a single value that respects a filter context:
@@ -479,25 +504,3 @@ vg.dot(vg.from('data', { filterBy: $hover }), {
 - [Data Flow](../core/data-flow.md) – Deep dive into query lifecycle
 - [Concepts](../core/concepts.md) – Review core primitives
 - [Grouped Table](./grouped-table.md) – Server-side hierarchical grouping with lazy expand
-For summary selections that also appear in an active-filter bar, register them with `explodeArrayValues: true` so each selected row value becomes its own removable chip:
-
-```tsx
-useRegisterFilterSource($phraseSelection, 'summary', {
-  labelMap: { phrase: 'Selected Keyword' },
-  explodeArrayValues: true,
-});
-```
-
-For row-selection-backed summary filters, use `explodeArrayValues: true` during registration so the bar shows one chip per selected scalar value and removing one chip rebuilds the remaining predicate instead of clearing the whole selection.
-
-## Client-Scoped Selection UI
-
-Some complex dashboards need to show selection state for one specific table client, not the shared global selection snapshot. Use `useMosaicSelectionValue(selection, { source: client })` for that case:
-
-```tsx
-const selectedValues = useMosaicSelectionValue<string[]>(selection, {
-  source: client,
-});
-```
-
-This is the pattern used by the Nozzle PAA summary cards to keep a local `Selected (N)` strip visible even when peer cross-filtering removes those rows from the current table body.

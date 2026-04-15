@@ -26,6 +26,8 @@ These examples are the fastest way to see how the libraries are used in practice
 - KPI queries using `useMosaicValue`
 - Active filter bar + global reset
 - Summary tables using `rowSelection` + `manualHighlight`
+- Summary selections registered as individually removable active-filter chips
+- Per-card `Selected (N)` strips keep hidden summary selections visible and removable
 
 ## Athletes (Grouped Table)
 
