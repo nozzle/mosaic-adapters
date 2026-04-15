@@ -7,7 +7,7 @@ Install this package alongside `@nozzleio/react-mosaic`. The table hooks consume
 ## Install
 
 ```bash
-npm install @nozzleio/mosaic-tanstack-react-table @nozzleio/react-mosaic @tanstack/react-table react react-dom
+npm install @nozzleio/mosaic-tanstack-react-table @nozzleio/react-mosaic @tanstack/react-table @uwdata/mosaic-core @uwdata/mosaic-sql react react-dom
 ```
 
 ## Root exports
