@@ -1,11 +1,9 @@
 import * as React from 'react';
-import { useMosaicSelectionValue } from '@nozzleio/react-mosaic';
-
 import {
   applyFilterSelection,
   getFacetSelectedValues,
-  normalizeFilterBindingState,
 } from './filter-builder-helpers';
+import { useFilterBindingControllerState } from './filter-binding-controller-hook';
 import { useMosaicTableFacetMenu } from './facet-hook';
 
 import type { UseFilterFacetOptions } from './filter-builder-types';
@@ -27,11 +25,7 @@ function mergeFacetOptions(
 
 export function useFilterFacet(options: UseFilterFacetOptions) {
   const { filter } = options;
-  const selectionValue = useMosaicSelectionValue<unknown>(filter.selection);
-  const bindingState = React.useMemo(
-    () => normalizeFilterBindingState(filter.definition, selectionValue),
-    [filter.definition, selectionValue],
-  );
+  const { state: bindingState } = useFilterBindingControllerState(filter);
   const selectedValues = React.useMemo(
     () => getFacetSelectedValues(filter.definition, bindingState),
     [bindingState, filter.definition],
