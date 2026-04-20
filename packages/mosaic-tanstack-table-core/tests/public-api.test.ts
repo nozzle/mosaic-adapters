@@ -3,6 +3,7 @@ import { createTypedSidecarClient } from '../src/sidecar';
 import { createMosaicColumnHelper } from '../src/utils';
 import * as core from '../src/index';
 import * as facetStrategies from '../src/facet-strategies';
+import * as filterBuilder from '../src/filter-builder';
 import * as filterRegistry from '../src/filter-registry';
 import * as grouped from '../src/grouped';
 
@@ -34,8 +35,13 @@ test('keeps specialized helpers off the root export surface', () => {
   expect(core).not.toHaveProperty('HistogramStrategy');
   expect(core).not.toHaveProperty('createMosaicFeature');
   expect(core).not.toHaveProperty('functionalUpdate');
+  expect(core).not.toHaveProperty('FilterBindingController');
+  expect(core).not.toHaveProperty('TEXT_CONDITIONS');
 
   expect(filterRegistry).toHaveProperty('MosaicFilterRegistry');
+  expect(filterBuilder).toHaveProperty('FilterBindingController');
+  expect(filterBuilder).toHaveProperty('TEXT_CONDITIONS');
+  expect(filterBuilder.TEXT_CONDITIONS.CONTAINS).toBe('contains');
   expect(grouped).toHaveProperty('buildGroupedLevelQuery');
   expect(grouped).toHaveProperty('arrowTableToObjects');
   expect(facetStrategies).toHaveProperty('HistogramStrategy');
@@ -56,6 +62,9 @@ test('publishes the tightened facet and sidecar type contracts', () => {
   expectTypeOf<
     ConstructorParameters<typeof TypedHistogramClient>[0]
   >().toMatchObjectType<{ options: { step: number } }>();
+  expectTypeOf<
+    ReturnType<typeof filterBuilder.createEmptyFilterBindingState>['operator']
+  >().toEqualTypeOf<string | null>();
 });
 
 test('accepts heterogeneous column value types in table options', () => {

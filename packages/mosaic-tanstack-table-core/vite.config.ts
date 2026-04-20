@@ -21,6 +21,7 @@ export default mergeConfig(
       'src/index.ts',
       'src/filter-registry.ts',
       'src/facet-strategies.ts',
+      'src/filter-builder/index.ts',
       'src/grouped/index.ts',
       'src/sidecar.ts',
     ],

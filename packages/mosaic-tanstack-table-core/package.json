@@ -49,6 +49,10 @@
       "types": "./dist/esm/facet-strategies.d.ts",
       "default": "./dist/esm/facet-strategies.js"
     },
+    "./filter-builder": {
+      "types": "./dist/esm/filter-builder/index.d.ts",
+      "default": "./dist/esm/filter-builder/index.js"
+    },
     "./sidecar": {
       "types": "./dist/esm/sidecar.d.ts",
       "default": "./dist/esm/sidecar.js"
