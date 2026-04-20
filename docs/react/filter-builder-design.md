@@ -6,7 +6,8 @@ The goal is to make UIs like the PAA top bar and richer filter-chip builders eas
 
 - `@nozzleio/react-mosaic` owns `Selection` creation and topology wiring.
 - Filter inputs write clauses into `Selection` instances.
-- `@nozzleio/mosaic-tanstack-table-core` reads `Selection` predicates through `filterBy` and builds the actual queries.
+- `@nozzleio/mosaic-tanstack-table-core` owns the filter-builder schema and headless runtime, reads `Selection` predicates through `filterBy`, and builds the actual queries.
+- `@nozzleio/mosaic-tanstack-react-table` owns the React hooks and adapter-specific topology integration.
 
 This proposal does not expand the `CONDITION` operators yet. It focuses on the flow, public API shape, and the minimum implementation needed to make filter UIs easy to build.
 
@@ -203,6 +204,8 @@ interface FilterRuntime {
 ```
 
 This hook should not try to hide the underlying `Selection`. The selection is still the durable primitive used elsewhere in the system.
+
+The schema and headless binding runtime live in `@nozzleio/mosaic-tanstack-table-core/filter-builder`. The React package re-exports the consumer-facing types and provides React adapters on top.
 
 ### 4. Facet Helper Hook
 

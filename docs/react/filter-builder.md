@@ -4,6 +4,11 @@ The filter-builder API adds a schema layer on top of Mosaic `Selection` wiring.
 Consumers define filters once, create page and widget scopes, bind native HTML
 controls, and keep passing the resulting context into `filterBy`.
 
+Package ownership is split deliberately:
+
+- `@nozzleio/mosaic-tanstack-table-core/filter-builder` owns the filter schema and headless runtime.
+- `@nozzleio/mosaic-tanstack-react-table` owns `useMosaicFilters`, `useFilterBinding`, `useFilterFacet`, and the React-specific topology integration.
+
 ## Core Hooks
 
 ```tsx
