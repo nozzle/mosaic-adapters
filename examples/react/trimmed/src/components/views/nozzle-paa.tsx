@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
 import { useReactTable } from '@tanstack/react-table';
-import { X } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, X } from 'lucide-react';
 import {
   useFilterRegistry,
   useMosaicReactTable,
@@ -76,6 +76,8 @@ interface GroupByRow {
   __is_highlighted?: number;
 }
 
+type SummaryTableId = 'phrase' | 'question' | 'domain' | 'url';
+
 const GroupByMapping = createMosaicMapping<GroupByRow>({
   key: { sqlColumn: 'key', type: 'VARCHAR', filterType: 'EQUALS' },
   metric: { sqlColumn: 'metric', type: 'INTEGER', filterType: 'RANGE' },
@@ -89,6 +91,9 @@ const GroupByMapping = createMosaicMapping<GroupByRow>({
 export function NozzlePaaView() {
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedTableId, setExpandedTableId] = useState<SummaryTableId | null>(
+    null,
+  );
   const coordinator = useCoordinator();
   const { mode } = useConnectorStatus();
   const topology = usePaaTopology();
@@ -100,6 +105,61 @@ export function NozzlePaaView() {
   // Stable Where Clauses
   const whereDomain = useMemo(() => mSql.sql`domain IS NOT NULL`, []);
   const whereUrl = useMemo(() => mSql.sql`url IS NOT NULL`, []);
+  const summaryTables = useMemo(
+    () =>
+      [
+        {
+          id: 'phrase',
+          title: 'Keyword Phrase',
+          groupBy: 'phrase',
+          metric: 'search_volume',
+          metricLabel: 'Search Vol',
+          aggFn: maxAgg,
+          sparkline: {
+            metric: 'search_volume',
+            dateColumn: 'requested',
+            aggMode: 'max',
+          } satisfies SparklineCellConfig,
+          filterBy: topology.phraseContext,
+          selection: topology.selections.phrase,
+        },
+        {
+          id: 'question',
+          title: 'PAA Questions',
+          groupBy: 'related_phrase.phrase',
+          metric: '*',
+          metricLabel: 'SERP Appears',
+          aggFn: mSql.count,
+          filterBy: topology.questionContext,
+          selection: topology.selections.question,
+        },
+        {
+          id: 'domain',
+          title: 'Domain',
+          groupBy: 'domain',
+          metric: '*',
+          metricLabel: '# of Answers',
+          aggFn: mSql.count,
+          where: whereDomain,
+          filterBy: topology.domainContext,
+          selection: topology.selections.domain,
+        },
+        {
+          id: 'url',
+          title: 'URL',
+          groupBy: 'url',
+          metric: '*',
+          metricLabel: '# of Answers',
+          aggFn: mSql.count,
+          where: whereUrl,
+          filterBy: topology.urlContext,
+          selection: topology.selections.url,
+        },
+      ] satisfies Array<SummaryTableConfig>,
+    [maxAgg, topology, whereDomain, whereUrl],
+  );
+  const expandedTable =
+    summaryTables.find((table) => table.id === expandedTableId) ?? null;
 
   // Register Filter Groups on mount
   useEffect(() => {
@@ -298,54 +358,66 @@ export function NozzlePaaView() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 px-6">
-        <SummaryTable
-          title="Keyword Phrase"
-          groupBy="phrase"
-          metric="search_volume"
-          metricLabel="Search Vol"
-          aggFn={maxAgg}
-          sparkline={{
-            metric: 'search_volume',
-            dateColumn: 'requested',
-            aggMode: 'max',
-          }}
-          filterBy={topology.phraseContext}
-          selection={topology.selections.phrase}
-          enabled={isReady}
-        />
-        <SummaryTable
-          title="PAA Questions"
-          groupBy="related_phrase.phrase"
-          metric="*"
-          metricLabel="SERP Appears"
-          aggFn={mSql.count}
-          filterBy={topology.questionContext}
-          selection={topology.selections.question}
-          enabled={isReady}
-        />
-        <SummaryTable
-          title="Domain"
-          groupBy="domain"
-          metric="*"
-          metricLabel="# of Answers"
-          aggFn={mSql.count}
-          where={whereDomain}
-          filterBy={topology.domainContext}
-          selection={topology.selections.domain}
-          enabled={isReady}
-        />
-        <SummaryTable
-          title="URL"
-          groupBy="url"
-          metric="*"
-          metricLabel="# of Answers"
-          aggFn={mSql.count}
-          where={whereUrl}
-          filterBy={topology.urlContext}
-          selection={topology.selections.url}
-          enabled={isReady}
-        />
+        {summaryTables.map((summaryTable) => {
+          if (summaryTable.id === expandedTableId) {
+            return (
+              <SummaryTablePlaceholder
+                key={summaryTable.id}
+                summaryId={summaryTable.id}
+                title={summaryTable.title}
+                onRestore={() => setExpandedTableId(null)}
+              />
+            );
+          }
+
+          return (
+            <SummaryTable
+              key={summaryTable.id}
+              summaryId={summaryTable.id}
+              {...summaryTable}
+              enabled={isReady}
+              heightClassName="h-[700px]"
+              promotionButton={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-[11px] font-semibold"
+                  aria-label={`Enlarge ${summaryTable.title} table`}
+                  onClick={() => setExpandedTableId(summaryTable.id)}
+                >
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                  Enlarge
+                </Button>
+              }
+            />
+          );
+        })}
       </div>
+
+      {expandedTable ? (
+        <div className="px-6">
+          <SummaryTable
+            key={`${expandedTable.id}-expanded`}
+            summaryId={expandedTable.id}
+            {...expandedTable}
+            enabled={isReady}
+            heightClassName="h-[820px]"
+            promoted
+            promotionButton={
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-xs font-semibold"
+                aria-label={`Return ${expandedTable.title} table to grid`}
+                onClick={() => setExpandedTableId(null)}
+              >
+                <ArrowDownLeft className="h-3.5 w-3.5" />
+                Return to grid
+              </Button>
+            }
+          />
+        </div>
+      ) : null}
 
       <div className="flex-1 px-6 min-h-[500px]">
         <div className="bg-white border rounded-lg shadow-sm h-full flex flex-col overflow-hidden">
@@ -427,6 +499,19 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
 
 type AggregationFactory = (expression?: any) => AggregateNode;
 
+type SummaryTableConfig = {
+  id: SummaryTableId;
+  title: string;
+  groupBy: string;
+  metric: string;
+  metricLabel: string;
+  aggFn: AggregationFactory;
+  where?: FilterExpr;
+  filterBy: Selection;
+  selection: Selection;
+  sparkline?: SparklineCellConfig;
+};
+
 function getGroupByExpression(groupBy: string) {
   if (groupBy.includes('.')) {
     const [col, field] = groupBy.split('.');
@@ -457,6 +542,7 @@ function buildSummarySelectionPredicate(
 }
 
 function SummaryTable({
+  summaryId,
   title,
   groupBy,
   metric,
@@ -467,7 +553,11 @@ function SummaryTable({
   selection,
   enabled,
   sparkline,
+  heightClassName,
+  promotionButton,
+  promoted = false,
 }: {
+  summaryId: SummaryTableId;
   title: string;
   groupBy: string;
   metric: string;
@@ -478,6 +568,9 @@ function SummaryTable({
   selection: Selection;
   enabled: boolean;
   sparkline?: SparklineCellConfig;
+  heightClassName: string;
+  promotionButton?: React.ReactNode;
+  promoted?: boolean;
 }) {
   const queryFactory = useMemo(
     () => (filter: FilterExpr | null | undefined) => {
@@ -621,9 +714,7 @@ function SummaryTable({
 
   const selectedValue = useMosaicSelectionValue<
     Array<string | number> | string | number | null
-  >(selection, {
-    source: client,
-  });
+  >(selection);
   const selectedValues = useMemo(() => {
     if (selectedValue === null) {
       return [] as Array<string | number>;
@@ -655,9 +746,22 @@ function SummaryTable({
   };
 
   return (
-    <div className="bg-white border rounded-lg shadow-sm flex flex-col h-[700px] overflow-hidden">
-      <div className="px-4 py-3 border-b bg-slate-50 text-sm font-bold text-slate-700 uppercase tracking-wide">
-        {title}
+    <div
+      data-testid={`summary-table-${summaryId}${promoted ? '-expanded' : ''}`}
+      className={`bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden ${heightClassName}`}
+    >
+      <div className="px-4 py-3 border-b bg-slate-50 flex items-center justify-between gap-3">
+        <div className="text-sm font-bold text-slate-700 uppercase tracking-wide">
+          {title}
+        </div>
+        <div className="flex items-center gap-2">
+          {promoted ? (
+            <span className="rounded-full bg-cyan-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-900">
+              Expanded view
+            </span>
+          ) : null}
+          {promotionButton}
+        </div>
       </div>
       {selectedValues.length > 0 ? (
         <div className="px-4 py-3 border-b bg-blue-50/60 flex flex-wrap items-center gap-2">
@@ -701,6 +805,49 @@ function SummaryTable({
           columns={tableOptions.columns}
           onRowClick={(row) => row.toggleSelected()}
         />
+      </div>
+    </div>
+  );
+}
+
+function SummaryTablePlaceholder({
+  summaryId,
+  title,
+  onRestore,
+}: {
+  summaryId: SummaryTableId;
+  title: string;
+  onRestore: () => void;
+}) {
+  return (
+    <div
+      data-testid={`summary-table-${summaryId}-placeholder`}
+      className="h-[700px] rounded-lg border border-dashed border-slate-300 bg-slate-100/70 p-6 flex flex-col justify-between"
+    >
+      <div className="space-y-3">
+        <div className="text-sm font-bold uppercase tracking-wide text-slate-700">
+          {title}
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white/90 p-4">
+          <div className="text-sm font-semibold text-slate-800">
+            This table is enlarged below
+          </div>
+          <p className="mt-2 text-sm text-slate-600 leading-6">
+            Use the expanded panel to verify that row highlighting survives
+            moving between regions of the page.
+          </p>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={`Return ${title} table to grid`}
+          onClick={onRestore}
+        >
+          <ArrowDownLeft className="h-3.5 w-3.5" />
+          Return to grid
+        </Button>
       </div>
     </div>
   );
