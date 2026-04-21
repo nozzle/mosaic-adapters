@@ -321,6 +321,107 @@ describe('MosaicDataTable characterization', () => {
     expect(rowSelectionPredicate!.toString()).toContain("\"id\" IN ('2', '7')");
   });
 
+  test('hydrates row selection from a shared selection for remounted table clients', async () => {
+    const rowSelection = new Selection();
+    const coordinator = new FakeCoordinator();
+    const originalClient = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [
+        { accessorKey: 'id', header: 'ID' },
+        { accessorKey: 'name', header: 'Name' },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    originalClient.connect();
+    originalClient
+      .getTableOptions(originalClient.store.state)
+      .onRowSelectionChange?.({ '7': true });
+
+    const fullscreenClient = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [
+        { accessorKey: 'id', header: 'ID' },
+        { accessorKey: 'name', header: 'Name' },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    fullscreenClient.connect();
+
+    await waitFor(() => {
+      expect(fullscreenClient.store.state.tableState.rowSelection).toEqual({
+        '7': true,
+      });
+    });
+  });
+
+  test('keeps row selection visuals in sync across clients sharing one selection', async () => {
+    const rowSelection = new Selection();
+    const coordinator = new FakeCoordinator();
+    const dashboardClient = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [
+        { accessorKey: 'id', header: 'ID' },
+        { accessorKey: 'name', header: 'Name' },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+    const fullscreenClient = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [
+        { accessorKey: 'id', header: 'ID' },
+        { accessorKey: 'name', header: 'Name' },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    dashboardClient.connect();
+    fullscreenClient.connect();
+
+    dashboardClient
+      .getTableOptions(dashboardClient.store.state)
+      .onRowSelectionChange?.({ '2': true });
+
+    await waitFor(() => {
+      expect(dashboardClient.store.state.tableState.rowSelection).toEqual({
+        '2': true,
+      });
+      expect(fullscreenClient.store.state.tableState.rowSelection).toEqual({
+        '2': true,
+      });
+    });
+
+    fullscreenClient
+      .getTableOptions(fullscreenClient.store.state)
+      .onRowSelectionChange?.({ '9': true });
+
+    await waitFor(() => {
+      expect(dashboardClient.store.state.tableState.rowSelection).toEqual({
+        '9': true,
+      });
+      expect(fullscreenClient.store.state.tableState.rowSelection).toEqual({
+        '9': true,
+      });
+    });
+  });
+
   test('only reacts to meaningful table state changes and refreshes sidecars on filter changes', () => {
     const { client } = createFlatClient();
     const requestUpdateSpy = vi

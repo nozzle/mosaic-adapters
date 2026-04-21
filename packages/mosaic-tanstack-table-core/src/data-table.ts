@@ -541,7 +541,7 @@ export class MosaicDataTable<
         return;
       }
 
-      const values = this.#rowSelectionManager.getCurrentValues();
+      const values = this.#rowSelectionManager.getSharedValues();
       const nextSelection: Record<string, boolean> = {};
       values.forEach((value) => {
         nextSelection[String(value)] = true;
