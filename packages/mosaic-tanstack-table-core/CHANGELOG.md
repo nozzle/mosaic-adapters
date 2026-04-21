@@ -1,5 +1,33 @@
 # @nozzleio/mosaic-tanstack-table-core
 
+## 0.3.1
+
+### Patch Changes
+
+- [#118](https://github.com/nozzle/mosaic-adapters/pull/118) [`89621c2`](https://github.com/nozzle/mosaic-adapters/commit/89621c2c4df75ba8e11b1b6092019378318599e5) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - fix(table-core): make filter binding controllers StrictMode-safe
+
+- [#120](https://github.com/nozzle/mosaic-adapters/pull/120) [`fc70c91`](https://github.com/nozzle/mosaic-adapters/commit/fc70c91c0b0e6df48c33d1dfea659a094bd1ff1c) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - fix(table-core): preserve row selection across remounted table clients
+
+  Restore TanStack rowSelection from the shared Mosaic Selection value instead
+  of only the current client-scoped value.
+
+  Before this change, row selection UI was hydrated from
+  selection.valueFor(client). That worked while the same table instance stayed
+  mounted, but failed when a table was unmounted and remounted as a different
+  client, such as when moving a widget into or out of fullscreen. In that
+  case, crossfiltering and predicates remained active, but the new table
+  instance lost its visual row-selection state because it had no source-scoped
+  selection value of its own.
+
+  This change adds shared selection hydration in the selection manager and uses
+  it when syncing rowSelection back into table state. That keeps visual row
+  selection consistent across multiple mounted clients and across remounts while
+  preserving the existing source-scoped update behavior for writes.
+
+  Also adds regression coverage for:
+  - hydrating row selection into a remounted client
+  - keeping row selection visuals in sync across two clients sharing one selection
+
 ## 0.3.0
 
 ### Minor Changes
