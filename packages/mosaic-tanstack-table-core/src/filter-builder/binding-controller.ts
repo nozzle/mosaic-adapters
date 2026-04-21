@@ -3,7 +3,7 @@ import {
   applyFilterSelection,
   areFilterBindingStatesEqual,
   clearFilterSelection,
-  normalizeFilterBindingState,
+  readFilterSelectionState,
 } from './helpers';
 import type { Store } from '@tanstack/store';
 
@@ -32,43 +32,40 @@ export class FilterBindingController {
   readonly runtime: FilterRuntime;
   readonly store: Store<FilterBindingState>;
 
-  #isDisposed = false;
+  #isConnected = false;
   #syncVersion = 0;
   #selectionListener = () => {
     const syncVersion = ++this.#syncVersion;
 
     queueMicrotask(() => {
-      if (this.#isDisposed || syncVersion !== this.#syncVersion) {
+      if (!this.#isConnected || syncVersion !== this.#syncVersion) {
         return;
       }
 
-      const nextState = normalizeFilterBindingState(
-        this.runtime.definition,
-        this.runtime.selection.value,
-      );
-
-      this.store.setState((previousState) => {
-        if (areFilterBindingStatesEqual(previousState, nextState)) {
-          return previousState;
-        }
-
-        return nextState;
-      });
+      this.syncFromSelection();
     });
   };
 
   constructor(runtime: FilterRuntime) {
     this.runtime = runtime;
-    this.store = createStore(
-      normalizeFilterBindingState(runtime.definition, runtime.selection.value),
-    );
-
-    this.runtime.selection.addEventListener('value', this.#selectionListener);
+    this.store = createStore(readFilterSelectionState(runtime));
   }
 
   getSnapshot() {
     return this.store.state;
   }
+
+  syncFromSelection = (): void => {
+    const nextState = readFilterSelectionState(this.runtime);
+
+    this.store.setState((previousState) => {
+      if (areFilterBindingStatesEqual(previousState, nextState)) {
+        return previousState;
+      }
+
+      return nextState;
+    });
+  };
 
   setOperator = (next: string): void => {
     this.store.setState((previousState) => ({
@@ -125,15 +122,31 @@ export class FilterBindingController {
     clearFilterSelection(this.runtime);
   };
 
-  dispose = (): void => {
-    if (this.#isDisposed) {
+  connect = (): void => {
+    if (this.#isConnected) {
       return;
     }
 
+    this.#isConnected = true;
+    this.#syncVersion += 1;
+    this.runtime.selection.addEventListener('value', this.#selectionListener);
+    this.syncFromSelection();
+  };
+
+  disconnect = (): void => {
+    if (!this.#isConnected) {
+      return;
+    }
+
+    this.#isConnected = false;
+    this.#syncVersion += 1;
     this.runtime.selection.removeEventListener(
       'value',
       this.#selectionListener,
     );
-    this.#isDisposed = true;
+  };
+
+  dispose = (): void => {
+    this.disconnect();
   };
 }
