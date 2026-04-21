@@ -1,10 +1,26 @@
 import * as React from 'react';
 import { useFilterBindingControllerState } from './filter-binding-controller-hook';
+import { markNextCommittedFilterWriteReason } from './filter-persistence-helpers';
 
-import type { FilterBinding, FilterRuntime } from './filter-builder-types';
+import type {
+  FilterBinding,
+  FilterRuntime,
+  UseFilterBindingOptions,
+} from './filter-builder-types';
 
-export function useFilterBinding(filter: FilterRuntime): FilterBinding {
-  const { controller, state } = useFilterBindingControllerState(filter);
+export function useFilterBinding(
+  filter: FilterRuntime,
+  options?: UseFilterBindingOptions,
+): FilterBinding {
+  const { controller, state } = useFilterBindingControllerState(filter, options);
+  const apply = React.useCallback(() => {
+    markNextCommittedFilterWriteReason(filter.selection, 'apply');
+    controller.apply();
+  }, [controller, filter.selection]);
+  const clear = React.useCallback(() => {
+    markNextCommittedFilterWriteReason(filter.selection, 'clear');
+    controller.clear();
+  }, [controller, filter.selection]);
 
   return React.useMemo(
     () => ({
@@ -14,9 +30,9 @@ export function useFilterBinding(filter: FilterRuntime): FilterBinding {
       setOperator: controller.setOperator,
       setValue: controller.setValue,
       setValueTo: controller.setValueTo,
-      clear: controller.clear,
-      apply: controller.apply,
+      clear,
+      apply,
     }),
-    [controller, state],
+    [apply, clear, controller, state],
   );
 }
