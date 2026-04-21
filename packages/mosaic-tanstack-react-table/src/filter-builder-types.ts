@@ -1,4 +1,5 @@
 import type {
+  FilterBindingState,
   FilterDefinition,
   FilterRuntime,
 } from '@nozzleio/mosaic-tanstack-table-core/filter-builder';
@@ -20,9 +21,61 @@ export type {
   TextFilterDefinition,
 } from '@nozzleio/mosaic-tanstack-table-core/filter-builder';
 
+export type FilterPersistenceWriteReason = 'apply' | 'clear' | 'external';
+
+export interface FilterBindingPersistenceContext {
+  scopeId: string;
+  filterId: string;
+  definition: FilterDefinition;
+  runtime: FilterRuntime;
+}
+
+export interface FilterBindingPersistenceWriteContext
+  extends FilterBindingPersistenceContext {
+  reason: FilterPersistenceWriteReason;
+}
+
+export interface FilterScopePersistenceContext {
+  scopeId: string;
+  filters: Record<string, FilterRuntime>;
+}
+
+export interface FilterScopePersistenceWriteContext
+  extends FilterScopePersistenceContext {
+  filterId: string;
+  definition: FilterDefinition;
+  runtime: FilterRuntime;
+  reason: FilterPersistenceWriteReason;
+}
+
+export interface FilterBindingPersister {
+  read: (
+    context: FilterBindingPersistenceContext,
+  ) => FilterBindingState | null | undefined;
+  write: (
+    state: FilterBindingState | null,
+    context: FilterBindingPersistenceWriteContext,
+  ) => void;
+}
+
+export interface FilterScopePersister {
+  read: (
+    context: FilterScopePersistenceContext,
+  ) => Partial<Record<string, FilterBindingState>> | null | undefined;
+  write: (
+    snapshot: Partial<Record<string, FilterBindingState>>,
+    context: FilterScopePersistenceWriteContext,
+  ) => void;
+}
+
+export interface UseFilterBindingOptions {
+  persister?: FilterBindingPersister;
+}
+
 export interface UseMosaicFiltersOptions {
   definitions: Array<FilterDefinition>;
   scopeId: string;
+  persister?: FilterScopePersister;
 }
 
 export interface FilterScope {

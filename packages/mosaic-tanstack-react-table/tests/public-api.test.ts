@@ -9,10 +9,16 @@ import type {
   ArrayMultiselectConditionOperatorId,
   DateConditionOperatorId,
   DateRangeConditionOperatorId,
+  FilterBindingPersister,
+  FilterBindingPersistenceContext,
+  FilterBindingPersistenceWriteContext,
   FilterBinding,
   FilterDefinition,
   FilterRegistryApi,
   FilterRuntime,
+  FilterScopePersister,
+  FilterScopePersistenceContext,
+  FilterScopePersistenceWriteContext,
   FilterScope,
   FilterValueKind,
   MosaicHistogramClient,
@@ -23,6 +29,7 @@ import type {
   ScalarMultiselectConditionOperatorId,
   SelectConditionOperatorId,
   TextConditionOperatorId,
+  UseFilterBindingOptions,
   UseFilterFacetOptions,
   UseMosaicFiltersOptions,
   UseMosaicHistogramResult,
@@ -112,14 +119,35 @@ test('publishes the narrowed adapter hook contracts', () => {
   expectTypeOf<UseMosaicFiltersOptions['definitions']>().toEqualTypeOf<
     Array<FilterDefinition>
   >();
+  expectTypeOf<UseMosaicFiltersOptions['persister']>().toEqualTypeOf<
+    FilterScopePersister | undefined
+  >();
+  expectTypeOf<UseFilterBindingOptions['persister']>().toEqualTypeOf<
+    FilterBindingPersister | undefined
+  >();
   expectTypeOf<FilterScope['definitions']>().toEqualTypeOf<
     Array<FilterDefinition>
   >();
   expectTypeOf<FilterRuntime['scopeId']>().toEqualTypeOf<string>();
   expectTypeOf<FilterBinding['operator']>().toEqualTypeOf<string | null>();
+  expectTypeOf<FilterBindingPersistenceContext['runtime']>().toEqualTypeOf<
+    FilterRuntime
+  >();
+  expectTypeOf<
+    FilterBindingPersistenceWriteContext['reason']
+  >().toEqualTypeOf<'apply' | 'clear' | 'external'>();
+  expectTypeOf<FilterScopePersistenceContext['filters']>().toEqualTypeOf<
+    Record<string, FilterRuntime>
+  >();
+  expectTypeOf<
+    FilterScopePersistenceWriteContext['filterId']
+  >().toEqualTypeOf<string>();
   expectTypeOf<
     UseFilterFacetOptions['filter']
   >().toEqualTypeOf<FilterRuntime>();
+  expectTypeOf<
+    Parameters<typeof reactTable.useFilterBinding>[1]
+  >().toEqualTypeOf<UseFilterBindingOptions | undefined>();
   expectTypeOf<TextConditionOperatorId>().toEqualTypeOf<
     | 'contains'
     | 'does_not_contain'

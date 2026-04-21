@@ -4,6 +4,7 @@ import {
   SelectionRegistryProvider,
   useSelectionRegistry,
 } from '@nozzleio/react-mosaic';
+import { applyFilterSelection } from '@nozzleio/mosaic-tanstack-table-core/filter-builder';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import * as facetHookModule from '../src/facet-hook';
@@ -779,5 +780,660 @@ describe('filter builder hooks', () => {
     );
 
     view.unmount();
+  });
+
+  test('useFilterBinding hydrates from committed selection state before consulting the binding persister', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'name',
+        label: 'Name',
+        column: 'name',
+        valueKind: 'text',
+        operators: [TEXT_CONDITIONS.CONTAINS],
+        defaultOperator: TEXT_CONDITIONS.CONTAINS,
+      },
+    ];
+    const bindingPersister = {
+      read: vi.fn(() => ({
+        operator: TEXT_CONDITIONS.CONTAINS,
+        value: 'persisted',
+        valueTo: null,
+      })),
+      write: vi.fn(),
+    };
+    const probeState: {
+      binding?: FilterBinding;
+      runtime?: FilterRuntime;
+    } = {};
+
+    function BindingProbe({ runtime }: { runtime: FilterRuntime }) {
+      const binding = useFilterBinding(runtime, {
+        persister: bindingPersister,
+      });
+
+      React.useEffect(() => {
+        probeState.binding = binding;
+      }, [binding]);
+
+      return null;
+    }
+
+    function Probe({ bind }: { bind: boolean }) {
+      const scope = useMosaicFilters({
+        scopeId: 'page',
+        definitions,
+      });
+      const runtime = scope.getFilter('name');
+
+      React.useEffect(() => {
+        probeState.runtime = runtime;
+      }, [runtime]);
+
+      return bind && runtime ? <BindingProbe runtime={runtime} /> : null;
+    }
+
+    const view = render(
+      <SelectionRegistryProvider>
+        <Probe bind={false} />
+      </SelectionRegistryProvider>,
+    );
+    await flushEffects();
+
+    act(() => {
+      applyFilterSelection(probeState.runtime!, {
+        operator: TEXT_CONDITIONS.CONTAINS,
+        value: 'committed',
+        valueTo: null,
+      });
+    });
+    await flushEffects();
+
+    view.rerender(
+      <SelectionRegistryProvider>
+        <Probe bind />
+      </SelectionRegistryProvider>,
+    );
+    await flushEffects();
+
+    expect(bindingPersister.read).not.toHaveBeenCalled();
+    expect(probeState.binding?.value).toBe('committed');
+    expect(probeState.runtime?.selection.value).toMatchObject({
+      operator: TEXT_CONDITIONS.CONTAINS,
+      value: 'committed',
+    });
+
+    view.unmount();
+  });
+
+  test('binding persister seeds the committed selection when it starts empty', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'name',
+        label: 'Name',
+        column: 'name',
+        valueKind: 'text',
+        operators: [TEXT_CONDITIONS.CONTAINS],
+        defaultOperator: TEXT_CONDITIONS.CONTAINS,
+      },
+    ];
+    const bindingPersister = {
+      read: vi.fn(() => ({
+        operator: TEXT_CONDITIONS.CONTAINS,
+        value: 'persisted',
+        valueTo: null,
+      })),
+      write: vi.fn(),
+    };
+    const probeState: {
+      binding?: FilterBinding;
+      runtime?: FilterRuntime;
+    } = {};
+
+    function Probe() {
+      const scope = useMosaicFilters({
+        scopeId: 'page',
+        definitions,
+      });
+      const runtime = scope.getFilter('name');
+      const binding = useFilterBinding(runtime!, {
+        persister: bindingPersister,
+      });
+
+      React.useEffect(() => {
+        probeState.binding = binding;
+        probeState.runtime = runtime;
+      }, [binding, runtime]);
+
+      return null;
+    }
+
+    const view = render(
+      <SelectionRegistryProvider>
+        <Probe />
+      </SelectionRegistryProvider>,
+    );
+    await flushEffects();
+
+    expect(bindingPersister.read).toHaveBeenCalledTimes(1);
+    expect(bindingPersister.write).not.toHaveBeenCalled();
+    expect(probeState.binding?.value).toBe('persisted');
+    expect(probeState.runtime?.selection.value).toMatchObject({
+      operator: TEXT_CONDITIONS.CONTAINS,
+      value: 'persisted',
+    });
+
+    view.unmount();
+  });
+
+  test('scope persister seeds multiple empty filters from a sparse snapshot', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'name',
+        label: 'Name',
+        column: 'name',
+        valueKind: 'text',
+        operators: [TEXT_CONDITIONS.CONTAINS],
+        defaultOperator: TEXT_CONDITIONS.CONTAINS,
+      },
+      {
+        id: 'sport',
+        label: 'Sport',
+        column: 'sport',
+        valueKind: 'facet-single',
+        operators: [SELECT_CONDITIONS.IS],
+        defaultOperator: SELECT_CONDITIONS.IS,
+      },
+    ];
+    const scopePersister = {
+      read: vi.fn(() => ({
+        name: {
+          operator: TEXT_CONDITIONS.CONTAINS,
+          value: 'persisted',
+          valueTo: null,
+        },
+        sport: {
+          operator: SELECT_CONDITIONS.IS,
+          value: 'Basketball',
+          valueTo: null,
+        },
+      })),
+      write: vi.fn(),
+    };
+    const probeState: {
+      scope?: ReturnType<typeof useMosaicFilters>;
+    } = {};
+
+    function Probe() {
+      const scope = useMosaicFilters({
+        scopeId: 'page',
+        definitions,
+        persister: scopePersister,
+      });
+
+      React.useEffect(() => {
+        probeState.scope = scope;
+      }, [scope]);
+
+      return null;
+    }
+
+    const view = render(
+      <SelectionRegistryProvider>
+        <Probe />
+      </SelectionRegistryProvider>,
+    );
+    await flushEffects();
+
+    expect(scopePersister.read).toHaveBeenCalledTimes(1);
+    expect(scopePersister.write).not.toHaveBeenCalled();
+    expect(probeState.scope?.getFilter('name')?.selection.value).toMatchObject({
+      operator: TEXT_CONDITIONS.CONTAINS,
+      value: 'persisted',
+    });
+    expect(probeState.scope?.getFilter('sport')?.selection.value).toMatchObject(
+      {
+        operator: SELECT_CONDITIONS.IS,
+        value: 'Basketball',
+      },
+    );
+
+    view.unmount();
+  });
+
+  test('useFilterBinding reflects scope hydration on the initial mount', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'name',
+        label: 'Name',
+        column: 'name',
+        valueKind: 'text',
+        operators: [TEXT_CONDITIONS.CONTAINS],
+        defaultOperator: TEXT_CONDITIONS.CONTAINS,
+      },
+    ];
+    const scopePersister = {
+      read: vi.fn(() => ({
+        name: {
+          operator: TEXT_CONDITIONS.CONTAINS,
+          value: 'persisted',
+          valueTo: null,
+        },
+      })),
+      write: vi.fn(),
+    };
+    const probeState: {
+      binding?: FilterBinding;
+      runtime?: FilterRuntime;
+    } = {};
+
+    function Probe() {
+      const scope = useMosaicFilters({
+        scopeId: 'page',
+        definitions,
+        persister: scopePersister,
+      });
+      const runtime = scope.getFilter('name');
+      const binding = useFilterBinding(runtime!);
+
+      React.useEffect(() => {
+        probeState.binding = binding;
+        probeState.runtime = runtime;
+      }, [binding, runtime]);
+
+      return null;
+    }
+
+    const view = render(
+      <SelectionRegistryProvider>
+        <Probe />
+      </SelectionRegistryProvider>,
+    );
+    await flushEffects();
+
+    expect(scopePersister.read).toHaveBeenCalledTimes(1);
+    expect(scopePersister.write).not.toHaveBeenCalled();
+    expect(probeState.binding?.value).toBe('persisted');
+    expect(probeState.runtime?.selection.value).toMatchObject({
+      operator: TEXT_CONDITIONS.CONTAINS,
+      value: 'persisted',
+    });
+
+    view.unmount();
+  });
+
+  test('binding persister overrides scope hydration for the same filter', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'name',
+        label: 'Name',
+        column: 'name',
+        valueKind: 'text',
+        operators: [TEXT_CONDITIONS.CONTAINS],
+        defaultOperator: TEXT_CONDITIONS.CONTAINS,
+      },
+    ];
+    const bindingPersister = {
+      read: vi.fn(() => ({
+        operator: TEXT_CONDITIONS.CONTAINS,
+        value: 'binding',
+        valueTo: null,
+      })),
+      write: vi.fn(),
+    };
+    const scopePersister = {
+      read: vi.fn(() => ({
+        name: {
+          operator: TEXT_CONDITIONS.CONTAINS,
+          value: 'scope',
+          valueTo: null,
+        },
+      })),
+      write: vi.fn(),
+    };
+    const probeState: {
+      binding?: FilterBinding;
+      runtime?: FilterRuntime;
+    } = {};
+
+    function Probe() {
+      const scope = useMosaicFilters({
+        scopeId: 'page',
+        definitions,
+        persister: scopePersister,
+      });
+      const runtime = scope.getFilter('name');
+      const binding = useFilterBinding(runtime!, {
+        persister: bindingPersister,
+      });
+
+      React.useEffect(() => {
+        probeState.binding = binding;
+        probeState.runtime = runtime;
+      }, [binding, runtime]);
+
+      return null;
+    }
+
+    const view = render(
+      <SelectionRegistryProvider>
+        <Probe />
+      </SelectionRegistryProvider>,
+    );
+    await flushEffects();
+
+    expect(probeState.binding?.value).toBe('binding');
+    expect(probeState.runtime?.selection.value).toMatchObject({
+      operator: TEXT_CONDITIONS.CONTAINS,
+      value: 'binding',
+    });
+    expect(bindingPersister.write).not.toHaveBeenCalled();
+    expect(scopePersister.write).not.toHaveBeenCalled();
+
+    view.unmount();
+  });
+
+  test('persisters only write on committed changes and clear removes persisted state', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'name',
+        label: 'Name',
+        column: 'name',
+        valueKind: 'text',
+        operators: [TEXT_CONDITIONS.CONTAINS],
+        defaultOperator: TEXT_CONDITIONS.CONTAINS,
+      },
+    ];
+    const bindingPersister = {
+      read: vi.fn(() => null),
+      write: vi.fn(),
+    };
+    const scopePersister = {
+      read: vi.fn(() => null),
+      write: vi.fn(),
+    };
+    const probeState: {
+      binding?: FilterBinding;
+      runtime?: FilterRuntime;
+    } = {};
+
+    function Probe() {
+      const scope = useMosaicFilters({
+        scopeId: 'page',
+        definitions,
+        persister: scopePersister,
+      });
+      const runtime = scope.getFilter('name');
+      const binding = useFilterBinding(runtime!, {
+        persister: bindingPersister,
+      });
+
+      React.useEffect(() => {
+        probeState.binding = binding;
+        probeState.runtime = runtime;
+      }, [binding, runtime]);
+
+      return null;
+    }
+
+    const view = render(
+      <SelectionRegistryProvider>
+        <Probe />
+      </SelectionRegistryProvider>,
+    );
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.setValue('draft');
+    });
+    await flushEffects();
+
+    expect(bindingPersister.write).not.toHaveBeenCalled();
+    expect(scopePersister.write).not.toHaveBeenCalled();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(bindingPersister.write).toHaveBeenLastCalledWith(
+      {
+        operator: TEXT_CONDITIONS.CONTAINS,
+        value: 'draft',
+        valueTo: null,
+      },
+      expect.objectContaining({
+        filterId: 'name',
+        scopeId: 'page',
+        reason: 'apply',
+      }),
+    );
+    expect(scopePersister.write).toHaveBeenLastCalledWith(
+      {
+        name: {
+          operator: TEXT_CONDITIONS.CONTAINS,
+          value: 'draft',
+          valueTo: null,
+        },
+      },
+      expect.objectContaining({
+        filterId: 'name',
+        scopeId: 'page',
+        reason: 'apply',
+      }),
+    );
+
+    act(() => {
+      probeState.binding?.clear();
+    });
+    await flushEffects();
+
+    expect(bindingPersister.write).toHaveBeenLastCalledWith(
+      null,
+      expect.objectContaining({
+        filterId: 'name',
+        scopeId: 'page',
+        reason: 'clear',
+      }),
+    );
+    expect(scopePersister.write).toHaveBeenLastCalledWith(
+      {},
+      expect.objectContaining({
+        filterId: 'name',
+        scopeId: 'page',
+        reason: 'clear',
+      }),
+    );
+
+    act(() => {
+      applyFilterSelection(probeState.runtime!, {
+        operator: TEXT_CONDITIONS.CONTAINS,
+        value: 'external',
+        valueTo: null,
+      });
+    });
+    await flushEffects();
+
+    expect(bindingPersister.write).toHaveBeenLastCalledWith(
+      {
+        operator: TEXT_CONDITIONS.CONTAINS,
+        value: 'external',
+        valueTo: null,
+      },
+      expect.objectContaining({
+        filterId: 'name',
+        scopeId: 'page',
+        reason: 'external',
+      }),
+    );
+    expect(scopePersister.write).toHaveBeenLastCalledWith(
+      {
+        name: {
+          operator: TEXT_CONDITIONS.CONTAINS,
+          value: 'external',
+          valueTo: null,
+        },
+      },
+      expect.objectContaining({
+        filterId: 'name',
+        scopeId: 'page',
+        reason: 'external',
+      }),
+    );
+
+    view.unmount();
+  });
+
+  test('StrictMode hydration does not double-write persisted state', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'name',
+        label: 'Name',
+        column: 'name',
+        valueKind: 'text',
+        operators: [TEXT_CONDITIONS.CONTAINS],
+        defaultOperator: TEXT_CONDITIONS.CONTAINS,
+      },
+    ];
+    const bindingPersister = {
+      read: vi.fn(() => ({
+        operator: TEXT_CONDITIONS.CONTAINS,
+        value: 'persisted',
+        valueTo: null,
+      })),
+      write: vi.fn(),
+    };
+    const scopePersister = {
+      read: vi.fn(() => ({
+        name: {
+          operator: TEXT_CONDITIONS.CONTAINS,
+          value: 'scope',
+          valueTo: null,
+        },
+      })),
+      write: vi.fn(),
+    };
+    const probeState: {
+      binding?: FilterBinding;
+    } = {};
+
+    function Probe() {
+      const scope = useMosaicFilters({
+        scopeId: 'page',
+        definitions,
+        persister: scopePersister,
+      });
+      const runtime = scope.getFilter('name');
+      const binding = useFilterBinding(runtime!, {
+        persister: bindingPersister,
+      });
+
+      React.useEffect(() => {
+        probeState.binding = binding;
+      }, [binding]);
+
+      return null;
+    }
+
+    const view = render(
+      <React.StrictMode>
+        <SelectionRegistryProvider>
+          <Probe />
+        </SelectionRegistryProvider>
+      </React.StrictMode>,
+    );
+    await flushEffects();
+
+    expect(bindingPersister.write).not.toHaveBeenCalled();
+    expect(scopePersister.write).not.toHaveBeenCalled();
+
+    act(() => {
+      probeState.binding?.setValue('applied');
+    });
+    await flushEffects();
+
+    act(() => {
+      probeState.binding?.apply();
+    });
+    await flushEffects();
+
+    expect(bindingPersister.write).toHaveBeenCalledTimes(1);
+    expect(scopePersister.write).toHaveBeenCalledTimes(1);
+
+    view.unmount();
+  });
+
+  test('useFilterBinding balances selection subscriptions under StrictMode', async () => {
+    const definitions: Array<FilterDefinition> = [
+      {
+        id: 'sport',
+        label: 'Sport',
+        column: 'sport',
+        valueKind: 'facet-single',
+        operators: [SELECT_CONDITIONS.IS],
+        defaultOperator: SELECT_CONDITIONS.IS,
+      },
+    ];
+    const probeState: {
+      runtime?: FilterRuntime;
+    } = {};
+
+    function BindingProbe({ runtime }: { runtime: FilterRuntime }) {
+      useFilterBinding(runtime);
+      return null;
+    }
+
+    function Probe({ showBinding }: { showBinding: boolean }) {
+      const scope = useMosaicFilters({
+        scopeId: 'page',
+        definitions,
+      });
+      const runtime = scope.getFilter('sport');
+
+      React.useEffect(() => {
+        probeState.runtime = runtime;
+      }, [runtime]);
+
+      if (!showBinding || !runtime) {
+        return null;
+      }
+
+      return <BindingProbe runtime={runtime} />;
+    }
+
+    const view = render(
+      <React.StrictMode>
+        <SelectionRegistryProvider>
+          <Probe showBinding={false} />
+        </SelectionRegistryProvider>
+      </React.StrictMode>,
+    );
+    await flushEffects();
+
+    const selection = probeState.runtime?.selection;
+    expect(selection).toBeDefined();
+
+    const addSpy = vi.spyOn(selection!, 'addEventListener');
+    const removeSpy = vi.spyOn(selection!, 'removeEventListener');
+
+    view.rerender(
+      <React.StrictMode>
+        <SelectionRegistryProvider>
+          <Probe showBinding={true} />
+        </SelectionRegistryProvider>
+      </React.StrictMode>,
+    );
+    await flushEffects();
+
+    view.unmount();
+
+    const addValueCalls = addSpy.mock.calls.filter(
+      ([eventName]) => eventName === 'value',
+    ).length;
+    const removeValueCalls = removeSpy.mock.calls.filter(
+      ([eventName]) => eventName === 'value',
+    ).length;
+
+    expect(addValueCalls).toBeGreaterThan(0);
+    expect(removeValueCalls).toBe(addValueCalls);
   });
 });
