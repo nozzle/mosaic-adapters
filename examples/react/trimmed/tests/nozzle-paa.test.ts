@@ -57,4 +57,68 @@ test.describe('nozzle-paa page', () => {
       }),
     ).toBeVisible();
   });
+
+  test('preserves an existing summary selection when that table is enlarged', async ({
+    page,
+  }) => {
+    await init(page);
+
+    const domainCard = page.getByTestId('summary-table-domain');
+    await domainCard.locator('table tbody tr').nth(0).click();
+
+    await expect(
+      domainCard.getByRole('button', {
+        name: /Remove Domain selection /,
+      }),
+    ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Enlarge Domain table' }).click();
+
+    const expandedDomainCard = page.getByTestId(
+      'summary-table-domain-expanded',
+    );
+    await expect(
+      page.getByTestId('summary-table-domain-placeholder'),
+    ).toBeVisible();
+    await expect(expandedDomainCard).toBeVisible();
+    await expect(
+      expandedDomainCard.getByRole('button', {
+        name: /Remove Domain selection /,
+      }),
+    ).toBeVisible();
+  });
+
+  test('preserves selections made while enlarged after returning the table to the grid', async ({
+    page,
+  }) => {
+    await init(page);
+
+    await page.getByRole('button', { name: 'Enlarge Domain table' }).click();
+
+    const expandedDomainCard = page.getByTestId(
+      'summary-table-domain-expanded',
+    );
+    await expandedDomainCard.locator('table tbody tr').nth(0).click();
+
+    await expect(
+      expandedDomainCard.getByRole('button', {
+        name: /Remove Domain selection /,
+      }),
+    ).toBeVisible();
+
+    await expandedDomainCard
+      .getByRole('button', { name: 'Return Domain table to grid' })
+      .click();
+
+    const gridDomainCard = page.getByTestId('summary-table-domain');
+    await expect(gridDomainCard).toBeVisible();
+    await expect(
+      page.getByTestId('summary-table-domain-placeholder'),
+    ).toHaveCount(0);
+    await expect(
+      gridDomainCard.getByRole('button', {
+        name: /Remove Domain selection /,
+      }),
+    ).toBeVisible();
+  });
 });
