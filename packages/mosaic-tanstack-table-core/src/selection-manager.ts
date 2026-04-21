@@ -40,6 +40,27 @@ export class MosaicSelectionManager<
     this.columnType = options.columnType ?? 'scalar';
   }
 
+  private normalizeSelectionValues(raw: unknown): Array<TValue> | null {
+    if (Array.isArray(raw)) {
+      return raw as Array<TValue>;
+    }
+
+    if (raw === null || raw === undefined) {
+      return [];
+    }
+
+    if (
+      typeof raw === 'string' ||
+      typeof raw === 'number' ||
+      typeof raw === 'boolean' ||
+      raw instanceof Date
+    ) {
+      return [raw as TValue];
+    }
+
+    return null;
+  }
+
   /**
    * Toggles a value.
    * - If value is null, clears selection.
@@ -83,14 +104,23 @@ export class MosaicSelectionManager<
    * Reads the current selection state from the Mosaic Core.
    */
   public getCurrentValues(): Array<TValue> {
-    const raw = this.selection.valueFor(this.client);
-    if (Array.isArray(raw)) {
-      return raw as Array<TValue>;
+    return (
+      this.normalizeSelectionValues(this.selection.valueFor(this.client)) ?? []
+    );
+  }
+
+  /**
+   * Reads the selection value without source scoping.
+   * This keeps remounted clients in sync when a shared Selection is reused
+   * across different table instances, such as fullscreen/table swaps.
+   */
+  public getSharedValues(): Array<TValue> {
+    const sharedValues = this.normalizeSelectionValues(this.selection.value);
+    if (sharedValues !== null) {
+      return sharedValues;
     }
-    if (raw !== null && raw !== undefined) {
-      return [raw as TValue];
-    }
-    return [];
+
+    return this.getCurrentValues();
   }
 
   /**
