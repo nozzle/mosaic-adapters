@@ -1,4 +1,5 @@
 import { Selection } from '@uwdata/mosaic-core';
+import * as mSql from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
 import {
@@ -14,6 +15,7 @@ import {
   createEmptyFilterBindingState,
   getFacetSelectedValues,
   normalizeFilterBindingState,
+  readFilterSelectionState,
 } from '../src/filter-builder';
 
 import type {
@@ -125,6 +127,24 @@ function getPredicateText(runtime: FilterRuntime) {
 
 async function flushMicrotask() {
   await Promise.resolve();
+}
+
+function getTestPredicate() {
+  return mSql.eq(mSql.literal(1), mSql.literal(1));
+}
+
+function createForeignSource(id: string) {
+  return { id } as never;
+}
+
+function createFilterBuilderSource(runtime: FilterRuntime) {
+  return {
+    id: `filter-builder:${runtime.scopeId}:${runtime.definition.id}`,
+    column: runtime.definition.column,
+    debugName: `filter-builder:${runtime.scopeId}:${runtime.definition.id}`,
+    filterId: runtime.definition.id,
+    scopeId: runtime.scopeId,
+  } as never;
 }
 
 describe('filter-builder helpers', () => {
@@ -463,9 +483,103 @@ describe('filter-builder helpers', () => {
       }),
     ).toEqual(['NZL', 'USA']);
   });
+
+  test('readFilterSelectionState prefers the matching filter-builder source over the active foreign clause', () => {
+    const runtime = createRuntime(textDefinition);
+
+    runtime.selection.update({
+      source: createFilterBuilderSource(runtime),
+      value: {
+        mode: 'CONDITION',
+        operator: TEXT_CONDITIONS.IS_EXACTLY,
+        value: 'published',
+        filterId: runtime.definition.id,
+        scopeId: runtime.scopeId,
+      },
+      predicate: getTestPredicate(),
+    });
+    runtime.selection.update({
+      source: createForeignSource('external-search'),
+      value: 'draft',
+      predicate: getTestPredicate(),
+    });
+
+    expect(runtime.selection.value).toBe('draft');
+    expect(readFilterSelectionState(runtime)).toEqual({
+      operator: TEXT_CONDITIONS.IS_EXACTLY,
+      value: 'published',
+      valueTo: null,
+    });
+  });
+
+  test('readFilterSelectionState hydrates from a sole foreign clause when it normalizes cleanly', () => {
+    const runtime = createRuntime(textDefinition);
+
+    runtime.selection.update({
+      source: createForeignSource('external-search'),
+      value: 'alice',
+      predicate: getTestPredicate(),
+    });
+
+    expect(readFilterSelectionState(runtime)).toEqual({
+      operator: TEXT_CONDITIONS.CONTAINS,
+      value: 'alice',
+      valueTo: null,
+    });
+  });
+
+  test('readFilterSelectionState refuses ambiguous foreign multi-clause state', () => {
+    const runtime = createRuntime(textDefinition);
+
+    runtime.selection.update({
+      source: createForeignSource('external-search'),
+      value: 'alice',
+      predicate: getTestPredicate(),
+    });
+    runtime.selection.update({
+      source: createForeignSource('external-chip'),
+      value: 'bob',
+      predicate: getTestPredicate(),
+    });
+
+    expect(readFilterSelectionState(runtime)).toEqual(
+      createEmptyFilterBindingState(textDefinition),
+    );
+  });
 });
 
 describe('FilterBindingController', () => {
+  test('initializes from the matching committed selection state even when a foreign clause is active', () => {
+    const runtime = createRuntime(textDefinition);
+
+    runtime.selection.update({
+      source: createFilterBuilderSource(runtime),
+      value: {
+        mode: 'CONDITION',
+        operator: TEXT_CONDITIONS.IS_EXACTLY,
+        value: 'published',
+        filterId: runtime.definition.id,
+        scopeId: runtime.scopeId,
+      },
+      predicate: getTestPredicate(),
+    });
+    runtime.selection.update({
+      source: createForeignSource('external-search'),
+      value: 'draft',
+      predicate: getTestPredicate(),
+    });
+
+    const controller = new FilterBindingController(runtime);
+
+    expect(controller.getSnapshot()).toEqual({
+      operator: TEXT_CONDITIONS.IS_EXACTLY,
+      value: 'published',
+      valueTo: null,
+    });
+
+    controller.dispose();
+  });
+
   test('initializes from the current selection value', () => {
     const runtime = createRuntime(textDefinition);
     setStoredSelection(runtime, {
@@ -527,6 +641,7 @@ describe('FilterBindingController', () => {
   test('clear() clears through the Selection', async () => {
     const runtime = createRuntime(textDefinition);
     const controller = new FilterBindingController(runtime);
+    controller.connect();
 
     controller.setValue('ali');
     controller.apply();
@@ -545,6 +660,7 @@ describe('FilterBindingController', () => {
   test('re-syncs after an external selection.update(...)', async () => {
     const runtime = createRuntime(textDefinition);
     const controller = new FilterBindingController(runtime);
+    controller.connect();
 
     controller.setValue('draft');
     setStoredSelection(runtime, {
@@ -566,6 +682,7 @@ describe('FilterBindingController', () => {
   test('dispose() unsubscribes cleanly and is idempotent', async () => {
     const runtime = createRuntime(textDefinition);
     const controller = new FilterBindingController(runtime);
+    controller.connect();
 
     controller.setValue('draft');
     const snapshotBeforeDispose = controller.getSnapshot();

@@ -595,6 +595,108 @@ export function normalizeFilterBindingState(
   };
 }
 
+function resolveAppliedFilterSelection(
+  filter: FilterRuntime,
+  state: FilterBindingState,
+):
+  | {
+      operator: string;
+      normalizedValue: unknown;
+      predicate: SelectionClause['predicate'];
+    }
+  | null {
+  const operator =
+    state.operator ?? getDefaultFilterOperator(filter.definition);
+
+  if (!operator) {
+    return null;
+  }
+
+  const normalizedValue = normalizeStoredValue(filter.definition, state.value);
+
+  if (!EMPTY_OPERATOR_IDS.has(operator)) {
+    if (isValueEmpty(normalizedValue) && isValueEmpty(state.valueTo)) {
+      return null;
+    }
+  }
+
+  const resolvedOperator = resolveOperatorAlias(
+    filter.definition,
+    operator,
+    state.value,
+    state.valueTo,
+  );
+
+  if (!resolvedOperator) {
+    return null;
+  }
+
+  const predicate = buildResolvedPredicate(
+    filter,
+    resolvedOperator,
+  ) as SelectionClause['predicate'];
+
+  if (!predicate) {
+    return null;
+  }
+
+  return {
+    operator,
+    normalizedValue,
+    predicate,
+  };
+}
+
+function resolveCommittedFilterSelectionState(
+  filter: FilterRuntime,
+  rawValue: unknown,
+): FilterBindingState | null {
+  if (rawValue === null || rawValue === undefined) {
+    return null;
+  }
+
+  const state = normalizeFilterBindingState(filter.definition, rawValue);
+  return resolveAppliedFilterSelection(filter, state) ? state : null;
+}
+
+function readResolvedFilterSelectionState(filter: FilterRuntime): {
+  hasCommittedState: boolean;
+  state: FilterBindingState;
+} {
+  const currentValue = filter.selection.valueFor(getFilterSource(filter));
+  const currentState = resolveCommittedFilterSelectionState(filter, currentValue);
+
+  if (currentState) {
+    return {
+      hasCommittedState: true,
+      state: currentState,
+    };
+  }
+
+  const activeClauses = filter.selection.clauses;
+  if (activeClauses.length === 1) {
+    const [clause] = activeClauses;
+    if (clause && clause.value !== null && clause.value !== undefined) {
+      const fallbackState = resolveCommittedFilterSelectionState(
+        filter,
+        clause.value,
+      );
+
+      if (fallbackState) {
+        return {
+          hasCommittedState: true,
+          state: fallbackState,
+        };
+      }
+    }
+  }
+
+  return {
+    hasCommittedState: false,
+    state: createEmptyFilterBindingState(filter.definition),
+  };
+}
+
 function createStoredFilterValue(
   filter: FilterRuntime,
   state: FilterBindingState,
@@ -623,6 +725,12 @@ export function clearFilterSelection(filter: FilterRuntime): void {
     value: null,
     predicate: null,
   });
+}
+
+export function readFilterSelectionState(
+  filter: FilterRuntime,
+): FilterBindingState {
+  return readResolvedFilterSelectionState(filter).state;
 }
 
 function buildResolvedPredicate(
@@ -661,41 +769,9 @@ export function applyFilterSelection(
   filter: FilterRuntime,
   state: FilterBindingState,
 ): void {
-  const operator =
-    state.operator ?? getDefaultFilterOperator(filter.definition);
+  const resolvedSelection = resolveAppliedFilterSelection(filter, state);
 
-  if (!operator) {
-    clearFilterSelection(filter);
-    return;
-  }
-
-  const normalizedValue = normalizeStoredValue(filter.definition, state.value);
-
-  if (!EMPTY_OPERATOR_IDS.has(operator)) {
-    if (isValueEmpty(normalizedValue) && isValueEmpty(state.valueTo)) {
-      clearFilterSelection(filter);
-      return;
-    }
-  }
-
-  const resolvedOperator = resolveOperatorAlias(
-    filter.definition,
-    operator,
-    state.value,
-    state.valueTo,
-  );
-
-  if (!resolvedOperator) {
-    clearFilterSelection(filter);
-    return;
-  }
-
-  const predicate = buildResolvedPredicate(
-    filter,
-    resolvedOperator,
-  ) as SelectionClause['predicate'];
-
-  if (!predicate) {
+  if (!resolvedSelection) {
     clearFilterSelection(filter);
     return;
   }
@@ -703,11 +779,11 @@ export function applyFilterSelection(
   filter.selection.update({
     source: getFilterSource(filter),
     value: createStoredFilterValue(filter, {
-      operator,
-      value: normalizedValue,
+      operator: resolvedSelection.operator,
+      value: resolvedSelection.normalizedValue,
       valueTo: state.valueTo,
     }),
-    predicate,
+    predicate: resolvedSelection.predicate,
   });
 }
 

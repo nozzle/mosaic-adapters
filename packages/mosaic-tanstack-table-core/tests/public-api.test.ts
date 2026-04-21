@@ -41,6 +41,7 @@ test('keeps specialized helpers off the root export surface', () => {
   expect(filterRegistry).toHaveProperty('MosaicFilterRegistry');
   expect(filterBuilder).toHaveProperty('FilterBindingController');
   expect(filterBuilder).toHaveProperty('TEXT_CONDITIONS');
+  expect(filterBuilder).toHaveProperty('readFilterSelectionState');
   expect(filterBuilder.TEXT_CONDITIONS.CONTAINS).toBe('contains');
   expect(grouped).toHaveProperty('buildGroupedLevelQuery');
   expect(grouped).toHaveProperty('arrowTableToObjects');
@@ -65,6 +66,9 @@ test('publishes the tightened facet and sidecar type contracts', () => {
   expectTypeOf<
     ReturnType<typeof filterBuilder.createEmptyFilterBindingState>['operator']
   >().toEqualTypeOf<string | null>();
+  expectTypeOf<
+    typeof filterBuilder.readFilterSelectionState
+  >().toBeFunction();
 });
 
 test('accepts heterogeneous column value types in table options', () => {
