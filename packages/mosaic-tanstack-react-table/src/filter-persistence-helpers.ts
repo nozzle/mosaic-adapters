@@ -44,7 +44,9 @@ function isFilterBuilderSourceForRuntime(
     return false;
   }
 
-  return source.id === `filter-builder:${filter.scopeId}:${filter.definition.id}`;
+  return (
+    source.id === `filter-builder:${filter.scopeId}:${filter.definition.id}`
+  );
 }
 
 export function createFilterBindingPersistenceContext(
@@ -109,18 +111,17 @@ export function getCommittedFilterSelectionState(
 export function createSparseFilterScopeSnapshot(
   filters: Record<string, FilterRuntime>,
 ): Partial<Record<string, FilterBindingState>> {
-  return Object.values(filters).reduce<Partial<Record<string, FilterBindingState>>>(
-    (snapshot, runtime) => {
-      const state = getCommittedFilterSelectionState(runtime);
+  return Object.values(filters).reduce<
+    Partial<Record<string, FilterBindingState>>
+  >((snapshot, runtime) => {
+    const state = getCommittedFilterSelectionState(runtime);
 
-      if (state) {
-        snapshot[runtime.definition.id] = state;
-      }
+    if (state) {
+      snapshot[runtime.definition.id] = state;
+    }
 
-      return snapshot;
-    },
-    {},
-  );
+    return snapshot;
+  }, {});
 }
 
 export function markNextCommittedFilterWriteReason(

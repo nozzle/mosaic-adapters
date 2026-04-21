@@ -30,8 +30,7 @@ export interface FilterBindingPersistenceContext {
   runtime: FilterRuntime;
 }
 
-export interface FilterBindingPersistenceWriteContext
-  extends FilterBindingPersistenceContext {
+export interface FilterBindingPersistenceWriteContext extends FilterBindingPersistenceContext {
   reason: FilterPersistenceWriteReason;
 }
 
@@ -40,8 +39,7 @@ export interface FilterScopePersistenceContext {
   filters: Record<string, FilterRuntime>;
 }
 
-export interface FilterScopePersistenceWriteContext
-  extends FilterScopePersistenceContext {
+export interface FilterScopePersistenceWriteContext extends FilterScopePersistenceContext {
   filterId: string;
   definition: FilterDefinition;
   runtime: FilterRuntime;
