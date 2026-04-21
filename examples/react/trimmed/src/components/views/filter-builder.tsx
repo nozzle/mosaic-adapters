@@ -24,6 +24,7 @@ import {
 
 import type { ColumnDef } from '@tanstack/react-table';
 import type {
+  FilterBindingPersister,
   FilterDefinition,
   FilterRuntime,
 } from '@nozzleio/mosaic-tanstack-react-table';
@@ -35,6 +36,14 @@ import {
   getAvailableFiltersForScope,
   removeFilter,
 } from '@/components/filter-builder/builder-state';
+import {
+  createPageScopeUrlPersister,
+  createWidgetScopeUrlBindingPersister,
+  readPageScopeUrlFilterIds,
+  readWidgetScopeUrlFilterIds,
+  writePageScopeUrlFilterIds,
+  writeWidgetScopeUrlFilterIds,
+} from '@/components/filter-builder/url-persister';
 import { RenderTable } from '@/components/render-table';
 import { simpleDateFormatter } from '@/lib/utils';
 
@@ -206,20 +215,29 @@ const widgetDefinitions: Array<FilterDefinition> = [
 
 export function FilterBuilderView() {
   const [isReady, setIsReady] = useState(false);
-  const [pageActiveFilterIds, setPageActiveFilterIds] = useState(
-    DEFAULT_PAGE_ACTIVE_FILTER_IDS,
+  const [pageActiveFilterIds, setPageActiveFilterIds] = useState(() =>
+    readPageScopeUrlFilterIds(pageDefinitions, DEFAULT_PAGE_ACTIVE_FILTER_IDS),
   );
-  const [widgetActiveFilterIds, setWidgetActiveFilterIds] = useState(
-    DEFAULT_WIDGET_ACTIVE_FILTER_IDS,
+  const [widgetActiveFilterIds, setWidgetActiveFilterIds] = useState(() =>
+    readWidgetScopeUrlFilterIds(
+      widgetDefinitions,
+      DEFAULT_WIDGET_ACTIVE_FILTER_IDS,
+    ),
   );
   const [pageSearchTerm, setPageSearchTerm] = useState('');
   const [widgetSearchTerm, setWidgetSearchTerm] = useState('');
   const chartRef = useRef<HTMLDivElement | null>(null);
   const rosterColumns = useRosterColumns();
   const widgetColumns = useWidgetColumns();
+  const pageScopePersister = useMemo(() => createPageScopeUrlPersister(), []);
+  const widgetBindingPersister = useMemo(
+    () => createWidgetScopeUrlBindingPersister(),
+    [],
+  );
   const page = useMosaicFilters({
     scopeId: 'page',
     definitions: pageDefinitions,
+    persister: pageScopePersister,
   });
   const widget = useMosaicFilters({
     scopeId: 'widget:medal-table',
@@ -279,6 +297,14 @@ export function FilterBuilderView() {
   );
 
   useEffect(() => {
+    writePageScopeUrlFilterIds(pageActiveFilterIds);
+  }, [pageActiveFilterIds]);
+
+  useEffect(() => {
+    writeWidgetScopeUrlFilterIds(widgetActiveFilterIds);
+  }, [widgetActiveFilterIds]);
+
+  useEffect(() => {
     if (!chartRef.current || chartRef.current.hasChildNodes()) {
       return;
     }
@@ -309,8 +335,7 @@ export function FilterBuilderView() {
           y: 'height',
           stroke: 'sex',
         }),
-        vg.xyDomain(vg.Fixed),
-        vg.colorDomain(vg.Fixed),
+        vg.colorDomain(['female', 'male']),
       );
 
       chartRef.current?.replaceChildren(plot);
@@ -421,6 +446,7 @@ export function FilterBuilderView() {
           />
         </div>
         <DynamicFilterList
+          bindingPersister={widgetBindingPersister}
           emptyText="No widget-local filters are active."
           filters={widgetActiveFilters}
           facetContexts={widgetFacetContexts}
@@ -446,6 +472,7 @@ export function FilterBuilderView() {
 }
 
 function DynamicFilterList({
+  bindingPersister,
   emptyText,
   filters,
   facetContexts,
@@ -453,6 +480,7 @@ function DynamicFilterList({
   scopeId,
   onRemoveFilter,
 }: {
+  bindingPersister?: FilterBindingPersister;
   emptyText: string;
   filters: Array<FilterRuntime>;
   facetContexts: Record<string, MosaicSelection>;
@@ -475,6 +503,7 @@ function DynamicFilterList({
           key={filter.definition.id}
           filter={filter}
           filterBy={facetContexts[filter.definition.id]}
+          bindingPersister={bindingPersister}
           scopeId={scopeId}
           scopeLabel={scopeLabel}
           onRemoveFilter={onRemoveFilter}

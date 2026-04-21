@@ -37,6 +37,14 @@ function toInputValue(value: unknown) {
   return '';
 }
 
+function toSingleInputValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return toInputValue(value[0]);
+  }
+
+  return toInputValue(value);
+}
+
 function normalizeNumberValue(rawValue: string) {
   if (!rawValue) {
     return null;
@@ -70,6 +78,7 @@ export function DynamicFilterEditor({
   const [pendingFacetApply, setPendingFacetApply] = React.useState(0);
   const lastAppliedFacetToken = React.useRef(0);
   const previousOperator = React.useRef(binding.operator);
+  const suppressNextFacetSingleBlur = React.useRef(false);
   const unary = isUnaryOperator(binding.operator);
 
   React.useEffect(() => {
@@ -117,7 +126,7 @@ export function DynamicFilterEditor({
             aria-label={`${scopeLabel} ${filter.definition.label} value`}
             className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
             type="text"
-            value={toInputValue(binding.value)}
+            value={toSingleInputValue(binding.value)}
             onChange={(event) => binding.setValue(event.target.value)}
             onBlur={() => binding.apply()}
           />
@@ -128,7 +137,7 @@ export function DynamicFilterEditor({
 
   if (filter.definition.valueKind === 'facet-single') {
     const value = Array.isArray(binding.value)
-      ? toInputValue(binding.value[0])
+      ? toSingleInputValue(binding.value)
       : toInputValue(binding.value);
 
     return (
@@ -147,14 +156,21 @@ export function DynamicFilterEditor({
             onChange={(event) => {
               const nextValue = event.target.value;
               if (!nextValue) {
+                suppressNextFacetSingleBlur.current = true;
                 binding.clear();
                 return;
               }
 
+              suppressNextFacetSingleBlur.current = false;
               binding.setValue(nextValue);
               setPendingFacetApply((previousValue) => previousValue + 1);
             }}
             onBlur={() => {
+              if (suppressNextFacetSingleBlur.current) {
+                suppressNextFacetSingleBlur.current = false;
+                return;
+              }
+
               if (isEmptyFacetValue(binding.value)) {
                 return;
               }
