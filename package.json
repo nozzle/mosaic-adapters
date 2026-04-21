@@ -52,5 +52,12 @@
     "typescript-eslint": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
+  },
+  "pnpm": {
+    "overrides": {
+      "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
+      "@nozzleio/mosaic-tanstack-react-table": "workspace:*",
+      "@nozzleio/react-mosaic": "workspace:*"
+    }
   }
 }

@@ -70,6 +70,11 @@ catalogs:
       specifier: ^4.1.1
       version: 4.1.1
 
+overrides:
+  '@nozzleio/mosaic-tanstack-table-core': workspace:*
+  '@nozzleio/mosaic-tanstack-react-table': workspace:*
+  '@nozzleio/react-mosaic': workspace:*
+
 importers:
 
   .:
