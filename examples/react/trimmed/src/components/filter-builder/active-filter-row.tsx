@@ -1,7 +1,10 @@
 import * as React from 'react';
 import { useFilterBinding } from '@nozzleio/mosaic-tanstack-react-table';
 
-import type { FilterRuntime } from '@nozzleio/mosaic-tanstack-react-table';
+import type {
+  FilterBindingPersister,
+  FilterRuntime,
+} from '@nozzleio/mosaic-tanstack-react-table';
 import type { Selection as MosaicSelection } from '@uwdata/mosaic-core';
 import { DynamicFilterEditor } from '@/components/filter-builder/dynamic-filter-editor';
 
@@ -39,17 +42,22 @@ const OPERATOR_LABELS: Record<string, string> = {
 export function ActiveFilterRow({
   filter,
   filterBy,
+  bindingPersister,
   scopeId,
   scopeLabel,
   onRemoveFilter,
 }: {
   filter: FilterRuntime;
   filterBy?: MosaicSelection;
+  bindingPersister?: FilterBindingPersister;
   scopeId: string;
   scopeLabel: string;
   onRemoveFilter: (id: string) => void;
 }) {
-  const binding = useFilterBinding(filter);
+  const binding = useFilterBinding(
+    filter,
+    bindingPersister ? { persister: bindingPersister } : undefined,
+  );
   const showOperatorSelect = filter.definition.operators.length > 1;
 
   return (
