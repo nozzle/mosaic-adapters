@@ -1,5 +1,16 @@
 # @nozzleio/mosaic-tanstack-react-table
 
+## 0.4.0
+
+### Minor Changes
+
+- [#118](https://github.com/nozzle/mosaic-adapters/pull/118) [`f96c275`](https://github.com/nozzle/mosaic-adapters/commit/f96c275726015f36c215c2d80bbecb23941a7775) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - feat(react-table): add per-filter persistence helpers and binding hydration support
+
+### Patch Changes
+
+- Updated dependencies [[`89621c2`](https://github.com/nozzle/mosaic-adapters/commit/89621c2c4df75ba8e11b1b6092019378318599e5), [`fc70c91`](https://github.com/nozzle/mosaic-adapters/commit/fc70c91c0b0e6df48c33d1dfea659a094bd1ff1c)]:
+  - @nozzleio/mosaic-tanstack-table-core@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes
