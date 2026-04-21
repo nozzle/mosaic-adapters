@@ -76,6 +76,48 @@ const widgetContext = useComposedSelection([page.context, widget.context]);
 `page.context` affects every consumer that reads it. `widget.context` stays
 local until you explicitly compose it with the page scope.
 
+### Persistence Hooks
+
+Both filter-builder hooks accept optional synchronous persisters:
+
+```tsx
+const page = useMosaicFilters({
+  scopeId: 'page',
+  definitions: pageDefinitions,
+  persister: scopePersister,
+});
+
+const binding = useFilterBinding(filter, {
+  persister: bindingPersister,
+});
+```
+
+Hydration order is always:
+
+- current committed `Selection` state
+- binding persister
+- scope persister
+
+Persisted reads commit back into the underlying `Selection`, so bindings,
+facets, and composed contexts all stay aligned on the same committed source of
+truth. Draft-only updates from `setValue`, `setValueTo`, and `setOperator` do
+not invoke persister writes. Writes happen only for committed changes from
+`apply()`, `clear()`, or external `selection.update(...)` calls.
+
+For headless integrations outside React, use the core helpers instead of
+reading raw clauses directly:
+
+```ts
+import {
+  applyFilterSelection,
+  clearFilterSelection,
+  readFilterSelectionState,
+} from '@nozzleio/mosaic-tanstack-table-core/filter-builder';
+```
+
+This keeps clause shape and filter-builder source identity internal to the
+package.
+
 ## Dynamic Builder Pattern
 
 The trimmed React example now uses the same hooks to drive a primitive dynamic

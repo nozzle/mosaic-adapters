@@ -24,6 +24,15 @@ See [Filter Builder](./filter-builder.md) for the page-scope/widget-scope
 pattern, native HTML examples, and the trimmed dynamic builder example that
 adds and removes active filter rows from a catalog.
 
+The builder hooks also accept optional synchronous persisters:
+
+- `useMosaicFilters({ persister })` persists a sparse scope snapshot
+- `useFilterBinding(filter, { persister })` persists an individual binding
+
+Selection state remains authoritative. On mount, builder bindings hydrate from
+the committed `Selection` first and only fall back to persister reads when the
+current selection has no valid committed value.
+
 When using `FilterDefinition.operators`, prefer the exported condition helper
 objects from `@nozzleio/mosaic-tanstack-react-table`, for example:
 
