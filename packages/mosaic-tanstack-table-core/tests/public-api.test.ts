@@ -66,9 +66,7 @@ test('publishes the tightened facet and sidecar type contracts', () => {
   expectTypeOf<
     ReturnType<typeof filterBuilder.createEmptyFilterBindingState>['operator']
   >().toEqualTypeOf<string | null>();
-  expectTypeOf<
-    typeof filterBuilder.readFilterSelectionState
-  >().toBeFunction();
+  expectTypeOf<typeof filterBuilder.readFilterSelectionState>().toBeFunction();
 });
 
 test('accepts heterogeneous column value types in table options', () => {

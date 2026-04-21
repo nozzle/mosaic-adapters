@@ -1,8 +1,4 @@
-import type {
-  ColumnType,
-  FacetSortMode,
-  MosaicTableSource,
-} from '../types';
+import type { ColumnType, FacetSortMode, MosaicTableSource } from '../types';
 import type { Selection } from '@uwdata/mosaic-core';
 import type {
   ArrayMultiselectConditionOperatorId,

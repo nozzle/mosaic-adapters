@@ -95,10 +95,7 @@ const numberRangeDefinition: FilterDefinition = {
   label: 'Gold',
   column: 'gold',
   valueKind: 'number-range',
-  operators: [
-    NUMBER_RANGE_CONDITIONS.BETWEEN,
-    NUMBER_RANGE_CONDITIONS.AFTER,
-  ],
+  operators: [NUMBER_RANGE_CONDITIONS.BETWEEN, NUMBER_RANGE_CONDITIONS.AFTER],
   defaultOperator: NUMBER_RANGE_CONDITIONS.BETWEEN,
   dataType: 'number',
 };
@@ -114,10 +111,7 @@ function createRuntime(
   };
 }
 
-function setStoredSelection(
-  runtime: FilterRuntime,
-  state: FilterBindingState,
-) {
+function setStoredSelection(runtime: FilterRuntime, state: FilterBindingState) {
   applyFilterSelection(runtime, state);
 }
 
@@ -149,12 +143,12 @@ function createFilterBuilderSource(runtime: FilterRuntime) {
 
 describe('filter-builder helpers', () => {
   test('normalizeFilterBindingState returns default state for null and undefined selection values', () => {
-    expect(
-      normalizeFilterBindingState(textDefinition, null),
-    ).toEqual(createEmptyFilterBindingState(textDefinition));
-    expect(
-      normalizeFilterBindingState(textDefinition, undefined),
-    ).toEqual(createEmptyFilterBindingState(textDefinition));
+    expect(normalizeFilterBindingState(textDefinition, null)).toEqual(
+      createEmptyFilterBindingState(textDefinition),
+    );
+    expect(normalizeFilterBindingState(textDefinition, undefined)).toEqual(
+      createEmptyFilterBindingState(textDefinition),
+    );
   });
 
   test('stored CONDITION values are rehydrated across supported definition shapes', () => {

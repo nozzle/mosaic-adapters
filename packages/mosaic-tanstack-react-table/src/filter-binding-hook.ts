@@ -12,7 +12,10 @@ export function useFilterBinding(
   filter: FilterRuntime,
   options?: UseFilterBindingOptions,
 ): FilterBinding {
-  const { controller, state } = useFilterBindingControllerState(filter, options);
+  const { controller, state } = useFilterBindingControllerState(
+    filter,
+    options,
+  );
   const apply = React.useCallback(() => {
     markNextCommittedFilterWriteReason(filter.selection, 'apply');
     controller.apply();

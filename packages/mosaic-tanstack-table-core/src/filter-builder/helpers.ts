@@ -60,7 +60,10 @@ type FilterBuilderSource = {
   scopeId: string;
 };
 
-const FILTER_SOURCE_BY_SELECTION = new WeakMap<Selection, FilterBuilderSource>();
+const FILTER_SOURCE_BY_SELECTION = new WeakMap<
+  Selection,
+  FilterBuilderSource
+>();
 
 const DIRECT_OPERATOR_IDS = new Set<FilterOperator>([
   'eq',
@@ -598,13 +601,11 @@ export function normalizeFilterBindingState(
 function resolveAppliedFilterSelection(
   filter: FilterRuntime,
   state: FilterBindingState,
-):
-  | {
-      operator: string;
-      normalizedValue: unknown;
-      predicate: SelectionClause['predicate'];
-    }
-  | null {
+): {
+  operator: string;
+  normalizedValue: unknown;
+  predicate: SelectionClause['predicate'];
+} | null {
   const operator =
     state.operator ?? getDefaultFilterOperator(filter.definition);
 
@@ -664,7 +665,10 @@ function readResolvedFilterSelectionState(filter: FilterRuntime): {
   state: FilterBindingState;
 } {
   const currentValue = filter.selection.valueFor(getFilterSource(filter));
-  const currentState = resolveCommittedFilterSelectionState(filter, currentValue);
+  const currentState = resolveCommittedFilterSelectionState(
+    filter,
+    currentValue,
+  );
 
   if (currentState) {
     return {

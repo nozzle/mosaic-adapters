@@ -78,9 +78,8 @@ export function useFilterBindingControllerState(
       return;
     }
 
-    suppressedHydrationWriteKeyRef.current = getFilterBindingStateKey(
-      persistedState,
-    );
+    suppressedHydrationWriteKeyRef.current =
+      getFilterBindingStateKey(persistedState);
     markRecentPersistedHydration(filter.selection, 'binding', persistedState);
     applyFilterSelection(filter, persistedState);
   }, [bindingContext, filter, persister]);

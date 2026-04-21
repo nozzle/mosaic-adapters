@@ -262,7 +262,10 @@ export function useMosaicFilters(
         });
       };
 
-      runtime.selection.addEventListener('value', handleCommittedSelectionChange);
+      runtime.selection.addEventListener(
+        'value',
+        handleCommittedSelectionChange,
+      );
 
       return () => {
         runtime.selection.removeEventListener(

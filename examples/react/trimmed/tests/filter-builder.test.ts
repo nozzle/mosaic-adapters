@@ -282,9 +282,9 @@ test.describe('filter-builder page', () => {
     await page.reload({ waitUntil: 'networkidle' });
 
     const rehydratedNameRow = page.getByTestId('page-active-filter-name');
-    await expect(rehydratedNameRow.getByLabel('page Athlete value')).toHaveValue(
-      'jesus',
-    );
+    await expect(
+      rehydratedNameRow.getByLabel('page Athlete value'),
+    ).toHaveValue('jesus');
     await expect(pageSummary).toHaveText(filteredSummary, { timeout: 15000 });
   });
 });

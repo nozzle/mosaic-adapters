@@ -130,12 +130,12 @@ test('publishes the narrowed adapter hook contracts', () => {
   >();
   expectTypeOf<FilterRuntime['scopeId']>().toEqualTypeOf<string>();
   expectTypeOf<FilterBinding['operator']>().toEqualTypeOf<string | null>();
-  expectTypeOf<FilterBindingPersistenceContext['runtime']>().toEqualTypeOf<
-    FilterRuntime
-  >();
   expectTypeOf<
-    FilterBindingPersistenceWriteContext['reason']
-  >().toEqualTypeOf<'apply' | 'clear' | 'external'>();
+    FilterBindingPersistenceContext['runtime']
+  >().toEqualTypeOf<FilterRuntime>();
+  expectTypeOf<FilterBindingPersistenceWriteContext['reason']>().toEqualTypeOf<
+    'apply' | 'clear' | 'external'
+  >();
   expectTypeOf<FilterScopePersistenceContext['filters']>().toEqualTypeOf<
     Record<string, FilterRuntime>
   >();
