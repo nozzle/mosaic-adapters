@@ -1,5 +1,12 @@
 # example-react-trimmed
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @nozzleio/mosaic-tanstack-react-table@0.4.1
+
 ## 0.0.7
 
 ### Patch Changes

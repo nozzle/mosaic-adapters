@@ -1,5 +1,22 @@
 # @nozzleio/mosaic-tanstack-table-core
 
+## 0.3.2
+
+### Patch Changes
+
+- [#121](https://github.com/nozzle/mosaic-adapters/pull/121) [`248668d`](https://github.com/nozzle/mosaic-adapters/commit/248668de9d828119429957ada1890abe709c23f8) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - fix(table-core): replace stale row-selection clauses across remounted clients
+
+  When a table was remounted as a new client, the previous client's
+  row-selection clause could remain in the shared Mosaic Selection.
+  Subsequent selection updates from the new client then intersected with
+  the stale clause, producing incorrect filters and stale KPI state.
+
+  Reset stale row-selection clauses before publishing the current
+  client's clause so shared row selection remains single-owner across
+  fullscreen or enlarged table transitions.
+
+  Add regression coverage for remount, replacement, and clear flows.
+
 ## 0.3.1
 
 ### Patch Changes
