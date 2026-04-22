@@ -419,6 +419,105 @@ describe('MosaicDataTable characterization', () => {
       expect(fullscreenClient.store.state.tableState.rowSelection).toEqual({
         '9': true,
       });
+      expect(rowSelection.clauses).toHaveLength(1);
+      expect(rowSelection.active?.source).toBe(fullscreenClient);
+      expect(rowSelection.value).toEqual(['9']);
+    });
+  });
+
+  test('replaces stale row selection clauses when a remounted client updates the selection', async () => {
+    const rowSelection = new Selection();
+    const coordinator = new FakeCoordinator();
+    const dashboardClient = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [
+        { accessorKey: 'id', header: 'ID' },
+        { accessorKey: 'name', header: 'Name' },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    dashboardClient.connect();
+    dashboardClient
+      .getTableOptions(dashboardClient.store.state)
+      .onRowSelectionChange?.({ '2': true, '7': true });
+
+    const fullscreenClient = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [
+        { accessorKey: 'id', header: 'ID' },
+        { accessorKey: 'name', header: 'Name' },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    fullscreenClient.connect();
+    fullscreenClient
+      .getTableOptions(fullscreenClient.store.state)
+      .onRowSelectionChange?.({ '2': true, '7': true, '9': true });
+
+    await waitFor(() => {
+      expect(rowSelection.clauses).toHaveLength(1);
+      expect(rowSelection.active?.source).toBe(fullscreenClient);
+      expect(rowSelection.value).toEqual(['2', '7', '9']);
+      expect(rowSelection.active?.predicate?.toString()).toContain(
+        "\"id\" IN ('2', '7', '9')",
+      );
+    });
+  });
+
+  test('clears a shared row selection from a remounted client without leaving stale clauses behind', async () => {
+    const rowSelection = new Selection();
+    const coordinator = new FakeCoordinator();
+    const dashboardClient = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [
+        { accessorKey: 'id', header: 'ID' },
+        { accessorKey: 'name', header: 'Name' },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    dashboardClient.connect();
+    dashboardClient
+      .getTableOptions(dashboardClient.store.state)
+      .onRowSelectionChange?.({ '2': true, '7': true });
+
+    const fullscreenClient = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [
+        { accessorKey: 'id', header: 'ID' },
+        { accessorKey: 'name', header: 'Name' },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    fullscreenClient.connect();
+    fullscreenClient
+      .getTableOptions(fullscreenClient.store.state)
+      .onRowSelectionChange?.({});
+
+    await waitFor(() => {
+      expect(rowSelection.clauses).toHaveLength(0);
+      expect(rowSelection.value).toBeNull();
+      expect(dashboardClient.store.state.tableState.rowSelection).toEqual({});
+      expect(fullscreenClient.store.state.tableState.rowSelection).toEqual({});
     });
   });
 
