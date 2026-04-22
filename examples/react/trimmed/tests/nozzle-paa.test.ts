@@ -1,10 +1,18 @@
 import { expect, test } from '@playwright/test';
-
 import { getInit } from './utils/init';
+import type { Page } from '@playwright/test';
 
 const init = getInit('nozzle-paa');
 
 test.describe('nozzle-paa page', () => {
+  const readUniqueQuestionsKpi = async (page: Page) => {
+    const card = page.getByText('# of Unique Questions').locator('xpath=..');
+    const valueText =
+      (await card.locator(':scope > div').nth(1).textContent()) ?? '0';
+
+    return Number(valueText.replaceAll(',', '').trim());
+  };
+
   test('has the correct header', async ({ page }) => {
     await init(page);
 
@@ -120,5 +128,49 @@ test.describe('nozzle-paa page', () => {
         name: /Remove Domain selection /,
       }),
     ).toBeVisible();
+  });
+
+  test('keeps shared question selection state correct through enlarge, update, and clear', async ({
+    page,
+  }) => {
+    await init(page);
+
+    const initialKpi = await readUniqueQuestionsKpi(page);
+    const questionCard = page.getByTestId('summary-table-question');
+
+    await questionCard.locator('table tbody tr').nth(0).click();
+    await questionCard.locator('table tbody tr').nth(1).click();
+
+    await expect.poll(() => readUniqueQuestionsKpi(page)).toBe(2);
+    await expect(page.getByText('Selected Question:')).toHaveCount(2);
+
+    await page
+      .getByRole('button', { name: 'Enlarge PAA Questions table' })
+      .click();
+
+    const expandedQuestionCard = page.getByTestId(
+      'summary-table-question-expanded',
+    );
+    await expandedQuestionCard.locator('table tbody tr').nth(2).click();
+
+    await expect.poll(() => readUniqueQuestionsKpi(page)).toBe(3);
+    await expect(page.getByText('Selected Question:')).toHaveCount(3);
+
+    await expandedQuestionCard
+      .getByRole('button', { name: 'Return PAA Questions table to grid' })
+      .click();
+
+    const restoredQuestionCard = page.getByTestId('summary-table-question');
+    await restoredQuestionCard
+      .getByRole('button', { name: 'Clear PAA Questions selections' })
+      .click();
+
+    await expect.poll(() => readUniqueQuestionsKpi(page)).toBe(initialKpi);
+    await expect(page.getByText('Selected Question:')).toHaveCount(0);
+    await expect(
+      restoredQuestionCard.getByRole('button', {
+        name: 'Clear PAA Questions selections',
+      }),
+    ).toHaveCount(0);
   });
 });

@@ -521,26 +521,6 @@ function getGroupByExpression(groupBy: string) {
   return mSql.column(groupBy);
 }
 
-function buildSummarySelectionPredicate(
-  groupBy: string,
-  values: Array<string | number>,
-): ReturnType<typeof mSql.eq> | ReturnType<typeof mSql.isIn> | null {
-  if (values.length === 0) {
-    return null;
-  }
-
-  const columnExpr = getGroupByExpression(groupBy);
-
-  if (values.length === 1) {
-    return mSql.eq(columnExpr, mSql.literal(values[0]));
-  }
-
-  return mSql.isIn(
-    columnExpr,
-    values.map((value) => mSql.literal(value)),
-  );
-}
-
 function SummaryTable({
   summaryId,
   title,
@@ -680,7 +660,7 @@ function SummaryTable({
     [groupBy, title, metricLabel, helper, sparkline, filterBy, enabled],
   );
 
-  const { tableOptions, client } = useMosaicReactTable<GroupByRow>({
+  const { tableOptions } = useMosaicReactTable<GroupByRow>({
     table: queryFactory,
     filterBy: filterBy,
     manualHighlight: true,
@@ -725,24 +705,23 @@ function SummaryTable({
 
   const table = useReactTable(tableOptions);
 
-  const updateSelectionValues = (nextValues: Array<string | number>) => {
-    selection.update({
-      source: client,
-      clients: new Set([client]),
-      value: nextValues.length > 0 ? nextValues : null,
-      predicate: buildSummarySelectionPredicate(groupBy, nextValues),
-    });
+  const updateRowSelection = (nextValues: Array<string | number>) => {
+    const nextRowSelection = Object.fromEntries(
+      nextValues.map((value) => [String(value), true]),
+    );
+
+    table.setRowSelection(nextRowSelection);
   };
 
   const clearSelection = () => {
-    updateSelectionValues([]);
+    updateRowSelection([]);
   };
 
   const removeSelectedValue = (valueToRemove: string | number) => {
     const nextValues = selectedValues.filter(
       (value) => !Object.is(value, valueToRemove),
     );
-    updateSelectionValues(nextValues);
+    updateRowSelection(nextValues);
   };
 
   return (
