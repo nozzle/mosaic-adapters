@@ -162,6 +162,16 @@ export class MosaicSelectionManager<
       }
     }
 
+    const staleClauses = this.selection.clauses.filter(
+      (clause) => clause.source !== this.client,
+    );
+
+    if (staleClauses.length > 0) {
+      // Row selection is shared across remounted table clients, so only the
+      // current client should publish the active clause at any given time.
+      this.selection.reset(staleClauses);
+    }
+
     this.selection.update({
       source: this.client,
       // Critical: Exclude self from the filter so menus/tables don't filter themselves empty
