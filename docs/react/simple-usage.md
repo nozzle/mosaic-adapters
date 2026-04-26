@@ -336,48 +336,78 @@ const { tableOptions } = useMosaicReactTable({
 
 ## Adding External Inputs + Chart (Shared Context)
 
-Connect vgplot inputs to your selection and render a chart that filters by `$combined`:
+Connect React Mosaic inputs to your selection and render a chart that filters by
+`$combined`:
 
 ```tsx
-useEffect(() => {
-  const inputs = vg.hconcat(
-    vg.menu({
-      label: 'Sport',
-      as: $query,
-      from: 'athletes',
-      column: 'sport',
-    }),
-    vg.menu({
-      label: 'Gender',
-      as: $query,
-      from: 'athletes',
-      column: 'sex',
-    }),
-    vg.search({
-      label: 'Name',
-      as: $query,
-      from: 'athletes',
-      column: 'name',
-      type: 'contains',
-    }),
-  );
+import {
+  useMosaicSelectInput,
+  useMosaicTextInput,
+} from '@nozzleio/mosaic-tanstack-react-table/inputs';
 
-  const plot = vg.plot(
-    vg.dot(vg.from('athletes', { filterBy: $combined }), {
-      x: 'weight',
-      y: 'height',
-      fill: 'sex',
-      r: 2,
-      opacity: 0.05,
-    }),
-    vg.intervalXY({ as: $query }),
-    vg.xyDomain(vg.Fixed),
-    vg.colorDomain(vg.Fixed),
-  );
+function InputsAndChart() {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const sport = useMosaicSelectInput({
+    as: $query,
+    from: 'athletes',
+    column: 'sport',
+    field: 'sport',
+  });
+  const sex = useMosaicSelectInput({
+    as: $query,
+    from: 'athletes',
+    column: 'sex',
+    field: 'sex',
+  });
+  const name = useMosaicTextInput({
+    as: $query,
+    from: 'athletes',
+    column: 'name',
+    field: 'name',
+    match: 'contains',
+  });
 
-  const layout = vg.vconcat(inputs, vg.vspace(10), plot);
-  document.getElementById('chart')?.replaceChildren(layout);
-}, []);
+  useEffect(() => {
+    const plot = vg.plot(
+      vg.dot(vg.from('athletes', { filterBy: $combined }), {
+        x: 'weight',
+        y: 'height',
+        fill: 'sex',
+        r: 2,
+        opacity: 0.05,
+      }),
+      vg.intervalXY({ as: $query }),
+      vg.xyDomain(vg.Fixed),
+      vg.colorDomain(vg.Fixed),
+    );
+
+    chartRef.current?.replaceChildren(plot);
+  }, []);
+
+  return (
+    <>
+      <select onChange={(event) => sport.setValue(event.currentTarget.value)}>
+        {sport.options.map((option) => (
+          <option key={option.label} value={String(option.value)}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <select onChange={(event) => sex.setValue(event.currentTarget.value)}>
+        {sex.options.map((option) => (
+          <option key={option.label} value={String(option.value)}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <input
+        value={name.value}
+        onChange={(event) => name.setValue(event.currentTarget.value)}
+      />
+      <div ref={chartRef} />
+    </>
+  );
+}
 ```
 
 These inputs update `$query`. The chart filters by `$combined`, so chart and table stay in sync.

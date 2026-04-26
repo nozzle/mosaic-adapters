@@ -62,12 +62,14 @@ Mosaic client while leaving rendering up to React.
 
 ```tsx
 import {
-  MosaicSelect,
-  MosaicTextInput,
   useMosaicSelectInput,
   useMosaicTextInput,
 } from '@nozzleio/mosaic-tanstack-react-table/inputs';
 ```
+
+`MosaicTextInput` and `MosaicSelect` are also exported as minimal native
+wrappers, but most apps should wire the hooks into their own design-system
+controls.
 
 The framework-agnostic core lives at
 `@nozzleio/mosaic-tanstack-table-core/input-core` for non-React adapters.
@@ -87,22 +89,32 @@ input's active predicate by writing a clause with `predicate: null`.
 ### Text Input
 
 `useMosaicTextInput` exposes state plus `setValue`, `activate`, `clear`, and the
-underlying client. `MosaicTextInput` is a minimal native `<input>` wrapper.
+underlying client.
 
 ```tsx
 import * as vg from '@uwdata/vgplot';
-import { MosaicTextInput } from '@nozzleio/mosaic-tanstack-react-table/inputs';
+import { useMosaicTextInput } from '@nozzleio/mosaic-tanstack-react-table/inputs';
 
 const $query = vg.Selection.intersect();
 
-<MosaicTextInput
-  as={$query}
-  from="athletes"
-  column="name"
-  field="name"
-  match="contains"
-  placeholder="Search names"
-/>;
+function NameSearch() {
+  const name = useMosaicTextInput({
+    as: $query,
+    from: 'athletes',
+    column: 'name',
+    field: 'name',
+    match: 'contains',
+  });
+
+  return (
+    <input
+      value={name.value}
+      onChange={(event) => name.setValue(event.currentTarget.value)}
+      onFocus={(event) => name.activate(event.currentTarget.value)}
+      placeholder="Search names"
+    />
+  );
+}
 ```
 
 When `from` and `column` are provided, the text client queries distinct
@@ -118,30 +130,51 @@ input uses `column`.
 
 `useMosaicSelectInput` exposes `value`, normalized `options`, `pending`,
 `error`, `setValue`, `activate`, `clear`, and the underlying client.
-`MosaicSelect` is a minimal native `<select>` wrapper.
 
 ```tsx
-import { MosaicSelect } from '@nozzleio/mosaic-tanstack-react-table/inputs';
+import { useMosaicSelectInput } from '@nozzleio/mosaic-tanstack-react-table/inputs';
 
-<MosaicSelect
-  as={$query}
-  from="athletes"
-  column="sport"
-  field="sport"
-  filterBy={$tableContext}
-/>;
+function SportSelect() {
+  const sport = useMosaicSelectInput<string>({
+    as: $query,
+    from: 'athletes',
+    column: 'sport',
+    field: 'sport',
+    filterBy: $tableContext,
+  });
+
+  const selectedIndex = sport.options.findIndex((option) =>
+    Object.is(option.value, sport.value),
+  );
+
+  return (
+    <select
+      value={selectedIndex < 0 ? '' : String(selectedIndex)}
+      onChange={(event) => {
+        const option = sport.options[Number(event.currentTarget.value)];
+        sport.setValue(option?.value ?? null);
+      }}
+    >
+      {sport.options.map((option, index) => (
+        <option key={index} value={String(index)}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
 ```
 
 Select options can be literal:
 
 ```tsx
-<MosaicSelect
-  as={sportParam}
-  options={[
+const control = useMosaicSelectInput({
+  as: sportParam,
+  options: [
     { value: 1, label: 'One' },
     { value: 2, label: 'Two' },
-  ]}
-/>
+  ],
+});
 ```
 
 Or query-backed with `from` and `column`. Query-backed single-select inputs
@@ -153,14 +186,14 @@ include All when `includeAll` is true.
 Pass `multiple: true` to store an array of selected original option values.
 
 ```tsx
-<MosaicSelect
-  as={$query}
-  from="pages"
-  column="keyword_groups"
-  field="keyword_groups"
-  multiple
-  listMatch="any"
-/>
+const keywordGroups = useMosaicSelectInput({
+  as: $query,
+  from: 'pages',
+  column: 'keyword_groups',
+  field: 'keyword_groups',
+  multiple: true,
+  listMatch: 'any',
+});
 ```
 
 For Param output, non-empty multi-selects write the selected array and empty
@@ -170,10 +203,10 @@ List-valued columns use `list_has_any` for `listMatch="any"` and
 
 ### Native Select Values
 
-The native `MosaicSelect` preserves non-string option values. DOM `<option>`
-values are internal option indexes, and the component maps selected indexes
-back to the original number, boolean, Date, object, or string values before
-calling `setValue` and `onValueChange`.
+When wiring a native `<select>` yourself, use option indexes or another stable
+local key for DOM `<option>` values, then map the selected DOM value back to
+`control.options[index].value`. This preserves original number, boolean, Date,
+object, or string values before calling `setValue`.
 
 ## Facet Menu (Dropdown)
 
