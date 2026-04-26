@@ -44,6 +44,7 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   totalRowsColumnName: string;
   totalRowsMode?: 'split' | 'window';
   rowSelectionColumn?: string;
+  rowIdentityFields?: Array<string>;
   excludeColumnId?: string; // For cascading facets
   highlightPredicate?: mSql.FilterExpr | null;
   manualHighlight?: boolean;
@@ -70,6 +71,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
     .getSelectColumns({
       tableState,
       rowIdentityField: options.rowSelectionColumn,
+      rowIdentityFields: options.rowIdentityFields,
     })
     .map(({ sql, alias }) => {
       const colStr = sql.toString();

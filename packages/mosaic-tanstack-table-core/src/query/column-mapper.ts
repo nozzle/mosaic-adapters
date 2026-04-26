@@ -25,6 +25,7 @@ type ColumnMapperEntry = {
 export interface SelectProjectionOptions {
   tableState: TableState;
   rowIdentityField?: string;
+  rowIdentityFields?: Array<string>;
 }
 
 export class ColumnMapper<TData extends RowData, TValue = unknown> {
@@ -306,9 +307,9 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
       return this.selectList;
     }
 
-    const rowIdentityFields = options.rowIdentityField
-      ? [options.rowIdentityField]
-      : undefined;
+    const rowIdentityFields =
+      options.rowIdentityFields ??
+      (options.rowIdentityField ? [options.rowIdentityField] : undefined);
     const fieldNames = planProjection({
       tableState: options.tableState,
       rowIdentityFields,

@@ -154,3 +154,88 @@ Implement Phase 5 from .opencode/plans/mosaic-implementation/phase-05-table-row-
 
 Assume Phases 1-4 are complete. Add stable table row identity, row pinning query support, and stale response protection while preserving legacy row selection APIs. Do not change input APIs. Use rg first for code search and read existing tests before editing. Run the phase validation commands before final handoff. Make one commit for the phase if validation passes.
 ```
+
+## Phase 5 Handoff
+
+Files changed:
+
+- `packages/mosaic-tanstack-table-core/src/types/general.ts`
+- `packages/mosaic-tanstack-table-core/src/query/row-identity.ts`
+- `packages/mosaic-tanstack-table-core/src/query/pinned-rows-query.ts`
+- `packages/mosaic-tanstack-table-core/src/query/column-mapper.ts`
+- `packages/mosaic-tanstack-table-core/src/query/query-builder.ts`
+- `packages/mosaic-tanstack-table-core/src/data-table.ts`
+- `packages/mosaic-tanstack-table-core/src/internal/data-table/flat-table-options.ts`
+- `packages/mosaic-tanstack-table-core/src/internal/data-table/store.ts`
+- `packages/mosaic-tanstack-table-core/src/selection-manager.ts`
+- `packages/mosaic-tanstack-table-core/src/sidecar-client.ts`
+- `packages/mosaic-tanstack-table-core/src/feature.ts`
+- `packages/mosaic-tanstack-table-core/src/table-core.ts`
+- `packages/mosaic-tanstack-table-core/tests/data-table.test.ts`
+- `.opencode/plans/mosaic-implementation/README.md`
+- `.opencode/plans/mosaic-implementation/phase-05-table-row-identity-pinning-race-protection.md`
+
+Row identity API implemented:
+
+- Added `rowId?: string | Array<string>`, `getRowId?: (row) => string`, and
+  `rowSelectionMode?: 'row-id' | 'row-values'` to core table options.
+- `row-id` mode is the default. If no explicit `rowId` is provided, the
+  existing `rowSelection.column` is used as the stable identity field for
+  compatibility.
+- Flat TanStack options now configure `getRowId` from the explicit callback or
+  the configured identity fields.
+- Projection planning now accepts multiple row identity fields and includes
+  them even when hidden.
+- `row-values` fallback publishes predicates from current row values using the
+  configured `rowSelection.column`.
+
+Pinning behavior:
+
+- Flat tables now keep `pinnedRows.top` and `pinnedRows.bottom` in core store.
+- Row pinning state changes query pinned rows separately by stable row id.
+- Pinned rows are merged into the table data returned to TanStack so they
+  remain available when the current page/window changes.
+- Pinned row querying requires field-based `row-id` identity. Grouped mode keeps
+  its existing group IDs and does not use the flat pinned-row query path.
+
+Race protection mechanism:
+
+- Main flat/grouped row queries now use a monotonically increasing request id;
+  only the latest response updates table state.
+- `SidecarClient` uses the same request-id guard for total count and facet
+  sidecar responses.
+- Pinned row queries use a separate request id so stale pinned-row responses are
+  ignored after newer pinning changes or pin clearing.
+
+Tests added/updated:
+
+- Stable `rowId` configures TanStack `getRowId` and projects hidden identity
+  fields.
+- Row selection with explicit `rowId` uses stable row id predicates after
+  pagination changes.
+- Legacy row selection tests remain in place.
+- `row-values` fallback publishes a current-row-values predicate.
+- Row pinning queries pinned rows by row id and keeps them available across
+  page changes.
+- Stale main row, sidecar, and pinned-row responses are ignored.
+
+Validation commands and results:
+
+- `pnpm test:format` - passed after running `pnpm format`.
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:types` - passed.
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:lint` - passed.
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:lib` - passed, 8
+  files and 115 tests.
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:build` - passed.
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:types` - passed.
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:build` - passed.
+
+Known risks or docs needed in Phase 6:
+
+- Docs and examples need to describe `rowId`, `getRowId`, row pinning, and
+  `rowSelectionMode`.
+- Grouped mode continues to use grouped row IDs derived from group metadata.
+  Stable data-field row identity and server-side pinned-row queries are limited
+  to flat mode in this phase.
+- Composite `rowId` values are serialized for TanStack row IDs; applications
+  should treat those IDs as opaque strings.

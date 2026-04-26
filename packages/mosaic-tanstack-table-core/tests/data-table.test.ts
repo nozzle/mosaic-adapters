@@ -8,7 +8,9 @@ import {
   buildEmptyValuePredicate,
 } from '../src/condition-predicate';
 import { MosaicDataTable } from '../src/data-table';
+import { TotalCountStrategy } from '../src/facet-strategies';
 import { GROUP_ID_SEPARATOR } from '../src/grouped/types';
+import { SidecarClient } from '../src/sidecar-client';
 import type { MosaicDataTableOptions, PrimitiveSqlValue } from '../src/types';
 
 const { queryFieldInfoMock } = vi.hoisted(() => ({
@@ -46,6 +48,14 @@ function createArrowTable(rows: Array<Record<string, unknown>>) {
       return rows;
     },
   };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 class FakeCoordinator {
@@ -398,6 +408,100 @@ describe('MosaicDataTable characterization', () => {
     expect(sql).toContain('"last_name" ILIKE \'%alex%\'');
   });
 
+  test('configures stable TanStack row ids from rowId and projects hidden row id fields', () => {
+    const { client } = createFlatClient({
+      rowId: 'id',
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        columnVisibility: {
+          id: false,
+        },
+      },
+    }));
+
+    const tableOptions = client.getTableOptions(client.store.state);
+    const rowId = tableOptions.getRowId?.(
+      {
+        id: 'athlete-7',
+        name: 'Alice',
+        age: 31,
+        country: 'NZ',
+        status: 'active',
+      },
+      0,
+    );
+    const sql = client.query()?.toString();
+
+    expect(rowId).toBe('athlete-7');
+    expect(sql).toContain('"id"');
+  });
+
+  test('uses rowId fields for row selection predicates after pagination changes', () => {
+    const rowSelection = new Selection();
+    const { client } = createFlatClient({
+      rowId: 'id',
+      rowSelection: {
+        selection: rowSelection,
+        column: 'country',
+      },
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      rows: [
+        { id: 'u1', name: 'Alice', age: 31, country: 'NZ', status: 'active' },
+        { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      ],
+      tableState: {
+        ...prev.tableState,
+        pagination: { pageIndex: 3, pageSize: 10 },
+      },
+    }));
+
+    client.getTableOptions(client.store.state).onRowSelectionChange?.({
+      u2: true,
+    });
+
+    expect(rowSelection.valueFor(client)).toEqual(['u2']);
+    expect(rowSelection.active.predicate?.toString()).toContain(
+      '"id" = \'u2\'',
+    );
+    expect(rowSelection.active.predicate?.toString()).not.toContain(
+      '"country"',
+    );
+  });
+
+  test('supports row-values selection fallback using current row values', () => {
+    const rowSelection = new Selection();
+    const { client } = createFlatClient({
+      rowSelectionMode: 'row-values',
+      rowSelection: {
+        selection: rowSelection,
+        column: 'country',
+      },
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      rows: [
+        { id: 'u1', name: 'Alice', age: 31, country: 'NZ', status: 'active' },
+        { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      ],
+    }));
+
+    client.getTableOptions(client.store.state).onRowSelectionChange?.({
+      '1': true,
+    });
+
+    expect(rowSelection.active.predicate?.toString()).toContain(
+      '"country" IN (\'AU\')',
+    );
+  });
+
   test('uses facetBy metadata for sidecar facet queries', async () => {
     const coordinator = new FakeCoordinator();
     const client = new MosaicDataTable<AthleteRow>({
@@ -705,6 +809,154 @@ describe('MosaicDataTable characterization', () => {
       expect(dashboardClient.store.state.tableState.rowSelection).toEqual({});
       expect(fullscreenClient.store.state.tableState.rowSelection).toEqual({});
     });
+  });
+
+  test('queries pinned rows by stable row id and keeps them available across pages', async () => {
+    const { client, coordinator } = createFlatClient({
+      rowId: 'id',
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      rows: [
+        { id: 'u1', name: 'Alice', age: 31, country: 'NZ', status: 'active' },
+      ],
+    }));
+
+    coordinator.enqueueResponse(
+      (sql) => sql.includes('"id" IN (\'u2\')') && !sql.includes('LIMIT'),
+      createArrowTable([
+        { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      ]),
+    );
+
+    client.getTableOptions(client.store.state).onRowPinningChange?.({
+      top: ['u2'],
+      bottom: [],
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.pinnedRows.top).toEqual([
+        { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      ]);
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      rows: [
+        { id: 'u3', name: 'Cara', age: 24, country: 'US', status: 'active' },
+      ],
+    }));
+
+    const tableOptions = client.getTableOptions(client.store.state);
+    expect(tableOptions.data).toEqual([
+      { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      { id: 'u3', name: 'Cara', age: 24, country: 'US', status: 'active' },
+    ]);
+  });
+
+  test('ignores stale main row query responses after a newer query starts', async () => {
+    const { client, coordinator } = createFlatClient();
+    const first = createDeferred<ReturnType<typeof createArrowTable>>();
+
+    coordinator.enqueueResponse('FROM "athletes"', first.promise);
+    coordinator.enqueueResponse(
+      'FROM "athletes"',
+      createArrowTable([
+        { id: 'new', name: 'New', age: 20, country: 'NZ', status: 'active' },
+      ]),
+    );
+
+    const firstRequest = client.requestQuery();
+    const secondRequest = client.requestQuery();
+    await secondRequest;
+
+    expect(client.store.state.rows).toEqual([
+      { id: 'new', name: 'New', age: 20, country: 'NZ', status: 'active' },
+    ]);
+
+    first.resolve(
+      createArrowTable([
+        { id: 'old', name: 'Old', age: 40, country: 'AU', status: 'active' },
+      ]),
+    );
+    await firstRequest;
+
+    expect(client.store.state.rows).toEqual([
+      { id: 'new', name: 'New', age: 20, country: 'NZ', status: 'active' },
+    ]);
+  });
+
+  test('ignores stale sidecar responses after a newer sidecar query starts', async () => {
+    const coordinator = new FakeCoordinator();
+    const first = createDeferred<ReturnType<typeof createArrowTable>>();
+    const results: Array<number> = [];
+    const sidecar = new SidecarClient(
+      {
+        source: 'athletes',
+        column: 'count',
+        getFilters: () => [],
+        onResult: (count: number) => {
+          results.push(count);
+        },
+      },
+      TotalCountStrategy,
+    );
+
+    sidecar.setCoordinator(coordinator as never);
+    coordinator.enqueueResponse('FROM "athletes"', first.promise);
+    coordinator.enqueueResponse(
+      'FROM "athletes"',
+      createArrowTable([{ count: 12 }]),
+    );
+
+    const firstRequest = sidecar.requestQuery();
+    const secondRequest = sidecar.requestQuery();
+    await secondRequest;
+
+    first.resolve(createArrowTable([{ count: 3 }]));
+    await firstRequest;
+
+    expect(results).toEqual([12]);
+  });
+
+  test('ignores stale pinned row query responses after pinning changes', async () => {
+    const { client, coordinator } = createFlatClient({
+      rowId: 'id',
+    });
+    const first = createDeferred<ReturnType<typeof createArrowTable>>();
+
+    coordinator.enqueueResponse(
+      (sql) => sql.includes('"id" IN (\'u2\')'),
+      first.promise,
+    );
+    coordinator.enqueueResponse(
+      (sql) => sql.includes('"id" IN (\'u3\')'),
+      createArrowTable([
+        { id: 'u3', name: 'Cara', age: 24, country: 'US', status: 'active' },
+      ]),
+    );
+
+    const tableOptions = client.getTableOptions(client.store.state);
+    tableOptions.onRowPinningChange?.({ top: ['u2'], bottom: [] });
+    tableOptions.onRowPinningChange?.({ top: ['u3'], bottom: [] });
+
+    await waitFor(() => {
+      expect(client.store.state.pinnedRows.top).toEqual([
+        { id: 'u3', name: 'Cara', age: 24, country: 'US', status: 'active' },
+      ]);
+    });
+
+    first.resolve(
+      createArrowTable([
+        { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      ]),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(client.store.state.pinnedRows.top).toEqual([
+      { id: 'u3', name: 'Cara', age: 24, country: 'US', status: 'active' },
+    ]);
   });
 
   test('only reacts to meaningful table state changes and refreshes sidecars on filter changes', () => {

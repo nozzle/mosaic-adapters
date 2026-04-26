@@ -3,9 +3,12 @@ import { logger } from '../../logger';
 import { createGroupedTableFeature } from '../../grouped/feature';
 import { createMosaicFeature } from '../../feature';
 import { functionalUpdate } from '../../utils';
+import {
+  createRowIdentityGetter,
+  resolveRowIdentity,
+} from '../../query/row-identity';
 import { getFlatTableStateChanges } from './flat-table-state';
 
-import type { MosaicSelectionManager } from '../../selection-manager';
 import type { MosaicDataTable } from '../../data-table';
 import type {
   MosaicColumnDef,
@@ -55,14 +58,28 @@ export function createFlatTableOptions<
   client: MosaicDataTable<TData, TValue>;
   state: MosaicDataTableStore<TData, TValue>;
   schema: Array<{ column: string }>;
-  rowSelectionManager?: MosaicSelectionManager<string | number>;
   onTableStateChange: 'requestQuery' | 'requestUpdate';
 }): TableOptions<TData> {
-  const { client, state, schema, rowSelectionManager, onTableStateChange } =
-    params;
+  const { client, state, schema, onTableStateChange } = params;
+  const rowIdentity = resolveRowIdentity(client.options);
+  const getRowId = createRowIdentityGetter(rowIdentity);
+  const pinnedIds = new Set([
+    ...(state.tableState.rowPinning.top ?? []),
+    ...(state.tableState.rowPinning.bottom ?? []),
+  ]);
+  const data = [
+    ...state.pinnedRows.top,
+    ...state.rows.filter((row, index) => {
+      const rowId = getRowId
+        ? getRowId(row as Record<string, unknown>)
+        : String(index);
+      return !pinnedIds.has(rowId);
+    }),
+    ...state.pinnedRows.bottom,
+  ];
 
   return {
-    data: state.rows,
+    data,
     columns: resolveFlatColumns(state, schema),
     getCoreRowModel: getCoreRowModel(),
     getFacetedRowModel: getFacetedRowModel(),
@@ -107,28 +124,36 @@ export function createFlatTableOptions<
         client.sidecarManager.refreshAll();
       }
 
+      if (changes.rowPinningChanged) {
+        client.handleRowPinningChange();
+      }
+
       runConfiguredTableStateEffect(client, onTableStateChange);
     },
     onRowSelectionChange: (updaterOrValue) => {
       const previousSelection = client.store.state.tableState.rowSelection;
       const nextSelection = functionalUpdate(updaterOrValue, previousSelection);
 
+      client.handleRowSelectionChange(nextSelection);
+    },
+    onRowPinningChange: (updaterOrValue) => {
+      const previousPinning = client.store.state.tableState.rowPinning;
+      const nextPinning = functionalUpdate(updaterOrValue, previousPinning);
+
       client.store.setState((previousStore) => ({
         ...previousStore,
         tableState: {
           ...previousStore.tableState,
-          rowSelection: nextSelection,
+          rowPinning: nextPinning,
         },
       }));
 
-      if (!rowSelectionManager) {
-        return;
-      }
-
-      const selectedValues = Object.keys(nextSelection);
-      const valueToSend = selectedValues.length > 0 ? selectedValues : null;
-      rowSelectionManager.select(valueToSend);
+      client.handleRowPinningChange();
+      runConfiguredTableStateEffect(client, onTableStateChange);
     },
+    getRowId: getRowId
+      ? (row) => getRowId(row as Record<string, unknown>)
+      : state.tableOptions.getRowId,
     manualPagination: true,
     manualSorting: true,
     manualFiltering: true,

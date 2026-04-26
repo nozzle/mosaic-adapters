@@ -34,6 +34,8 @@ export class SidecarClient<TInput, TOutput>
   implements IMosaicClient
 {
   private lifecycle = createLifecycleManager(this);
+  #requestId = 0;
+  #activeRequestId = 0;
 
   constructor(
     private config: SidecarConfig<TInput, TOutput>,
@@ -82,7 +84,38 @@ export class SidecarClient<TInput, TOutput>
     if (!this.coordinator) {
       return Promise.resolve();
     }
-    return super.requestQuery(query);
+    if (!this.enabled) {
+      this._request = query ?? true;
+      return null;
+    }
+
+    const statement = query || this.query(this.filterBy?.predicate(this));
+    if (!statement) {
+      return Promise.resolve(this.update());
+    }
+
+    const requestId = ++this.#requestId;
+    this.#activeRequestId = requestId;
+    (
+      this.coordinator as {
+        preaggregator?: { clear: () => void };
+      }
+    ).preaggregator?.clear();
+    this.queryPending();
+    this._pending = Promise.resolve(this.coordinator.query(statement))
+      .then((data) => {
+        if (requestId === this.#activeRequestId) {
+          return this.queryResult(data).update();
+        }
+        return this;
+      })
+      .catch((error: unknown) => {
+        if (requestId === this.#activeRequestId) {
+          this.queryError(error as Error);
+        }
+        return this;
+      });
+    return this._pending;
   }
 
   override query(filter?: FilterExpr): SelectQuery | null {
