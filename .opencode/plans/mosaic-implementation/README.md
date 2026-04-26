@@ -25,7 +25,7 @@ Status values:
 | 3     | `complete` | `phase-03-select-input.md`                               | 637e349 | Select input core and React binding added.                             |
 | 4     | `complete` | `phase-04-table-metadata-projection.md`                  | 5b2be79 | Metadata compatibility and projections added.                          |
 | 5     | `complete` | `phase-05-table-row-identity-pinning-race-protection.md` |         | Stable row identity, row pinning, and stale response protection added. |
-| 6     | `complete` | `phase-06-docs-examples-final-validation.md`             |         | Final docs, example update, and validation complete.                   |
+| 6     | `complete` | `phase-06-docs-examples-final-validation.md`             | 715a502 | Final docs, example update, and validation complete.                   |
 
 At phase completion:
 
