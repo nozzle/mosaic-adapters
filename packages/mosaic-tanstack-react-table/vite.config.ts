@@ -24,6 +24,7 @@ export default mergeConfig(
       'src/helpers.ts',
       'src/controllers.ts',
       'src/debug.ts',
+      'src/inputs/index.ts',
     ],
     srcDir: './src',
   }),

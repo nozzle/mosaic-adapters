@@ -18,14 +18,14 @@ Status values:
 - `blocked`
 - `complete`
 
-| Phase | Status        | Phase File                                               | Commit | Notes                                                  |
-| ----- | ------------- | -------------------------------------------------------- | ------ | ------------------------------------------------------ |
-| 1     | `complete`    | `phase-01-input-core-primitives.md`                      |        | Core input primitives added.                           |
-| 2     | `next`        | `phase-02-text-input.md`                                 |        | Requires Phase 1.                                      |
-| 3     | `not-started` | `phase-03-select-input.md`                               |        | Requires Phases 1-2.                                   |
-| 4     | `not-started` | `phase-04-table-metadata-projection.md`                  |        | Can start after input phases unless priorities change. |
-| 5     | `not-started` | `phase-05-table-row-identity-pinning-race-protection.md` |        | Requires Phase 4.                                      |
-| 6     | `not-started` | `phase-06-docs-examples-final-validation.md`             |        | Final validation phase.                                |
+| Phase | Status        | Phase File                                               | Commit  | Notes                                                  |
+| ----- | ------------- | -------------------------------------------------------- | ------- | ------------------------------------------------------ |
+| 1     | `complete`    | `phase-01-input-core-primitives.md`                      |         | Core input primitives added.                           |
+| 2     | `complete`    | `phase-02-text-input.md`                                 | 9d6aeca | Text input core and React binding added.               |
+| 3     | `next`        | `phase-03-select-input.md`                               |         | Requires Phases 1-2.                                   |
+| 4     | `not-started` | `phase-04-table-metadata-projection.md`                  |         | Can start after input phases unless priorities change. |
+| 5     | `not-started` | `phase-05-table-row-identity-pinning-race-protection.md` |         | Requires Phase 4.                                      |
+| 6     | `not-started` | `phase-06-docs-examples-final-validation.md`             |         | Final validation phase.                                |
 
 At phase completion:
 

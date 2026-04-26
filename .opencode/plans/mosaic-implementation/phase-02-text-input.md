@@ -141,3 +141,58 @@ Implement Phase 2 from .opencode/plans/mosaic-implementation/phase-02-text-input
 
 Assume Phase 1 is complete. Add the Text input core, React hook/component, tests, exports, and the Phase 2 handoff section. Do not implement Select or table changes. Preserve existing public APIs. Use rg first for code search and read existing tests before editing. Run the phase validation commands before final handoff. Make one commit for the phase if validation passes.
 ```
+
+## Phase 2 Handoff
+
+Files changed:
+
+- `packages/mosaic-tanstack-table-core/src/input-core/text-input-core.ts`
+- `packages/mosaic-tanstack-table-core/src/input-core/index.ts`
+- `packages/mosaic-tanstack-table-core/tests/text-input-core.test.ts`
+- `packages/mosaic-tanstack-react-table/src/inputs/text-input-hook.ts`
+- `packages/mosaic-tanstack-react-table/src/inputs/text-input.tsx`
+- `packages/mosaic-tanstack-react-table/src/inputs/index.ts`
+- `packages/mosaic-tanstack-react-table/tests/text-input.test.tsx`
+- `packages/mosaic-tanstack-react-table/package.json`
+- `packages/mosaic-tanstack-react-table/vite.config.ts`
+- `.opencode/plans/mosaic-implementation/README.md`
+- `.opencode/plans/mosaic-implementation/phase-02-text-input.md`
+
+Public exports added:
+
+- `@nozzleio/mosaic-tanstack-table-core/input-core`
+  - `TextInputCore`
+  - `MosaicTextInputOptions`
+  - `MosaicTextInputState`
+  - `MosaicTextMatchMethod`
+- `@nozzleio/mosaic-tanstack-react-table/inputs`
+  - `useMosaicTextInput`
+  - `MosaicTextInput`
+  - `UseMosaicTextInputResult`
+  - `MosaicTextInputOptions`
+  - `MosaicTextInputState`
+  - `MosaicTextInputProps`
+
+Tests added:
+
+- `packages/mosaic-tanstack-table-core/tests/text-input-core.test.ts`
+  - Covers scalar Param output, Selection text match clauses, empty-string clearing, external scalar Param synchronization, activation clauses, suggestion queries with `filterBy`, Param-backed `from` requerying, output rebinding, and query error state.
+- `packages/mosaic-tanstack-react-table/tests/text-input.test.tsx`
+  - Covers hook connect/disconnect/update behavior, state exposure, actions, native input value writes, and activation handlers.
+
+Validation:
+
+- `pnpm test:format` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:types` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:lint` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:lib` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:build` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:types` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:lint` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:lib` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:build` - passed
+
+Known risks or follow-ups for Phase 3:
+
+- Select is intentionally not implemented in this phase.
+- Phase 3 should reuse the input-core subscription/rebinding patterns added here and keep multi-select behavior separate from Text-specific match clauses.

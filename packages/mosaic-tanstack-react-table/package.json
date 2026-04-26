@@ -49,6 +49,10 @@
       "types": "./dist/esm/debug.d.ts",
       "default": "./dist/esm/debug.js"
     },
+    "./inputs": {
+      "types": "./dist/esm/inputs/index.d.ts",
+      "default": "./dist/esm/inputs/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
