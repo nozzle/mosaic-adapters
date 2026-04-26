@@ -258,6 +258,192 @@ describe('MosaicDataTable characterization', () => {
     );
   });
 
+  test('continues to support legacy mosaicDataTable metadata', () => {
+    const client = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      columns: [
+        {
+          accessorKey: 'name',
+          header: 'Name',
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'athlete_name',
+              sqlFilterType: 'PARTIAL_ILIKE',
+            },
+          },
+        },
+      ],
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        columnFilters: [{ id: 'name', value: 'alex' }],
+      },
+    }));
+
+    const sql = client.query()?.toString();
+
+    expect(sql).toContain('"athlete_name" AS "name"');
+    expect(sql).toContain('"athlete_name" ILIKE \'%alex%\'');
+  });
+
+  test('prefers meta.mosaic over legacy metadata when both are present', () => {
+    const client = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      columns: [
+        {
+          accessorKey: 'name',
+          header: 'Name',
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'legacy_name',
+              sqlFilterType: 'LIKE',
+            },
+            mosaic: {
+              sqlColumn: 'modern_name',
+              sqlFilterType: 'PARTIAL_ILIKE',
+            },
+          },
+        },
+      ],
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        columnFilters: [{ id: 'name', value: 'alex' }],
+      },
+    }));
+
+    const sql = client.query()?.toString();
+
+    expect(sql).toContain('"modern_name" AS "name"');
+    expect(sql).toContain('"modern_name" ILIKE \'%alex%\'');
+    expect(sql).not.toContain('legacy_name');
+  });
+
+  test('projects metadata fields required by visibility, sorting, filters, global filters, and row selection', () => {
+    const rowSelection = new Selection();
+    const client = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      columns: [
+        { accessorKey: 'id', header: 'ID' },
+        {
+          id: 'displayName',
+          header: 'Display Name',
+          accessorFn: (row) => row.name,
+          meta: {
+            mosaic: {
+              fields: ['first_name', 'last_name'],
+              sortBy: 'last_name',
+              globalFilterBy: ['first_name', 'last_name'],
+            },
+          },
+        },
+        {
+          accessorKey: 'age',
+          header: 'Age',
+          meta: {
+            mosaic: {
+              sqlColumn: 'age_display',
+              filterBy: 'age_years',
+              sqlFilterType: 'RANGE',
+            },
+          },
+        },
+        {
+          accessorKey: 'country',
+          header: 'Country',
+          meta: {
+            mosaic: {
+              sqlColumn: 'country_name',
+              sqlFilterType: 'EQUALS',
+            },
+          },
+        },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        columnVisibility: {
+          age: false,
+          country: false,
+        },
+        sorting: [{ id: 'displayName', desc: false }],
+        columnFilters: [{ id: 'age', value: ['20', '40'] }],
+        globalFilter: 'alex',
+      },
+    }));
+
+    const sql = client.query()?.toString();
+
+    expect(sql).toContain('"id"');
+    expect(sql).toContain('"first_name"');
+    expect(sql).toContain('"last_name"');
+    expect(sql).toContain('"age_years"');
+    expect(sql).not.toContain('"country_name"');
+    expect(sql).toContain('ORDER BY "last_name" ASC');
+    expect(sql).toContain('TRY_CAST("age_years" AS DOUBLE) BETWEEN 20 AND 40');
+    expect(sql).toContain('"first_name" ILIKE \'%alex%\'');
+    expect(sql).toContain('"last_name" ILIKE \'%alex%\'');
+  });
+
+  test('uses facetBy metadata for sidecar facet queries', async () => {
+    const coordinator = new FakeCoordinator();
+    const client = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [
+        {
+          accessorKey: 'country',
+          header: 'Country',
+          meta: {
+            mosaic: {
+              sqlColumn: 'country_name',
+              facetBy: 'country_code',
+              facet: 'unique',
+              facetSortMode: 'count',
+            },
+          },
+        },
+      ],
+    });
+
+    coordinator.enqueueResponse('FROM "athletes"', createArrowTable([]));
+    coordinator.enqueueResponse(
+      (sql) => sql.includes('GROUP BY "country_code"'),
+      createArrowTable([{ country_code: 'NZ' }]),
+    );
+
+    client.connect();
+    await client.pending;
+
+    client.requestFacet('country', 'unique');
+
+    await waitFor(() => {
+      expect(client.getFacetValue<Array<unknown>>('country')).toEqual(['NZ']);
+    });
+
+    expect(
+      coordinator.requestLog.some(
+        ({ sql }) =>
+          sql.includes('GROUP BY "country_code"') &&
+          sql.includes('ORDER BY') &&
+          sql.includes('DESC'),
+      ),
+    ).toBe(true);
+  });
+
   test('resets pagination and requeries when an external filter selection changes', async () => {
     const filterBy = new Selection();
     const { client, coordinator } = createFlatClient({ filterBy });

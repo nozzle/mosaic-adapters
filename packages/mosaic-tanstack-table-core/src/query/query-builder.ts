@@ -7,7 +7,12 @@
 
 import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../logger';
-import { createStructAccess, toRangeValue } from '../utils';
+import {
+  createStructAccess,
+  escapeSqlLikePattern,
+  toRangeValue,
+} from '../utils';
+import { readMosaicColumnMeta } from './column-meta';
 
 import type { SelectQuery } from '@uwdata/mosaic-sql';
 import type { RowData, TableState } from '@tanstack/table-core';
@@ -38,6 +43,7 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   mapping: MosaicColumnMapping<TData> | undefined; // Enforce explicit undefined if missing
   totalRowsColumnName: string;
   totalRowsMode?: 'split' | 'window';
+  rowSelectionColumn?: string;
   excludeColumnId?: string; // For cascading facets
   highlightPredicate?: mSql.FilterExpr | null;
   manualHighlight?: boolean;
@@ -60,22 +66,27 @@ export function buildTableQuery<TData extends RowData, TValue>(
   const { pagination, sorting } = tableState;
 
   // 1. Select Columns
-  const selectColumns = mapper.getSelectColumns().map(({ sql, alias }) => {
-    const colStr = sql.toString();
+  const selectColumns = mapper
+    .getSelectColumns({
+      tableState,
+      rowIdentityField: options.rowSelectionColumn,
+    })
+    .map(({ sql, alias }) => {
+      const colStr = sql.toString();
 
-    // Struct access: SELECT "a"."b" AS "alias"
-    if (colStr.includes('.')) {
-      const structExpr = createStructAccess(sql);
-      return { [alias]: structExpr };
-    }
+      // Struct access: SELECT "a"."b" AS "alias"
+      if (colStr.includes('.')) {
+        const structExpr = createStructAccess(sql);
+        return { [alias]: structExpr };
+      }
 
-    // Simple column aliasing
-    if (alias !== colStr) {
-      return { [alias]: mSql.column(colStr) };
-    }
+      // Simple column aliasing
+      if (alias !== colStr) {
+        return { [alias]: mSql.column(colStr) };
+      }
 
-    return mSql.column(colStr);
-  });
+      return mSql.column(colStr);
+    });
 
   const extraSelects: Record<string, SelectValue> = {};
 
@@ -108,6 +119,11 @@ export function buildTableQuery<TData extends RowData, TValue>(
 
   // 2. Generate WHERE Clauses
   const whereClauses = extractInternalFilters(options);
+  const globalFilterClause = buildGlobalFilter(options);
+
+  if (globalFilterClause) {
+    whereClauses.push(globalFilterClause);
+  }
 
   if (whereClauses.length > 0) {
     statement.where(...whereClauses);
@@ -116,7 +132,7 @@ export function buildTableQuery<TData extends RowData, TValue>(
   // 3. Apply Sorting
   const orderingCriteria: Array<mSql.OrderByNode> = [];
   sorting.forEach((sort) => {
-    const sqlColumn = mapper.getSqlColumn(sort.id);
+    const sqlColumn = mapper.getSortSqlColumn(sort.id);
     if (sqlColumn) {
       const colExpr = createStructAccess(sqlColumn);
       orderingCriteria.push(sort.desc ? mSql.desc(colExpr) : mSql.asc(colExpr));
@@ -165,7 +181,7 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
       return;
     }
 
-    const sqlColumn = options.mapper.getSqlColumn(filter.id);
+    const sqlColumn = options.mapper.getFilterSqlColumn(filter.id);
     if (!sqlColumn) {
       // Use logger instead of console.warn to lower noise level
       logger.warn(
@@ -226,8 +242,12 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
 
     // 2. Fallback to Meta (if mapping not present)
     if (!filterType) {
-      const colDef = options.mapper.getColumnDef(sqlColumn.toString());
-      const metaType = colDef?.meta?.mosaicDataTable?.sqlFilterType;
+      const colDef =
+        options.mapper.getColumnDefById(filter.id) ??
+        options.mapper.getColumnDef(sqlColumn.toString());
+      const metaType = colDef
+        ? readMosaicColumnMeta(colDef).sqlFilterType
+        : undefined;
       if (metaType) {
         filterType = metaType;
       }
@@ -355,4 +375,33 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
   });
 
   return clauses;
+}
+
+export function buildGlobalFilter<TData extends RowData, TValue>(options: {
+  tableState: TableState;
+  mapper: ColumnMapper<TData, TValue>;
+}): mSql.FilterExpr | null {
+  const value = options.tableState.globalFilter;
+
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const searchTerm = String(value).trim();
+  if (searchTerm.length === 0) {
+    return null;
+  }
+
+  const columns = options.mapper.getGlobalFilterSqlColumns();
+  if (columns.length === 0) {
+    return null;
+  }
+
+  const pattern = `%${escapeSqlLikePattern(searchTerm)}%`;
+  const predicates = columns.map((column) => {
+    const rawCol = createStructAccess(column);
+    return mSql.sql`${rawCol} ILIKE ${mSql.literal(pattern)} ESCAPE '\\'`;
+  });
+
+  return predicates.length === 1 ? predicates[0]! : mSql.or(...predicates);
 }

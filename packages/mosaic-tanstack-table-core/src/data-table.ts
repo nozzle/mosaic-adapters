@@ -18,7 +18,11 @@ import { Store, batch } from '@tanstack/store';
 import { seedInitialTableState, toSafeSqlColumnName } from './utils';
 import { logger } from './logger';
 import { ColumnMapper } from './query/column-mapper';
-import { buildTableQuery, extractInternalFilters } from './query/query-builder';
+import {
+  buildGlobalFilter,
+  buildTableQuery,
+  extractInternalFilters,
+} from './query/query-builder';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SidecarManager } from './sidecar-manager';
@@ -310,6 +314,7 @@ export class MosaicDataTable<
         highlightPredicate: safeHighlightPredicate,
         manualHighlight: this.options.manualHighlight,
         totalRowsMode: this.options.totalRowsMode,
+        rowSelectionColumn: this.options.rowSelection?.column,
         filterRegistry: this.filterRegistry,
       });
     } else {
@@ -343,8 +348,15 @@ export class MosaicDataTable<
         mapping: this.options.mapping,
         filterRegistry: this.filterRegistry,
       });
+      const globalFilterClause = buildGlobalFilter({
+        tableState,
+        mapper,
+      });
+      const tableClauses = globalFilterClause
+        ? [...internalClauses, globalFilterClause]
+        : internalClauses;
       const predicate =
-        internalClauses.length > 0 ? mSql.and(...internalClauses) : null;
+        tableClauses.length > 0 ? mSql.and(...tableClauses) : null;
 
       this.tableFilterSelection.update({
         source: this,
@@ -611,7 +623,10 @@ export class MosaicDataTable<
       return [{ table: source, column: '*' }];
     }
 
-    return this.#columnMapper.getMosaicFieldRequests(source);
+    return this.#columnMapper.getMosaicFieldRequests(source, {
+      tableState: this.store.state.tableState,
+      rowIdentityField: this.options.rowSelection?.column,
+    });
   }
 
   getTableOptions(
@@ -725,6 +740,10 @@ export class MosaicDataTable<
 
   getColumnSqlName(columnId: string): string | undefined {
     return this.#columnMapper?.getSqlColumn(columnId)?.toString();
+  }
+
+  getFacetColumnSqlName(columnId: string): string | undefined {
+    return this.#columnMapper?.getFacetSqlColumn(columnId)?.toString();
   }
 
   getColumnDef(sqlColumn: string): MosaicColumnDef<TData, TValue> | undefined {

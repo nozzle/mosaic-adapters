@@ -95,7 +95,7 @@ function MyTableView() {
 
 ### 5. Define Columns with SQL Metadata
 
-You can configure SQL behavior directly in column definitions using `meta.mosaicDataTable`:
+You can configure SQL behavior directly in column definitions using `meta.mosaic`:
 
 ```tsx
 import { useMemo } from 'react';
@@ -108,7 +108,7 @@ function AthletesTable() {
         accessorKey: 'id',
         header: 'ID',
         meta: {
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'id',
             sqlFilterType: 'EQUALS',
           },
@@ -119,9 +119,10 @@ function AthletesTable() {
         header: 'Name',
         meta: {
           filterVariant: 'text',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'name',
             sqlFilterType: 'PARTIAL_ILIKE',
+            globalFilterBy: ['name'],
           },
         },
       },
@@ -130,7 +131,7 @@ function AthletesTable() {
         header: 'Nationality',
         meta: {
           filterVariant: 'select',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'nationality',
             sqlFilterType: 'EQUALS',
             facet: 'unique', // Populates dropdown with distinct values
@@ -143,7 +144,7 @@ function AthletesTable() {
         cell: (props) => `${props.getValue()}m`,
         meta: {
           filterVariant: 'range',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'height',
             sqlFilterType: 'RANGE',
             facet: 'minmax', // Gets min/max for slider bounds
@@ -155,7 +156,7 @@ function AthletesTable() {
         header: 'Sport',
         meta: {
           filterVariant: 'select',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'sport',
             sqlFilterType: 'EQUALS',
             facet: 'unique',
@@ -214,8 +215,11 @@ function AthletesTable() {
 - `table`: DuckDB table name or query factory
 - `filterBy`: Selection providing external filter predicates
 - `tableFilterSelection`: Selection where column filters are written
-- `columns`: TanStack column definitions with `meta.mosaicDataTable`
+- `columns`: TanStack column definitions with `meta.mosaic`
 - `converter`: Transform raw DB rows into typed app data (handles nulls, dates)
+
+`meta.mosaicDataTable` is still supported for existing code. When both
+namespaces configure the same metadata option, `meta.mosaic` takes precedence.
 
 ### 7. Render the Table
 

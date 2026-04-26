@@ -134,15 +134,19 @@ If you prefer inline configuration, define SQL behavior directly in `column.meta
 {
   accessorKey: 'name',
   meta: {
-    mosaicDataTable: {
+    mosaic: {
       sqlColumn: 'name',
       sqlFilterType: 'PARTIAL_ILIKE',
+      globalFilterBy: ['name'],
     },
   },
 }
 ```
 
-This is more flexible but less type-safe. See [Simple Usage](../react/simple-usage.md) for a full example.
+This is more flexible but less type-safe. The legacy
+`meta.mosaicDataTable` namespace remains supported; when both namespaces set
+the same metadata option, `meta.mosaic` takes precedence. See
+[Simple Usage](../react/simple-usage.md) for a full example.
 
 ## Filter Types
 
@@ -176,7 +180,7 @@ Facets are configured per-column:
   accessorKey: 'sport',
   meta: {
     filterVariant: 'select',
-    mosaicDataTable: { facet: 'unique' },
+    mosaic: { facet: 'unique' },
   },
 }
 ```

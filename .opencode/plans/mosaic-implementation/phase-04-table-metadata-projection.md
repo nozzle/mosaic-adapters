@@ -148,3 +148,74 @@ Implement Phase 4 from .opencode/plans/mosaic-implementation/phase-04-table-meta
 
 Assume Phases 1-3 are complete. Extend the existing MosaicDataTable implementation with metadata compatibility for meta.mosaicDataTable and meta.mosaic, projection planning, and global filter compilation. Do not add row pinning or rewrite the table core. Preserve existing public APIs. Use rg first for code search and read existing tests before editing. Run the phase validation commands before final handoff. Make one commit for the phase if validation passes.
 ```
+
+## Phase 4 Handoff
+
+Files changed:
+
+- `packages/mosaic-tanstack-table-core/src/types/general.ts`
+- `packages/mosaic-tanstack-table-core/src/query/column-meta.ts`
+- `packages/mosaic-tanstack-table-core/src/query/projection-planner.ts`
+- `packages/mosaic-tanstack-table-core/src/query/column-mapper.ts`
+- `packages/mosaic-tanstack-table-core/src/query/query-builder.ts`
+- `packages/mosaic-tanstack-table-core/src/data-table.ts`
+- `packages/mosaic-tanstack-table-core/src/sidecar-manager.ts`
+- `packages/mosaic-tanstack-table-core/tests/data-table.test.ts`
+- `docs/core/concepts.md`
+- `docs/react/simple-usage.md`
+
+Metadata precedence decision:
+
+- `meta.mosaicDataTable` remains supported.
+- `meta.mosaic` is the preferred namespace and wins over
+  `meta.mosaicDataTable` when both configure the same metadata field.
+- Existing `mapping` still wins for the legacy primary SQL column mapping to
+  preserve compatibility. Operation-specific metadata (`sortBy`, `filterBy`,
+  `facetBy`, `globalFilterBy`) can override the SQL field used for that
+  operation.
+
+Projection rules implemented:
+
+- Query projection now includes visible column SQL fields.
+- Visible columns also project declared `meta.mosaic.fields`, supporting
+  accessor/custom-cell dependencies.
+- Active sorting projects `sortBy` fields.
+- Active column filtering projects and filters against `filterBy` fields.
+- Active global filtering projects and compiles predicates across
+  `globalFilterBy` fields.
+- Configured row selection columns are projected as row identity fields.
+- Hidden columns are omitted from projection unless needed by active
+  sort/filter/global-filter or row-selection rules.
+- `facetBy` is used for sidecar facet queries.
+- `totalRowsColumnName` behavior was preserved as characterized; it was not
+  fixed in this phase.
+
+Tests added/updated:
+
+- Legacy `meta.mosaicDataTable` SQL mapping/filtering still works.
+- `meta.mosaic` takes precedence over legacy metadata.
+- Metadata fields are projected for visibility, sorting, filtering, global
+  filtering, and row selection.
+- `facetBy` drives sidecar facet SQL and respects count sorting.
+- Existing mapping and `totalRowsColumnName` characterization tests remain.
+
+Validation commands and results:
+
+- `pnpm test:format` - passed.
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:types` - passed.
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:lint` - passed.
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:lib` - passed, 8
+  files and 108 tests.
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:build` - passed.
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:types` - passed.
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:build` - passed.
+
+Known risks or follow-ups for Phase 5:
+
+- Stable field-based row identity and row pinning are still not implemented.
+- Row selection continues to publish selected TanStack row IDs through the
+  existing selection manager; Phase 5 should replace or augment this with the
+  planned stable identity behavior.
+- Additional metadata field aliases use the declared field string as the row
+  alias. Nested dependency consumers should reference the projected field alias
+  consistently.

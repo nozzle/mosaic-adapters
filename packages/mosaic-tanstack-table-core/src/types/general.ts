@@ -197,6 +197,26 @@ export interface SqlColumnConfig {
   filterType?: MosaicDataTableSqlFilterType;
 }
 
+export type MosaicColumnMeta<TValue = unknown> = {
+  fields?: Array<string>;
+  sortBy?: string;
+  filterBy?: string;
+  facetBy?: string;
+  globalFilterBy?: Array<string>;
+  sqlColumn?: string;
+  /**
+   * The SQL Filter Type.
+   * STRICTLY TYPED based on the column's data type (TValue).
+   */
+  sqlFilterType?: AllowedFilterTypeFor<TValue> | (string & {});
+  facetSortMode?: FacetSortMode;
+  /**
+   * The Facet Type.
+   * STRICTLY TYPED based on the column's data type (TValue).
+   */
+  facet?: AllowedFacetTypeFor<TValue> | (string & {});
+};
+
 /**
  * Discriminated Union for Filter Inputs.
  * Strictly enforces the shape of the value based on the filter mode.
@@ -238,20 +258,11 @@ export interface IMosaicLifecycleHooks {
  * Now Generic on TValue to enforce strict typing of SQL properties.
  */
 export type MosaicDataTableColumnDefMetaOptions<TValue = unknown> = {
-  mosaicDataTable?: {
-    sqlColumn?: string;
-    /**
-     * The SQL Filter Type.
-     * STRICTLY TYPED based on the column's data type (TValue).
-     */
-    sqlFilterType?: AllowedFilterTypeFor<TValue> | (string & {});
-    facetSortMode?: FacetSortMode;
-    /**
-     * The Facet Type.
-     * STRICTLY TYPED based on the column's data type (TValue).
-     */
-    facet?: AllowedFacetTypeFor<TValue> | (string & {});
-  };
+  mosaicDataTable?: Pick<
+    MosaicColumnMeta<TValue>,
+    'sqlColumn' | 'sqlFilterType' | 'facetSortMode' | 'facet'
+  >;
+  mosaic?: MosaicColumnMeta<TValue>;
 };
 
 export interface MosaicTableDataProvider {
