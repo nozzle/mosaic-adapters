@@ -161,3 +161,69 @@ Implement Phase 3 from .opencode/plans/mosaic-implementation/phase-03-select-inp
 
 Assume Phases 1 and 2 are complete. Add Select input core with required multi-select support, React hook/component, tests, exports, and the Phase 3 handoff section. Do not change table metadata/projection behavior. Preserve existing public APIs. Use rg first for code search and read existing tests before editing. Run the phase validation commands before final handoff. Make one commit for the phase if validation passes.
 ```
+
+## Phase 3 Handoff
+
+Files changed:
+
+- `packages/mosaic-tanstack-table-core/src/input-core/options.ts`
+- `packages/mosaic-tanstack-table-core/src/input-core/select-input-core.ts`
+- `packages/mosaic-tanstack-table-core/src/input-core/index.ts`
+- `packages/mosaic-tanstack-table-core/tests/select-input-core.test.ts`
+- `packages/mosaic-tanstack-react-table/src/inputs/select-input-hook.ts`
+- `packages/mosaic-tanstack-react-table/src/inputs/select-input.tsx`
+- `packages/mosaic-tanstack-react-table/src/inputs/index.ts`
+- `packages/mosaic-tanstack-react-table/tests/select-input.test.tsx`
+- `.opencode/plans/mosaic-implementation/README.md`
+- `.opencode/plans/mosaic-implementation/phase-03-select-input.md`
+
+Public exports added:
+
+- `@nozzleio/mosaic-tanstack-table-core/input-core`
+  - `SelectInputCore`
+  - `MosaicSelectInputOptions`
+  - `MosaicSelectInputState`
+  - `MosaicSelectListMatch`
+  - `MosaicSelectOutputTarget`
+  - `MosaicSelectOption`
+  - `MosaicSelectNormalizedOption`
+- `@nozzleio/mosaic-tanstack-react-table/inputs`
+  - `useMosaicSelectInput`
+  - `MosaicSelect`
+  - `UseMosaicSelectInputResult`
+  - `MosaicSelectInputOptions`
+  - `MosaicSelectInputState`
+  - `MosaicSelectProps`
+
+Tests added:
+
+- `packages/mosaic-tanstack-table-core/tests/select-input-core.test.ts`
+  - Covers literal option normalization, preservation of number/boolean/date/object option values, single and multi Param output, scalar Selection point predicates, multi-value scalar `IN` predicates, list-valued predicates, clear/All predicate clearing, query-backed options with `from`/`column`/`filterBy`, Param-backed `from` requerying, external Param synchronization, and activation previews.
+- `packages/mosaic-tanstack-react-table/tests/select-input.test.tsx`
+  - Covers hook connect/disconnect/update behavior, state/action exposure, native single-select index mapping to original object values, native multi-select index mapping to original value arrays, and activation handlers.
+
+Validation:
+
+- `pnpm test:format` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:types` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:lint` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:lib` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:build` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:types` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:lint` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:lib` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-react-table test:build` - passed
+
+Multi-select predicate semantics:
+
+- `multiple: true` stores selected original option values as an array.
+- Param output receives the selected array when non-empty, and `null` for an empty array.
+- Scalar Selection output uses a single `IN` predicate over the configured `field ?? column`, including the one-value case.
+- List-valued Selection output uses `list_has_any` for `listMatch: "any"` and `list_has_all` for `listMatch: "all"` with the selected values as a Mosaic SQL list.
+- Empty arrays and the synthetic All/clear value publish a clause for this source with `value: null` and `predicate: null`, which leaves no active predicate.
+
+Known risks or follow-ups for Phase 4:
+
+- Data-table metadata/projection behavior was intentionally left untouched.
+- Query-backed single-selects include the synthetic All option by default; literal and multi-select inputs only include it when `includeAll` is explicitly enabled.
+- Selection synchronization from external `Selection` updates is not implemented; Phase 3 only required external scalar Param synchronization.
