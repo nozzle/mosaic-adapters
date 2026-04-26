@@ -221,6 +221,32 @@ function AthletesTable() {
 `meta.mosaicDataTable` is still supported for existing code. When both
 namespaces configure the same metadata option, `meta.mosaic` takes precedence.
 
+`meta.mosaic` also supports operation-specific SQL fields:
+
+```tsx
+{
+  accessorKey: 'displayName',
+  header: 'Name',
+  meta: {
+    filterVariant: 'text',
+    mosaic: {
+      sqlColumn: 'name',
+      fields: ['first_name', 'last_name'],
+      sortBy: 'last_name',
+      filterBy: 'name_search',
+      facetBy: 'name',
+      globalFilterBy: ['first_name', 'last_name'],
+      sqlFilterType: 'PARTIAL_ILIKE',
+    },
+  },
+}
+```
+
+The adapter plans each query projection from visible columns, visible columns'
+declared `fields`, active sort/filter/global-filter fields, and row identity
+fields. This lets custom cells depend on hidden SQL fields while still avoiding
+unneeded columns.
+
 ### 7. Render the Table
 
 Use standard TanStack Table rendering:
@@ -372,6 +398,41 @@ const { tableOptions } = useMosaicReactTable({
 ```
 
 The hook manages `manualPagination` internally and fetches only the visible page from DuckDB.
+
+## Row Identity, Selection, and Pinning
+
+Use `rowId` when rows need stable IDs across sorting, filtering, pagination, or
+pinning:
+
+```tsx
+const { tableOptions } = useMosaicReactTable<AthleteRowData>({
+  table: 'athletes',
+  columns,
+  rowId: 'id',
+  rowSelection: {
+    selection: $rowSelection,
+    column: 'id',
+  },
+  tableOptions: {
+    enableRowSelection: true,
+    enableRowPinning: true,
+  },
+});
+```
+
+`rowId` can be a string field or an array of fields. Composite IDs are
+serialized for TanStack and should be treated as opaque strings. If `rowId` is
+omitted, the adapter uses `rowSelection.column` as the stable identity field
+when row selection is configured.
+
+The default `rowSelectionMode` is `'row-id'`, so clicked rows publish predicates
+over the stable identity field. Use `rowSelectionMode: 'row-values'` only when
+you need the legacy behavior based on current row values.
+
+In flat tables, TanStack row pinning triggers a separate pinned-row query by
+stable row identity. Pinned rows stay available when the current page changes.
+Grouped tables keep their group-derived row IDs and do not use the flat
+pinned-row query path.
 
 ## Debugging
 

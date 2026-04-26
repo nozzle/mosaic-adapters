@@ -187,6 +187,84 @@ Facets are configured per-column:
 
 The adapter automatically queries facet data and keeps it in sync with active filters.
 
+## Headless Inputs
+
+The table adapter includes Mosaic-aware input clients for apps that want native
+or custom controls without relying on vgplot DOM inputs.
+
+| Package subpath                                   | Use case                                      |
+| ------------------------------------------------- | --------------------------------------------- |
+| `@nozzleio/mosaic-tanstack-react-table/inputs`    | React hooks and minimal native input controls |
+| `@nozzleio/mosaic-tanstack-table-core/input-core` | Framework-agnostic Text and Select clients    |
+
+Text and Select inputs write through an `as` target, matching vgplot's input
+style:
+
+- `Param`: stores the current scalar value, array value, or `null`
+- `Selection`: publishes a Mosaic predicate for cross-filtering
+
+When an input reads dynamic options or suggestions from a table, pass `from` and
+`column`. `from` can be a string table name or a `Param<string>`, so changing the
+Param re-queries the input against the new source. Pass `filterBy` to make option
+queries respect the surrounding dashboard context.
+
+React usage is covered in [Inputs](../react/inputs.md).
+
+## Table Metadata and Projection
+
+Column SQL behavior can be declared with either a type-safe mapping or column
+metadata. New code should prefer `columnDef.meta.mosaic`; existing
+`columnDef.meta.mosaicDataTable` configuration remains compatible.
+
+When both metadata namespaces set the same option, `meta.mosaic` takes
+precedence. Existing `mapping` entries still control the legacy primary SQL
+column mapping when present.
+
+`meta.mosaic` can describe operation-specific fields:
+
+| Option           | Purpose                                                       |
+| ---------------- | ------------------------------------------------------------- |
+| `sqlColumn`      | Legacy-compatible SQL column for the accessor                 |
+| `sqlFilterType`  | Filter strategy such as `EQUALS`, `RANGE`, or `PARTIAL_ILIKE` |
+| `fields`         | Extra SQL fields needed by a visible custom cell or accessor  |
+| `sortBy`         | SQL field used when this column is sorted                     |
+| `filterBy`       | SQL field used when this column has a column filter           |
+| `facetBy`        | SQL field used for facet option queries                       |
+| `globalFilterBy` | SQL fields searched by the table's global filter              |
+| `facet`          | Facet strategy, for example `unique` or `minmax`              |
+| `facetSortMode`  | Facet option sort mode, `alpha` or `count`                    |
+
+The table plans its projection from visible columns, visible columns'
+`fields`, active sort/filter/global-filter fields, and stable row identity
+fields. Hidden columns are not selected unless one of those active features
+needs them.
+
+## Row Identity and Pinning
+
+Flat tables can use stable data-backed row IDs:
+
+```ts
+useMosaicReactTable({
+  table: 'athletes',
+  columns,
+  rowId: 'id',
+});
+```
+
+`rowId` accepts one field or an array of fields. Composite row IDs are serialized
+for TanStack and should be treated as opaque strings. If `rowId` is omitted, the
+adapter uses `rowSelection.column` as the row identity field when row selection
+is configured.
+
+`rowSelectionMode` defaults to `'row-id'`, which publishes predicates over the
+stable identity field. Use `'row-values'` only when you need the legacy
+current-row-value selection behavior.
+
+When TanStack row pinning is enabled in flat mode, pinned row IDs are queried
+separately by stable row identity so pinned rows remain available when the
+current page or window changes. Grouped mode continues to use group-derived row
+IDs and does not use the flat pinned-row query path.
+
 ## Registries
 
 Registries provide centralized state management for selections and filters.

@@ -248,6 +248,27 @@ sequenceDiagram
     Table->>User: Render filtered data
 ```
 
+The same lifecycle applies to `useMosaicTextInput` and
+`useMosaicSelectInput`. When their `as` option is a `Selection`, they publish a
+predicate clause and downstream clients re-query. When `as` is a `Param`, they
+update the Param value without creating a predicate; use this mode for local
+state, source switching, or custom query composition.
+
+Inputs that read suggestions or options use their own Mosaic clients. `from`
+selects the source table and may be a `Param<string>`, and `filterBy` supplies
+the context used for peer-cascaded option queries.
+
+## Async Response Ordering
+
+The table adapter ignores stale async responses. Main row queries, total-count
+sidecars, facet sidecars, and flat pinned-row queries each track the latest
+request id. If an older response arrives after a newer request has started, the
+older response is dropped and does not replace current table state.
+
+This is visible when users type quickly, change filters while a facet query is
+in flight, or pin rows and paginate before the pinned-row query returns: the UI
+keeps the result for the latest requested state.
+
 ## Transient Selections (Hover)
 
 For high-frequency interactions like hover, use `Selection.single()` with a "no selection" default:

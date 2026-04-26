@@ -5,7 +5,7 @@
  * `createMosaicMapping` or `createMosaicColumnHelper` utilities.
  *
  * Instead of a centralized mapping object, SQL configuration (column names, filter types,
- * facet modes) is injected directly into the standard TanStack `column.meta` property.
+ * facet modes) is injected directly into the standard TanStack `column.meta.mosaic` property.
  *
  * This approach is more verbose and less type-safe but provides maximum flexibility
  * and reduces dependencies on helper utilities.
@@ -155,7 +155,7 @@ function AthletesTable() {
 
   // Manual Column Definitions
   // We use standard TanStack ColumnDef objects.
-  // We manually populate `meta.mosaicDataTable` to tell the adapter how to generate SQL.
+  // We manually populate `meta.mosaic` to tell the adapter how to generate SQL.
   const columns = useMemo<Array<ColumnDef<AthleteRowData, any>>>(
     () => [
       {
@@ -165,7 +165,7 @@ function AthletesTable() {
         ),
         meta: {
           // SQL Config: Explicitly map to 'id' column and use EQUALS for filtering
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'id',
             sqlFilterType: 'EQUALS',
           },
@@ -179,7 +179,7 @@ function AthletesTable() {
         meta: {
           filterVariant: 'text',
           // SQL Config: Use ILIKE for case-insensitive partial matching
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'name',
             sqlFilterType: 'PARTIAL_ILIKE',
           },
@@ -193,7 +193,7 @@ function AthletesTable() {
         meta: {
           filterVariant: 'select',
           // SQL Config: Use EQUALS filter and trigger 'unique' facet strategy for dropdowns
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'nationality',
             sqlFilterType: 'EQUALS',
             facet: 'unique',
@@ -207,7 +207,7 @@ function AthletesTable() {
         ),
         meta: {
           filterVariant: 'select',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'sex',
             sqlFilterType: 'EQUALS',
             facet: 'unique',
@@ -227,7 +227,7 @@ function AthletesTable() {
           filterVariant: 'range',
           rangeFilterType: 'date',
           // SQL Config: Explicitly specify DATE_RANGE to handle date string comparisons correctly
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'date_of_birth',
             sqlFilterType: 'DATE_RANGE',
           },
@@ -243,7 +243,7 @@ function AthletesTable() {
           filterVariant: 'range',
           rangeFilterType: 'number',
           // SQL Config: RANGE filter and 'minmax' facet for slider bounds
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'height',
             sqlFilterType: 'RANGE',
             facet: 'minmax',
@@ -259,7 +259,7 @@ function AthletesTable() {
         meta: {
           filterVariant: 'range',
           rangeFilterType: 'number',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'weight',
             sqlFilterType: 'RANGE',
             facet: 'minmax',
@@ -273,7 +273,7 @@ function AthletesTable() {
         ),
         meta: {
           filterVariant: 'select',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'sport',
             sqlFilterType: 'PARTIAL_ILIKE',
             facet: 'unique',
@@ -286,7 +286,7 @@ function AthletesTable() {
           <RenderTableHeader column={column} title="Gold" view={view} />
         ),
         meta: {
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'gold',
             sqlFilterType: 'RANGE',
           },
@@ -298,7 +298,7 @@ function AthletesTable() {
           <RenderTableHeader column={column} title="Silver" view={view} />
         ),
         meta: {
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'silver',
             sqlFilterType: 'RANGE',
           },
@@ -310,7 +310,7 @@ function AthletesTable() {
           <RenderTableHeader column={column} title="Bronze" view={view} />
         ),
         meta: {
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'bronze',
             sqlFilterType: 'RANGE',
           },

@@ -4,13 +4,15 @@ This guide covers building filter inputs that connect to Mosaic selections. You'
 
 ## Overview
 
-The adapter provides three main hooks for inputs:
+The adapter provides these main hooks for inputs:
 
-| Hook                      | Purpose                                    |
-| ------------------------- | ------------------------------------------ |
-| `useMosaicTableFacetMenu` | Dropdown/multi-select with dynamic options |
-| `useMosaicTableFilter`    | Text input, date range, numeric range      |
-| `useMosaicHistogram`      | Histogram data for brushable charts        |
+| Hook                      | Purpose                                                                    |
+| ------------------------- | -------------------------------------------------------------------------- |
+| `useMosaicTextInput`      | Headless text input backed by Param or Selection output                    |
+| `useMosaicSelectInput`    | Headless single-select or multi-select backed by Param or Selection output |
+| `useMosaicTableFacetMenu` | Dropdown/multi-select with dynamic options                                 |
+| `useMosaicTableFilter`    | Text input, date range, numeric range                                      |
+| `useMosaicHistogram`      | Histogram data for brushable charts                                        |
 
 For schema-driven builder UIs, use the filter-builder hooks instead:
 
@@ -52,6 +54,126 @@ All inputs follow the same pattern:
 
 1. **Write** to a selection (updates filter state)
 2. **Read** from a context (optional, for dynamic options)
+
+## Headless Text and Select Inputs
+
+Use the `/inputs` sub-export for Mosaic-aware controls that manage their own
+Mosaic client while leaving rendering up to React.
+
+```tsx
+import {
+  MosaicSelect,
+  MosaicTextInput,
+  useMosaicSelectInput,
+  useMosaicTextInput,
+} from '@nozzleio/mosaic-tanstack-react-table/inputs';
+```
+
+The framework-agnostic core lives at
+`@nozzleio/mosaic-tanstack-table-core/input-core` for non-React adapters.
+
+### Output: `as`
+
+Both inputs accept `as: Param | Selection`.
+
+| Target      | Behavior                                                                |
+| ----------- | ----------------------------------------------------------------------- |
+| `Param`     | Writes the raw value, selected array, or `null` without a SQL predicate |
+| `Selection` | Publishes a Mosaic clause with `source` set to the input client         |
+
+Empty text, an empty multi-select array, and the synthetic All value clear the
+input's active predicate by writing a clause with `predicate: null`.
+
+### Text Input
+
+`useMosaicTextInput` exposes state plus `setValue`, `activate`, `clear`, and the
+underlying client. `MosaicTextInput` is a minimal native `<input>` wrapper.
+
+```tsx
+import * as vg from '@uwdata/vgplot';
+import { MosaicTextInput } from '@nozzleio/mosaic-tanstack-react-table/inputs';
+
+const $query = vg.Selection.intersect();
+
+<MosaicTextInput
+  as={$query}
+  from="athletes"
+  column="name"
+  field="name"
+  match="contains"
+  placeholder="Search names"
+/>;
+```
+
+When `from` and `column` are provided, the text client queries distinct
+suggestions into `suggestions`. `from` can be a string table name or a
+`Param<string>`; Param changes re-query the suggestions. `filterBy` applies
+dashboard context to the suggestion query.
+
+`match` controls the Selection predicate and supports `contains`, `prefix`,
+`suffix`, and `regexp`. `field` overrides the predicate field; otherwise the
+input uses `column`.
+
+### Select Input
+
+`useMosaicSelectInput` exposes `value`, normalized `options`, `pending`,
+`error`, `setValue`, `activate`, `clear`, and the underlying client.
+`MosaicSelect` is a minimal native `<select>` wrapper.
+
+```tsx
+import { MosaicSelect } from '@nozzleio/mosaic-tanstack-react-table/inputs';
+
+<MosaicSelect
+  as={$query}
+  from="athletes"
+  column="sport"
+  field="sport"
+  filterBy={$tableContext}
+/>;
+```
+
+Select options can be literal:
+
+```tsx
+<MosaicSelect
+  as={sportParam}
+  options={[
+    { value: 1, label: 'One' },
+    { value: 2, label: 'Two' },
+  ]}
+/>
+```
+
+Or query-backed with `from` and `column`. Query-backed single-select inputs
+include an All option by default. Literal options and multi-select inputs only
+include All when `includeAll` is true.
+
+### Multi-Select and List Columns
+
+Pass `multiple: true` to store an array of selected original option values.
+
+```tsx
+<MosaicSelect
+  as={$query}
+  from="pages"
+  column="keyword_groups"
+  field="keyword_groups"
+  multiple
+  listMatch="any"
+/>
+```
+
+For Param output, non-empty multi-selects write the selected array and empty
+arrays write `null`. For Selection output, scalar columns use an `IN` predicate.
+List-valued columns use `list_has_any` for `listMatch="any"` and
+`list_has_all` for `listMatch="all"`.
+
+### Native Select Values
+
+The native `MosaicSelect` preserves non-string option values. DOM `<option>`
+values are internal option indexes, and the component maps selected indexes
+back to the original number, boolean, Date, object, or string values before
+calling `setValue` and `onValueChange`.
 
 ## Facet Menu (Dropdown)
 
