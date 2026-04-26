@@ -13,28 +13,37 @@ export type RowIdentityConfig = {
   fields: Array<string>;
   mode: RowSelectionMode;
   getRowId?: (row: Record<string, unknown>) => string;
+  source: 'explicit' | 'row-selection' | 'none';
 };
 
 export function resolveRowIdentity<TData extends RowData, TValue = unknown>(
   options: MosaicDataTableOptions<TData, TValue>,
 ): RowIdentityConfig {
   const mode = options.rowSelectionMode ?? 'row-id';
-  const fields = normalizeRowIdFields(options);
+  const resolved = normalizeRowIdFields(options);
 
   return {
-    fields,
+    fields: resolved.fields,
     mode,
     getRowId: options.getRowId,
+    source: resolved.source,
   };
 }
 
 export function getRowIdentityFields(
   identity: RowIdentityConfig,
+  options?: { includeRowSelectionFallback?: boolean },
 ): Array<string> | undefined {
   if (identity.mode !== 'row-id') {
     return undefined;
   }
   if (identity.fields.length === 0) {
+    return undefined;
+  }
+  if (
+    identity.source === 'row-selection' &&
+    options?.includeRowSelectionFallback === false
+  ) {
     return undefined;
   }
   return identity.fields;
@@ -132,18 +141,21 @@ export function buildRowIdentityPredicate(
 
 function normalizeRowIdFields<TData extends RowData, TValue = unknown>(
   options: MosaicDataTableOptions<TData, TValue>,
-): Array<string> {
+): Pick<RowIdentityConfig, 'fields' | 'source'> {
   if (Array.isArray(options.rowId)) {
-    return options.rowId.filter((field) => field.trim().length > 0);
+    return {
+      fields: options.rowId.filter((field) => field.trim().length > 0),
+      source: 'explicit',
+    };
   }
   if (typeof options.rowId === 'string' && options.rowId.trim().length > 0) {
-    return [options.rowId];
+    return { fields: [options.rowId], source: 'explicit' };
   }
   if (options.rowSelectionMode === 'row-values') {
-    return [];
+    return { fields: [], source: 'none' };
   }
   if (options.rowSelection?.column) {
-    return [options.rowSelection.column];
+    return { fields: [options.rowSelection.column], source: 'row-selection' };
   }
-  return [];
+  return { fields: [], source: 'none' };
 }

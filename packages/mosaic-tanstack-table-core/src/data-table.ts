@@ -417,9 +417,15 @@ export class MosaicDataTable<
         highlightPredicate: safeHighlightPredicate,
         manualHighlight: this.options.manualHighlight,
         totalRowsMode: this.options.totalRowsMode,
-        rowSelectionColumn: this.options.rowSelection?.column,
+        rowSelectionColumn:
+          typeof source === 'string'
+            ? this.options.rowSelection?.column
+            : undefined,
         rowIdentityFields: getRowIdentityFields(
           resolveRowIdentity(this.options),
+          {
+            includeRowSelectionFallback: typeof source === 'string',
+          },
         ),
         filterRegistry: this.filterRegistry,
       });
@@ -1116,13 +1122,6 @@ export class MosaicDataTable<
       return;
     }
 
-    const identity = resolveRowIdentity(this.options);
-    const rowIdentityFields = getRowIdentityFields(identity);
-    if (!rowIdentityFields) {
-      this.#clearPinnedRows();
-      return;
-    }
-
     const rowPinning = this.store.state.tableState.rowPinning;
     const topIds = rowPinning.top ?? [];
     const bottomIds = rowPinning.bottom ?? [];
@@ -1134,6 +1133,15 @@ export class MosaicDataTable<
 
     const source = this.resolveSource();
     if (!source || (typeof source === 'string' && source.trim() === '')) {
+      this.#clearPinnedRows();
+      return;
+    }
+
+    const identity = resolveRowIdentity(this.options);
+    const rowIdentityFields = getRowIdentityFields(identity, {
+      includeRowSelectionFallback: typeof source === 'string',
+    });
+    if (!rowIdentityFields) {
       this.#clearPinnedRows();
       return;
     }

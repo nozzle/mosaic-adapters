@@ -611,6 +611,42 @@ describe('MosaicDataTable characterization', () => {
     expect(rowSelectionPredicate!.toString()).toContain("\"id\" IN ('2', '7')");
   });
 
+  test('does not project row selection fallback fields from query factory sources', () => {
+    const rowSelection = new Selection();
+    const client = new MosaicDataTable<Record<string, string | number>>({
+      table: () =>
+        mSql.Query.from('athletes')
+          .select({ key: mSql.column('country'), metric: mSql.count() })
+          .groupby('country'),
+      columns: [
+        { accessorKey: 'key', header: 'Country' },
+        { accessorKey: 'metric', header: 'Count' },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'country',
+      },
+      tableOptions: {
+        getRowId: (row) => String(row.key),
+      },
+      manualHighlight: true,
+    });
+
+    const sql = client.query()?.toString();
+
+    expect(sql).toContain('SELECT "key", "metric" FROM');
+    expect(sql).not.toContain('SELECT "key", "metric", "country" FROM');
+
+    client.getTableOptions(client.store.state).onRowSelectionChange?.({
+      NZ: true,
+    });
+
+    expect(rowSelection.valueFor(client)).toEqual(['NZ']);
+    expect(rowSelection.active.predicate?.toString()).toContain(
+      '"country" = \'NZ\'',
+    );
+  });
+
   test('hydrates row selection from a shared selection for remounted table clients', async () => {
     const rowSelection = new Selection();
     const coordinator = new FakeCoordinator();
