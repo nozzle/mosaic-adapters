@@ -20,8 +20,8 @@ Status values:
 
 | Phase | Status        | Phase File                                               | Commit | Notes                                                  |
 | ----- | ------------- | -------------------------------------------------------- | ------ | ------------------------------------------------------ |
-| 1     | `next`        | `phase-01-input-core-primitives.md`                      |        | Start here.                                            |
-| 2     | `not-started` | `phase-02-text-input.md`                                 |        | Requires Phase 1.                                      |
+| 1     | `complete`    | `phase-01-input-core-primitives.md`                      |        | Core input primitives added.                           |
+| 2     | `next`        | `phase-02-text-input.md`                                 |        | Requires Phase 1.                                      |
 | 3     | `not-started` | `phase-03-select-input.md`                               |        | Requires Phases 1-2.                                   |
 | 4     | `not-started` | `phase-04-table-metadata-projection.md`                  |        | Can start after input phases unless priorities change. |
 | 5     | `not-started` | `phase-05-table-row-identity-pinning-race-protection.md` |        | Requires Phase 4.                                      |

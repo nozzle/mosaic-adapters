@@ -109,3 +109,50 @@ Implement Phase 1 from .opencode/plans/mosaic-implementation/phase-01-input-core
 
 Do not implement Text or Select yet. Add only the shared framework-agnostic input-core primitives, tests, package sub-export, and the Phase 1 handoff section. Preserve existing public APIs. Use rg first for code search and read existing tests before editing. Run the phase validation commands before final handoff. Make one commit for the phase if validation passes.
 ```
+
+## Phase 1 Handoff
+
+Files changed:
+
+- `packages/mosaic-tanstack-table-core/src/input-core/base-input-core.ts`
+- `packages/mosaic-tanstack-table-core/src/input-core/guards.ts`
+- `packages/mosaic-tanstack-table-core/src/input-core/subscriptions.ts`
+- `packages/mosaic-tanstack-table-core/src/input-core/types.ts`
+- `packages/mosaic-tanstack-table-core/src/input-core/index.ts`
+- `packages/mosaic-tanstack-table-core/tests/input-core.test.ts`
+- `packages/mosaic-tanstack-table-core/package.json`
+- `packages/mosaic-tanstack-table-core/vite.config.ts`
+- `.opencode/plans/mosaic-implementation/README.md`
+- `.opencode/plans/mosaic-implementation/phase-01-input-core-primitives.md`
+
+Public exports added:
+
+- New package subpath export: `@nozzleio/mosaic-tanstack-table-core/input-core`
+- `BaseInputCore`
+- `isScalarParamTarget`
+- `isSelectionTarget`
+- `InputSubscriptionBag`
+- `subscribeParamStringSource`
+- `subscribeScalarParamValue`
+- `BaseInputCoreConfig`
+- `InputSubscriptionCleanup`
+- `MosaicInputOutputTarget`
+- `MosaicInputSource`
+
+Tests added:
+
+- `packages/mosaic-tanstack-table-core/tests/input-core.test.ts`
+- Covers initial Store creation, connect/disconnect idempotency, coordinator swaps, `filterBy` identity reconnects, `enabled: false` query suppression, scalar Param subscription cleanup, Param-backed source subscription cleanup, output target guards, and idempotent `destroy()`.
+
+Validation:
+
+- `pnpm test:format` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:types` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:lint` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:lib` - passed
+- `pnpm --filter @nozzleio/mosaic-tanstack-table-core test:build` - passed
+
+Known risks or follow-ups for Phase 2:
+
+- `BaseInputCore` intentionally does not implement Text or Select behavior. Phase 2 should bind Text-specific output publishing, scalar Param synchronization, and Selection clause activation on top of these primitives.
+- The README `Commit` column must be filled with the created commit hash after the Phase 1 commit exists.
