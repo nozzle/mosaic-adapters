@@ -647,6 +647,56 @@ describe('MosaicDataTable characterization', () => {
     );
   });
 
+  test('projects configured manual highlight fields even when hidden', () => {
+    const client = new MosaicDataTable<Record<string, string | number | null>>({
+      table: () =>
+        mSql.Query.from('athletes')
+          .select({
+            key: mSql.column('country'),
+            metric: mSql.count(),
+            __is_highlighted: mSql.literal(1),
+          })
+          .groupby('country'),
+      columns: [
+        { accessorKey: 'key', header: 'Country' },
+        { accessorKey: 'metric', header: 'Count' },
+        { accessorKey: '__is_highlighted', header: 'Highlighted' },
+      ],
+      manualHighlight: true,
+      tableOptions: {
+        initialState: {
+          columnVisibility: { __is_highlighted: false },
+        },
+      },
+    });
+
+    const sql = client.query()?.toString();
+
+    expect(sql).toContain('SELECT "key", "metric", "__is_highlighted" FROM');
+  });
+
+  test('refreshes manual highlight queries when row selection changes or clears', () => {
+    const rowSelection = new Selection();
+    const { client } = createFlatClient({
+      manualHighlight: true,
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    client.connect();
+    const requestUpdateSpy = vi
+      .spyOn(client, 'requestUpdate')
+      .mockImplementation(() => client as never);
+    const tableOptions = client.getTableOptions(client.store.state);
+
+    tableOptions.onRowSelectionChange?.({ '2': true });
+    tableOptions.onRowSelectionChange?.({});
+
+    expect(requestUpdateSpy).toHaveBeenCalledTimes(2);
+  });
+
   test('hydrates row selection from a shared selection for remounted table clients', async () => {
     const rowSelection = new Selection();
     const coordinator = new FakeCoordinator();

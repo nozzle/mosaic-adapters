@@ -26,6 +26,7 @@ export interface SelectProjectionOptions {
   tableState: TableState;
   rowIdentityField?: string;
   rowIdentityFields?: Array<string>;
+  requiredFields?: Array<string>;
 }
 
 export class ColumnMapper<TData extends RowData, TValue = unknown> {
@@ -323,6 +324,7 @@ export class ColumnMapper<TData extends RowData, TValue = unknown> {
           sql.toString(),
         ),
       })),
+      requiredFields: options.requiredFields,
     });
 
     return this.createProjectedSelects(fieldNames);

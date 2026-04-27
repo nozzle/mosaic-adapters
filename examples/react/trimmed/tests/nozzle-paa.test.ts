@@ -41,6 +41,7 @@ test.describe('nozzle-paa page', () => {
           return rowCount > 0 && !bodyText.includes('No results.');
         })
         .toBe(true);
+      await expect(card.locator('tbody tr.opacity-30')).toHaveCount(0);
     }
   });
 
@@ -186,6 +187,9 @@ test.describe('nozzle-paa page', () => {
 
     await expect.poll(() => readUniqueQuestionsKpi(page)).toBe(initialKpi);
     await expect(page.getByText('Selected Question:')).toHaveCount(0);
+    await expect(
+      restoredQuestionCard.locator('tbody tr.opacity-30'),
+    ).toHaveCount(0);
     await expect(
       restoredQuestionCard.getByRole('button', {
         name: 'Clear PAA Questions selections',

@@ -17,6 +17,7 @@ export interface PinnedRowsQueryOptions<TData extends RowData, TValue> {
   tableState: TableState;
   rowIdentity: RowIdentityConfig;
   rowIds: Array<string>;
+  requiredFields?: Array<string>;
 }
 
 export function buildPinnedRowsQuery<TData extends RowData, TValue>(
@@ -34,6 +35,7 @@ export function buildPinnedRowsQuery<TData extends RowData, TValue>(
     .getSelectColumns({
       tableState: options.tableState,
       rowIdentityFields: options.rowIdentity.fields,
+      requiredFields: options.requiredFields,
     })
     .map(({ sql, alias }) => {
       const columnName = sql.toString();

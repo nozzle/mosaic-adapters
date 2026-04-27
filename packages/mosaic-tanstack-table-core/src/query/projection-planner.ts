@@ -13,6 +13,7 @@ export interface ProjectionPlanOptions {
   columns: Array<ProjectionColumn>;
   tableState: TableState;
   rowIdentityFields?: Array<string>;
+  requiredFields?: Array<string>;
 }
 
 function addFields(target: Set<string>, fields: Array<string>) {
@@ -58,6 +59,10 @@ export function planProjection(options: ProjectionPlanOptions): Array<string> {
 
   if (options.rowIdentityFields) {
     addFields(projected, options.rowIdentityFields);
+  }
+
+  if (options.requiredFields) {
+    addFields(projected, options.requiredFields);
   }
 
   return Array.from(projected);

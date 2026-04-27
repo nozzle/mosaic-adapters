@@ -405,6 +405,7 @@ export class MosaicDataTable<
       : highlightPredicate;
     const tableState = this.store.state.tableState;
     const mapper = this.#columnMapper;
+    const requiredFields = this.#getRequiredProjectionFields();
     let statement: SelectQuery;
 
     if (mapper) {
@@ -427,6 +428,7 @@ export class MosaicDataTable<
             includeRowSelectionFallback: typeof source === 'string',
           },
         ),
+        requiredFields,
         filterRegistry: this.filterRegistry,
       });
     } else {
@@ -660,7 +662,7 @@ export class MosaicDataTable<
       this.sidecarManager.refreshAll();
     };
 
-    const rowSelectionCb = () => {
+    const syncRowSelectionState = () => {
       if (!this.#rowSelectionManager) {
         return;
       }
@@ -682,6 +684,14 @@ export class MosaicDataTable<
       });
     };
 
+    const rowSelectionCb = () => {
+      syncRowSelectionState();
+
+      if (this.options.manualHighlight) {
+        this.requestUpdate();
+      }
+    };
+
     this.filterBy?.addEventListener('value', selectionCb);
     this.options.highlightBy?.addEventListener('value', selectionCb);
     this.tableFilterSelection.addEventListener('value', internalFilterCb);
@@ -691,7 +701,7 @@ export class MosaicDataTable<
         'value',
         rowSelectionCb,
       );
-      rowSelectionCb();
+      syncRowSelectionState();
     }
 
     this._cleanupListener = () => {
@@ -738,6 +748,7 @@ export class MosaicDataTable<
     return this.#columnMapper.getMosaicFieldRequests(source, {
       tableState: this.store.state.tableState,
       rowIdentityFields: getRowIdentityFields(resolveRowIdentity(this.options)),
+      requiredFields: this.#getRequiredProjectionFields(),
     });
   }
 
@@ -778,6 +789,9 @@ export class MosaicDataTable<
     );
     if (selectedIds.length === 0) {
       this.#rowSelectionManager.clear();
+      if (this.options.manualHighlight) {
+        this.requestUpdate();
+      }
       return;
     }
 
@@ -1152,6 +1166,7 @@ export class MosaicDataTable<
       tableState: this.store.state.tableState,
       rowIdentity: identity,
       rowIds,
+      requiredFields: this.#getRequiredProjectionFields(),
     });
     if (!query) {
       this.#clearPinnedRows();
@@ -1240,5 +1255,20 @@ export class MosaicDataTable<
         this.requestUpdate();
       });
     }
+  }
+
+  #getRequiredProjectionFields(): Array<string> | undefined {
+    if (!this.options.manualHighlight) {
+      return undefined;
+    }
+
+    const highlightField = this.#columnMapper
+      ?.getSqlColumn('__is_highlighted')
+      ?.toString();
+    if (!highlightField) {
+      return undefined;
+    }
+
+    return [highlightField];
   }
 }
