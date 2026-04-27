@@ -4,13 +4,15 @@ This guide covers building filter inputs that connect to Mosaic selections. You'
 
 ## Overview
 
-The adapter provides three main hooks for inputs:
+The adapter provides these main hooks for inputs:
 
-| Hook                      | Purpose                                    |
-| ------------------------- | ------------------------------------------ |
-| `useMosaicTableFacetMenu` | Dropdown/multi-select with dynamic options |
-| `useMosaicTableFilter`    | Text input, date range, numeric range      |
-| `useMosaicHistogram`      | Histogram data for brushable charts        |
+| Hook                      | Purpose                                                                    |
+| ------------------------- | -------------------------------------------------------------------------- |
+| `useMosaicTextInput`      | Headless text input backed by Param or Selection output                    |
+| `useMosaicSelectInput`    | Headless single-select or multi-select backed by Param or Selection output |
+| `useMosaicTableFacetMenu` | Dropdown/multi-select with dynamic options                                 |
+| `useMosaicTableFilter`    | Text input, date range, numeric range                                      |
+| `useMosaicHistogram`      | Histogram data for brushable charts                                        |
 
 For schema-driven builder UIs, use the filter-builder hooks instead:
 
@@ -52,6 +54,174 @@ All inputs follow the same pattern:
 
 1. **Write** to a selection (updates filter state)
 2. **Read** from a context (optional, for dynamic options)
+
+## Headless Text and Select Inputs
+
+Use the `/inputs` sub-export for Mosaic-aware hooks that manage their own
+Mosaic client while leaving rendering entirely up to your React components.
+
+```tsx
+import {
+  useMosaicSelectInput,
+  useMosaicTextInput,
+} from '@nozzleio/mosaic-tanstack-react-table/inputs';
+```
+
+The framework-agnostic core lives at
+`@nozzleio/mosaic-tanstack-table-core/input-core` for non-React adapters.
+
+### Output: `as`
+
+Both inputs accept `as: Param | Selection`.
+
+| Target      | Behavior                                                                |
+| ----------- | ----------------------------------------------------------------------- |
+| `Param`     | Writes the raw value, selected array, or `null` without a SQL predicate |
+| `Selection` | Publishes a Mosaic clause with `source` set to the input client         |
+
+Empty text, an empty multi-select array, and the synthetic All value clear the
+input's active predicate by writing a clause with `predicate: null`.
+
+### Text Input
+
+`useMosaicTextInput` exposes state plus `setValue`, `activate`, `clear`, and the
+underlying client.
+
+```tsx
+import * as vg from '@uwdata/vgplot';
+import { useMosaicTextInput } from '@nozzleio/mosaic-tanstack-react-table/inputs';
+
+const $query = vg.Selection.intersect();
+
+function NameSearch() {
+  const name = useMosaicTextInput({
+    as: $query,
+    from: 'athletes',
+    column: 'name',
+    field: 'name',
+    match: 'contains',
+  });
+
+  return (
+    <>
+      <input
+        value={name.value}
+        onChange={(event) => name.setValue(event.currentTarget.value)}
+        onFocus={(event) => name.activate(event.currentTarget.value)}
+        onPointerEnter={(event) => name.activate(event.currentTarget.value)}
+        placeholder="Search names"
+      />
+      <button type="button" onClick={() => name.clear()}>
+        Clear
+      </button>
+      {name.pending ? <span>Loading suggestions</span> : null}
+      {name.error ? <span>{name.error.message}</span> : null}
+    </>
+  );
+}
+```
+
+When `from` and `column` are provided, the text client queries distinct
+suggestions into `suggestions`. `from` can be a string table name or a
+`Param<string>`; Param changes re-query the suggestions. `filterBy` applies
+dashboard context to the suggestion query.
+
+`match` controls the Selection predicate and supports `contains`, `prefix`,
+`suffix`, and `regexp`. `field` overrides the predicate field; otherwise the
+input uses `column`.
+
+### Select Input
+
+`useMosaicSelectInput` exposes `value`, normalized `options`, `pending`,
+`error`, `setValue`, `activate`, `clear`, and the underlying client.
+
+```tsx
+import { useMosaicSelectInput } from '@nozzleio/mosaic-tanstack-react-table/inputs';
+
+function SportSelect() {
+  const sport = useMosaicSelectInput<string>({
+    as: $query,
+    from: 'athletes',
+    column: 'sport',
+    field: 'sport',
+    filterBy: $tableContext,
+  });
+
+  const selectedIndex = sport.options.findIndex((option) =>
+    Object.is(option.value, sport.value),
+  );
+
+  return (
+    <>
+      <select
+        value={selectedIndex < 0 ? '' : String(selectedIndex)}
+        onChange={(event) => {
+          const option = sport.options[Number(event.currentTarget.value)];
+          sport.setValue(option?.value ?? null);
+        }}
+        onFocus={(event) => {
+          const option = sport.options[Number(event.currentTarget.value)];
+          sport.activate(option?.value ?? null);
+        }}
+      >
+        {sport.options.map((option, index) => (
+          <option key={index} value={String(index)}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <button type="button" onClick={() => sport.clear()}>
+        Clear
+      </button>
+      {sport.pending ? <span>Loading options</span> : null}
+      {sport.error ? <span>{sport.error.message}</span> : null}
+    </>
+  );
+}
+```
+
+Select options can be literal:
+
+```tsx
+const control = useMosaicSelectInput({
+  as: sportParam,
+  options: [
+    { value: 1, label: 'One' },
+    { value: 2, label: 'Two' },
+  ],
+});
+```
+
+Or query-backed with `from` and `column`. Query-backed single-select inputs
+include an All option by default. Literal options and multi-select inputs only
+include All when `includeAll` is true.
+
+### Multi-Select and List Columns
+
+Pass `multiple: true` to store an array of selected original option values.
+
+```tsx
+const keywordGroups = useMosaicSelectInput({
+  as: $query,
+  from: 'pages',
+  column: 'keyword_groups',
+  field: 'keyword_groups',
+  multiple: true,
+  listMatch: 'any',
+});
+```
+
+For Param output, non-empty multi-selects write the selected array and empty
+arrays write `null`. For Selection output, scalar columns use an `IN` predicate.
+List-valued columns use `list_has_any` for `listMatch="any"` and
+`list_has_all` for `listMatch="all"`.
+
+### Native Select Values
+
+When wiring a native `<select>` yourself, use option indexes or another stable
+local key for DOM `<option>` values, then map the selected DOM value back to
+`control.options[index].value`. This preserves original number, boolean, Date,
+object, or string values before calling `setValue`.
 
 ## Facet Menu (Dropdown)
 

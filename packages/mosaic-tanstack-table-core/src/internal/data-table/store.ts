@@ -33,6 +33,10 @@ export function createInitialDataTableStore<
       ...(options.tableOptions ?? {}),
     } as MosaicDataTableStore<TData, TValue>['tableOptions'],
     rows: [],
+    pinnedRows: {
+      top: [],
+      bottom: [],
+    },
     totalRows: undefined,
     columnDefs: options.columns ?? [],
     _facetsUpdateCount: 0,

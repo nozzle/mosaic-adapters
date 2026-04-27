@@ -23,6 +23,9 @@ declare module '@tanstack/table-core' {
         type: FacetStrategyKeyWithoutInput,
       ) => void;
       requestTotalCount: () => void;
+      hoverRow: (row: TData | null) => void;
+      selectRow: (row: TData | null) => void;
+      clearSelection: () => void;
       client: MosaicDataTable<TData, PrimitiveSqlValue>;
     };
     getIsGroupedMode: () => boolean;

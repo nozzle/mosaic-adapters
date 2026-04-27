@@ -5,7 +5,7 @@
  * `createMosaicMapping` or `createMosaicColumnHelper` utilities.
  *
  * Instead of a centralized mapping object, SQL configuration (column names, filter types,
- * facet modes) is injected directly into the standard TanStack `column.meta` property.
+ * facet modes) is injected directly into the standard TanStack `column.meta.mosaic` property.
  *
  * This approach is more verbose and less type-safe but provides maximum flexibility
  * and reduces dependencies on helper utilities.
@@ -15,6 +15,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
+import {
+  useMosaicSelectInput,
+  useMosaicTextInput,
+} from '@nozzleio/mosaic-tanstack-react-table/inputs';
 import {
   coerceDate,
   coerceNumber,
@@ -53,6 +57,26 @@ interface AthleteRowData {
   info: string | null;
 }
 
+const sportInputOptions = {
+  as: $query,
+  from: tableName,
+  column: 'sport',
+  field: 'sport',
+};
+const genderInputOptions = {
+  as: $query,
+  from: tableName,
+  column: 'sex',
+  field: 'sex',
+};
+const nameInputOptions = {
+  as: $query,
+  from: tableName,
+  column: 'name',
+  field: 'name',
+  match: 'contains' as const,
+};
+
 export function AthletesViewSimple() {
   const [isPending, setIsPending] = useState(true);
   const chartDivRef = useRef<HTMLDivElement | null>(null);
@@ -77,30 +101,7 @@ export function AthletesViewSimple() {
             `CREATE OR REPLACE TABLE ${tableName} AS SELECT * FROM '${fileURL}'`,
           ]);
 
-        // 2. Define the Inputs (Menus & Search) linked to $query
-        const inputs = vg.hconcat(
-          vg.menu({
-            label: 'Sport',
-            as: $query,
-            from: tableName,
-            column: 'sport',
-          }),
-          vg.menu({
-            label: 'Gender',
-            as: $query,
-            from: tableName,
-            column: 'sex',
-          }),
-          vg.search({
-            label: 'Name',
-            as: $query,
-            from: tableName,
-            column: 'name',
-            type: 'contains',
-          }),
-        );
-
-        // 3. Define the Plot (Chart) filtered by $combined
+        // 2. Define the Plot (Chart) filtered by $combined
         const plot = vg.plot(
           vg.dot(vg.from(tableName, { filterBy: $combined }), {
             x: 'weight',
@@ -123,8 +124,7 @@ export function AthletesViewSimple() {
           vg.colorDomain(vg.Fixed),
         );
 
-        const layout = vg.vconcat(inputs, vg.vspace(10), plot);
-        chartDivRef.current?.replaceChildren(layout);
+        chartDivRef.current?.replaceChildren(plot);
 
         setIsPending(false);
       } catch (err) {
@@ -138,6 +138,7 @@ export function AthletesViewSimple() {
     <>
       <h4 className="text-lg mb-2 font-medium">Chart & Controls</h4>
       {isPending && <div className="italic">Loading data...</div>}
+      {!isPending && <AthletesInputs />}
       <div ref={chartDivRef} />
       <hr className="my-4" />
       <h4 className="text-lg mb-2 font-medium">Table area</h4>
@@ -150,12 +151,106 @@ export function AthletesViewSimple() {
   );
 }
 
+function AthletesInputs() {
+  const sportInput = useMosaicSelectInput<string>(sportInputOptions);
+  const genderInput = useMosaicSelectInput<string>(genderInputOptions);
+  const nameInput = useMosaicTextInput(nameInputOptions);
+  const inputClassName =
+    'border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]';
+
+  return (
+    <div className="mb-4 grid gap-3 sm:grid-cols-3">
+      <label className="grid gap-1.5 text-sm font-medium">
+        <span>Sport</span>
+        <AthletesSelectControl input={sportInput} className={inputClassName} />
+      </label>
+      <label className="grid gap-1.5 text-sm font-medium">
+        <span>Gender</span>
+        <AthletesSelectControl input={genderInput} className={inputClassName} />
+      </label>
+      <label className="grid gap-1.5 text-sm font-medium">
+        <span>Name</span>
+        <input
+          value={nameInput.value}
+          onChange={(event) => nameInput.setValue(event.currentTarget.value)}
+          onFocus={(event) => nameInput.activate(event.currentTarget.value)}
+          onPointerEnter={(event) =>
+            nameInput.activate(event.currentTarget.value)
+          }
+          className={inputClassName}
+          placeholder="Search names"
+        />
+      </label>
+    </div>
+  );
+}
+
+type AthletesSelectInput = ReturnType<typeof useMosaicSelectInput<string>>;
+
+function findOptionIndex(
+  options: AthletesSelectInput['options'],
+  value: string | '' | null | undefined,
+): number {
+  return options.findIndex((option) => Object.is(option.value, value));
+}
+
+function selectedOptionIndex(input: AthletesSelectInput): string {
+  const value = Array.isArray(input.value)
+    ? (input.value[0] ?? null)
+    : input.value;
+  const index = findOptionIndex(input.options, value);
+
+  if (index < 0) {
+    return '';
+  }
+
+  return String(index);
+}
+
+function readSelectValue(input: AthletesSelectInput, index: string) {
+  const option = input.options[Number(index)];
+
+  return option?.value ?? null;
+}
+
+function AthletesSelectControl({
+  input,
+  className,
+}: {
+  input: AthletesSelectInput;
+  className: string;
+}) {
+  const selectedIndex = selectedOptionIndex(input);
+
+  return (
+    <select
+      value={selectedIndex}
+      onChange={(event) => {
+        input.setValue(readSelectValue(input, event.currentTarget.value));
+      }}
+      onFocus={(event) => {
+        input.activate(readSelectValue(input, event.currentTarget.value));
+      }}
+      onPointerEnter={(event) => {
+        input.activate(readSelectValue(input, event.currentTarget.value));
+      }}
+      className={className}
+    >
+      {input.options.map((option, index) => (
+        <option key={index} value={String(index)}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function AthletesTable() {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
   // Manual Column Definitions
   // We use standard TanStack ColumnDef objects.
-  // We manually populate `meta.mosaicDataTable` to tell the adapter how to generate SQL.
+  // We manually populate `meta.mosaic` to tell the adapter how to generate SQL.
   const columns = useMemo<Array<ColumnDef<AthleteRowData, any>>>(
     () => [
       {
@@ -165,7 +260,7 @@ function AthletesTable() {
         ),
         meta: {
           // SQL Config: Explicitly map to 'id' column and use EQUALS for filtering
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'id',
             sqlFilterType: 'EQUALS',
           },
@@ -179,7 +274,7 @@ function AthletesTable() {
         meta: {
           filterVariant: 'text',
           // SQL Config: Use ILIKE for case-insensitive partial matching
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'name',
             sqlFilterType: 'PARTIAL_ILIKE',
           },
@@ -193,7 +288,7 @@ function AthletesTable() {
         meta: {
           filterVariant: 'select',
           // SQL Config: Use EQUALS filter and trigger 'unique' facet strategy for dropdowns
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'nationality',
             sqlFilterType: 'EQUALS',
             facet: 'unique',
@@ -207,7 +302,7 @@ function AthletesTable() {
         ),
         meta: {
           filterVariant: 'select',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'sex',
             sqlFilterType: 'EQUALS',
             facet: 'unique',
@@ -227,7 +322,7 @@ function AthletesTable() {
           filterVariant: 'range',
           rangeFilterType: 'date',
           // SQL Config: Explicitly specify DATE_RANGE to handle date string comparisons correctly
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'date_of_birth',
             sqlFilterType: 'DATE_RANGE',
           },
@@ -243,7 +338,7 @@ function AthletesTable() {
           filterVariant: 'range',
           rangeFilterType: 'number',
           // SQL Config: RANGE filter and 'minmax' facet for slider bounds
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'height',
             sqlFilterType: 'RANGE',
             facet: 'minmax',
@@ -259,7 +354,7 @@ function AthletesTable() {
         meta: {
           filterVariant: 'range',
           rangeFilterType: 'number',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'weight',
             sqlFilterType: 'RANGE',
             facet: 'minmax',
@@ -273,7 +368,7 @@ function AthletesTable() {
         ),
         meta: {
           filterVariant: 'select',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'sport',
             sqlFilterType: 'PARTIAL_ILIKE',
             facet: 'unique',
@@ -286,7 +381,7 @@ function AthletesTable() {
           <RenderTableHeader column={column} title="Gold" view={view} />
         ),
         meta: {
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'gold',
             sqlFilterType: 'RANGE',
           },
@@ -298,7 +393,7 @@ function AthletesTable() {
           <RenderTableHeader column={column} title="Silver" view={view} />
         ),
         meta: {
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'silver',
             sqlFilterType: 'RANGE',
           },
@@ -310,7 +405,7 @@ function AthletesTable() {
           <RenderTableHeader column={column} title="Bronze" view={view} />
         ),
         meta: {
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'bronze',
             sqlFilterType: 'RANGE',
           },

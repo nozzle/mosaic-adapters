@@ -30,6 +30,7 @@ Most React users should start with `@nozzleio/mosaic-tanstack-react-table` and `
 - `useMosaicHistogram`
 - `useGroupedTableState`
 - `MosaicFilterProvider`, `useFilterRegistry`, `useActiveFilters`, `useRegisterFilterSource`
+- `@nozzleio/mosaic-tanstack-react-table/inputs`: headless input hooks, including `useMosaicTextInput` and `useMosaicSelectInput`
 - `@nozzleio/mosaic-tanstack-react-table/helpers`: mapping helpers and coercion utilities
 - `@nozzleio/mosaic-tanstack-react-table/controllers`: headless controllers such as `AggregationBridge` and `HistogramController`
 - `@nozzleio/mosaic-tanstack-react-table/debug`: `logger`
@@ -50,6 +51,7 @@ Most React users should start with `@nozzleio/mosaic-tanstack-react-table` and `
 - `@nozzleio/mosaic-tanstack-table-core/grouped`: grouped query helpers and grouped row types
 - `@nozzleio/mosaic-tanstack-table-core/filter-registry`: headless active-filter registry types and implementation
 - `@nozzleio/mosaic-tanstack-table-core/facet-strategies`: low-level facet strategies such as `HistogramStrategy`
+- `@nozzleio/mosaic-tanstack-table-core/input-core`: framework-agnostic `TextInputCore`, `SelectInputCore`, input state types, and select option normalization types for non-React adapters
 - `@nozzleio/mosaic-tanstack-table-core/sidecar`: typed sidecar client helpers
 
 For React apps, use the active-filter APIs from `@nozzleio/mosaic-tanstack-react-table` rather than importing the headless filter registry directly.

@@ -18,7 +18,11 @@ import { Store, batch } from '@tanstack/store';
 import { seedInitialTableState, toSafeSqlColumnName } from './utils';
 import { logger } from './logger';
 import { ColumnMapper } from './query/column-mapper';
-import { buildTableQuery, extractInternalFilters } from './query/query-builder';
+import {
+  buildGlobalFilter,
+  buildTableQuery,
+  extractInternalFilters,
+} from './query/query-builder';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SidecarManager } from './sidecar-manager';
@@ -33,11 +37,21 @@ import {
   createInitialDataTableStore,
   createInitialGroupedState,
 } from './internal/data-table/store';
+import { buildPinnedRowsQuery } from './query/pinned-rows-query';
+import {
+  buildRowIdentityPredicate,
+  createRowIdentityGetter,
+  getRowIdentityFields,
+  readRowIdentityValues,
+  resolveRowIdentity,
+  serializeRowIdentityValues,
+} from './query/row-identity';
 
 import type {
   Coordinator,
   FieldInfo,
   FieldInfoRequest,
+  SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ReadonlyStore } from '@tanstack/store';
@@ -94,6 +108,9 @@ export class MosaicDataTable<
   #facetValues = new Map<string, unknown>();
   #rowSelectionManager?: MosaicSelectionManager<string | number>;
   #groupedController = new GroupedTableController(this);
+  #mainRequestId = 0;
+  #activeMainRequestId = 0;
+  #pinnedRowsRequestId = 0;
 
   public sidecarManager: SidecarManager<TData, TValue>;
   public filterRegistry: StrategyRegistry<Record<string, FilterStrategy>>;
@@ -155,10 +172,38 @@ export class MosaicDataTable<
     if (!this.coordinator) {
       return Promise.resolve();
     }
-    if (this.enabled === false) {
-      return Promise.resolve();
+    if (!this.enabled) {
+      this._request = query ?? true;
+      return null;
     }
-    return super.requestQuery(query);
+
+    const statement = query || this.query(this.filterBy?.predicate(this));
+    if (!statement) {
+      return Promise.resolve(this.update());
+    }
+
+    const requestId = ++this.#mainRequestId;
+    this.#activeMainRequestId = requestId;
+    (
+      this.coordinator as {
+        preaggregator?: { clear: () => void };
+      }
+    ).preaggregator?.clear();
+    this.queryPending();
+    this._pending = Promise.resolve(this.coordinator.query(statement))
+      .then((data) => {
+        if (requestId === this.#activeMainRequestId) {
+          return this.queryResult(data).update();
+        }
+        return this;
+      })
+      .catch((error: unknown) => {
+        if (requestId === this.#activeMainRequestId) {
+          this.queryError(error as Error);
+        }
+        return this;
+      });
+    return this._pending;
   }
 
   override queryError(error: Error): this {
@@ -234,6 +279,68 @@ export class MosaicDataTable<
     this.sidecarManager.requestFacet(columnId, type);
   }
 
+  public hoverRow(row: TData | null): void {
+    if (!this.options.highlightBy) {
+      return;
+    }
+
+    const clause = row ? this.#createRowIdentityClause(row) : null;
+    this.options.highlightBy.update({
+      source: this,
+      clients: new Set([this]),
+      value: clause?.value ?? null,
+      predicate: (clause?.predicate ?? null) as SelectionClause['predicate'],
+    });
+  }
+
+  public selectRow(row: TData | null): void {
+    if (!this.#rowSelectionManager) {
+      return;
+    }
+
+    if (!row) {
+      this.clearSelection();
+      return;
+    }
+
+    const identity = resolveRowIdentity(this.options);
+    if (identity.mode === 'row-values') {
+      this.#selectRowValuesByRows([row]);
+      return;
+    }
+
+    const values = readRowIdentityValues(
+      row as Record<string, unknown>,
+      identity,
+    );
+    if (identity.fields.length === 1) {
+      this.#rowSelectionManager.selectRowValue({
+        field: identity.fields[0]!,
+        value: values[0],
+      });
+      return;
+    }
+
+    this.#rowSelectionManager.selectRowValues({
+      fields: identity.fields,
+      values: [values],
+      selectionValue: serializeRowIdentityValues(values),
+    });
+  }
+
+  public clearSelection(): void {
+    this.#rowSelectionManager?.clear();
+    batch(() => {
+      this.store.setState((previousState) => ({
+        ...previousState,
+        tableState: {
+          ...previousState.tableState,
+          rowSelection: {},
+        },
+      }));
+    });
+  }
+
   resolveSource(filter?: FilterExpr | null): string | SelectQuery {
     if (typeof this.source === 'function') {
       return this.source(filter);
@@ -298,6 +405,7 @@ export class MosaicDataTable<
       : highlightPredicate;
     const tableState = this.store.state.tableState;
     const mapper = this.#columnMapper;
+    const requiredFields = this.#getRequiredProjectionFields();
     let statement: SelectQuery;
 
     if (mapper) {
@@ -310,6 +418,17 @@ export class MosaicDataTable<
         highlightPredicate: safeHighlightPredicate,
         manualHighlight: this.options.manualHighlight,
         totalRowsMode: this.options.totalRowsMode,
+        rowSelectionColumn:
+          typeof source === 'string'
+            ? this.options.rowSelection?.column
+            : undefined,
+        rowIdentityFields: getRowIdentityFields(
+          resolveRowIdentity(this.options),
+          {
+            includeRowSelectionFallback: typeof source === 'string',
+          },
+        ),
+        requiredFields,
         filterRegistry: this.filterRegistry,
       });
     } else {
@@ -343,8 +462,15 @@ export class MosaicDataTable<
         mapping: this.options.mapping,
         filterRegistry: this.filterRegistry,
       });
+      const globalFilterClause = buildGlobalFilter({
+        tableState,
+        mapper,
+      });
+      const tableClauses = globalFilterClause
+        ? [...internalClauses, globalFilterClause]
+        : internalClauses;
       const predicate =
-        internalClauses.length > 0 ? mSql.and(...internalClauses) : null;
+        tableClauses.length > 0 ? mSql.and(...tableClauses) : null;
 
       this.tableFilterSelection.update({
         source: this,
@@ -536,7 +662,7 @@ export class MosaicDataTable<
       this.sidecarManager.refreshAll();
     };
 
-    const rowSelectionCb = () => {
+    const syncRowSelectionState = () => {
       if (!this.#rowSelectionManager) {
         return;
       }
@@ -558,6 +684,14 @@ export class MosaicDataTable<
       });
     };
 
+    const rowSelectionCb = () => {
+      syncRowSelectionState();
+
+      if (this.options.manualHighlight) {
+        this.requestUpdate();
+      }
+    };
+
     this.filterBy?.addEventListener('value', selectionCb);
     this.options.highlightBy?.addEventListener('value', selectionCb);
     this.tableFilterSelection.addEventListener('value', internalFilterCb);
@@ -567,7 +701,7 @@ export class MosaicDataTable<
         'value',
         rowSelectionCb,
       );
-      rowSelectionCb();
+      syncRowSelectionState();
     }
 
     this._cleanupListener = () => {
@@ -611,7 +745,11 @@ export class MosaicDataTable<
       return [{ table: source, column: '*' }];
     }
 
-    return this.#columnMapper.getMosaicFieldRequests(source);
+    return this.#columnMapper.getMosaicFieldRequests(source, {
+      tableState: this.store.state.tableState,
+      rowIdentityFields: getRowIdentityFields(resolveRowIdentity(this.options)),
+      requiredFields: this.#getRequiredProjectionFields(),
+    });
   }
 
   getTableOptions(
@@ -625,9 +763,69 @@ export class MosaicDataTable<
       client: this,
       state,
       schema: this.schema,
-      rowSelectionManager: this.#rowSelectionManager,
       onTableStateChange: this.#onTableStateChange,
     });
+  }
+
+  public handleRowSelectionChange(
+    nextSelection: Record<string, boolean>,
+  ): void {
+    batch(() => {
+      this.store.setState((previousStore) => ({
+        ...previousStore,
+        tableState: {
+          ...previousStore.tableState,
+          rowSelection: nextSelection,
+        },
+      }));
+    });
+
+    if (!this.#rowSelectionManager) {
+      return;
+    }
+
+    const selectedIds = Object.keys(nextSelection).filter(
+      (key) => nextSelection[key],
+    );
+    if (selectedIds.length === 0) {
+      this.#rowSelectionManager.clear();
+      if (this.options.manualHighlight) {
+        this.requestUpdate();
+      }
+      return;
+    }
+
+    const identity = resolveRowIdentity(this.options);
+    if (identity.mode === 'row-values') {
+      this.#selectRowsByStateIds(selectedIds);
+      return;
+    }
+
+    if (identity.fields.length > 1) {
+      const values = selectedIds.map((id) => {
+        const row = this.#findCurrentRowById(id);
+        if (row) {
+          return readRowIdentityValues(
+            row as Record<string, unknown>,
+            identity,
+          );
+        }
+        return this.#parseCompositeRowId(id);
+      });
+
+      this.#rowSelectionManager.selectRowValues({
+        fields: identity.fields,
+        values,
+        selectionValue: selectedIds,
+      });
+      return;
+    }
+
+    this.#rowSelectionManager.select(selectedIds);
+  }
+
+  public handleRowPinningChange(): void {
+    void this.#requestPinnedRows();
   }
 
   getFacetedUniqueValues<TItem extends RowData>(): (
@@ -727,6 +925,10 @@ export class MosaicDataTable<
     return this.#columnMapper?.getSqlColumn(columnId)?.toString();
   }
 
+  getFacetColumnSqlName(columnId: string): string | undefined {
+    return this.#columnMapper?.getFacetSqlColumn(columnId)?.toString();
+  }
+
   getColumnDef(sqlColumn: string): MosaicColumnDef<TData, TValue> | undefined {
     return this.#columnMapper?.getColumnDef(sqlColumn);
   }
@@ -805,6 +1007,10 @@ export class MosaicDataTable<
           options.tableOptions?.initialState,
         ),
         rows: [],
+        pinnedRows: {
+          top: [],
+          bottom: [],
+        },
         totalRows: undefined,
         _grouped: createInitialGroupedState<TData, TValue>(),
       }));
@@ -826,11 +1032,193 @@ export class MosaicDataTable<
     }
 
     this.rowSelectionColumn = options.rowSelection.column;
+    const identity = resolveRowIdentity(options);
+    const selectionColumn =
+      identity.mode === 'row-id' && identity.fields.length === 1
+        ? identity.fields[0]!
+        : options.rowSelection.column;
     this.#rowSelectionManager = new MosaicSelectionManager<string | number>({
       client: this,
-      column: options.rowSelection.column,
+      column: selectionColumn,
       selection: options.rowSelection.selection,
       columnType: options.rowSelection.columnType,
+    });
+  }
+
+  #getRowIdForData(row: TData): string {
+    const identity = resolveRowIdentity(this.options);
+    const configuredGetter = createRowIdentityGetter(identity);
+    if (configuredGetter) {
+      return configuredGetter(row as Record<string, unknown>);
+    }
+    const index = this.store.state.rows.indexOf(row);
+    return String(index);
+  }
+
+  #findCurrentRowById(rowId: string): TData | undefined {
+    const identity = resolveRowIdentity(this.options);
+    const getRowId = createRowIdentityGetter(identity);
+    const allRows = [
+      ...this.store.state.pinnedRows.top,
+      ...this.store.state.rows,
+      ...this.store.state.pinnedRows.bottom,
+    ];
+
+    if (getRowId) {
+      return allRows.find(
+        (row) => getRowId(row as Record<string, unknown>) === rowId,
+      );
+    }
+
+    const index = Number(rowId);
+    if (!Number.isInteger(index) || index < 0) {
+      return undefined;
+    }
+    return this.store.state.rows[index];
+  }
+
+  #selectRowsByStateIds(rowIds: Array<string>): void {
+    const rows = rowIds
+      .map((rowId) => this.#findCurrentRowById(rowId))
+      .filter((row): row is TData => row !== undefined);
+    this.#selectRowValuesByRows(rows);
+  }
+
+  #selectRowValuesByRows(rows: Array<TData>): void {
+    if (!this.#rowSelectionManager || !this.options.rowSelection) {
+      return;
+    }
+
+    const field = this.options.rowSelection.column;
+    const values = rows.map((row) => [
+      (row as Record<string, unknown>)[field] as PrimitiveSqlValue,
+    ]);
+    this.#rowSelectionManager.selectRowValues({
+      fields: [field],
+      values,
+    });
+  }
+
+  #parseCompositeRowId(rowId: string): Array<PrimitiveSqlValue> {
+    try {
+      const parsed = JSON.parse(rowId) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed as Array<PrimitiveSqlValue>;
+      }
+    } catch {
+      return [];
+    }
+    return [];
+  }
+
+  #createRowIdentityClause(row: TData): {
+    value: unknown;
+    predicate: FilterExpr | null;
+  } | null {
+    const identity = resolveRowIdentity(this.options);
+    if (identity.mode !== 'row-id' || identity.fields.length === 0) {
+      return null;
+    }
+
+    const values = readRowIdentityValues(
+      row as Record<string, unknown>,
+      identity,
+    );
+    const rowId = serializeRowIdentityValues(values);
+    return {
+      value: rowId,
+      predicate: buildRowIdentityPredicate(identity, [rowId]),
+    };
+  }
+
+  async #requestPinnedRows(): Promise<void> {
+    if (this.#isGrouped || !this.#columnMapper || !this.coordinator) {
+      return;
+    }
+
+    const rowPinning = this.store.state.tableState.rowPinning;
+    const topIds = rowPinning.top ?? [];
+    const bottomIds = rowPinning.bottom ?? [];
+    const rowIds = Array.from(new Set([...topIds, ...bottomIds]));
+    if (rowIds.length === 0) {
+      this.#clearPinnedRows();
+      return;
+    }
+
+    const source = this.resolveSource();
+    if (!source || (typeof source === 'string' && source.trim() === '')) {
+      this.#clearPinnedRows();
+      return;
+    }
+
+    const identity = resolveRowIdentity(this.options);
+    const rowIdentityFields = getRowIdentityFields(identity, {
+      includeRowSelectionFallback: typeof source === 'string',
+    });
+    if (!rowIdentityFields) {
+      this.#clearPinnedRows();
+      return;
+    }
+
+    const query = buildPinnedRowsQuery({
+      source,
+      mapper: this.#columnMapper,
+      tableState: this.store.state.tableState,
+      rowIdentity: identity,
+      rowIds,
+      requiredFields: this.#getRequiredProjectionFields(),
+    });
+    if (!query) {
+      this.#clearPinnedRows();
+      return;
+    }
+
+    const requestId = ++this.#pinnedRowsRequestId;
+    const result = await Promise.resolve(
+      this.coordinator.query(query.toString()),
+    );
+    if (requestId !== this.#pinnedRowsRequestId) {
+      return;
+    }
+    if (!isArrowTable(result)) {
+      return;
+    }
+
+    const materialized = materializeFlatQueryResult({
+      rows: result.toArray() as Array<Record<string, unknown>>,
+      options: this.options,
+      totalRowsColumnName: this.#sqlTotalRows,
+      debugPrefix: this.debugPrefix,
+    });
+    const byId = new Map(
+      materialized.rows.map((row) => [this.#getRowIdForData(row), row]),
+    );
+
+    batch(() => {
+      this.store.setState((previousState) => ({
+        ...previousState,
+        pinnedRows: {
+          top: topIds
+            .map((id) => byId.get(id))
+            .filter((row): row is TData => !!row),
+          bottom: bottomIds
+            .map((id) => byId.get(id))
+            .filter((row): row is TData => !!row),
+        },
+      }));
+    });
+  }
+
+  #clearPinnedRows(): void {
+    this.#pinnedRowsRequestId++;
+    batch(() => {
+      this.store.setState((previousState) => ({
+        ...previousState,
+        pinnedRows: {
+          top: [],
+          bottom: [],
+        },
+      }));
     });
   }
 
@@ -867,5 +1255,20 @@ export class MosaicDataTable<
         this.requestUpdate();
       });
     }
+  }
+
+  #getRequiredProjectionFields(): Array<string> | undefined {
+    if (!this.options.manualHighlight) {
+      return undefined;
+    }
+
+    const highlightField = this.#columnMapper
+      ?.getSqlColumn('__is_highlighted')
+      ?.toString();
+    if (!highlightField) {
+      return undefined;
+    }
+
+    return [highlightField];
   }
 }

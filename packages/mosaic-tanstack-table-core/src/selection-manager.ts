@@ -1,7 +1,11 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { createStructAccess } from './utils';
 import { SqlIdentifier } from './domain/sql-identifier';
-import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
+import type {
+  MosaicClient,
+  Selection,
+  SelectionClause,
+} from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { ColumnType, PrimitiveSqlValue } from './types';
 
@@ -100,6 +104,40 @@ export class MosaicSelectionManager<
     this.update(newValues.length > 0 ? newValues : null);
   }
 
+  public selectRowValues(options: {
+    fields: Array<string>;
+    values: Array<Array<PrimitiveSqlValue>>;
+    selectionValue?: unknown;
+  }): void {
+    const predicate = this.createPointPredicate(options.fields, options.values);
+    this.publish({
+      value: options.selectionValue ?? options.values,
+      predicate: predicate as SelectionClause['predicate'],
+    });
+  }
+
+  public selectRowValue(options: {
+    field: string;
+    value: PrimitiveSqlValue | undefined;
+  }): void {
+    if (options.value === undefined) {
+      this.update(null);
+      return;
+    }
+
+    this.publish({
+      value: options.value,
+      predicate: mSql.isIn(
+        createStructAccess(SqlIdentifier.from(options.field)),
+        [mSql.literal(options.value)],
+      ),
+    });
+  }
+
+  public clear(): void {
+    this.update(null);
+  }
+
   /**
    * Reads the current selection state from the Mosaic Core.
    */
@@ -162,6 +200,13 @@ export class MosaicSelectionManager<
       }
     }
 
+    this.publish({
+      value: values,
+      predicate,
+    });
+  }
+
+  private publish(clause: Pick<SelectionClause, 'value' | 'predicate'>): void {
     const staleClauses = this.selection.clauses.filter(
       (clause) => clause.source !== this.client,
     );
@@ -176,8 +221,45 @@ export class MosaicSelectionManager<
       source: this.client,
       // Critical: Exclude self from the filter so menus/tables don't filter themselves empty
       clients: new Set([this.client]),
-      value: values,
-      predicate,
+      value: clause.value,
+      predicate: clause.predicate,
     });
+  }
+
+  private createPointPredicate(
+    fields: Array<string>,
+    values: Array<Array<PrimitiveSqlValue>>,
+  ): FilterExpr | null {
+    if (fields.length === 0 || values.length === 0) {
+      return null;
+    }
+
+    const fieldExpressions = fields.map((field) =>
+      createStructAccess(SqlIdentifier.from(field)),
+    );
+    const completeValues = values.filter(
+      (rowValues) => rowValues.length === fieldExpressions.length,
+    );
+
+    if (completeValues.length === 0) {
+      return null;
+    }
+
+    if (fieldExpressions.length === 1) {
+      return mSql.isIn(
+        fieldExpressions[0]!,
+        completeValues.map((rowValues) => mSql.literal(rowValues[0])),
+      );
+    }
+
+    const clauses = completeValues.map((rowValues) =>
+      mSql.and(
+        ...rowValues.map((value, index) =>
+          mSql.isNotDistinct(fieldExpressions[index]!, mSql.literal(value)),
+        ),
+      ),
+    );
+
+    return clauses.length === 1 ? clauses[0]! : mSql.or(...clauses);
   }
 }

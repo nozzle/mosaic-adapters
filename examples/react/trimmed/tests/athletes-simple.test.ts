@@ -14,4 +14,12 @@ test.describe('athletes-simple page', () => {
     });
     await expect(heading).toBeVisible();
   });
+
+  test('renders React Mosaic input controls', async ({ page }) => {
+    await init(page);
+
+    await expect(page.getByLabel('Sport')).toBeVisible();
+    await expect(page.getByLabel('Gender')).toBeVisible();
+    await expect(page.getByLabel('Name')).toBeVisible();
+  });
 });

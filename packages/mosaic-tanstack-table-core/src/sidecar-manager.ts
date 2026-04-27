@@ -6,6 +6,7 @@
  */
 import { SidecarClient } from './sidecar-client';
 import { TotalCountStrategy } from './facet-strategies';
+import { readMosaicColumnMeta } from './query/column-meta';
 import type { MosaicDataTable } from './data-table';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type { RowData } from '@tanstack/table-core';
@@ -65,10 +66,14 @@ export class SidecarManager<
     }
 
     const sqlColumn =
-      this.host.getColumnSqlName(config.column) || config.column;
+      this.host.getFacetColumnSqlName(config.column) ||
+      this.host.getColumnSqlName(config.column) ||
+      config.column;
 
     const colDef = this.host.getColumnDef(sqlColumn);
-    const sortMode = colDef?.meta?.mosaicDataTable?.facetSortMode || 'alpha';
+    const sortMode = colDef
+      ? readMosaicColumnMeta(colDef).facetSortMode || 'alpha'
+      : 'alpha';
 
     const query = {
       sortMode,

@@ -53,6 +53,10 @@
       "types": "./dist/esm/filter-builder/index.d.ts",
       "default": "./dist/esm/filter-builder/index.js"
     },
+    "./input-core": {
+      "types": "./dist/esm/input-core/index.d.ts",
+      "default": "./dist/esm/input-core/index.js"
+    },
     "./sidecar": {
       "types": "./dist/esm/sidecar.d.ts",
       "default": "./dist/esm/sidecar.js"

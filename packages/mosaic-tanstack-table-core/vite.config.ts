@@ -23,6 +23,7 @@ export default mergeConfig(
       'src/facet-strategies.ts',
       'src/filter-builder/index.ts',
       'src/grouped/index.ts',
+      'src/input-core/index.ts',
       'src/sidecar.ts',
     ],
     srcDir: './src',

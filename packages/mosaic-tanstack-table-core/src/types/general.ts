@@ -38,6 +38,7 @@ export type MosaicDataTableSqlFilterType =
 export type FacetSortMode = 'alpha' | 'count';
 
 export type ColumnType = 'scalar' | 'array';
+export type RowSelectionMode = 'row-id' | 'row-values';
 export type SqlType =
   | 'VARCHAR'
   | 'INTEGER'
@@ -197,6 +198,26 @@ export interface SqlColumnConfig {
   filterType?: MosaicDataTableSqlFilterType;
 }
 
+export type MosaicColumnMeta<TValue = unknown> = {
+  fields?: Array<string>;
+  sortBy?: string;
+  filterBy?: string;
+  facetBy?: string;
+  globalFilterBy?: Array<string>;
+  sqlColumn?: string;
+  /**
+   * The SQL Filter Type.
+   * STRICTLY TYPED based on the column's data type (TValue).
+   */
+  sqlFilterType?: AllowedFilterTypeFor<TValue> | (string & {});
+  facetSortMode?: FacetSortMode;
+  /**
+   * The Facet Type.
+   * STRICTLY TYPED based on the column's data type (TValue).
+   */
+  facet?: AllowedFacetTypeFor<TValue> | (string & {});
+};
+
 /**
  * Discriminated Union for Filter Inputs.
  * Strictly enforces the shape of the value based on the filter mode.
@@ -238,20 +259,11 @@ export interface IMosaicLifecycleHooks {
  * Now Generic on TValue to enforce strict typing of SQL properties.
  */
 export type MosaicDataTableColumnDefMetaOptions<TValue = unknown> = {
-  mosaicDataTable?: {
-    sqlColumn?: string;
-    /**
-     * The SQL Filter Type.
-     * STRICTLY TYPED based on the column's data type (TValue).
-     */
-    sqlFilterType?: AllowedFilterTypeFor<TValue> | (string & {});
-    facetSortMode?: FacetSortMode;
-    /**
-     * The Facet Type.
-     * STRICTLY TYPED based on the column's data type (TValue).
-     */
-    facet?: AllowedFacetTypeFor<TValue> | (string & {});
-  };
+  mosaicDataTable?: Pick<
+    MosaicColumnMeta<TValue>,
+    'sqlColumn' | 'sqlFilterType' | 'facetSortMode' | 'facet'
+  >;
+  mosaic?: MosaicColumnMeta<TValue>;
 };
 
 export interface MosaicTableDataProvider {
@@ -303,6 +315,9 @@ export interface MosaicDataTableOptions<
     column: string;
     columnType?: ColumnType;
   };
+  rowId?: string | Array<string>;
+  getRowId?: (row: Record<string, unknown>) => string;
+  rowSelectionMode?: RowSelectionMode;
   tableFilterSelection?: Selection | undefined;
   columns?: Array<MosaicColumnDef<TData, TValue>>;
   tableOptions?: Partial<SubsetTableOptions<TData>>;
@@ -375,6 +390,10 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   columnDefs: Array<MosaicColumnDef<TData, TValue>>;
   tableState: TableState;
   rows: Array<TData>;
+  pinnedRows: {
+    top: Array<TData>;
+    bottom: Array<TData>;
+  };
   totalRows: number | undefined;
   tableOptions: SubsetTableOptions<TData>;
   _facetsUpdateCount: number;

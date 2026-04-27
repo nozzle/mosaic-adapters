@@ -137,6 +137,10 @@ The root GROUP BY query goes through the MosaicClient lifecycle — automatic cr
 
 Child queries (on user expand) use `coordinator.query()` directly — these are ad-hoc, on-demand queries that don't fit MosaicClient's single-query lifecycle.
 
+Root grouped queries use the same stale-response guard as flat row queries: if
+an older root query resolves after a newer request starts, the older response is
+ignored. Child queries remain lazy and scoped to expanded group IDs.
+
 ## Data Model: FlatGroupedRow
 
 SQL result columns sit at the **top level** of each row, enabling standard TanStack `accessorKey` column definitions. Tree metadata lives under `_groupMeta` (internal), and is exposed via row helper APIs like `row.getGroupMeta()`:
@@ -171,6 +175,11 @@ SQL result columns sit at the **top level** of each row, enabling standard TanSt
 ```
 
 Group rows have metric values (e.g. `count`, `total_gold`) as top-level properties. Leaf rows have detail values (e.g. `name`, `height`) as top-level properties. Both go through the same `flexRender()` pipeline — cells for missing keys simply render blank.
+
+Grouped row IDs are derived from group metadata and ancestor constraints. The
+flat-table `rowId`, field-based row selection, and server-side pinned-row query
+path are designed for flat tables; grouped mode continues to use these
+group-derived IDs for expansion and row helper APIs.
 
 ## Configuration
 

@@ -8,7 +8,9 @@ import {
   buildEmptyValuePredicate,
 } from '../src/condition-predicate';
 import { MosaicDataTable } from '../src/data-table';
+import { TotalCountStrategy } from '../src/facet-strategies';
 import { GROUP_ID_SEPARATOR } from '../src/grouped/types';
+import { SidecarClient } from '../src/sidecar-client';
 import type { MosaicDataTableOptions, PrimitiveSqlValue } from '../src/types';
 
 const { queryFieldInfoMock } = vi.hoisted(() => ({
@@ -46,6 +48,14 @@ function createArrowTable(rows: Array<Record<string, unknown>>) {
       return rows;
     },
   };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 class FakeCoordinator {
@@ -258,6 +268,286 @@ describe('MosaicDataTable characterization', () => {
     );
   });
 
+  test('continues to support legacy mosaicDataTable metadata', () => {
+    const client = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      columns: [
+        {
+          accessorKey: 'name',
+          header: 'Name',
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'athlete_name',
+              sqlFilterType: 'PARTIAL_ILIKE',
+            },
+          },
+        },
+      ],
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        columnFilters: [{ id: 'name', value: 'alex' }],
+      },
+    }));
+
+    const sql = client.query()?.toString();
+
+    expect(sql).toContain('"athlete_name" AS "name"');
+    expect(sql).toContain('"athlete_name" ILIKE \'%alex%\'');
+  });
+
+  test('prefers meta.mosaic over legacy metadata when both are present', () => {
+    const client = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      columns: [
+        {
+          accessorKey: 'name',
+          header: 'Name',
+          meta: {
+            mosaicDataTable: {
+              sqlColumn: 'legacy_name',
+              sqlFilterType: 'LIKE',
+            },
+            mosaic: {
+              sqlColumn: 'modern_name',
+              sqlFilterType: 'PARTIAL_ILIKE',
+            },
+          },
+        },
+      ],
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        columnFilters: [{ id: 'name', value: 'alex' }],
+      },
+    }));
+
+    const sql = client.query()?.toString();
+
+    expect(sql).toContain('"modern_name" AS "name"');
+    expect(sql).toContain('"modern_name" ILIKE \'%alex%\'');
+    expect(sql).not.toContain('legacy_name');
+  });
+
+  test('projects metadata fields required by visibility, sorting, filters, global filters, and row selection', () => {
+    const rowSelection = new Selection();
+    const client = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      columns: [
+        { accessorKey: 'id', header: 'ID' },
+        {
+          id: 'displayName',
+          header: 'Display Name',
+          accessorFn: (row) => row.name,
+          meta: {
+            mosaic: {
+              fields: ['first_name', 'last_name'],
+              sortBy: 'last_name',
+              globalFilterBy: ['first_name', 'last_name'],
+            },
+          },
+        },
+        {
+          accessorKey: 'age',
+          header: 'Age',
+          meta: {
+            mosaic: {
+              sqlColumn: 'age_display',
+              filterBy: 'age_years',
+              sqlFilterType: 'RANGE',
+            },
+          },
+        },
+        {
+          accessorKey: 'country',
+          header: 'Country',
+          meta: {
+            mosaic: {
+              sqlColumn: 'country_name',
+              sqlFilterType: 'EQUALS',
+            },
+          },
+        },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        columnVisibility: {
+          age: false,
+          country: false,
+        },
+        sorting: [{ id: 'displayName', desc: false }],
+        columnFilters: [{ id: 'age', value: ['20', '40'] }],
+        globalFilter: 'alex',
+      },
+    }));
+
+    const sql = client.query()?.toString();
+
+    expect(sql).toContain('"id"');
+    expect(sql).toContain('"first_name"');
+    expect(sql).toContain('"last_name"');
+    expect(sql).toContain('"age_years"');
+    expect(sql).not.toContain('"country_name"');
+    expect(sql).toContain('ORDER BY "last_name" ASC');
+    expect(sql).toContain('TRY_CAST("age_years" AS DOUBLE) BETWEEN 20 AND 40');
+    expect(sql).toContain('"first_name" ILIKE \'%alex%\'');
+    expect(sql).toContain('"last_name" ILIKE \'%alex%\'');
+  });
+
+  test('configures stable TanStack row ids from rowId and projects hidden row id fields', () => {
+    const { client } = createFlatClient({
+      rowId: 'id',
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        columnVisibility: {
+          id: false,
+        },
+      },
+    }));
+
+    const tableOptions = client.getTableOptions(client.store.state);
+    const rowId = tableOptions.getRowId?.(
+      {
+        id: 'athlete-7',
+        name: 'Alice',
+        age: 31,
+        country: 'NZ',
+        status: 'active',
+      },
+      0,
+    );
+    const sql = client.query()?.toString();
+
+    expect(rowId).toBe('athlete-7');
+    expect(sql).toContain('"id"');
+  });
+
+  test('uses rowId fields for row selection predicates after pagination changes', () => {
+    const rowSelection = new Selection();
+    const { client } = createFlatClient({
+      rowId: 'id',
+      rowSelection: {
+        selection: rowSelection,
+        column: 'country',
+      },
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      rows: [
+        { id: 'u1', name: 'Alice', age: 31, country: 'NZ', status: 'active' },
+        { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      ],
+      tableState: {
+        ...prev.tableState,
+        pagination: { pageIndex: 3, pageSize: 10 },
+      },
+    }));
+
+    client.getTableOptions(client.store.state).onRowSelectionChange?.({
+      u2: true,
+    });
+
+    expect(rowSelection.valueFor(client)).toEqual(['u2']);
+    expect(rowSelection.active.predicate?.toString()).toContain(
+      '"id" = \'u2\'',
+    );
+    expect(rowSelection.active.predicate?.toString()).not.toContain(
+      '"country"',
+    );
+  });
+
+  test('supports row-values selection fallback using current row values', () => {
+    const rowSelection = new Selection();
+    const { client } = createFlatClient({
+      rowSelectionMode: 'row-values',
+      rowSelection: {
+        selection: rowSelection,
+        column: 'country',
+      },
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      rows: [
+        { id: 'u1', name: 'Alice', age: 31, country: 'NZ', status: 'active' },
+        { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      ],
+    }));
+
+    client.getTableOptions(client.store.state).onRowSelectionChange?.({
+      '1': true,
+    });
+
+    expect(rowSelection.active.predicate?.toString()).toContain(
+      '"country" IN (\'AU\')',
+    );
+  });
+
+  test('uses facetBy metadata for sidecar facet queries', async () => {
+    const coordinator = new FakeCoordinator();
+    const client = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      coordinator: coordinator as never,
+      columns: [
+        {
+          accessorKey: 'country',
+          header: 'Country',
+          meta: {
+            mosaic: {
+              sqlColumn: 'country_name',
+              facetBy: 'country_code',
+              facet: 'unique',
+              facetSortMode: 'count',
+            },
+          },
+        },
+      ],
+    });
+
+    coordinator.enqueueResponse('FROM "athletes"', createArrowTable([]));
+    coordinator.enqueueResponse(
+      (sql) => sql.includes('GROUP BY "country_code"'),
+      createArrowTable([{ country_code: 'NZ' }]),
+    );
+
+    client.connect();
+    await client.pending;
+
+    client.requestFacet('country', 'unique');
+
+    await waitFor(() => {
+      expect(client.getFacetValue<Array<unknown>>('country')).toEqual(['NZ']);
+    });
+
+    expect(
+      coordinator.requestLog.some(
+        ({ sql }) =>
+          sql.includes('GROUP BY "country_code"') &&
+          sql.includes('ORDER BY') &&
+          sql.includes('DESC'),
+      ),
+    ).toBe(true);
+  });
+
   test('resets pagination and requeries when an external filter selection changes', async () => {
     const filterBy = new Selection();
     const { client, coordinator } = createFlatClient({ filterBy });
@@ -319,6 +609,92 @@ describe('MosaicDataTable characterization', () => {
     const rowSelectionPredicate = rowSelection.active.predicate;
     expect(rowSelectionPredicate).not.toBeNull();
     expect(rowSelectionPredicate!.toString()).toContain("\"id\" IN ('2', '7')");
+  });
+
+  test('does not project row selection fallback fields from query factory sources', () => {
+    const rowSelection = new Selection();
+    const client = new MosaicDataTable<Record<string, string | number>>({
+      table: () =>
+        mSql.Query.from('athletes')
+          .select({ key: mSql.column('country'), metric: mSql.count() })
+          .groupby('country'),
+      columns: [
+        { accessorKey: 'key', header: 'Country' },
+        { accessorKey: 'metric', header: 'Count' },
+      ],
+      rowSelection: {
+        selection: rowSelection,
+        column: 'country',
+      },
+      tableOptions: {
+        getRowId: (row) => String(row.key),
+      },
+      manualHighlight: true,
+    });
+
+    const sql = client.query()?.toString();
+
+    expect(sql).toContain('SELECT "key", "metric" FROM');
+    expect(sql).not.toContain('SELECT "key", "metric", "country" FROM');
+
+    client.getTableOptions(client.store.state).onRowSelectionChange?.({
+      NZ: true,
+    });
+
+    expect(rowSelection.valueFor(client)).toEqual(['NZ']);
+    expect(rowSelection.active.predicate?.toString()).toContain(
+      '"country" = \'NZ\'',
+    );
+  });
+
+  test('projects configured manual highlight fields even when hidden', () => {
+    const client = new MosaicDataTable<Record<string, string | number | null>>({
+      table: () =>
+        mSql.Query.from('athletes')
+          .select({
+            key: mSql.column('country'),
+            metric: mSql.count(),
+            __is_highlighted: mSql.literal(1),
+          })
+          .groupby('country'),
+      columns: [
+        { accessorKey: 'key', header: 'Country' },
+        { accessorKey: 'metric', header: 'Count' },
+        { accessorKey: '__is_highlighted', header: 'Highlighted' },
+      ],
+      manualHighlight: true,
+      tableOptions: {
+        initialState: {
+          columnVisibility: { __is_highlighted: false },
+        },
+      },
+    });
+
+    const sql = client.query()?.toString();
+
+    expect(sql).toContain('SELECT "key", "metric", "__is_highlighted" FROM');
+  });
+
+  test('refreshes manual highlight queries when row selection changes or clears', () => {
+    const rowSelection = new Selection();
+    const { client } = createFlatClient({
+      manualHighlight: true,
+      rowSelection: {
+        selection: rowSelection,
+        column: 'id',
+      },
+    });
+
+    client.connect();
+    const requestUpdateSpy = vi
+      .spyOn(client, 'requestUpdate')
+      .mockImplementation(() => client as never);
+    const tableOptions = client.getTableOptions(client.store.state);
+
+    tableOptions.onRowSelectionChange?.({ '2': true });
+    tableOptions.onRowSelectionChange?.({});
+
+    expect(requestUpdateSpy).toHaveBeenCalledTimes(2);
   });
 
   test('hydrates row selection from a shared selection for remounted table clients', async () => {
@@ -519,6 +895,154 @@ describe('MosaicDataTable characterization', () => {
       expect(dashboardClient.store.state.tableState.rowSelection).toEqual({});
       expect(fullscreenClient.store.state.tableState.rowSelection).toEqual({});
     });
+  });
+
+  test('queries pinned rows by stable row id and keeps them available across pages', async () => {
+    const { client, coordinator } = createFlatClient({
+      rowId: 'id',
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      rows: [
+        { id: 'u1', name: 'Alice', age: 31, country: 'NZ', status: 'active' },
+      ],
+    }));
+
+    coordinator.enqueueResponse(
+      (sql) => sql.includes('"id" IN (\'u2\')') && !sql.includes('LIMIT'),
+      createArrowTable([
+        { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      ]),
+    );
+
+    client.getTableOptions(client.store.state).onRowPinningChange?.({
+      top: ['u2'],
+      bottom: [],
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.pinnedRows.top).toEqual([
+        { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      ]);
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      rows: [
+        { id: 'u3', name: 'Cara', age: 24, country: 'US', status: 'active' },
+      ],
+    }));
+
+    const tableOptions = client.getTableOptions(client.store.state);
+    expect(tableOptions.data).toEqual([
+      { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      { id: 'u3', name: 'Cara', age: 24, country: 'US', status: 'active' },
+    ]);
+  });
+
+  test('ignores stale main row query responses after a newer query starts', async () => {
+    const { client, coordinator } = createFlatClient();
+    const first = createDeferred<ReturnType<typeof createArrowTable>>();
+
+    coordinator.enqueueResponse('FROM "athletes"', first.promise);
+    coordinator.enqueueResponse(
+      'FROM "athletes"',
+      createArrowTable([
+        { id: 'new', name: 'New', age: 20, country: 'NZ', status: 'active' },
+      ]),
+    );
+
+    const firstRequest = client.requestQuery();
+    const secondRequest = client.requestQuery();
+    await secondRequest;
+
+    expect(client.store.state.rows).toEqual([
+      { id: 'new', name: 'New', age: 20, country: 'NZ', status: 'active' },
+    ]);
+
+    first.resolve(
+      createArrowTable([
+        { id: 'old', name: 'Old', age: 40, country: 'AU', status: 'active' },
+      ]),
+    );
+    await firstRequest;
+
+    expect(client.store.state.rows).toEqual([
+      { id: 'new', name: 'New', age: 20, country: 'NZ', status: 'active' },
+    ]);
+  });
+
+  test('ignores stale sidecar responses after a newer sidecar query starts', async () => {
+    const coordinator = new FakeCoordinator();
+    const first = createDeferred<ReturnType<typeof createArrowTable>>();
+    const results: Array<number> = [];
+    const sidecar = new SidecarClient(
+      {
+        source: 'athletes',
+        column: 'count',
+        getFilters: () => [],
+        onResult: (count: number) => {
+          results.push(count);
+        },
+      },
+      TotalCountStrategy,
+    );
+
+    sidecar.setCoordinator(coordinator as never);
+    coordinator.enqueueResponse('FROM "athletes"', first.promise);
+    coordinator.enqueueResponse(
+      'FROM "athletes"',
+      createArrowTable([{ count: 12 }]),
+    );
+
+    const firstRequest = sidecar.requestQuery();
+    const secondRequest = sidecar.requestQuery();
+    await secondRequest;
+
+    first.resolve(createArrowTable([{ count: 3 }]));
+    await firstRequest;
+
+    expect(results).toEqual([12]);
+  });
+
+  test('ignores stale pinned row query responses after pinning changes', async () => {
+    const { client, coordinator } = createFlatClient({
+      rowId: 'id',
+    });
+    const first = createDeferred<ReturnType<typeof createArrowTable>>();
+
+    coordinator.enqueueResponse(
+      (sql) => sql.includes('"id" IN (\'u2\')'),
+      first.promise,
+    );
+    coordinator.enqueueResponse(
+      (sql) => sql.includes('"id" IN (\'u3\')'),
+      createArrowTable([
+        { id: 'u3', name: 'Cara', age: 24, country: 'US', status: 'active' },
+      ]),
+    );
+
+    const tableOptions = client.getTableOptions(client.store.state);
+    tableOptions.onRowPinningChange?.({ top: ['u2'], bottom: [] });
+    tableOptions.onRowPinningChange?.({ top: ['u3'], bottom: [] });
+
+    await waitFor(() => {
+      expect(client.store.state.pinnedRows.top).toEqual([
+        { id: 'u3', name: 'Cara', age: 24, country: 'US', status: 'active' },
+      ]);
+    });
+
+    first.resolve(
+      createArrowTable([
+        { id: 'u2', name: 'Bob', age: 28, country: 'AU', status: 'active' },
+      ]),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(client.store.state.pinnedRows.top).toEqual([
+      { id: 'u3', name: 'Cara', age: 24, country: 'US', status: 'active' },
+    ]);
   });
 
   test('only reacts to meaningful table state changes and refreshes sidecars on filter changes', () => {

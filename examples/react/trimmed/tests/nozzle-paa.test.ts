@@ -5,6 +5,8 @@ import type { Page } from '@playwright/test';
 const init = getInit('nozzle-paa');
 
 test.describe('nozzle-paa page', () => {
+  const summaryTableIds = ['phrase', 'question', 'domain', 'url'] as const;
+
   const readUniqueQuestionsKpi = async (page: Page) => {
     const card = page.getByText('# of Unique Questions').locator('xpath=..');
     const valueText =
@@ -23,6 +25,24 @@ test.describe('nozzle-paa page', () => {
     await expect(heading).toBeVisible();
     await expect(page.getByText(/^Selected \(\d+\)$/)).toHaveCount(0);
     await expect(page.getByText('undefined')).toHaveCount(0);
+  });
+
+  test('renders initial summary table rows', async ({ page }) => {
+    await init(page);
+
+    for (const summaryId of summaryTableIds) {
+      const card = page.getByTestId(`summary-table-${summaryId}`);
+
+      await expect
+        .poll(async () => {
+          const bodyText = (await card.locator('tbody').textContent()) ?? '';
+          const rowCount = await card.locator('tbody tr').count();
+
+          return rowCount > 0 && !bodyText.includes('No results.');
+        })
+        .toBe(true);
+      await expect(card.locator('tbody tr.opacity-30')).toHaveCount(0);
+    }
   });
 
   test('keeps narrowed summary selections visible and removable outside the table body', async ({
@@ -167,6 +187,9 @@ test.describe('nozzle-paa page', () => {
 
     await expect.poll(() => readUniqueQuestionsKpi(page)).toBe(initialKpi);
     await expect(page.getByText('Selected Question:')).toHaveCount(0);
+    await expect(
+      restoredQuestionCard.locator('tbody tr.opacity-30'),
+    ).toHaveCount(0);
     await expect(
       restoredQuestionCard.getByRole('button', {
         name: 'Clear PAA Questions selections',

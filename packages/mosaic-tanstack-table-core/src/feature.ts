@@ -25,6 +25,9 @@ export const createMosaicFeature = <
             type: FacetStrategyKeyWithoutInput,
           ) => client.requestFacet(columnId, type),
           requestTotalCount: () => client.sidecarManager.requestTotalCount(),
+          hoverRow: (row: TData | null) => client.hoverRow(row),
+          selectRow: (row: TData | null) => client.selectRow(row),
+          clearSelection: () => client.clearSelection(),
           client: client,
         },
       });

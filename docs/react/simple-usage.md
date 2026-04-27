@@ -95,7 +95,7 @@ function MyTableView() {
 
 ### 5. Define Columns with SQL Metadata
 
-You can configure SQL behavior directly in column definitions using `meta.mosaicDataTable`:
+You can configure SQL behavior directly in column definitions using `meta.mosaic`:
 
 ```tsx
 import { useMemo } from 'react';
@@ -108,7 +108,7 @@ function AthletesTable() {
         accessorKey: 'id',
         header: 'ID',
         meta: {
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'id',
             sqlFilterType: 'EQUALS',
           },
@@ -119,9 +119,10 @@ function AthletesTable() {
         header: 'Name',
         meta: {
           filterVariant: 'text',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'name',
             sqlFilterType: 'PARTIAL_ILIKE',
+            globalFilterBy: ['name'],
           },
         },
       },
@@ -130,7 +131,7 @@ function AthletesTable() {
         header: 'Nationality',
         meta: {
           filterVariant: 'select',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'nationality',
             sqlFilterType: 'EQUALS',
             facet: 'unique', // Populates dropdown with distinct values
@@ -143,7 +144,7 @@ function AthletesTable() {
         cell: (props) => `${props.getValue()}m`,
         meta: {
           filterVariant: 'range',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'height',
             sqlFilterType: 'RANGE',
             facet: 'minmax', // Gets min/max for slider bounds
@@ -155,7 +156,7 @@ function AthletesTable() {
         header: 'Sport',
         meta: {
           filterVariant: 'select',
-          mosaicDataTable: {
+          mosaic: {
             sqlColumn: 'sport',
             sqlFilterType: 'EQUALS',
             facet: 'unique',
@@ -214,8 +215,37 @@ function AthletesTable() {
 - `table`: DuckDB table name or query factory
 - `filterBy`: Selection providing external filter predicates
 - `tableFilterSelection`: Selection where column filters are written
-- `columns`: TanStack column definitions with `meta.mosaicDataTable`
+- `columns`: TanStack column definitions with `meta.mosaic`
 - `converter`: Transform raw DB rows into typed app data (handles nulls, dates)
+
+`meta.mosaicDataTable` is still supported for existing code. When both
+namespaces configure the same metadata option, `meta.mosaic` takes precedence.
+
+`meta.mosaic` also supports operation-specific SQL fields:
+
+```tsx
+{
+  accessorKey: 'displayName',
+  header: 'Name',
+  meta: {
+    filterVariant: 'text',
+    mosaic: {
+      sqlColumn: 'name',
+      fields: ['first_name', 'last_name'],
+      sortBy: 'last_name',
+      filterBy: 'name_search',
+      facetBy: 'name',
+      globalFilterBy: ['first_name', 'last_name'],
+      sqlFilterType: 'PARTIAL_ILIKE',
+    },
+  },
+}
+```
+
+The adapter plans each query projection from visible columns, visible columns'
+declared `fields`, active sort/filter/global-filter fields, and row identity
+fields. This lets custom cells depend on hidden SQL fields while still avoiding
+unneeded columns.
 
 ### 7. Render the Table
 
@@ -306,48 +336,97 @@ const { tableOptions } = useMosaicReactTable({
 
 ## Adding External Inputs + Chart (Shared Context)
 
-Connect vgplot inputs to your selection and render a chart that filters by `$combined`:
+Connect React Mosaic inputs to your selection and render a chart that filters by
+`$combined`:
 
 ```tsx
-useEffect(() => {
-  const inputs = vg.hconcat(
-    vg.menu({
-      label: 'Sport',
-      as: $query,
-      from: 'athletes',
-      column: 'sport',
-    }),
-    vg.menu({
-      label: 'Gender',
-      as: $query,
-      from: 'athletes',
-      column: 'sex',
-    }),
-    vg.search({
-      label: 'Name',
-      as: $query,
-      from: 'athletes',
-      column: 'name',
-      type: 'contains',
-    }),
+import {
+  useMosaicSelectInput,
+  useMosaicTextInput,
+} from '@nozzleio/mosaic-tanstack-react-table/inputs';
+
+function InputsAndChart() {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const sport = useMosaicSelectInput({
+    as: $query,
+    from: 'athletes',
+    column: 'sport',
+    field: 'sport',
+  });
+  const sex = useMosaicSelectInput({
+    as: $query,
+    from: 'athletes',
+    column: 'sex',
+    field: 'sex',
+  });
+  const name = useMosaicTextInput({
+    as: $query,
+    from: 'athletes',
+    column: 'name',
+    field: 'name',
+    match: 'contains',
+  });
+
+  useEffect(() => {
+    const plot = vg.plot(
+      vg.dot(vg.from('athletes', { filterBy: $combined }), {
+        x: 'weight',
+        y: 'height',
+        fill: 'sex',
+        r: 2,
+        opacity: 0.05,
+      }),
+      vg.intervalXY({ as: $query }),
+      vg.xyDomain(vg.Fixed),
+      vg.colorDomain(vg.Fixed),
+    );
+
+    chartRef.current?.replaceChildren(plot);
+  }, []);
+
+  const sportIndex = sport.options.findIndex((option) =>
+    Object.is(option.value, sport.value),
+  );
+  const sexIndex = sex.options.findIndex((option) =>
+    Object.is(option.value, sex.value),
   );
 
-  const plot = vg.plot(
-    vg.dot(vg.from('athletes', { filterBy: $combined }), {
-      x: 'weight',
-      y: 'height',
-      fill: 'sex',
-      r: 2,
-      opacity: 0.05,
-    }),
-    vg.intervalXY({ as: $query }),
-    vg.xyDomain(vg.Fixed),
-    vg.colorDomain(vg.Fixed),
+  return (
+    <>
+      <select
+        value={sportIndex < 0 ? '' : String(sportIndex)}
+        onChange={(event) => {
+          const option = sport.options[Number(event.currentTarget.value)];
+          sport.setValue(option?.value ?? null);
+        }}
+      >
+        {sport.options.map((option, index) => (
+          <option key={index} value={String(index)}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <select
+        value={sexIndex < 0 ? '' : String(sexIndex)}
+        onChange={(event) => {
+          const option = sex.options[Number(event.currentTarget.value)];
+          sex.setValue(option?.value ?? null);
+        }}
+      >
+        {sex.options.map((option, index) => (
+          <option key={index} value={String(index)}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <input
+        value={name.value}
+        onChange={(event) => name.setValue(event.currentTarget.value)}
+      />
+      <div ref={chartRef} />
+    </>
   );
-
-  const layout = vg.vconcat(inputs, vg.vspace(10), plot);
-  document.getElementById('chart')?.replaceChildren(layout);
-}, []);
+}
 ```
 
 These inputs update `$query`. The chart filters by `$combined`, so chart and table stay in sync.
@@ -368,6 +447,41 @@ const { tableOptions } = useMosaicReactTable({
 ```
 
 The hook manages `manualPagination` internally and fetches only the visible page from DuckDB.
+
+## Row Identity, Selection, and Pinning
+
+Use `rowId` when rows need stable IDs across sorting, filtering, pagination, or
+pinning:
+
+```tsx
+const { tableOptions } = useMosaicReactTable<AthleteRowData>({
+  table: 'athletes',
+  columns,
+  rowId: 'id',
+  rowSelection: {
+    selection: $rowSelection,
+    column: 'id',
+  },
+  tableOptions: {
+    enableRowSelection: true,
+    enableRowPinning: true,
+  },
+});
+```
+
+`rowId` can be a string field or an array of fields. Composite IDs are
+serialized for TanStack and should be treated as opaque strings. If `rowId` is
+omitted, the adapter uses `rowSelection.column` as the stable identity field
+when row selection is configured.
+
+The default `rowSelectionMode` is `'row-id'`, so clicked rows publish predicates
+over the stable identity field. Use `rowSelectionMode: 'row-values'` only when
+you need the legacy behavior based on current row values.
+
+In flat tables, TanStack row pinning triggers a separate pinned-row query by
+stable row identity. Pinned rows stay available when the current page changes.
+Grouped tables keep their group-derived row IDs and do not use the flat
+pinned-row query path.
 
 ## Debugging
 
