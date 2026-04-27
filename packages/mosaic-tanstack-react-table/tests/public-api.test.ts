@@ -4,6 +4,7 @@ import * as reactTable from '../src/index';
 import * as controllers from '../src/controllers';
 import * as debug from '../src/debug';
 import * as helpers from '../src/helpers';
+import * as inputs from '../src/inputs';
 
 import type {
   ArrayMultiselectConditionOperatorId,
@@ -34,6 +35,14 @@ import type {
   UseMosaicFiltersOptions,
   UseMosaicHistogramResult,
 } from '../src/index';
+import type {
+  MosaicSelectInputOptions,
+  MosaicSelectInputState,
+  MosaicTextInputOptions,
+  MosaicTextInputState,
+  UseMosaicSelectInputResult,
+  UseMosaicTextInputResult,
+} from '../src/inputs';
 
 test('publishes the intentional React adapter surface', () => {
   expect(reactTable).toHaveProperty('useMosaicReactTable');
@@ -74,6 +83,13 @@ test('publishes the intentional React adapter surface', () => {
   expect(controllers).toHaveProperty('AggregationBridge');
   expect(controllers).toHaveProperty('HistogramController');
   expect(debug).toHaveProperty('logger');
+});
+
+test('publishes a hook-only inputs surface', () => {
+  expect(inputs).toHaveProperty('useMosaicTextInput');
+  expect(inputs).toHaveProperty('useMosaicSelectInput');
+  expect(inputs).not.toHaveProperty('MosaicTextInput');
+  expect(inputs).not.toHaveProperty('MosaicSelect');
 });
 
 test('publishes the narrowed adapter hook contracts', () => {
@@ -223,5 +239,28 @@ test('publishes the narrowed adapter hook contracts', () => {
     | 'on_or_after'
     | 'is_empty'
     | 'is_not_empty'
+  >();
+});
+
+test('publishes the intended input hook contracts', () => {
+  expectTypeOf<MosaicTextInputOptions['match']>().toEqualTypeOf<
+    'contains' | 'prefix' | 'suffix' | 'regexp' | undefined
+  >();
+  expectTypeOf<MosaicTextInputState['value']>().toEqualTypeOf<string>();
+  expectTypeOf<UseMosaicTextInputResult['setValue']>().toEqualTypeOf<
+    (value: string | null) => void
+  >();
+  expectTypeOf<UseMosaicTextInputResult['clear']>().toEqualTypeOf<() => void>();
+  expectTypeOf<MosaicSelectInputOptions<number>['multiple']>().toEqualTypeOf<
+    boolean | undefined
+  >();
+  expectTypeOf<MosaicSelectInputState<number>['value']>().toEqualTypeOf<
+    number | Array<number> | '' | null
+  >();
+  expectTypeOf<UseMosaicSelectInputResult<number>['setValue']>().toEqualTypeOf<
+    (value: number | Array<number> | '' | null) => void
+  >();
+  expectTypeOf<UseMosaicSelectInputResult<number>['clear']>().toEqualTypeOf<
+    () => void
   >();
 });

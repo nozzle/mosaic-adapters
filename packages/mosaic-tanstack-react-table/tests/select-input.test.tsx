@@ -2,7 +2,7 @@ import * as React from 'react';
 import { act } from 'react';
 import { Store } from '@tanstack/react-store';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { MosaicSelect, useMosaicSelectInput } from '../src/inputs';
+import { useMosaicSelectInput } from '../src/inputs';
 import { flushEffects, render } from './test-utils';
 
 type MockCoordinator = {
@@ -164,110 +164,5 @@ describe('useMosaicSelectInput', () => {
 
     view.unmount();
     expect(client.destroy).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('MosaicSelect', () => {
-  test('maps selected option indexes back to original values', async () => {
-    const objectValue = { id: 'object-value' };
-    const onValueChange = vi.fn();
-
-    const view = render(
-      <MosaicSelect
-        as={{} as never}
-        aria-label="Sport"
-        onValueChange={onValueChange}
-      />,
-    );
-    await flushEffects();
-
-    const client = mockState.selectClients[0] as {
-      setValue: ReturnType<typeof vi.fn>;
-      activate: ReturnType<typeof vi.fn>;
-      store: Store<SelectState>;
-    };
-
-    await act(async () => {
-      client.store.setState((state) => ({
-        ...state,
-        options: [
-          { value: '', label: 'All' },
-          { value: objectValue, label: 'Object' },
-        ],
-      }));
-    });
-    await flushEffects();
-
-    const select = document.querySelector('select');
-
-    expect(select).not.toBeNull();
-
-    await act(async () => {
-      select!.value = '1';
-      select!.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await flushEffects();
-
-    expect(client.setValue).toHaveBeenCalledWith(objectValue);
-    expect(onValueChange).toHaveBeenCalledWith(objectValue);
-
-    await act(async () => {
-      select!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
-      select!.dispatchEvent(new Event('pointerover', { bubbles: true }));
-    });
-    await flushEffects();
-
-    expect(client.activate).toHaveBeenCalledWith(objectValue);
-    expect(client.activate).toHaveBeenCalledTimes(2);
-
-    view.unmount();
-  });
-
-  test('maps multi-select selected indexes back to original value arrays', async () => {
-    const firstValue = { id: 'first' };
-    const secondValue = { id: 'second' };
-    const onValueChange = vi.fn();
-
-    const view = render(
-      <MosaicSelect
-        as={{} as never}
-        aria-label="Sports"
-        multiple
-        onValueChange={onValueChange}
-      />,
-    );
-    await flushEffects();
-
-    const client = mockState.selectClients[0] as {
-      setValue: ReturnType<typeof vi.fn>;
-      store: Store<SelectState>;
-    };
-
-    await act(async () => {
-      client.store.setState((state) => ({
-        ...state,
-        options: [
-          { value: firstValue, label: 'First' },
-          { value: secondValue, label: 'Second' },
-        ],
-      }));
-    });
-    await flushEffects();
-
-    const select = document.querySelector('select');
-
-    expect(select).not.toBeNull();
-
-    await act(async () => {
-      select!.options[0]!.selected = true;
-      select!.options[1]!.selected = true;
-      select!.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await flushEffects();
-
-    expect(client.setValue).toHaveBeenCalledWith([firstValue, secondValue]);
-    expect(onValueChange).toHaveBeenCalledWith([firstValue, secondValue]);
-
-    view.unmount();
   });
 });

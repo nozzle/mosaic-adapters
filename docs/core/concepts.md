@@ -192,10 +192,10 @@ The adapter automatically queries facet data and keeps it in sync with active fi
 The table adapter includes Mosaic-aware input clients for apps that want native
 or custom controls without relying on vgplot DOM inputs.
 
-| Package subpath                                   | Use case                                      |
-| ------------------------------------------------- | --------------------------------------------- |
-| `@nozzleio/mosaic-tanstack-react-table/inputs`    | React hooks and minimal native input controls |
-| `@nozzleio/mosaic-tanstack-table-core/input-core` | Framework-agnostic Text and Select clients    |
+| Package subpath                                   | Use case                                       |
+| ------------------------------------------------- | ---------------------------------------------- |
+| `@nozzleio/mosaic-tanstack-react-table/inputs`    | React hooks for wiring your own input controls |
+| `@nozzleio/mosaic-tanstack-table-core/input-core` | Framework-agnostic Text and Select clients     |
 
 Text and Select inputs write through an `as` target, matching vgplot's input
 style:

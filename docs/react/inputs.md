@@ -57,8 +57,8 @@ All inputs follow the same pattern:
 
 ## Headless Text and Select Inputs
 
-Use the `/inputs` sub-export for Mosaic-aware controls that manage their own
-Mosaic client while leaving rendering up to React.
+Use the `/inputs` sub-export for Mosaic-aware hooks that manage their own
+Mosaic client while leaving rendering entirely up to your React components.
 
 ```tsx
 import {
@@ -66,10 +66,6 @@ import {
   useMosaicTextInput,
 } from '@nozzleio/mosaic-tanstack-react-table/inputs';
 ```
-
-`MosaicTextInput` and `MosaicSelect` are also exported as minimal native
-wrappers, but most apps should wire the hooks into their own design-system
-controls.
 
 The framework-agnostic core lives at
 `@nozzleio/mosaic-tanstack-table-core/input-core` for non-React adapters.
@@ -107,12 +103,20 @@ function NameSearch() {
   });
 
   return (
-    <input
-      value={name.value}
-      onChange={(event) => name.setValue(event.currentTarget.value)}
-      onFocus={(event) => name.activate(event.currentTarget.value)}
-      placeholder="Search names"
-    />
+    <>
+      <input
+        value={name.value}
+        onChange={(event) => name.setValue(event.currentTarget.value)}
+        onFocus={(event) => name.activate(event.currentTarget.value)}
+        onPointerEnter={(event) => name.activate(event.currentTarget.value)}
+        placeholder="Search names"
+      />
+      <button type="button" onClick={() => name.clear()}>
+        Clear
+      </button>
+      {name.pending ? <span>Loading suggestions</span> : null}
+      {name.error ? <span>{name.error.message}</span> : null}
+    </>
   );
 }
 ```
@@ -148,19 +152,30 @@ function SportSelect() {
   );
 
   return (
-    <select
-      value={selectedIndex < 0 ? '' : String(selectedIndex)}
-      onChange={(event) => {
-        const option = sport.options[Number(event.currentTarget.value)];
-        sport.setValue(option?.value ?? null);
-      }}
-    >
-      {sport.options.map((option, index) => (
-        <option key={index} value={String(index)}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <>
+      <select
+        value={selectedIndex < 0 ? '' : String(selectedIndex)}
+        onChange={(event) => {
+          const option = sport.options[Number(event.currentTarget.value)];
+          sport.setValue(option?.value ?? null);
+        }}
+        onFocus={(event) => {
+          const option = sport.options[Number(event.currentTarget.value)];
+          sport.activate(option?.value ?? null);
+        }}
+      >
+        {sport.options.map((option, index) => (
+          <option key={index} value={String(index)}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <button type="button" onClick={() => sport.clear()}>
+        Clear
+      </button>
+      {sport.pending ? <span>Loading options</span> : null}
+      {sport.error ? <span>{sport.error.message}</span> : null}
+    </>
   );
 }
 ```

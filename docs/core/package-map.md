@@ -30,7 +30,7 @@ Most React users should start with `@nozzleio/mosaic-tanstack-react-table` and `
 - `useMosaicHistogram`
 - `useGroupedTableState`
 - `MosaicFilterProvider`, `useFilterRegistry`, `useActiveFilters`, `useRegisterFilterSource`
-- `@nozzleio/mosaic-tanstack-react-table/inputs`: headless input hooks and minimal native controls, including `useMosaicTextInput`, `MosaicTextInput`, `useMosaicSelectInput`, and `MosaicSelect`
+- `@nozzleio/mosaic-tanstack-react-table/inputs`: headless input hooks, including `useMosaicTextInput` and `useMosaicSelectInput`
 - `@nozzleio/mosaic-tanstack-react-table/helpers`: mapping helpers and coercion utilities
 - `@nozzleio/mosaic-tanstack-react-table/controllers`: headless controllers such as `AggregationBridge` and `HistogramController`
 - `@nozzleio/mosaic-tanstack-react-table/debug`: `logger`

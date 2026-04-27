@@ -384,18 +384,37 @@ function InputsAndChart() {
     chartRef.current?.replaceChildren(plot);
   }, []);
 
+  const sportIndex = sport.options.findIndex((option) =>
+    Object.is(option.value, sport.value),
+  );
+  const sexIndex = sex.options.findIndex((option) =>
+    Object.is(option.value, sex.value),
+  );
+
   return (
     <>
-      <select onChange={(event) => sport.setValue(event.currentTarget.value)}>
-        {sport.options.map((option) => (
-          <option key={option.label} value={String(option.value)}>
+      <select
+        value={sportIndex < 0 ? '' : String(sportIndex)}
+        onChange={(event) => {
+          const option = sport.options[Number(event.currentTarget.value)];
+          sport.setValue(option?.value ?? null);
+        }}
+      >
+        {sport.options.map((option, index) => (
+          <option key={index} value={String(index)}>
             {option.label}
           </option>
         ))}
       </select>
-      <select onChange={(event) => sex.setValue(event.currentTarget.value)}>
-        {sex.options.map((option) => (
-          <option key={option.label} value={String(option.value)}>
+      <select
+        value={sexIndex < 0 ? '' : String(sexIndex)}
+        onChange={(event) => {
+          const option = sex.options[Number(event.currentTarget.value)];
+          sex.setValue(option?.value ?? null);
+        }}
+      >
+        {sex.options.map((option, index) => (
+          <option key={index} value={String(index)}>
             {option.label}
           </option>
         ))}

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { act } from 'react';
 import { Store } from '@tanstack/react-store';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { MosaicTextInput, useMosaicTextInput } from '../src/inputs';
+import { useMosaicTextInput } from '../src/inputs';
 import { flushEffects, render } from './test-utils';
 
 type MockCoordinator = {
@@ -159,53 +159,5 @@ describe('useMosaicTextInput', () => {
 
     view.unmount();
     expect(client.destroy).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('MosaicTextInput', () => {
-  test('writes input changes and emits activation handlers', async () => {
-    const onValueChange = vi.fn();
-    const onFocus = vi.fn();
-    const onPointerEnter = vi.fn();
-
-    const view = render(
-      <MosaicTextInput
-        as={{} as never}
-        aria-label="Sport"
-        onValueChange={onValueChange}
-        onFocus={onFocus}
-        onPointerEnter={onPointerEnter}
-      />,
-    );
-    await flushEffects();
-
-    const client = mockState.textClients[0] as {
-      setValue: ReturnType<typeof vi.fn>;
-      activate: ReturnType<typeof vi.fn>;
-    };
-    const input = document.querySelector('input');
-
-    expect(input).not.toBeNull();
-
-    await act(async () => {
-      input!.value = 'skiing';
-      input!.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    await flushEffects();
-
-    expect(client.setValue).toHaveBeenCalledWith('skiing');
-    expect(onValueChange).toHaveBeenCalledWith('skiing');
-
-    await act(async () => {
-      input!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
-      input!.dispatchEvent(new Event('pointerover', { bubbles: true }));
-    });
-    await flushEffects();
-
-    expect(client.activate).toHaveBeenCalledWith('skiing');
-    expect(onFocus).toHaveBeenCalledTimes(1);
-    expect(onPointerEnter).toHaveBeenCalledTimes(1);
-
-    view.unmount();
   });
 });
