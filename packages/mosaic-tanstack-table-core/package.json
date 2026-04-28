@@ -76,8 +76,8 @@
     "@tanstack/table-core": "catalog:"
   },
   "peerDependencies": {
-    "@uwdata/mosaic-core": ">=0.23.1 <1",
-    "@uwdata/mosaic-sql": ">=0.23.0 <1"
+    "@uwdata/mosaic-core": ">=0.24.3 <1",
+    "@uwdata/mosaic-sql": ">=0.24.3 <1"
   },
   "devDependencies": {
     "@uwdata/mosaic-core": "catalog:",

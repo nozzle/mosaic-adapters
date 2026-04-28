@@ -72,8 +72,8 @@
   "peerDependencies": {
     "@nozzleio/react-mosaic": ">=0.1.0 <1",
     "@tanstack/react-table": ">=8.17.3",
-    "@uwdata/mosaic-core": ">=0.23.1 <1",
-    "@uwdata/mosaic-sql": ">=0.23.0 <1",
+    "@uwdata/mosaic-core": ">=0.24.3 <1",
+    "@uwdata/mosaic-sql": ">=0.24.3 <1",
     "react": ">=19.2.4",
     "react-dom": ">=19.2.4"
   },
