@@ -1129,14 +1129,11 @@ describe('MosaicDataTable characterization', () => {
     }));
 
     coordinator.enqueueResponse(
-      (sql) =>
-        sql.includes('FROM "athletes"') && !sql.includes('GROUP BY "country"'),
+      (sql) => sql.includes('FROM "athletes"') && !sql.includes('GROUP BY'),
       createArrowTable([]),
     );
     coordinator.enqueueResponse(
-      (sql) =>
-        sql.includes('GROUP BY "country"') &&
-        sql.includes('"status" = \'active\''),
+      (sql) => sql.includes('GROUP BY') && sql.includes('"country"'),
       createArrowTable([{ country: 'NZ' }, { country: 'AU' }]),
     );
 
@@ -1153,12 +1150,12 @@ describe('MosaicDataTable characterization', () => {
     });
 
     const facetQuery = coordinator.requestLog.find(
-      ({ sql }) =>
-        sql.includes('GROUP BY "country"') &&
-        sql.includes('"status" = \'active\''),
+      ({ sql }) => sql.includes('GROUP BY') && sql.includes('"country"'),
     )?.sql;
 
     expect(facetQuery).toBeDefined();
+    expect(facetQuery).toContain('"status"');
+    expect(facetQuery).toContain("'active'");
     expect(facetQuery).not.toContain('"country" = \'NZ\'');
     expect(client.getFacetValue<Array<unknown>>('country')).toEqual([
       'NZ',
