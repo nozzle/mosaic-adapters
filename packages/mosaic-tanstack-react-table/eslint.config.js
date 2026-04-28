@@ -18,6 +18,7 @@ export default defineConfig([
       '@eslint-react/no-unstable-context-value': 'off',
       '@eslint-react/no-unstable-default-props': 'off',
       '@eslint-react/dom/no-missing-button-type': 'off',
+      'react-hooks/set-state-in-effect': 'warn',
     },
   },
 ]);
