@@ -64,7 +64,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "clean": "rimraf dist",
+    "clear-build": "rimraf dist",
     "build": "vite build",
     "test:types": "tsc --noEmit",
     "test:build": "vite build",

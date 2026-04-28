@@ -4,7 +4,7 @@
   "version": "0.0.9",
   "type": "module",
   "scripts": {
-    "clean": "rimraf dist",
+    "clear-build": "rimraf dist",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ./src",

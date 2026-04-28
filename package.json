@@ -8,7 +8,7 @@
   "packageManager": "pnpm@10.19.0",
   "type": "module",
   "scripts": {
-    "clean": "nx run-many --target=clean --exclude=examples/**",
+    "clear-build": "nx run-many --target=clear-build --exclude=examples/**",
     "changeset": "changeset",
     "changeset:publish": "changeset publish",
     "changeset:version": "changeset version",
