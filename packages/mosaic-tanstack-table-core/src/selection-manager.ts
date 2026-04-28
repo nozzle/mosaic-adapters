@@ -1,4 +1,5 @@
 import * as mSql from '@uwdata/mosaic-sql';
+import { clausePoint, clausePoints } from '@uwdata/mosaic-core';
 import { createStructAccess } from './utils';
 import { SqlIdentifier } from './domain/sql-identifier';
 import type {
@@ -125,13 +126,12 @@ export class MosaicSelectionManager<
       return;
     }
 
-    this.publish({
-      value: options.value,
-      predicate: mSql.isIn(
-        createStructAccess(SqlIdentifier.from(options.field)),
-        [mSql.literal(options.value)],
-      ),
-    });
+    const clause = clausePoint(
+      createStructAccess(SqlIdentifier.from(options.field)),
+      options.value,
+      { source: this.client, clients: new Set([this.client]) },
+    );
+    this.publish(clause);
   }
 
   public clear(): void {
@@ -187,12 +187,16 @@ export class MosaicSelectionManager<
         const listLiteral = mSql.sql`[${listContent}]`;
         predicate = mSql.listHasAny(colExpr, listLiteral);
       } else {
-        if (values.length === 1) {
+        if (
+          values.length === 1 &&
+          values[0] !== null &&
+          values[0] !== undefined
+        ) {
           // col = 'val'
           predicate = mSql.eq(colExpr, mSql.literal(values[0]));
         } else {
-          // col IN ('val1', 'val2')
-          predicate = mSql.isIn(
+          // Null-safe set inclusion.
+          predicate = mSql.isInDistinct(
             colExpr,
             values.map((v) => mSql.literal(v)),
           );
@@ -206,7 +210,10 @@ export class MosaicSelectionManager<
     });
   }
 
-  private publish(clause: Pick<SelectionClause, 'value' | 'predicate'>): void {
+  private publish(
+    clause: Pick<SelectionClause, 'value' | 'predicate'> &
+      Partial<Pick<SelectionClause, 'meta'>>,
+  ): void {
     const staleClauses = this.selection.clauses.filter(
       (clause) => clause.source !== this.client,
     );
@@ -223,6 +230,7 @@ export class MosaicSelectionManager<
       clients: new Set([this.client]),
       value: clause.value,
       predicate: clause.predicate,
+      meta: clause.meta,
     });
   }
 
@@ -246,10 +254,9 @@ export class MosaicSelectionManager<
     }
 
     if (fieldExpressions.length === 1) {
-      return mSql.isIn(
-        fieldExpressions[0]!,
-        completeValues.map((rowValues) => mSql.literal(rowValues[0])),
-      );
+      return clausePoints(fieldExpressions, completeValues, {
+        source: this.client,
+      }).predicate;
     }
 
     const clauses = completeValues.map((rowValues) =>

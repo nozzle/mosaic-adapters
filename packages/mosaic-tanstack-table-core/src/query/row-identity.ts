@@ -122,7 +122,7 @@ export function buildRowIdentityPredicate(
   }
 
   if (fields.length === 1) {
-    return mSql.isIn(
+    return mSql.isInDistinct(
       fields[0]!,
       rowValues.map((values) => mSql.literal(values[0])),
     );

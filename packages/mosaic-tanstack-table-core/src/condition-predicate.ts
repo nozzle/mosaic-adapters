@@ -161,7 +161,7 @@ export function buildCollectionPredicate(
     return mSql.sql`${typedCol} NOT IN ${createSqlInList(values)}`;
   }
 
-  return mSql.isIn(
+  return mSql.isInDistinct(
     typedCol,
     values.map((item) => mSql.literal(item)),
   );
@@ -258,7 +258,7 @@ export function buildConditionPredicate(
       return undefined;
     case 'in':
       if (Array.isArray(value) && value.length > 0) {
-        return mSql.isIn(
+        return mSql.isInDistinct(
           col,
           value.map((item) => mSql.literal(item)),
         );

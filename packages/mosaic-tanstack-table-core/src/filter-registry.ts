@@ -56,18 +56,18 @@ function resolveSourceId(sourceClient: ClauseSource | undefined): string {
 function buildScalarSelectionPredicate(
   column: string,
   values: Array<unknown>,
-): ReturnType<typeof mSql.eq> | ReturnType<typeof mSql.isIn> | null {
+): ReturnType<typeof mSql.eq> | ReturnType<typeof mSql.isInDistinct> | null {
   if (values.length === 0) {
     return null;
   }
 
   const columnExpr = createStructAccess(SqlIdentifier.from(column));
 
-  if (values.length === 1) {
+  if (values.length === 1 && values[0] !== null && values[0] !== undefined) {
     return mSql.eq(columnExpr, mSql.literal(values[0]));
   }
 
-  return mSql.isIn(
+  return mSql.isInDistinct(
     columnExpr,
     values.map((value) => mSql.literal(value)),
   );
