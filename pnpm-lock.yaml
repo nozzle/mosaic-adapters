@@ -31,14 +31,14 @@ catalogs:
       specifier: ^25.0.8
       version: 25.0.9
     '@uwdata/mosaic-core':
-      specifier: ^0.24.2
-      version: 0.24.2
+      specifier: ^0.24.3
+      version: 0.24.3
     '@uwdata/mosaic-sql':
-      specifier: ^0.24.2
-      version: 0.24.2
+      specifier: ^0.24.3
+      version: 0.24.3
     '@uwdata/vgplot':
-      specifier: ^0.24.2
-      version: 0.24.2
+      specifier: ^0.24.3
+      version: 0.24.3
     '@vitejs/plugin-react':
       specifier: ^6.0.1
       version: 6.0.1
@@ -94,6 +94,15 @@ importers:
       '@tanstack/vite-config':
         specifier: 'catalog:'
         version: 0.5.2(@types/node@25.0.9)(rollup@4.55.1)(typescript@5.9.3)(vite@8.0.2(@types/node@25.0.9)(esbuild@0.27.2)(jiti@2.6.1)(yaml@2.8.2))
+      '@uwdata/mosaic-core':
+        specifier: 'catalog:'
+        version: 0.24.3
+      '@uwdata/mosaic-sql':
+        specifier: 'catalog:'
+        version: 0.24.3
+      '@uwdata/vgplot':
+        specifier: 'catalog:'
+        version: 0.24.3
       eslint:
         specifier: 'catalog:'
         version: 10.1.0(jiti@2.6.1)
@@ -159,13 +168,13 @@ importers:
         version: 0.8.0
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.24.2
+        version: 0.24.3
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.24.2
+        version: 0.24.3
       '@uwdata/vgplot':
         specifier: 'catalog:'
-        version: 0.24.2
+        version: 0.24.3
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -266,10 +275,10 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.24.2
+        version: 0.24.3
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.24.2
+        version: 0.24.3
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.0.1(vite@8.0.2(@types/node@25.0.9)(esbuild@0.27.2)(jiti@2.6.1)(yaml@2.8.2))
@@ -297,10 +306,10 @@ importers:
     devDependencies:
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.24.2
+        version: 0.24.3
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.24.2
+        version: 0.24.3
       eslint:
         specifier: 'catalog:'
         version: 10.1.0(jiti@2.6.1)
@@ -328,7 +337,7 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.24.2
+        version: 0.24.3
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.0.1(vite@8.0.2(@types/node@25.0.9)(esbuild@0.27.2)(jiti@2.6.1)(yaml@2.8.2))
@@ -1972,20 +1981,20 @@ packages:
   '@uwdata/flechette@2.4.0':
     resolution: {integrity: sha512-cwxeYWe2iua4zPUopiqhYXkxaQWr0GK4Kbak7i0zemo3sgmNJ3IE+pNi6XD1dOK7q50SEXTLwieP5JycG6D56A==}
 
-  '@uwdata/mosaic-core@0.24.2':
-    resolution: {integrity: sha512-GWhLgiXhE1ZyM6fmpiajCo8jbZRrrExN+TQSPxOqPTF+4FTWeGQYkSHZALbvnoyG3JtJxIjd0A5LW6VoIXYTuA==}
+  '@uwdata/mosaic-core@0.24.3':
+    resolution: {integrity: sha512-pyA06srwSal123cq5FsYAOVYASHcWppDw0KhMdZ52wkG9hfKGnKl5atiPbDnRaPSsV0MS/nL6BKjlhUiQsnypw==}
 
-  '@uwdata/mosaic-inputs@0.24.2':
-    resolution: {integrity: sha512-uafUs28HAaZBdEQd7d1hNzhrZwztusG8iuDhyotbc9CeN1T1JXa4j4l6iG1L/vt7OZ13RPbuPGve4Tjemk1sQQ==}
+  '@uwdata/mosaic-inputs@0.24.3':
+    resolution: {integrity: sha512-w+Iz15sj7nWz+kMnvWmtkvH0ADmj0dT/FqYqg6OIPmet4mKTnxiKnGspKdzdf99sTqZBQHlzBWf3x+J9bXSEPA==}
 
-  '@uwdata/mosaic-plot@0.24.2':
-    resolution: {integrity: sha512-Y1+wrDrXunxLMLDuzeJdHldkvZRxR+nwhzjrqzijJL1PSBYn2Oi7I6k7RsUaZE1MIGBGlD4yBY6PlL86TcVSNg==}
+  '@uwdata/mosaic-plot@0.24.3':
+    resolution: {integrity: sha512-4F38VBFG/uBx760cazOWJG8qfUDN7tvjf5hP6E5zZRWfhzgndLJrSCbwTNfc7pmeMG/btsttSMTfk6vbC1gXPA==}
 
-  '@uwdata/mosaic-sql@0.24.2':
-    resolution: {integrity: sha512-CcMeVhipxCWrYDP8ingTjSR7rOyrytxGYRX1QXESIrK6wUbGHDq4v1ZMrYI5mePsvhZVLrMFxFwlo5+vCDU5aA==}
+  '@uwdata/mosaic-sql@0.24.3':
+    resolution: {integrity: sha512-PSsSy1PqFGXFBMzsLqzloP+/LuWHSWQIOrzlfGm+682q8/yZ49lQ9FnEFKa62rw7aZMSZ/Ra9a46LllMUG1r9w==}
 
-  '@uwdata/vgplot@0.24.2':
-    resolution: {integrity: sha512-b4aGHcaH9IbifEgAQu4jSQt2wP6QwvLQSV5xbVK42z6PrAiEoyEO2wCDxHKkH3XSop+Snu3/sd/3VskRPxIrjw==}
+  '@uwdata/vgplot@0.24.3':
+    resolution: {integrity: sha512-YBVbD7SYTy+P2tv0wvFd9EG7MJ+TFHSYoFgsr4jLBwp2n6TjFagjx2slKf3TitjQ1zGGJDiSGdt8Bz3fBHNuEQ==}
 
   '@vitejs/plugin-react@6.0.1':
     resolution: {integrity: sha512-l9X/E3cDb+xY3SWzlG1MOGt2usfEHGMNIaegaUGFsLkb3RCn/k8/TOXBcab+OndDI4TBtktT8/9BwwW8Vi9KUQ==}
@@ -5821,33 +5830,33 @@ snapshots:
 
   '@uwdata/flechette@2.4.0': {}
 
-  '@uwdata/mosaic-core@0.24.2':
+  '@uwdata/mosaic-core@0.24.3':
     dependencies:
       '@duckdb/duckdb-wasm': 1.33.1-dev42.0
       '@uwdata/flechette': 2.4.0
-      '@uwdata/mosaic-sql': 0.24.2
+      '@uwdata/mosaic-sql': 0.24.3
 
-  '@uwdata/mosaic-inputs@0.24.2':
+  '@uwdata/mosaic-inputs@0.24.3':
     dependencies:
-      '@uwdata/mosaic-core': 0.24.2
-      '@uwdata/mosaic-sql': 0.24.2
+      '@uwdata/mosaic-core': 0.24.3
+      '@uwdata/mosaic-sql': 0.24.3
 
-  '@uwdata/mosaic-plot@0.24.2':
+  '@uwdata/mosaic-plot@0.24.3':
     dependencies:
       '@observablehq/plot': 0.6.17
       '@uwdata/flechette': 2.4.0
-      '@uwdata/mosaic-core': 0.24.2
-      '@uwdata/mosaic-sql': 0.24.2
+      '@uwdata/mosaic-core': 0.24.3
+      '@uwdata/mosaic-sql': 0.24.3
       d3: 7.9.0
 
-  '@uwdata/mosaic-sql@0.24.2': {}
+  '@uwdata/mosaic-sql@0.24.3': {}
 
-  '@uwdata/vgplot@0.24.2':
+  '@uwdata/vgplot@0.24.3':
     dependencies:
-      '@uwdata/mosaic-core': 0.24.2
-      '@uwdata/mosaic-inputs': 0.24.2
-      '@uwdata/mosaic-plot': 0.24.2
-      '@uwdata/mosaic-sql': 0.24.2
+      '@uwdata/mosaic-core': 0.24.3
+      '@uwdata/mosaic-inputs': 0.24.3
+      '@uwdata/mosaic-plot': 0.24.3
+      '@uwdata/mosaic-sql': 0.24.3
 
   '@vitejs/plugin-react@6.0.1(vite@8.0.2(@types/node@25.0.9)(esbuild@0.27.2)(jiti@2.6.1)(yaml@2.8.2))':
     dependencies:
