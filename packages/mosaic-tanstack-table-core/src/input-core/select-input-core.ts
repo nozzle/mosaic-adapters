@@ -404,7 +404,7 @@ export class SelectInputCore<T = unknown> extends BaseInputCore<
 
     const predicate = this.config.listMatch
       ? createListPredicate(columnExpr, values, this.config.listMatch)
-      : mSql.isIn(
+      : mSql.isInDistinct(
           columnExpr,
           values.map((item) => mSql.literal(item)),
         );

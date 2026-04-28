@@ -502,6 +502,38 @@ describe('MosaicDataTable characterization', () => {
     );
   });
 
+  test('uses null-safe predicates for row-values selection fallback', () => {
+    const rowSelection = new Selection();
+    const { client } = createFlatClient({
+      rowSelectionMode: 'row-values',
+      rowSelection: {
+        selection: rowSelection,
+        column: 'country',
+      },
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      rows: [
+        {
+          id: 'u1',
+          name: 'Alice',
+          age: 31,
+          country: null,
+          status: 'active',
+        } as unknown as AthleteRow,
+      ],
+    }));
+
+    client.getTableOptions(client.store.state).onRowSelectionChange?.({
+      '0': true,
+    });
+
+    expect(rowSelection.active.predicate?.toString()).toContain(
+      '"country" IS NULL',
+    );
+  });
+
   test('uses facetBy metadata for sidecar facet queries', async () => {
     const coordinator = new FakeCoordinator();
     const client = new MosaicDataTable<AthleteRow>({
@@ -523,7 +555,11 @@ describe('MosaicDataTable characterization', () => {
       ],
     });
 
-    coordinator.enqueueResponse('FROM "athletes"', createArrowTable([]));
+    coordinator.enqueueResponse(
+      (sql) =>
+        sql.includes('FROM "athletes"') && !sql.includes('GROUP BY "country"'),
+      createArrowTable([]),
+    );
     coordinator.enqueueResponse(
       (sql) => sql.includes('GROUP BY "country_code"'),
       createArrowTable([{ country_code: 'NZ' }]),
@@ -796,7 +832,7 @@ describe('MosaicDataTable characterization', () => {
         '9': true,
       });
       expect(rowSelection.clauses).toHaveLength(1);
-      expect(rowSelection.active?.source).toBe(fullscreenClient);
+      expect(rowSelection.active.source).toBe(fullscreenClient);
       expect(rowSelection.value).toEqual(['9']);
     });
   });
@@ -842,9 +878,9 @@ describe('MosaicDataTable characterization', () => {
 
     await waitFor(() => {
       expect(rowSelection.clauses).toHaveLength(1);
-      expect(rowSelection.active?.source).toBe(fullscreenClient);
+      expect(rowSelection.active.source).toBe(fullscreenClient);
       expect(rowSelection.value).toEqual(['2', '7', '9']);
-      expect(rowSelection.active?.predicate?.toString()).toContain(
+      expect(rowSelection.active.predicate?.toString()).toContain(
         "\"id\" IN ('2', '7', '9')",
       );
     });
@@ -1092,7 +1128,11 @@ describe('MosaicDataTable characterization', () => {
       },
     }));
 
-    coordinator.enqueueResponse('FROM "athletes"', createArrowTable([]));
+    coordinator.enqueueResponse(
+      (sql) =>
+        sql.includes('FROM "athletes"') && !sql.includes('GROUP BY "country"'),
+      createArrowTable([]),
+    );
     coordinator.enqueueResponse(
       (sql) =>
         sql.includes('GROUP BY "country"') &&
