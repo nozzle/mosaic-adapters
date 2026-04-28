@@ -1,5 +1,18 @@
 # @nozzleio/mosaic-tanstack-react-table
 
+## 0.6.0
+
+### Minor Changes
+
+- [#126](https://github.com/nozzle/mosaic-adapters/pull/126) [`83b321e`](https://github.com/nozzle/mosaic-adapters/commit/83b321e9a6797592441b182d55a602b6f8f0b38d) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - feat(table-core,react-table,react-mosaic): require 0.24.3 peer APIs
+
+### Patch Changes
+
+- [#126](https://github.com/nozzle/mosaic-adapters/pull/126) [`9e9e945`](https://github.com/nozzle/mosaic-adapters/commit/9e9e945a59cb540dd308833d3cce0b280f316389) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - fix: upgrade mosaic to `0.24.3`
+
+- Updated dependencies [[`9e9e945`](https://github.com/nozzle/mosaic-adapters/commit/9e9e945a59cb540dd308833d3cce0b280f316389), [`83b321e`](https://github.com/nozzle/mosaic-adapters/commit/83b321e9a6797592441b182d55a602b6f8f0b38d), [`fbb6809`](https://github.com/nozzle/mosaic-adapters/commit/fbb68090966b1ed82b3c496bfeaeeef4a5b875a4)]:
+  - @nozzleio/mosaic-tanstack-table-core@0.5.0
+
 ## 0.5.0
 
 ### Minor Changes
