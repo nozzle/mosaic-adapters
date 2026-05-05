@@ -1,1 +1,1 @@
-export * from './stub';
+export * from './row-querying/rows-client';
