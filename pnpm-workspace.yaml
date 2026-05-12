@@ -33,3 +33,5 @@ onlyBuiltDependencies:
   - esbuild
 
 preferWorkspacePackages: true
+
+minimumReleaseAge: 10080
