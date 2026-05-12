@@ -35,3 +35,5 @@ onlyBuiltDependencies:
 preferWorkspacePackages: true
 
 minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - '@nozzleio/*'
