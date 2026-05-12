@@ -32,10 +32,13 @@ jobs:
           main-branch-name: main
 
       - name: Cache Playwright browsers
+        # Keep this PR workflow's cache scoped to the PR so PR runs do not pollute main.
+        # If a similar setup is needed on main, create a separate ci.yml that is
+        # audited exclusively for the main context, especially cache poisoning risks.
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-pr-${{ github.event.pull_request.number }}
 
       - name: Install Playwright browsers
         run: pnpm run playwright:install
