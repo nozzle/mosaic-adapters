@@ -1,5 +1,11 @@
 # @nozzleio/react-mosaic
 
+## 0.3.1
+
+### Patch Changes
+
+- [#132](https://github.com/nozzle/mosaic-adapters/pull/132) [`5439926`](https://github.com/nozzle/mosaic-adapters/commit/54399261350487a9d49a4e388a2eed7ae68f4b1d) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - fix: trigger fresh CI release
+
 ## 0.3.0
 
 ### Minor Changes

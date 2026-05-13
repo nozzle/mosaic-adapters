@@ -1,5 +1,13 @@
 # example-react-trimmed
 
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies [[`5439926`](https://github.com/nozzle/mosaic-adapters/commit/54399261350487a9d49a4e388a2eed7ae68f4b1d)]:
+  - @nozzleio/mosaic-tanstack-react-table@0.6.1
+  - @nozzleio/react-mosaic@0.3.1
+
 ## 0.0.10
 
 ### Patch Changes
