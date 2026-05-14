@@ -61,7 +61,7 @@
     "@uwdata/mosaic-core": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
-    "react-dom": "^19.2.4",
+    "react-dom": "^19.2.6",
     "rimraf": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"
