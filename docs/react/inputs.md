@@ -24,7 +24,10 @@ For schema-driven builder UIs, use the filter-builder hooks instead:
 
 See [Filter Builder](./filter-builder.md) for the page-scope/widget-scope
 pattern, native HTML examples, and the trimmed dynamic builder example that
-adds and removes active filter rows from a catalog.
+adds and removes active filter rows from a catalog. Note that
+`FilterDefinition.column` is not unique — multiple definitions may target the
+same column and compose with AND in the scope context. See
+[Multiple Definitions Per Column](./filter-builder.md#multiple-definitions-per-column).
 
 The builder hooks also accept optional synchronous persisters:
 

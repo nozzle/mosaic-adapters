@@ -81,6 +81,8 @@ const $crossfilter = vg.Selection.crossfilter(); // Exclude self from filter
 
 When a user interacts with an input (dropdown, brush, search), the input **updates** the selection. All clients that **filter by** that selection automatically re-query.
 
+A single selection — or a derived context — can carry multiple clauses, each contributing its own predicate. There is no one-to-one mapping between clauses and SQL columns: two clauses on the same column simply compose under the selection's resolution mode (`intersect` → AND, `union` → OR). The filter-builder API leans on this directly — see [Filter Builder → Multiple Definitions Per Column](../react/filter-builder.md#multiple-definitions-per-column).
+
 ### Derived Selections (Contexts)
 
 You can compose selections to create **contexts**:

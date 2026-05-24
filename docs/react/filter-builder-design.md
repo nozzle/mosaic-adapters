@@ -104,6 +104,11 @@ interface FilterDefinition {
 }
 ```
 
+`id` is the runtime identity. `column` is the SQL target and is **not**
+required to be unique across definitions — multiple definitions may target the
+same column, in which case the scope context AND-s their predicates together.
+See [filter-builder.md → Multiple Definitions Per Column](./filter-builder.md#multiple-definitions-per-column).
+
 Preferred consumer usage should come from exported condition helpers such as:
 
 - `TEXT_CONDITIONS`
@@ -927,8 +932,12 @@ Before implementation starts, the assignee should confirm:
 
 ## Open Questions
 
-- Should `useMosaicFilters` create one `Selection` per filter or support packing multiple filter values into one scope-owned selection?
-  - Recommendation: one `Selection` per filter for clarity and easy reset.
+- ~~Should `useMosaicFilters` create one `Selection` per filter or support packing multiple filter values into one scope-owned selection?~~
+  - **Resolved**: one `Selection` per `definition.id`. Column reuse across definitions is supported and intentional — multiple definitions targeting the same column compose via the scope's intersecting context (AND). See [filter-builder.md → Multiple Definitions Per Column](./filter-builder.md#multiple-definitions-per-column).
+
+- Should `useMosaicFilters` accept a `mode: 'intersect' | 'union'` option to enable scope-level OR semantics across definitions?
+  - Today the scope context is hardcoded to `Selection.intersect()`. OR is only reachable via a custom compound predicate inside one definition, or by composing an external `Selection.union()` into the parent context. A `mode` option would let definitions opt into OR composition at the scope boundary.
+  - Recommendation: defer until a real consumer needs it; preserve `intersect` default.
 
 - Should `FilterDefinition.facet.table` be required for facet kinds, or should it default from a surrounding table/query context?
   - Recommendation: allow explicit override, but support inheritance from a parent provider later.
