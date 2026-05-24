@@ -23,6 +23,8 @@ The package root is intentionally React-oriented:
 - `useFilterRegistry`
 - `useActiveFilters`
 - `useRegisterFilterSource`
+- `useMosaicFilters`, `useFilterBinding`, `useFilterFacet` — filter-builder hooks; see [docs/react/filter-builder.md](../../docs/react/filter-builder.md)
+- `FilterDefinition`, `FilterRuntime`, condition helpers (`TEXT_CONDITIONS`, `SELECT_CONDITIONS`, `DATE_RANGE_CONDITIONS`, `NUMBER_RANGE_CONDITIONS`, ...)
 - curated table-facing types such as `MosaicDataTableOptions`, grouped row types, and histogram/filter hook types
 
 ```tsx
