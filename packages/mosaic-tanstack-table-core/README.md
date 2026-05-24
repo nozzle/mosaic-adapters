@@ -41,12 +41,18 @@ import {
 Lower-level extension APIs live on explicit subpaths:
 
 - `@nozzleio/mosaic-tanstack-table-core/filter-registry`
+- `@nozzleio/mosaic-tanstack-table-core/filter-builder` — headless filter schema, condition predicate helpers, and selection apply/clear/read helpers backing the React filter-builder hooks. See [docs/react/filter-builder.md](../../docs/react/filter-builder.md).
 - `@nozzleio/mosaic-tanstack-table-core/grouped`
 - `@nozzleio/mosaic-tanstack-table-core/facet-strategies`
 - `@nozzleio/mosaic-tanstack-table-core/sidecar`
 
 ```ts
 import { MosaicFilterRegistry } from '@nozzleio/mosaic-tanstack-table-core/filter-registry';
+import {
+  applyFilterSelection,
+  clearFilterSelection,
+  readFilterSelectionState,
+} from '@nozzleio/mosaic-tanstack-table-core/filter-builder';
 import { buildGroupedLevelQuery } from '@nozzleio/mosaic-tanstack-table-core/grouped';
 import { HistogramStrategy } from '@nozzleio/mosaic-tanstack-table-core/facet-strategies';
 import { createTypedSidecarClient } from '@nozzleio/mosaic-tanstack-table-core/sidecar';
