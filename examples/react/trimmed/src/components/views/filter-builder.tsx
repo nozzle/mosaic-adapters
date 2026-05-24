@@ -175,6 +175,31 @@ const pageDefinitions: Array<FilterDefinition> = [
     defaultOperator: NUMBER_RANGE_CONDITIONS.BETWEEN,
     dataType: 'number',
   },
+  // Two definitions targeting the same SQL column (`date_of_birth`).
+  // Each has a distinct `id`, so `useMosaicFilters` creates a separate
+  // Selection for each. When both are active they AND together in the
+  // scope context, e.g. WHERE date_of_birth > :a AND date_of_birth < :b.
+  // See docs/react/filter-builder.md#multiple-definitions-per-column.
+  {
+    id: 'date_of_birth_after',
+    label: 'Born after',
+    column: 'date_of_birth',
+    valueKind: 'date-range',
+    operators: [DATE_RANGE_CONDITIONS.AFTER],
+    defaultOperator: DATE_RANGE_CONDITIONS.AFTER,
+    dataType: 'date',
+    description: 'Same-column pair: lower bound on date_of_birth',
+  },
+  {
+    id: 'date_of_birth_before',
+    label: 'Born before',
+    column: 'date_of_birth',
+    valueKind: 'date-range',
+    operators: [DATE_RANGE_CONDITIONS.BEFORE],
+    defaultOperator: DATE_RANGE_CONDITIONS.BEFORE,
+    dataType: 'date',
+    description: 'Same-column pair: upper bound on date_of_birth',
+  },
 ];
 
 const widgetDefinitions: Array<FilterDefinition> = [
