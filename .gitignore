@@ -156,3 +156,5 @@ local-testing/
 # Temporary files
 .tmp/
 .opencode-temp/
+
+package-dist*.tgz.sha256
