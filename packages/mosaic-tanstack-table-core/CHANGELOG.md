@@ -1,5 +1,60 @@
 # @nozzleio/mosaic-tanstack-table-core
 
+## 0.6.0
+
+### Minor Changes
+
+- [#145](https://github.com/nozzle/mosaic-adapters/pull/145) [`b648e9a`](https://github.com/nozzle/mosaic-adapters/commit/b648e9aeaef577a11d3a0707fc42f2f8a28a30e2) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - add HAVING routing for aggregate filters
+
+  Adds HAVING routing for aggregate filters while preserving WHERE routing for row-level filters.
+
+  Filter routing now supports both `where` and `having`, `havingBy` selections are applied to HAVING, and function-form table sources receive both routed predicates. Grouped tables can combine row filters in WHERE with aggregate filters in HAVING, and React filter-builder bindings can now apply and clear filters against a HAVING target.
+
+  This also adds an Aggregate Filter Lab example, extends the filter-builder example with an aggregate HAVING scope, and updates docs and tests for WHERE/HAVING behavior.
+
+  Includes follow-up fixes to keep grouped leaf row filters in WHERE even when grouped filter routing targets HAVING, and to reset pagination/requery correctly when aggregate filter selections change.
+
+- [#145](https://github.com/nozzle/mosaic-adapters/pull/145) [`a2577ce`](https://github.com/nozzle/mosaic-adapters/commit/a2577ce346edaeb6420300116d802bc5d2c7d658) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - add explicit SQL filter clause routing
+
+  Add explicit SQL filter clause routing for adapter-emitted predicates.
+
+  This introduces a WHERE-only `SqlFilterClauseTarget` surface and routes generated predicates through explicit clause placement instead of applying them directly at each call site. Existing SQL behavior is preserved: all routed predicates still land in `WHERE`.
+
+  Breaking change: function-form table sources now receive a routed filter object instead of the filter predicate directly.
+
+  ```diff
+  - table: (filter) => {
+  + table: ({ where }) => {
+      const query = mSql.Query.from("athletes").select("*");
+
+  -   if (filter) {
+  -     query.where(filter);
+  +   if (where) {
+  +     query.where(where);
+      }
+
+      return query;
+    }
+  ```
+
+  Also added public API.
+
+  ```ts
+  type SqlFilterClauseTarget = 'where';
+
+  type MosaicColumnMeta = {
+    filterClauseTarget?: SqlFilterClauseTarget;
+  };
+
+  type MosaicDataTableOptions = {
+    globalFilterClauseTarget?: SqlFilterClauseTarget;
+    havingBy?: Selection;
+    groupBy?: {
+      filterClauseTarget?: SqlFilterClauseTarget;
+    };
+  };
+  ```
+
 ## 0.5.1
 
 ### Patch Changes
