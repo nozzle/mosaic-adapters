@@ -227,11 +227,11 @@ function useSparklineSource(
       return tableName;
     }
 
-    return (filter: mSql.FilterExpr | null | undefined) => {
+    return ({ where }: { where: mSql.FilterExpr | null }) => {
       const q = mSql.Query.from(tableName).select('*');
       q.where(mSql.eq(mSql.column(groupByColumn), mSql.literal(keyValue)));
-      if (filter) {
-        q.where(filter);
+      if (where) {
+        q.where(where);
       }
       return q;
     };

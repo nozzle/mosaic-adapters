@@ -1,6 +1,7 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { isParam } from '@uwdata/mosaic-core';
 import { assertIsArray, assertIsNumber } from './validation';
+import { applyRoutedFilters, routeFilter } from './query/filter-routing';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { MosaicTableSource } from './types';
 import type { FacetStrategyMap } from './registry';
@@ -75,7 +76,7 @@ export const UniqueValuesStrategy: FacetStrategy<void, Array<unknown>> = {
     const outerFilters: Array<FilterExpr> = [];
 
     if (typeof ctx.source === 'function') {
-      src = ctx.source(ctx.primaryFilter);
+      src = ctx.source({ where: ctx.primaryFilter ?? null });
       if (ctx.cascadingFilters.length > 0) {
         outerFilters.push(...ctx.cascadingFilters);
       }
@@ -94,9 +95,12 @@ export const UniqueValuesStrategy: FacetStrategy<void, Array<unknown>> = {
 
     const statement = mSql.Query.from(src).select(ctx.column);
 
-    if (outerFilters.length > 0) {
-      statement.where(mSql.and(...outerFilters));
-    }
+    applyRoutedFilters(statement, [
+      routeFilter(
+        outerFilters.length > 0 ? mSql.and(...outerFilters) : null,
+        'where',
+      ),
+    ]);
 
     if (ctx.searchTerm) {
       // Simple ILIKE match for search
@@ -149,7 +153,7 @@ export const MinMaxStrategy: FacetStrategy<void, [number, number] | undefined> =
       const outerFilters: Array<FilterExpr> = [];
 
       if (typeof ctx.source === 'function') {
-        src = ctx.source(ctx.primaryFilter);
+        src = ctx.source({ where: ctx.primaryFilter ?? null });
         if (ctx.cascadingFilters.length > 0) {
           outerFilters.push(...ctx.cascadingFilters);
         }
@@ -172,9 +176,12 @@ export const MinMaxStrategy: FacetStrategy<void, [number, number] | undefined> =
         max: mSql.max(col),
       });
 
-      if (outerFilters.length > 0) {
-        statement.where(mSql.and(...outerFilters));
-      }
+      applyRoutedFilters(statement, [
+        routeFilter(
+          outerFilters.length > 0 ? mSql.and(...outerFilters) : null,
+          'where',
+        ),
+      ]);
 
       return statement;
     },
@@ -217,7 +224,7 @@ export const TotalCountStrategy: FacetStrategy<void, number> = {
     const outerFilters: Array<FilterExpr> = [];
 
     if (typeof ctx.source === 'function') {
-      src = ctx.source(ctx.primaryFilter);
+      src = ctx.source({ where: ctx.primaryFilter ?? null });
       if (ctx.cascadingFilters.length > 0) {
         outerFilters.push(...ctx.cascadingFilters);
       }
@@ -238,9 +245,12 @@ export const TotalCountStrategy: FacetStrategy<void, number> = {
       count: mSql.count(),
     });
 
-    if (outerFilters.length > 0) {
-      statement.where(mSql.and(...outerFilters));
-    }
+    applyRoutedFilters(statement, [
+      routeFilter(
+        outerFilters.length > 0 ? mSql.and(...outerFilters) : null,
+        'where',
+      ),
+    ]);
 
     return statement;
   },
@@ -280,7 +290,7 @@ export const HistogramStrategy: FacetStrategy<HistogramInput, HistogramOutput> =
       const outerFilters: Array<FilterExpr> = [];
 
       if (typeof ctx.source === 'function') {
-        src = ctx.source(ctx.primaryFilter);
+        src = ctx.source({ where: ctx.primaryFilter ?? null });
         if (ctx.cascadingFilters.length > 0) {
           outerFilters.push(...ctx.cascadingFilters);
         }
@@ -314,9 +324,12 @@ export const HistogramStrategy: FacetStrategy<HistogramInput, HistogramOutput> =
       // Fix: Exclude NULL values explicitly to prevent "NULL" bins being coerced to "0" in JavaScript
       statement.where(mSql.sql`${col} IS NOT NULL`);
 
-      if (outerFilters.length > 0) {
-        statement.where(mSql.and(...outerFilters));
-      }
+      applyRoutedFilters(statement, [
+        routeFilter(
+          outerFilters.length > 0 ? mSql.and(...outerFilters) : null,
+          'where',
+        ),
+      ]);
 
       return statement;
     },
@@ -371,7 +384,7 @@ export const SparklineStrategy: FacetStrategy<SparklineInput, SparklineOutput> =
       const outerFilters: Array<FilterExpr> = [];
 
       if (typeof ctx.source === 'function') {
-        src = ctx.source(ctx.primaryFilter);
+        src = ctx.source({ where: ctx.primaryFilter ?? null });
         if (ctx.cascadingFilters.length > 0) {
           outerFilters.push(...ctx.cascadingFilters);
         }
@@ -396,9 +409,12 @@ export const SparklineStrategy: FacetStrategy<SparklineInput, SparklineOutput> =
         .groupby(dateCol)
         .orderby(mSql.asc(dateCol));
 
-      if (outerFilters.length > 0) {
-        statement.where(mSql.and(...outerFilters));
-      }
+      applyRoutedFilters(statement, [
+        routeFilter(
+          outerFilters.length > 0 ? mSql.and(...outerFilters) : null,
+          'where',
+        ),
+      ]);
 
       return statement;
     },

@@ -197,16 +197,21 @@ When you need both raw and aggregated views of the same data, use a **query fact
 ```ts
 import * as mSql from '@uwdata/mosaic-sql';
 
-const summaryQueryFactory = (filter) => {
-  return mSql.Query.from('trips')
+const summaryQueryFactory = ({ where }) => {
+  const query = mSql.Query.from('trips')
     .select({
       zone_x: mSql.sql`round(dx / 1000)`,
       zone_y: mSql.sql`round(dy / 1000)`,
       trip_count: mSql.count(),
       avg_fare: mSql.avg('fare_amount'),
     })
-    .where(filter)
     .groupby('zone_x', 'zone_y');
+
+  if (where) {
+    query.where(where);
+  }
+
+  return query;
 };
 
 // Use in the hook
@@ -290,21 +295,26 @@ const { tableOptions } = useMosaicReactTable<AthleteRowData>({
 Sometimes you want to highlight matching rows without filtering them out. Use `manualHighlight`:
 
 ```ts
-const queryFactory = (filter) => {
+const queryFactory = ({ where }) => {
   // Add a computed column for highlighting
   const highlightPred = $mySelection.predicate(null);
   const highlightCol = highlightPred
     ? mSql.max(mSql.sql`CASE WHEN ${highlightPred} THEN 1 ELSE 0 END`)
     : mSql.literal(1);
 
-  return mSql.Query.from('data')
+  const query = mSql.Query.from('data')
     .select({
       key: 'category',
       metric: mSql.count(),
       __is_highlighted: highlightCol,
     })
-    .where(filter)
     .groupby('category');
+
+  if (where) {
+    query.where(where);
+  }
+
+  return query;
 };
 
 const { tableOptions } = useMosaicReactTable({

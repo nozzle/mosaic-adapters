@@ -90,7 +90,7 @@ export function useNycTaxiTopology() {
 
   // 4. Query Factory (for the Summary Table)
   const summaryQueryFactory = useMemo(
-    () => (filter: mSql.FilterExpr | null | undefined) => {
+    () => ({ where }: { where: mSql.FilterExpr | null }) => {
       const ZONE_SIZE = 1000;
       const query = mSql.Query.from('trips')
         .select({
@@ -101,8 +101,8 @@ export function useNycTaxiTopology() {
         })
         .groupby('zone_x', 'zone_y');
 
-      if (filter) {
-        query.where(filter);
+      if (where) {
+        query.where(where);
       }
       return query;
     },

@@ -6,8 +6,13 @@
  * callers call `.toString()` at the boundary when passing to `coordinator.query()`.
  */
 import * as mSql from '@uwdata/mosaic-sql';
+import { applyRoutedFilters, routeFilter } from '../query/filter-routing';
 import type { ExprValue, FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { GroupLevel, GroupMetric, LeafColumn } from './types';
+import type {
+  RoutedFilterExpr,
+  SqlFilterClauseTarget,
+} from '../query/filter-routing';
 
 // ---------------------------------------------------------------------------
 // Query Building
@@ -39,6 +44,9 @@ export interface BuildGroupedLevelQueryOptions {
 
   /** Filter predicate from the Mosaic Selection (cross-filter context). */
   filterPredicate?: FilterExpr | null;
+
+  /** SQL clause target for filterPredicate. Defaults to `where`. */
+  filterClauseTarget?: SqlFilterClauseTarget;
 
   /** Additional static WHERE clauses (e.g., NULL exclusion). */
   additionalWhere?: FilterExpr | null;
@@ -77,6 +85,7 @@ export function buildGroupedLevelQuery(
     metrics,
     parentConstraints,
     filterPredicate,
+    filterClauseTarget = 'where',
     additionalWhere,
     limit = 200,
     orderByMetric,
@@ -103,27 +112,20 @@ export function buildGroupedLevelQuery(
   const q = mSql.Query.from(table).select(selects).groupby(groupCol);
 
   // Apply parent constraints (ancestor WHERE clauses)
-  const whereClauses: Array<FilterExpr> = [];
+  const routedFilters: Array<RoutedFilterExpr | null> = [];
 
   for (const [col, val] of Object.entries(parentConstraints)) {
-    whereClauses.push(mSql.eq(mSql.column(col), mSql.literal(val)));
+    routedFilters.push(
+      routeFilter(mSql.eq(mSql.column(col), mSql.literal(val)), 'where'),
+    );
   }
 
   // Apply Mosaic filter predicate
-  if (filterPredicate) {
-    whereClauses.push(filterPredicate);
-  }
+  routedFilters.push(routeFilter(filterPredicate, filterClauseTarget));
 
   // Apply additional static WHERE
-  if (additionalWhere) {
-    whereClauses.push(additionalWhere);
-  }
-
-  if (whereClauses.length > 0) {
-    q.where(
-      whereClauses.length === 1 ? whereClauses[0]! : mSql.and(...whereClauses),
-    );
-  }
+  routedFilters.push(routeFilter(additionalWhere, 'where'));
+  applyRoutedFilters(q, routedFilters);
 
   // Order by metric descending (most common groups first)
   const sortMetric = orderByMetric ?? metrics[0]?.id;
@@ -160,6 +162,9 @@ export interface BuildLeafRowsQueryOptions {
   /** Filter predicate from the Mosaic Selection (cross-filter context). */
   filterPredicate?: FilterExpr | null;
 
+  /** SQL clause target for filterPredicate. Defaults to `where`. */
+  filterClauseTarget?: SqlFilterClauseTarget;
+
   /** Additional static WHERE clauses (e.g., NULL exclusion). */
   additionalWhere?: FilterExpr | null;
 
@@ -189,6 +194,7 @@ export function buildLeafRowsQuery(
     leafColumns,
     parentConstraints,
     filterPredicate,
+    filterClauseTarget = 'where',
     additionalWhere,
     limit = 100,
     orderBy,
@@ -212,27 +218,20 @@ export function buildLeafRowsQuery(
   const q = mSql.Query.from(table).select(selects);
 
   // Apply parent constraints (full ancestry WHERE clauses)
-  const whereClauses: Array<FilterExpr> = [];
+  const routedFilters: Array<RoutedFilterExpr | null> = [];
 
   for (const [col, val] of Object.entries(parentConstraints)) {
-    whereClauses.push(mSql.eq(mSql.column(col), mSql.literal(val)));
+    routedFilters.push(
+      routeFilter(mSql.eq(mSql.column(col), mSql.literal(val)), 'where'),
+    );
   }
 
   // Apply Mosaic filter predicate
-  if (filterPredicate) {
-    whereClauses.push(filterPredicate);
-  }
+  routedFilters.push(routeFilter(filterPredicate, filterClauseTarget));
 
   // Apply additional static WHERE
-  if (additionalWhere) {
-    whereClauses.push(additionalWhere);
-  }
-
-  if (whereClauses.length > 0) {
-    q.where(
-      whereClauses.length === 1 ? whereClauses[0]! : mSql.and(...whereClauses),
-    );
-  }
+  routedFilters.push(routeFilter(additionalWhere, 'where'));
+  applyRoutedFilters(q, routedFilters);
 
   // Order by specified column or first leaf column
   const sortCol = orderBy ?? leafColumns[0]?.column;

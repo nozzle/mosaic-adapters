@@ -11,6 +11,7 @@ import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SqlIdentifier } from './domain/sql-identifier';
 import { GLOBAL_RESET_ID } from './constants';
+import { applyRoutedFilters, routeFilter } from './query/filter-routing';
 import type { Coordinator, Selection } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { ColumnType, IMosaicClient, MosaicTableSource } from './types';
@@ -392,7 +393,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     const { table } = this.options;
 
     if (typeof table === 'function') {
-      return table(effectiveFilter);
+      return table({ where: effectiveFilter ?? null });
     }
     if (isParam(table)) {
       return table.value as string;
@@ -456,7 +457,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       });
 
       if (effectiveFilter) {
-        innerQuery.where(effectiveFilter);
+        applyRoutedFilters(innerQuery, [routeFilter(effectiveFilter, 'where')]);
       }
 
       query = mSql.Query.from(innerQuery).select('tag').distinct();
@@ -474,7 +475,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
       query = mSql.Query.from(resolvedSource).select(selection);
 
       if (effectiveFilter) {
-        query.where(effectiveFilter);
+        applyRoutedFilters(query, [routeFilter(effectiveFilter, 'where')]);
       }
 
       if (this._searchTerm) {

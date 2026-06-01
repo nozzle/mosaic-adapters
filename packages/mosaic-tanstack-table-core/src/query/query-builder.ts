@@ -13,6 +13,7 @@ import {
   toRangeValue,
 } from '../utils';
 import { readMosaicColumnMeta } from './column-meta';
+import { applyRoutedFilters, routeFilter } from './filter-routing';
 
 import type { SelectQuery } from '@uwdata/mosaic-sql';
 import type { RowData, TableState } from '@tanstack/table-core';
@@ -20,6 +21,7 @@ import type { ColumnMapper } from './column-mapper';
 import type { StrategyRegistry } from '../registry';
 import type { FilterStrategy } from './filter-factory';
 import type { FilterInput, FilterMode, MosaicColumnMapping } from '../types';
+import type { RoutedFilterExpr, SqlFilterClauseTarget } from './filter-routing';
 
 type SelectValue =
   | ReturnType<typeof mSql.column>
@@ -49,6 +51,7 @@ export interface QueryBuilderOptions<TData extends RowData, TValue = unknown> {
   excludeColumnId?: string; // For cascading facets
   highlightPredicate?: mSql.FilterExpr | null;
   manualHighlight?: boolean;
+  globalFilterClauseTarget?: SqlFilterClauseTarget;
   filterRegistry: StrategyRegistry<Record<string, FilterStrategy>>;
 }
 
@@ -121,17 +124,14 @@ export function buildTableQuery<TData extends RowData, TValue>(
     extraSelects,
   );
 
-  // 2. Generate WHERE Clauses
-  const whereClauses = extractInternalFilters(options);
+  // 2. Generate and route filter clauses.
+  const routedFilters = extractInternalFilters(options);
   const globalFilterClause = buildGlobalFilter(options);
 
   if (globalFilterClause) {
-    whereClauses.push(globalFilterClause);
+    routedFilters.push(globalFilterClause);
   }
-
-  if (whereClauses.length > 0) {
-    statement.where(...whereClauses);
-  }
+  applyRoutedFilters(statement, routedFilters);
 
   // 3. Apply Sorting
   const orderingCriteria: Array<mSql.OrderByNode> = [];
@@ -177,8 +177,8 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
   mapping: MosaicColumnMapping<TData> | undefined; // Enforce explicit undefined if missing
   filterRegistry: StrategyRegistry<Record<string, FilterStrategy>>;
   excludeColumnId?: string;
-}): Array<mSql.FilterExpr> {
-  const clauses: Array<mSql.FilterExpr> = [];
+}): Array<RoutedFilterExpr> {
+  const clauses: Array<RoutedFilterExpr> = [];
 
   options.tableState.columnFilters.forEach((filter) => {
     if (options.excludeColumnId && filter.id === options.excludeColumnId) {
@@ -196,6 +196,11 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
     }
 
     const rawValue = filter.value;
+    const colDef =
+      options.mapper.getColumnDefById(filter.id) ??
+      options.mapper.getColumnDef(sqlColumn.toString());
+    const columnMeta = colDef ? readMosaicColumnMeta(colDef) : undefined;
+    const target = columnMeta?.filterClauseTarget ?? 'where';
 
     // DYNAMIC OVERRIDE:
     // If the UI passed a full FilterInput object (which has a 'mode'), use that mode
@@ -217,7 +222,7 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
           columnId: filter.id,
         });
         if (clause) {
-          clauses.push(clause);
+          clauses.push(routeFilter(clause, target)!);
         }
         return; // Continue to next filter
       } else {
@@ -246,12 +251,7 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
 
     // 2. Fallback to Meta (if mapping not present)
     if (!filterType) {
-      const colDef =
-        options.mapper.getColumnDefById(filter.id) ??
-        options.mapper.getColumnDef(sqlColumn.toString());
-      const metaType = colDef
-        ? readMosaicColumnMeta(colDef).sqlFilterType
-        : undefined;
+      const metaType = columnMeta?.sqlFilterType;
       if (metaType) {
         filterType = metaType;
       }
@@ -373,7 +373,7 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
       });
 
       if (clause) {
-        clauses.push(clause);
+        clauses.push(routeFilter(clause, target)!);
       }
     }
   });
@@ -384,7 +384,8 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
 export function buildGlobalFilter<TData extends RowData, TValue>(options: {
   tableState: TableState;
   mapper: ColumnMapper<TData, TValue>;
-}): mSql.FilterExpr | null {
+  globalFilterClauseTarget?: SqlFilterClauseTarget;
+}): RoutedFilterExpr | null {
   const value = options.tableState.globalFilter;
 
   if (value === undefined || value === null) {
@@ -407,5 +408,8 @@ export function buildGlobalFilter<TData extends RowData, TValue>(options: {
     return mSql.sql`${rawCol} ILIKE ${mSql.literal(pattern)} ESCAPE '\\'`;
   });
 
-  return predicates.length === 1 ? predicates[0]! : mSql.or(...predicates);
+  return routeFilter(
+    predicates.length === 1 ? predicates[0]! : mSql.or(...predicates),
+    options.globalFilterClauseTarget ?? 'where',
+  );
 }

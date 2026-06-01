@@ -624,6 +624,33 @@ describe('MosaicDataTable characterization', () => {
     });
   });
 
+  test('query factory sources receive a routed where predicate', () => {
+    const received: Array<unknown> = [];
+    const predicate = mSql.eq(mSql.column('country'), mSql.literal('NZ'));
+    const client = new MosaicDataTable<Record<string, string | number>>({
+      table: (args) => {
+        received.push(args);
+        const query = mSql.Query.from('athletes').select({
+          country: mSql.column('country'),
+          metric: mSql.count(),
+        });
+        if (args.where) {
+          query.where(args.where);
+        }
+        return query.groupby('country');
+      },
+      columns: [
+        { accessorKey: 'country', header: 'Country' },
+        { accessorKey: 'metric', header: 'Count' },
+      ],
+    });
+
+    const sql = client.query(predicate)?.toString();
+
+    expect(received).toEqual([{ where: predicate }]);
+    expect(sql).toContain('"country" = \'NZ\'');
+  });
+
   test('pushes TanStack row selection changes into the Mosaic selection predicate', () => {
     const rowSelection = new Selection();
     const { client } = createFlatClient({

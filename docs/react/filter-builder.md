@@ -279,6 +279,23 @@ const filterBy = useComposedSelection([page.context, orSelection]);
 Clauses inside `orSelection` are not managed by the filter-builder UI; you
 write to it directly with `orSelection.update(...)`.
 
+Filter-builder table wiring may also pass a placeholder `havingBy` Selection
+next to `filterBy` so the API shape is ready for a future HAVING pass:
+
+```tsx
+const filterBy = page.context;
+const havingBy = useMosaicSelection('intersect');
+
+useMosaicReactTable({
+  table: 'athletes',
+  filterBy,
+  havingBy,
+});
+```
+
+Today, generated filter-builder predicates still route to `WHERE`; `HAVING`
+is not wired yet.
+
 Native OR support inside `useMosaicFilters` (e.g. a `mode: 'union'` scope
 option) is a potential future addition — see
 `docs/react/filter-builder-design.md`.

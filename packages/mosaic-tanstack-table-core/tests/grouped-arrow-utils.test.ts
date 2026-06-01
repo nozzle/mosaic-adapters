@@ -1,5 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
+import { arrowTableToObjects } from '../src/grouped/arrow-utils';
+
 vi.mock('@uwdata/mosaic-core', () => ({
   isArrowTable: (val: unknown) =>
     val != null &&
@@ -7,8 +9,6 @@ vi.mock('@uwdata/mosaic-core', () => ({
     'numRows' in (val as Record<string, unknown>) &&
     'get' in (val as Record<string, unknown>),
 }));
-
-import { arrowTableToObjects } from '../src/grouped/arrow-utils';
 
 // ---------------------------------------------------------------------------
 // Helper: build a mock Arrow table from plain objects
@@ -65,7 +65,9 @@ describe('arrowTableToObjects', () => {
     const table = {
       numRows: 3,
       get(index: number) {
-        if (index === 1) return null;
+        if (index === 1) {
+          return null;
+        }
         return { country: index === 0 ? 'USA' : 'GBR', count: 10 };
       },
     };

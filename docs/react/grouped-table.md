@@ -190,6 +190,7 @@ group-derived IDs for expansion and row helper APIs.
 | `levels`          | `GroupLevel[]`  | —       | Hierarchy of columns to group by, in order              |
 | `metrics`         | `GroupMetric[]` | —       | Aggregation metrics to compute at each level            |
 | `additionalWhere` | `FilterExpr`    | —       | Additional static WHERE clauses (e.g. NULL exclusion)   |
+| `filterClauseTarget` | `'where'`    | `'where'` | SQL clause target for grouped filter predicates         |
 | `pageSize`        | `number`        | `200`   | Maximum rows per level                                  |
 | `leafColumns`     | `LeafColumn[]`  | —       | Columns for raw leaf rows at the deepest level          |
 | `leafPageSize`    | `number`        | `50`    | Maximum leaf rows per parent                            |

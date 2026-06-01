@@ -2,9 +2,9 @@ import { describe, expect, test } from 'vitest';
 import * as mSql from '@uwdata/mosaic-sql';
 import {
   buildGroupedLevelQuery,
-  buildLeafRowsQuery,
-  buildGroupedSelectionPredicate,
   buildGroupedMultiSelectionPredicate,
+  buildGroupedSelectionPredicate,
+  buildLeafRowsQuery,
 } from '../src/grouped/query-builder';
 import type { GroupLevel, GroupMetric, LeafColumn } from '../src/grouped/types';
 

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
+import { Selection } from '@uwdata/mosaic-core';
 import {
   DATE_RANGE_CONDITIONS,
   MULTISELECT_SCALAR_CONDITIONS,
@@ -620,9 +621,12 @@ function AthleteTableCard({
   columns: Array<ColumnDef<AthleteRowData, any>>;
   debugName: string;
 }) {
+  const havingBy = useMemo(() => Selection.intersect(), []);
   const { client, tableOptions } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
     filterBy,
+    havingBy,
+    globalFilterClauseTarget: 'where',
     columns,
     mapping: athleteMapping,
     converter: (row) =>
