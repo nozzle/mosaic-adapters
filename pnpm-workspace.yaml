@@ -37,3 +37,8 @@ preferWorkspacePackages: true
 minimumReleaseAge: 10080
 minimumReleaseAgeExclude:
   - '@nozzleio/*'
+
+overrides:
+  '@nozzleio/mosaic-tanstack-table-core': 'workspace:*'
+  '@nozzleio/mosaic-tanstack-react-table': 'workspace:*'
+  '@nozzleio/react-mosaic': 'workspace:*'
