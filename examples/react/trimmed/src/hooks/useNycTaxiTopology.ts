@@ -90,22 +90,32 @@ export function useNycTaxiTopology() {
 
   // 4. Query Factory (for the Summary Table)
   const summaryQueryFactory = useMemo(
-    () => ({ where }: { where: mSql.FilterExpr | null }) => {
-      const ZONE_SIZE = 1000;
-      const query = mSql.Query.from('trips')
-        .select({
-          zone_x: mSql.sql`round(dx / ${ZONE_SIZE})`,
-          zone_y: mSql.sql`round(dy / ${ZONE_SIZE})`,
-          trip_count: mSql.count(),
-          avg_fare: mSql.avg('fare_amount'),
-        })
-        .groupby('zone_x', 'zone_y');
+    () =>
+      ({
+        where,
+        having,
+      }: {
+        where: mSql.FilterExpr | null;
+        having: mSql.FilterExpr | null;
+      }) => {
+        const ZONE_SIZE = 1000;
+        const query = mSql.Query.from('trips')
+          .select({
+            zone_x: mSql.sql`round(dx / ${ZONE_SIZE})`,
+            zone_y: mSql.sql`round(dy / ${ZONE_SIZE})`,
+            trip_count: mSql.count(),
+            avg_fare: mSql.avg('fare_amount'),
+          })
+          .groupby('zone_x', 'zone_y');
 
-      if (where) {
-        query.where(where);
-      }
-      return query;
-    },
+        if (where) {
+          query.where(where);
+        }
+        if (having) {
+          query.having(having);
+        }
+        return query;
+      },
     [],
   );
 

@@ -77,6 +77,28 @@ type SelectExpression =
   | ReturnType<typeof mSql.column>
   | ReturnType<typeof mSql.sql>;
 
+function normalizeFilterPredicate(
+  predicate: FilterExpr | Array<FilterExpr> | null | undefined,
+): FilterExpr | null {
+  if (!predicate) {
+    return null;
+  }
+
+  if (!Array.isArray(predicate)) {
+    return predicate;
+  }
+
+  if (predicate.length === 0) {
+    return null;
+  }
+
+  if (predicate.length === 1) {
+    return predicate[0]!;
+  }
+
+  return mSql.and(...predicate);
+}
+
 export function createMosaicDataTableClient<
   TData extends RowData,
   TValue extends PrimitiveSqlValue = PrimitiveSqlValue,
@@ -226,6 +248,7 @@ export class MosaicDataTable<
     const sourceChanged = this.source !== options.table;
     const wasEnabled = this.enabled;
     const filterByChanged = this.filterBy !== options.filterBy;
+    const havingByChanged = this.options.havingBy !== options.havingBy;
 
     this.options = options;
     this.source = options.table;
@@ -261,7 +284,7 @@ export class MosaicDataTable<
 
     this.#configureColumns(options, sourceChanged);
 
-    if (filterByChanged && this.isConnected) {
+    if ((filterByChanged || havingByChanged) && this.isConnected) {
       this.disconnect();
       this.connect();
       return;
@@ -342,9 +365,15 @@ export class MosaicDataTable<
     });
   }
 
-  resolveSource(filter?: FilterExpr | null): string | SelectQuery {
+  resolveSource(
+    where?: FilterExpr | null,
+    having?: FilterExpr | null,
+  ): string | SelectQuery {
     if (typeof this.source === 'function') {
-      return this.source({ where: filter ?? null });
+      return this.source({
+        where: where ?? null,
+        having: having ?? null,
+      });
     }
     if (isParam(this.source)) {
       return this.source.value as string;
@@ -359,22 +388,31 @@ export class MosaicDataTable<
       return null;
     }
 
+    const wherePredicate = normalizeFilterPredicate(primaryFilter);
+
     if (this.#isGrouped) {
       const groupBy = this.options.groupBy!;
+      const havingPredicate = normalizeFilterPredicate(
+        this.options.havingBy?.predicate(this),
+      );
       return buildGroupedLevelQuery({
         table: this.source as string,
         groupBy: groupBy.levels,
         depth: 0,
         metrics: groupBy.metrics,
         parentConstraints: {},
-        filterPredicate: primaryFilter ?? undefined,
+        filterPredicate: wherePredicate ?? undefined,
         filterClauseTarget: groupBy.filterClauseTarget ?? 'where',
+        havingPredicate,
         additionalWhere: groupBy.additionalWhere ?? undefined,
         limit: groupBy.pageSize ?? 200,
       });
     }
 
-    const source = this.resolveSource(primaryFilter);
+    const havingPredicate = normalizeFilterPredicate(
+      this.options.havingBy?.predicate(this),
+    );
+    const source = this.resolveSource(wherePredicate, havingPredicate);
     if (!source || (typeof source === 'string' && source.trim() === '')) {
       return null;
     }
@@ -388,8 +426,8 @@ export class MosaicDataTable<
     }
 
     const filtersToApply: Array<FilterExpr> = [];
-    if (primaryFilter) {
-      filtersToApply.push(primaryFilter);
+    if (wherePredicate) {
+      filtersToApply.push(wherePredicate);
     }
     if (crossFilterPredicate) {
       filtersToApply.push(crossFilterPredicate);
@@ -455,7 +493,10 @@ export class MosaicDataTable<
     }
 
     if (typeof this.source === 'string') {
-      applyRoutedFilters(statement, [routeFilter(effectiveFilter, 'where')]);
+      applyRoutedFilters(statement, [
+        routeFilter(effectiveFilter, 'where'),
+        routeFilter(havingPredicate, 'having'),
+      ]);
     }
 
     if (mapper) {
@@ -612,9 +653,15 @@ export class MosaicDataTable<
     this.sidecarManager.connectAll();
     this.sidecarManager.refreshAll();
 
-    const selectionCb = () => {
-      const activeClause =
-        this.filterBy?.active || this.options.highlightBy?.active;
+    const filterBySelection = this.filterBy;
+    const havingBySelection = this.options.havingBy;
+    const highlightBySelection = this.options.highlightBy;
+    const createSelectionCb = (selection: Selection) => () => {
+      // `active` is undefined after a `reset()` clears all clauses (the
+      // resolved clause array is rebuilt without an `active` reference), so
+      // guard the source lookup to avoid throwing during reset dispatch. The
+      // upstream getter types this as always-defined, hence the assertion.
+      const activeClause = selection.active as SelectionClause | undefined;
       const isSelfUpdate = activeClause?.source === this;
 
       if (!isSelfUpdate) {
@@ -634,6 +681,15 @@ export class MosaicDataTable<
 
       this.requestUpdate();
     };
+    const filterByCb = filterBySelection
+      ? createSelectionCb(filterBySelection)
+      : undefined;
+    const havingByCb = havingBySelection
+      ? createSelectionCb(havingBySelection)
+      : undefined;
+    const highlightByCb = highlightBySelection
+      ? createSelectionCb(highlightBySelection)
+      : undefined;
 
     const internalFilterCb = () => {
       const active = this.tableFilterSelection.active;
@@ -697,8 +753,15 @@ export class MosaicDataTable<
       }
     };
 
-    this.filterBy?.addEventListener('value', selectionCb);
-    this.options.highlightBy?.addEventListener('value', selectionCb);
+    if (filterByCb) {
+      filterBySelection?.addEventListener('value', filterByCb);
+    }
+    if (havingByCb) {
+      havingBySelection?.addEventListener('value', havingByCb);
+    }
+    if (highlightByCb) {
+      highlightBySelection?.addEventListener('value', highlightByCb);
+    }
     this.tableFilterSelection.addEventListener('value', internalFilterCb);
 
     if (this.options.rowSelection?.selection) {
@@ -711,8 +774,15 @@ export class MosaicDataTable<
 
     this._cleanupListener = () => {
       this.enabled = false;
-      this.filterBy?.removeEventListener('value', selectionCb);
-      this.options.highlightBy?.removeEventListener('value', selectionCb);
+      if (filterByCb) {
+        filterBySelection?.removeEventListener('value', filterByCb);
+      }
+      if (havingByCb) {
+        havingBySelection?.removeEventListener('value', havingByCb);
+      }
+      if (highlightByCb) {
+        highlightBySelection?.removeEventListener('value', highlightByCb);
+      }
       this.tableFilterSelection.removeEventListener('value', internalFilterCb);
       this.options.rowSelection?.selection.removeEventListener(
         'value',

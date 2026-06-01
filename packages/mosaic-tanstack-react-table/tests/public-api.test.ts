@@ -10,17 +10,17 @@ import type {
   ArrayMultiselectConditionOperatorId,
   DateConditionOperatorId,
   DateRangeConditionOperatorId,
-  FilterBindingPersister,
+  FilterBinding,
   FilterBindingPersistenceContext,
   FilterBindingPersistenceWriteContext,
-  FilterBinding,
+  FilterBindingPersister,
   FilterDefinition,
   FilterRegistryApi,
   FilterRuntime,
-  FilterScopePersister,
+  FilterScope,
   FilterScopePersistenceContext,
   FilterScopePersistenceWriteContext,
-  FilterScope,
+  FilterScopePersister,
   FilterValueKind,
   MosaicHistogramClient,
   MosaicTableFilterMode,
@@ -29,6 +29,7 @@ import type {
   NumberRangeConditionOperatorId,
   ScalarMultiselectConditionOperatorId,
   SelectConditionOperatorId,
+  SqlFilterClauseTarget,
   TextConditionOperatorId,
   UseFilterBindingOptions,
   UseFilterFacetOptions,
@@ -140,6 +141,9 @@ test('publishes the narrowed adapter hook contracts', () => {
   >();
   expectTypeOf<UseFilterBindingOptions['persister']>().toEqualTypeOf<
     FilterBindingPersister | undefined
+  >();
+  expectTypeOf<UseFilterBindingOptions['filterClauseTarget']>().toEqualTypeOf<
+    SqlFilterClauseTarget | undefined
   >();
   expectTypeOf<FilterScope['definitions']>().toEqualTypeOf<
     Array<FilterDefinition>

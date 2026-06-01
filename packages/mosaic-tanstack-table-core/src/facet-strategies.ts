@@ -76,7 +76,7 @@ export const UniqueValuesStrategy: FacetStrategy<void, Array<unknown>> = {
     const outerFilters: Array<FilterExpr> = [];
 
     if (typeof ctx.source === 'function') {
-      src = ctx.source({ where: ctx.primaryFilter ?? null });
+      src = ctx.source({ where: ctx.primaryFilter ?? null, having: null });
       if (ctx.cascadingFilters.length > 0) {
         outerFilters.push(...ctx.cascadingFilters);
       }
@@ -153,7 +153,7 @@ export const MinMaxStrategy: FacetStrategy<void, [number, number] | undefined> =
       const outerFilters: Array<FilterExpr> = [];
 
       if (typeof ctx.source === 'function') {
-        src = ctx.source({ where: ctx.primaryFilter ?? null });
+        src = ctx.source({ where: ctx.primaryFilter ?? null, having: null });
         if (ctx.cascadingFilters.length > 0) {
           outerFilters.push(...ctx.cascadingFilters);
         }
@@ -224,7 +224,7 @@ export const TotalCountStrategy: FacetStrategy<void, number> = {
     const outerFilters: Array<FilterExpr> = [];
 
     if (typeof ctx.source === 'function') {
-      src = ctx.source({ where: ctx.primaryFilter ?? null });
+      src = ctx.source({ where: ctx.primaryFilter ?? null, having: null });
       if (ctx.cascadingFilters.length > 0) {
         outerFilters.push(...ctx.cascadingFilters);
       }
@@ -290,7 +290,7 @@ export const HistogramStrategy: FacetStrategy<HistogramInput, HistogramOutput> =
       const outerFilters: Array<FilterExpr> = [];
 
       if (typeof ctx.source === 'function') {
-        src = ctx.source({ where: ctx.primaryFilter ?? null });
+        src = ctx.source({ where: ctx.primaryFilter ?? null, having: null });
         if (ctx.cascadingFilters.length > 0) {
           outerFilters.push(...ctx.cascadingFilters);
         }
@@ -384,7 +384,7 @@ export const SparklineStrategy: FacetStrategy<SparklineInput, SparklineOutput> =
       const outerFilters: Array<FilterExpr> = [];
 
       if (typeof ctx.source === 'function') {
-        src = ctx.source({ where: ctx.primaryFilter ?? null });
+        src = ctx.source({ where: ctx.primaryFilter ?? null, having: null });
         if (ctx.cascadingFilters.length > 0) {
           outerFilters.push(...ctx.cascadingFilters);
         }

@@ -1,5 +1,6 @@
 import { getCoreRowModel, getExpandedRowModel } from '@tanstack/table-core';
 import { ReadonlyStore, batch } from '@tanstack/store';
+import * as mSql from '@uwdata/mosaic-sql';
 import { logger } from '../../logger';
 import { arrowTableToObjects } from '../../grouped/arrow-utils';
 import { createGroupedTableFeature } from '../../grouped/feature';
@@ -22,6 +23,28 @@ import type {
   Updater,
 } from '@tanstack/table-core';
 import type { FlatGroupedRow } from '../../grouped/types';
+
+function normalizeFilterPredicate(
+  predicate: FilterExpr | Array<FilterExpr> | null | undefined,
+): FilterExpr | null {
+  if (!predicate) {
+    return null;
+  }
+
+  if (!Array.isArray(predicate)) {
+    return predicate;
+  }
+
+  if (predicate.length === 0) {
+    return null;
+  }
+
+  if (predicate.length === 1) {
+    return predicate[0]!;
+  }
+
+  return mSql.and(...predicate);
+}
 
 function getExpandedKeys(state: ExpandedState): Array<string> {
   if (state === true) {
@@ -517,6 +540,7 @@ export class GroupedTableController<
     filterPredicate: FilterExpr | null,
   ): Promise<Array<FlatGroupedRow>> {
     const groupBy = this.client.options.groupBy!;
+    const havingPredicate = this.#getGroupedHavingPredicate();
     const query = buildGroupedLevelQuery({
       table: this.client.source as string,
       groupBy: groupBy.levels,
@@ -525,6 +549,7 @@ export class GroupedTableController<
       parentConstraints,
       filterPredicate,
       filterClauseTarget: groupBy.filterClauseTarget ?? 'where',
+      havingPredicate,
       additionalWhere: groupBy.additionalWhere ?? undefined,
       limit: groupBy.pageSize ?? 200,
     });
@@ -551,7 +576,6 @@ export class GroupedTableController<
       leafColumns: groupBy.leafColumns,
       parentConstraints,
       filterPredicate,
-      filterClauseTarget: groupBy.filterClauseTarget ?? 'where',
       additionalWhere: groupBy.additionalWhere ?? undefined,
       limit: groupBy.leafPageSize ?? 50,
       selectAll: groupBy.leafSelectAll ?? false,
@@ -614,7 +638,13 @@ export class GroupedTableController<
   }
 
   #getGroupedFilterPredicate(): FilterExpr | null {
-    return (this.client.filterBy?.predicate(null) as FilterExpr | null) ?? null;
+    return normalizeFilterPredicate(this.client.filterBy?.predicate(null));
+  }
+
+  #getGroupedHavingPredicate(): FilterExpr | null {
+    return normalizeFilterPredicate(
+      this.client.options.havingBy?.predicate(null),
+    );
   }
 
   #hasExpandedLeafRows(): boolean {

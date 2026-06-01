@@ -647,8 +647,174 @@ describe('MosaicDataTable characterization', () => {
 
     const sql = client.query(predicate)?.toString();
 
-    expect(received).toEqual([{ where: predicate }]);
+    expect(received).toEqual([{ where: predicate, having: null }]);
     expect(sql).toContain('"country" = \'NZ\'');
+  });
+
+  test('query factory sources receive routed where and having predicates', () => {
+    const received: Array<unknown> = [];
+    const wherePredicate = mSql.eq(mSql.column('country'), mSql.literal('NZ'));
+    const havingPredicate = mSql.sql`COUNT(*) >= 2`;
+    const havingBy = new Selection();
+    havingBy.update({
+      source: {},
+      value: 'min-count',
+      predicate: havingPredicate,
+    });
+
+    const client = new MosaicDataTable<Record<string, string | number>>({
+      table: (args) => {
+        received.push(args);
+        const query = mSql.Query.from('athletes').select({
+          country: mSql.column('country'),
+          metric: mSql.count(),
+        });
+        if (args.where) {
+          query.where(args.where);
+        }
+        if (args.having) {
+          query.having(args.having);
+        }
+        return query.groupby('country');
+      },
+      havingBy,
+      columns: [
+        { accessorKey: 'country', header: 'Country' },
+        { accessorKey: 'metric', header: 'Count' },
+      ],
+    });
+
+    const sql = client.query(wherePredicate)?.toString();
+
+    expect(received).toEqual([
+      { where: wherePredicate, having: havingPredicate },
+    ]);
+    expect(sql).toContain('"country" = \'NZ\'');
+    expect(sql).toContain('HAVING COUNT(*) >= 2');
+  });
+
+  test('routes filterBy to WHERE and havingBy to HAVING for grouped tables', () => {
+    const filterBy = new Selection();
+    const havingBy = new Selection();
+    filterBy.update({
+      source: {},
+      value: 'NZ',
+      predicate: mSql.eq(mSql.column('country'), mSql.literal('NZ')),
+    });
+    havingBy.update({
+      source: {},
+      value: 'min-gold',
+      predicate: mSql.sql`SUM("gold") >= 4`,
+    });
+
+    const client = new MosaicDataTable({
+      table: 'athletes',
+      filterBy,
+      havingBy,
+      columns: [
+        { accessorKey: 'sport', header: 'Sport' },
+        { accessorKey: 'total_gold', header: 'Gold' },
+      ],
+      groupBy: {
+        levels: [{ column: 'sport' }],
+        metrics: [
+          { id: 'total_gold', expression: mSql.sum('gold'), label: 'Gold' },
+        ],
+      },
+    });
+
+    const sql = client.query(filterBy.predicate(client))?.toString();
+
+    expect(sql).toContain('"country" = \'NZ\'');
+    expect(sql).toContain('HAVING SUM("gold") >= 4');
+  });
+
+  test('resets pagination and requeries when an aggregate filter selection changes', async () => {
+    const havingBy = new Selection();
+    const { client, coordinator } = createFlatClient({ havingBy });
+
+    coordinator.enqueueResponse(
+      'FROM "athletes"',
+      createArrowTable([
+        { id: '1', name: 'Alice', age: 31, country: 'NZ', status: 'active' },
+      ]),
+    );
+
+    client.connect();
+    await client.pending;
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        pagination: { pageIndex: 3, pageSize: 10 },
+      },
+    }));
+
+    havingBy.update({
+      source: {},
+      value: 'min-count',
+      predicate: mSql.sql`COUNT(*) >= 2`,
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.tableState.pagination.pageIndex).toBe(0);
+      expect(
+        coordinator.requestLog.some(
+          ({ sql }) =>
+            sql.includes('HAVING COUNT(*) >= 2') &&
+            sql.includes('FROM "athletes"'),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  test('resets pagination for external havingBy changes when filterBy is self-originated', async () => {
+    const filterBy = new Selection();
+    const havingBy = new Selection();
+    const { client, coordinator } = createFlatClient({ filterBy, havingBy });
+
+    filterBy.update({
+      source: client,
+      value: 'NZ',
+      predicate: mSql.eq(mSql.column('country'), mSql.literal('NZ')),
+    });
+
+    coordinator.enqueueResponse(
+      'FROM "athletes"',
+      createArrowTable([
+        { id: '1', name: 'Alice', age: 31, country: 'NZ', status: 'active' },
+      ]),
+    );
+
+    client.connect();
+    await client.pending;
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        pagination: { pageIndex: 5, pageSize: 10 },
+      },
+    }));
+
+    havingBy.update({
+      source: {},
+      value: 'min-count',
+      predicate: mSql.sql`COUNT(*) >= 2`,
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.tableState.pagination.pageIndex).toBe(0);
+      expect(
+        coordinator.requestLog.some(
+          ({ sql }) =>
+            sql.includes('"country" = \'NZ\'') &&
+            sql.includes('HAVING COUNT(*) >= 2') &&
+            sql.includes('FROM "athletes"'),
+        ),
+      ).toBe(true);
+    });
   });
 
   test('pushes TanStack row selection changes into the Mosaic selection predicate', () => {

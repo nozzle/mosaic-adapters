@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 
 type View =
+  | 'aggregate-filter-lab'
   | 'athletes-simple'
   | 'athletes'
   | 'filter-builder'

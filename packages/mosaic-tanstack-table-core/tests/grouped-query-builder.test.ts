@@ -81,6 +81,69 @@ describe('buildGroupedLevelQuery', () => {
     expect(sql).toContain("'M'");
   });
 
+  test('applies havingPredicate to HAVING', () => {
+    const having = mSql.sql`SUM("gold") >= 5`;
+    const sql = buildGroupedLevelQuery({
+      table: 'athletes',
+      groupBy: GROUP_BY,
+      depth: 0,
+      metrics: METRICS,
+      parentConstraints: {},
+      havingPredicate: having,
+    }).toString();
+
+    expect(sql).toContain('GROUP BY');
+    expect(sql).toContain('HAVING');
+    expect(sql).toContain('SUM("gold") >= 5');
+  });
+
+  test('keeps row filters in WHERE and aggregate filters in HAVING', () => {
+    const filter = mSql.eq(mSql.column('sex'), mSql.literal('F'));
+    const having = mSql.sql`COUNT(*) >= 2`;
+    const sql = buildGroupedLevelQuery({
+      table: 'athletes',
+      groupBy: GROUP_BY,
+      depth: 1,
+      metrics: METRICS,
+      parentConstraints: { country: 'NZ' },
+      filterPredicate: filter,
+      havingPredicate: having,
+    }).toString();
+
+    expect(sql).toContain('WHERE');
+    expect(sql).toContain('"country" = \'NZ\'');
+    expect(sql).toContain('"sex" = \'F\'');
+    expect(sql).toContain('HAVING COUNT(*) >= 2');
+  });
+
+  test('can route the grouped filterPredicate itself to HAVING', () => {
+    const filter = mSql.sql`COUNT(*) >= 3`;
+    const sql = buildGroupedLevelQuery({
+      table: 'athletes',
+      groupBy: GROUP_BY,
+      depth: 0,
+      metrics: METRICS,
+      parentConstraints: {},
+      filterPredicate: filter,
+      filterClauseTarget: 'having',
+    }).toString();
+
+    expect(sql).toContain('HAVING COUNT(*) >= 3');
+    expect(sql).not.toContain('WHERE');
+  });
+
+  test('does not apply aggregate HAVING predicates to leaf row queries', () => {
+    const sql = buildLeafRowsQuery({
+      table: 'athletes',
+      leafColumns: LEAF_COLUMNS,
+      parentConstraints: { country: 'USA' },
+      filterPredicate: mSql.eq(mSql.column('sex'), mSql.literal('F')),
+    }).toString();
+
+    expect(sql).toContain('WHERE');
+    expect(sql).not.toContain('HAVING');
+  });
+
   test('applies additionalWhere to WHERE', () => {
     const extra = mSql.isNotNull(mSql.column('country'));
     const sql = buildGroupedLevelQuery({
@@ -251,6 +314,21 @@ describe('buildLeafRowsQuery', () => {
     expect(sql).toContain("'F'");
     expect(sql).toContain('IS NOT NULL');
     expect(sql).toContain('AND');
+  });
+
+  test('keeps filterPredicate in WHERE when filterClauseTarget is having', () => {
+    const filter = mSql.eq(mSql.column('sex'), mSql.literal('F'));
+    const sql = buildLeafRowsQuery({
+      table: 'athletes',
+      leafColumns: LEAF_COLUMNS,
+      parentConstraints: { country: 'USA' },
+      filterPredicate: filter,
+      filterClauseTarget: 'having',
+    }).toString();
+
+    expect(sql).toContain('WHERE');
+    expect(sql).toContain('"sex" = \'F\'');
+    expect(sql).not.toContain('HAVING');
   });
 });
 

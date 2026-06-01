@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
+import * as mSql from '@uwdata/mosaic-sql';
 import * as vg from '@uwdata/vgplot';
 import { Selection } from '@uwdata/mosaic-core';
 import {
@@ -28,7 +29,9 @@ import type {
   FilterBindingPersister,
   FilterDefinition,
   FilterRuntime,
+  SqlFilterClauseTarget,
 } from '@nozzleio/mosaic-tanstack-react-table';
+import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { Selection as MosaicSelection } from '@uwdata/mosaic-core';
 import { ActiveFilterRow } from '@/components/filter-builder/active-filter-row';
 import { AddFilterMenu } from '@/components/filter-builder/add-filter-menu';
@@ -53,6 +56,7 @@ const fileURL =
 const tableName = 'athletes_filter_builder';
 const DEFAULT_PAGE_ACTIVE_FILTER_IDS = ['name', 'sport'];
 const DEFAULT_WIDGET_ACTIVE_FILTER_IDS = ['sex'];
+const DEFAULT_AGGREGATE_ACTIVE_FILTER_IDS = ['total_gold'];
 
 interface AthleteRowData {
   id: number;
@@ -66,6 +70,12 @@ interface AthleteRowData {
   gold: number | null;
   silver: number | null;
   bronze: number | null;
+}
+
+interface AggregateAthleteRowData {
+  nationality: string;
+  total_gold: number;
+  athlete_count: number;
 }
 
 const athleteMapping = createMosaicMapping<AthleteRowData>({
@@ -239,6 +249,39 @@ const widgetDefinitions: Array<FilterDefinition> = [
   },
 ];
 
+const aggregateDefinitions: Array<FilterDefinition> = [
+  {
+    id: 'total_gold',
+    label: 'Total Gold',
+    column: 'total_gold',
+    valueKind: 'number-range',
+    operators: [
+      NUMBER_RANGE_CONDITIONS.AFTER,
+      NUMBER_RANGE_CONDITIONS.BETWEEN,
+      NUMBER_RANGE_CONDITIONS.IS_EMPTY,
+      NUMBER_RANGE_CONDITIONS.IS_NOT_EMPTY,
+    ],
+    defaultOperator: NUMBER_RANGE_CONDITIONS.AFTER,
+    dataType: 'number',
+    description: 'Aggregate filter: HAVING total_gold',
+  },
+  {
+    id: 'athlete_count',
+    label: 'Athlete Count',
+    column: 'athlete_count',
+    valueKind: 'number-range',
+    operators: [
+      NUMBER_RANGE_CONDITIONS.AFTER,
+      NUMBER_RANGE_CONDITIONS.BETWEEN,
+      NUMBER_RANGE_CONDITIONS.IS_EMPTY,
+      NUMBER_RANGE_CONDITIONS.IS_NOT_EMPTY,
+    ],
+    defaultOperator: NUMBER_RANGE_CONDITIONS.AFTER,
+    dataType: 'number',
+    description: 'Aggregate filter: HAVING athlete_count',
+  },
+];
+
 export function FilterBuilderView() {
   const [isReady, setIsReady] = useState(false);
   const [pageActiveFilterIds, setPageActiveFilterIds] = useState(() =>
@@ -250,11 +293,16 @@ export function FilterBuilderView() {
       DEFAULT_WIDGET_ACTIVE_FILTER_IDS,
     ),
   );
+  const [aggregateActiveFilterIds, setAggregateActiveFilterIds] = useState(
+    DEFAULT_AGGREGATE_ACTIVE_FILTER_IDS,
+  );
   const [pageSearchTerm, setPageSearchTerm] = useState('');
   const [widgetSearchTerm, setWidgetSearchTerm] = useState('');
+  const [aggregateSearchTerm, setAggregateSearchTerm] = useState('');
   const chartRef = useRef<HTMLDivElement | null>(null);
   const rosterColumns = useRosterColumns();
   const widgetColumns = useWidgetColumns();
+  const aggregateColumns = useAggregateColumns();
   const pageScopePersister = useMemo(() => createPageScopeUrlPersister(), []);
   const widgetBindingPersister = useMemo(
     () => createWidgetScopeUrlBindingPersister(),
@@ -269,8 +317,15 @@ export function FilterBuilderView() {
     scopeId: 'widget:medal-table',
     definitions: widgetDefinitions,
   });
+  const aggregate = useMosaicFilters({
+    scopeId: 'aggregate:having-table',
+    definitions: aggregateDefinitions,
+  });
   const pageFacetContexts = useCascadingContexts(page.selections);
   const widgetFacetContexts = useCascadingContexts(widget.selections, [
+    page.context,
+  ]);
+  const aggregateFacetContexts = useCascadingContexts(aggregate.selections, [
     page.context,
   ]);
   const widgetContext = useComposedSelection([page.context, widget.context]);
@@ -291,6 +346,15 @@ export function FilterBuilderView() {
         widgetSearchTerm,
       ),
     [widgetActiveFilterIds, widgetSearchTerm],
+  );
+  const aggregateAvailableDefinitions = useMemo(
+    () =>
+      getAvailableFiltersForScope(
+        aggregateDefinitions,
+        aggregateActiveFilterIds,
+        aggregateSearchTerm,
+      ),
+    [aggregateActiveFilterIds, aggregateSearchTerm],
   );
   const pageActiveFilters = useMemo(
     () =>
@@ -320,6 +384,22 @@ export function FilterBuilderView() {
         [],
       ),
     [widget, widgetActiveFilterIds],
+  );
+  const aggregateActiveFilters = useMemo(
+    () =>
+      aggregateActiveFilterIds.reduce<Array<FilterRuntime>>(
+        (filters, filterId) => {
+          const runtime = aggregate.getFilter(filterId);
+          if (!runtime) {
+            return filters;
+          }
+
+          filters.push(runtime);
+          return filters;
+        },
+        [],
+      ),
+    [aggregate, aggregateActiveFilterIds],
   );
 
   useEffect(() => {
@@ -493,6 +573,54 @@ export function FilterBuilderView() {
           debugName="FilterBuilderWidgetTable"
         />
       </section>
+
+      <section
+        className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4"
+        data-testid="aggregate-having-filter-scope"
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="grid gap-1">
+            <h3 className="text-lg font-semibold">
+              Aggregate HAVING Filter Scope
+            </h3>
+            <p className="max-w-3xl text-sm text-slate-600">
+              These controls build aggregate predicates and pass the scope
+              context through <code>havingBy</code>. The table still consumes
+              <code>page.context</code> as row-level <code>WHERE</code>.
+            </p>
+          </div>
+          <AddFilterMenu
+            scopeId="aggregate-having"
+            title="Aggregate HAVING Catalog"
+            availableDefinitions={aggregateAvailableDefinitions}
+            searchTerm={aggregateSearchTerm}
+            onSearchTermChange={setAggregateSearchTerm}
+            onAddFilter={(filterId) => {
+              setAggregateActiveFilterIds((previousFilterIds) =>
+                addFilter(previousFilterIds, filterId),
+              );
+            }}
+          />
+        </div>
+        <DynamicFilterList
+          emptyText="No aggregate filters are active."
+          filters={aggregateActiveFilters}
+          facetContexts={aggregateFacetContexts}
+          filterClauseTarget="having"
+          scopeLabel="aggregate HAVING"
+          scopeId="aggregate-having"
+          onRemoveFilter={(filterId) => {
+            setAggregateActiveFilterIds((previousFilterIds) =>
+              removeFilter(previousFilterIds, filterId),
+            );
+          }}
+        />
+        <AggregateTableCard
+          filterBy={page.context}
+          havingBy={aggregate.context}
+          columns={aggregateColumns}
+        />
+      </section>
     </div>
   );
 }
@@ -502,6 +630,7 @@ function DynamicFilterList({
   emptyText,
   filters,
   facetContexts,
+  filterClauseTarget = 'where',
   scopeLabel,
   scopeId,
   onRemoveFilter,
@@ -510,6 +639,7 @@ function DynamicFilterList({
   emptyText: string;
   filters: Array<FilterRuntime>;
   facetContexts: Record<string, MosaicSelection>;
+  filterClauseTarget?: SqlFilterClauseTarget;
   scopeLabel: string;
   scopeId: string;
   onRemoveFilter: (id: string) => void;
@@ -530,6 +660,7 @@ function DynamicFilterList({
           filter={filter}
           filterBy={facetContexts[filter.definition.id]}
           bindingPersister={bindingPersister}
+          filterClauseTarget={filterClauseTarget}
           scopeId={scopeId}
           scopeLabel={scopeLabel}
           onRemoveFilter={onRemoveFilter}
@@ -600,6 +731,28 @@ function useWidgetColumns() {
       }),
       columnHelper.accessor('bronze', {
         header: 'Bronze',
+      }),
+    ],
+    [columnHelper],
+  );
+}
+
+function useAggregateColumns() {
+  const columnHelper = useMemo(
+    () => createMosaicColumnHelper<AggregateAthleteRowData>(),
+    [],
+  );
+
+  return useMemo<Array<ColumnDef<AggregateAthleteRowData, any>>>(
+    () => [
+      columnHelper.accessor('nationality', {
+        header: 'Nationality',
+      }),
+      columnHelper.accessor('total_gold', {
+        header: 'Total Gold',
+      }),
+      columnHelper.accessor('athlete_count', {
+        header: 'Athlete Count',
       }),
     ],
     [columnHelper],
@@ -688,6 +841,123 @@ function AthleteTableCard({
         <p
           className="text-xs font-medium uppercase tracking-wide text-slate-500"
           data-testid={`${cardId}-summary`}
+        >
+          {summaryText}
+        </p>
+      </div>
+      <RenderTable table={table} columns={columns} />
+    </div>
+  );
+}
+
+function AggregateTableCard({
+  filterBy,
+  havingBy,
+  columns,
+}: {
+  filterBy: MosaicSelection;
+  havingBy: MosaicSelection;
+  columns: Array<ColumnDef<AggregateAthleteRowData, any>>;
+}) {
+  const tableSource = useMemo(
+    () =>
+      ({
+        where,
+        having,
+      }: {
+        where: FilterExpr | null;
+        having: FilterExpr | null;
+      }) => {
+        const query = mSql.Query.from(tableName)
+          .select({
+            nationality: mSql.column('nationality'),
+            total_gold: mSql.sql`COALESCE(SUM(gold), 0)`,
+            athlete_count: mSql.count(),
+          })
+          .where(mSql.isNotNull(mSql.column('nationality')))
+          .groupby('nationality')
+          .orderby(mSql.desc(mSql.column('total_gold')));
+
+        if (where) {
+          query.where(where);
+        }
+
+        if (having) {
+          query.having(having);
+        }
+
+        return query;
+      },
+    [],
+  );
+  const { client, tableOptions } = useMosaicReactTable<AggregateAthleteRowData>(
+    {
+      table: tableSource,
+      filterBy,
+      havingBy,
+      columns,
+      converter: (row) => ({
+        nationality: String(row.nationality ?? ''),
+        total_gold: coerceNumber(row.total_gold),
+        athlete_count: coerceNumber(row.athlete_count),
+      }),
+      totalRowsMode: 'window',
+      tableOptions: {
+        enableColumnFilters: false,
+        enableSorting: false,
+        enableMultiSort: false,
+        enableHiding: true,
+      },
+      __debugName: 'FilterBuilderAggregateHavingTable',
+    },
+  );
+  const table = useReactTable(tableOptions);
+  const subscribeToStore = React.useCallback(
+    (onStoreChange: () => void) => {
+      const subscription = client.store.subscribe(onStoreChange);
+      return () => {
+        subscription.unsubscribe();
+      };
+    },
+    [client.store],
+  );
+  const summaryText = React.useSyncExternalStore(
+    subscribeToStore,
+    () => {
+      const firstRow = client.store.state.rows[0] as
+        | Partial<AggregateAthleteRowData>
+        | undefined;
+      const firstNationality =
+        typeof firstRow?.nationality === 'string'
+          ? firstRow.nationality
+          : 'none';
+
+      return `Visible groups: ${client.store.state.rows.length} / First group: ${firstNationality}`;
+    },
+    () => {
+      const firstRow = client.store.state.rows[0] as
+        | Partial<AggregateAthleteRowData>
+        | undefined;
+      const firstNationality =
+        typeof firstRow?.nationality === 'string'
+          ? firstRow.nationality
+          : 'none';
+
+      return `Visible groups: ${client.store.state.rows.length} / First group: ${firstNationality}`;
+    },
+  );
+
+  return (
+    <div className="grid gap-3">
+      <div className="grid gap-1">
+        <h3 className="text-lg font-semibold">Aggregate Medal Groups</h3>
+        <p className="text-sm text-slate-600">
+          Page filters are applied before grouping; aggregate builder filters
+          are applied after grouping.
+        </p>
+        <p
+          className="text-xs font-medium uppercase tracking-wide text-slate-500"
+          data-testid="aggregate-having-summary"
         >
           {summaryText}
         </p>

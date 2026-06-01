@@ -10,6 +10,8 @@ import * as grouped from '../src/grouped';
 import type { RowData } from '@tanstack/table-core';
 import type { MosaicDataTable } from '../src/data-table';
 import type { MosaicDataTableOptions } from '../src/types';
+import type { SqlFilterClauseTarget } from '../src/index';
+import type { FilterBindingControllerOptions } from '../src/filter-builder';
 import type {
   FacetStrategyKeyWithoutInput,
   FacetStrategyMap,
@@ -67,6 +69,10 @@ test('publishes the tightened facet and sidecar type contracts', () => {
     ReturnType<typeof filterBuilder.createEmptyFilterBindingState>['operator']
   >().toEqualTypeOf<string | null>();
   expectTypeOf<typeof filterBuilder.readFilterSelectionState>().toBeFunction();
+  expectTypeOf<SqlFilterClauseTarget>().toEqualTypeOf<'where' | 'having'>();
+  expectTypeOf<
+    FilterBindingControllerOptions['filterClauseTarget']
+  >().toEqualTypeOf<SqlFilterClauseTarget | undefined>();
 });
 
 test('accepts heterogeneous column value types in table options', () => {

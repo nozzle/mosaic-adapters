@@ -48,6 +48,9 @@ export interface BuildGroupedLevelQueryOptions {
   /** SQL clause target for filterPredicate. Defaults to `where`. */
   filterClauseTarget?: SqlFilterClauseTarget;
 
+  /** Aggregate filter predicate applied to HAVING. */
+  havingPredicate?: FilterExpr | null;
+
   /** Additional static WHERE clauses (e.g., NULL exclusion). */
   additionalWhere?: FilterExpr | null;
 
@@ -86,6 +89,7 @@ export function buildGroupedLevelQuery(
     parentConstraints,
     filterPredicate,
     filterClauseTarget = 'where',
+    havingPredicate,
     additionalWhere,
     limit = 200,
     orderByMetric,
@@ -122,6 +126,9 @@ export function buildGroupedLevelQuery(
 
   // Apply Mosaic filter predicate
   routedFilters.push(routeFilter(filterPredicate, filterClauseTarget));
+
+  // Apply aggregate filter predicate
+  routedFilters.push(routeFilter(havingPredicate, 'having'));
 
   // Apply additional static WHERE
   routedFilters.push(routeFilter(additionalWhere, 'where'));
@@ -194,7 +201,6 @@ export function buildLeafRowsQuery(
     leafColumns,
     parentConstraints,
     filterPredicate,
-    filterClauseTarget = 'where',
     additionalWhere,
     limit = 100,
     orderBy,
@@ -226,8 +232,8 @@ export function buildLeafRowsQuery(
     );
   }
 
-  // Apply Mosaic filter predicate
-  routedFilters.push(routeFilter(filterPredicate, filterClauseTarget));
+  // Leaf rows are raw row queries, so row-compatible filters always belong in WHERE.
+  routedFilters.push(routeFilter(filterPredicate, 'where'));
 
   // Apply additional static WHERE
   routedFilters.push(routeFilter(additionalWhere, 'where'));

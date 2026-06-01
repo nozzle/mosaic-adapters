@@ -214,7 +214,8 @@ export type MosaicColumnMeta<TValue = unknown> = {
   /**
    * SQL clause target for the filter predicate generated from this column.
    *
-   * Defaults to `where`. Currently only `where` is supported.
+   * Defaults to `where`. Use `having` for aggregate predicates evaluated after
+   * grouping.
    */
   filterClauseTarget?: SqlFilterClauseTarget;
   facetSortMode?: FacetSortMode;
@@ -298,7 +299,9 @@ export type SubsetTableOptions<TData extends RowData> = Omit<
 export type MosaicTableSource =
   | string
   | Param<string>
-  | ((args: { [K in SqlFilterClauseTarget]: FilterExpr | null }) => SelectQuery);
+  | ((args: {
+      [K in SqlFilterClauseTarget]: FilterExpr | null;
+    }) => SelectQuery);
 
 export interface MosaicDataTableOptions<
   TData extends RowData,
@@ -319,10 +322,7 @@ export interface MosaicDataTableOptions<
 
   coordinator?: Coordinator;
   filterBy?: Selection | undefined;
-  /**
-   * HAVING-targeted filter-builder Selection placeholder. Currently no
-   * predicates can be routed here because only `where` is supported.
-   */
+  /** HAVING-targeted Selection for aggregate predicates. */
   havingBy?: Selection | undefined;
   highlightBy?: Selection | undefined;
   manualHighlight?: boolean;
@@ -343,7 +343,8 @@ export interface MosaicDataTableOptions<
    * SQL clause target for the predicate generated from TanStack global filter
    * state.
    *
-   * Defaults to `where`. Currently only `where` is supported.
+   * Defaults to `where`. Use `having` when the generated predicate references
+   * grouped or aggregate output.
    */
   globalFilterClauseTarget?: SqlFilterClauseTarget;
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
@@ -390,7 +391,8 @@ export interface MosaicDataTableOptions<
     /**
      * SQL clause target for grouped table filter predicates.
      *
-     * Defaults to `where`. Currently only `where` is supported.
+     * Defaults to `where`. Use `having` when the grouped filter predicate
+     * references aggregate output.
      */
     filterClauseTarget?: SqlFilterClauseTarget;
     /** Maximum rows per group level. Defaults to 200. */

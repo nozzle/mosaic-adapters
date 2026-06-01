@@ -729,8 +729,8 @@ export function clearFilterSelection(
   target: SqlFilterClauseTarget = 'where',
 ): void {
   switch (target) {
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     case 'where':
+    case 'having':
       filter.selection.update({
         source: getFilterSource(filter),
         value: null,
@@ -795,8 +795,8 @@ export function applyFilterSelection(
   }
 
   switch (target) {
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     case 'where':
+    case 'having':
       filter.selection.update({
         source: getFilterSource(filter),
         value: createStoredFilterValue(filter, {
