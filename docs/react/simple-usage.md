@@ -218,6 +218,9 @@ function AthletesTable() {
 - `columns`: TanStack column definitions with `meta.mosaic`
 - `converter`: Transform raw DB rows into typed app data (handles nulls, dates)
 
+Generated table filters target SQL `WHERE` by default. The explicit clause
+target options currently accept only `where`; `HAVING` is not available yet.
+
 `meta.mosaicDataTable` is still supported for existing code. When both
 namespaces configure the same metadata option, `meta.mosaic` takes precedence.
 

@@ -10,6 +10,7 @@ import type {
   ConditionValue,
   FilterOperator,
 } from '../types';
+import type { SqlFilterClauseTarget } from '../query/filter-routing';
 import type { Selection, SelectionClause } from '@uwdata/mosaic-core';
 import type {
   FilterBindingState,
@@ -723,12 +724,24 @@ export function areFilterBindingStatesEqual(
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-export function clearFilterSelection(filter: FilterRuntime): void {
-  filter.selection.update({
-    source: getFilterSource(filter),
-    value: null,
-    predicate: null,
-  });
+export function clearFilterSelection(
+  filter: FilterRuntime,
+  target: SqlFilterClauseTarget = 'where',
+): void {
+  switch (target) {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    case 'where':
+      filter.selection.update({
+        source: getFilterSource(filter),
+        value: null,
+        predicate: null,
+      });
+      break;
+    default: {
+      const exhaustive: never = target;
+      return exhaustive;
+    }
+  }
 }
 
 export function readFilterSelectionState(
@@ -772,23 +785,33 @@ function buildResolvedPredicate(
 export function applyFilterSelection(
   filter: FilterRuntime,
   state: FilterBindingState,
+  target: SqlFilterClauseTarget = 'where',
 ): void {
   const resolvedSelection = resolveAppliedFilterSelection(filter, state);
 
   if (!resolvedSelection) {
-    clearFilterSelection(filter);
+    clearFilterSelection(filter, target);
     return;
   }
 
-  filter.selection.update({
-    source: getFilterSource(filter),
-    value: createStoredFilterValue(filter, {
-      operator: resolvedSelection.operator,
-      value: resolvedSelection.normalizedValue,
-      valueTo: state.valueTo,
-    }),
-    predicate: resolvedSelection.predicate,
-  });
+  switch (target) {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    case 'where':
+      filter.selection.update({
+        source: getFilterSource(filter),
+        value: createStoredFilterValue(filter, {
+          operator: resolvedSelection.operator,
+          value: resolvedSelection.normalizedValue,
+          valueTo: state.valueTo,
+        }),
+        predicate: resolvedSelection.predicate,
+      });
+      break;
+    default: {
+      const exhaustive: never = target;
+      return exhaustive;
+    }
+  }
 }
 
 export function getFacetSelectedValues(

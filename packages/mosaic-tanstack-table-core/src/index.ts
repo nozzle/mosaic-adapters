@@ -16,3 +16,4 @@ export * from './schema';
 export { createMosaicMapping } from './schema/factory';
 export * from './grouped/types';
 export { createMosaicColumnHelper } from './utils';
+export type { SqlFilterClauseTarget } from './query/filter-routing';

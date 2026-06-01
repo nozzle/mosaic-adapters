@@ -12,6 +12,7 @@ import type {
   MosaicDataTableOptions,
   MosaicDataTableStore,
   PrimitiveSqlValue,
+  SqlFilterClauseTarget,
 } from '@nozzleio/mosaic-tanstack-table-core';
 import type { RowData, TableOptions } from '@tanstack/react-table';
 
@@ -25,6 +26,7 @@ export type {
   MosaicDataTableOptions,
   MosaicDataTableStore,
   PrimitiveSqlValue,
+  SqlFilterClauseTarget,
 };
 
 /**

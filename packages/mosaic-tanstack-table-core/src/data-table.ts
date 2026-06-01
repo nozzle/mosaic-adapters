@@ -23,6 +23,7 @@ import {
   buildTableQuery,
   extractInternalFilters,
 } from './query/query-builder';
+import { applyRoutedFilters, routeFilter } from './query/filter-routing';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SidecarManager } from './sidecar-manager';
@@ -343,7 +344,7 @@ export class MosaicDataTable<
 
   resolveSource(filter?: FilterExpr | null): string | SelectQuery {
     if (typeof this.source === 'function') {
-      return this.source(filter);
+      return this.source({ where: filter ?? null });
     }
     if (isParam(this.source)) {
       return this.source.value as string;
@@ -367,6 +368,7 @@ export class MosaicDataTable<
         metrics: groupBy.metrics,
         parentConstraints: {},
         filterPredicate: primaryFilter ?? undefined,
+        filterClauseTarget: groupBy.filterClauseTarget ?? 'where',
         additionalWhere: groupBy.additionalWhere ?? undefined,
         limit: groupBy.pageSize ?? 200,
       });
@@ -418,6 +420,7 @@ export class MosaicDataTable<
         highlightPredicate: safeHighlightPredicate,
         manualHighlight: this.options.manualHighlight,
         totalRowsMode: this.options.totalRowsMode,
+        globalFilterClauseTarget: this.options.globalFilterClauseTarget,
         rowSelectionColumn:
           typeof source === 'string'
             ? this.options.rowSelection?.column
@@ -451,8 +454,8 @@ export class MosaicDataTable<
       }
     }
 
-    if (effectiveFilter && typeof this.source === 'string') {
-      statement.where(effectiveFilter);
+    if (typeof this.source === 'string') {
+      applyRoutedFilters(statement, [routeFilter(effectiveFilter, 'where')]);
     }
 
     if (mapper) {
@@ -465,12 +468,14 @@ export class MosaicDataTable<
       const globalFilterClause = buildGlobalFilter({
         tableState,
         mapper,
+        globalFilterClauseTarget: this.options.globalFilterClauseTarget,
       });
       const tableClauses = globalFilterClause
         ? [...internalClauses, globalFilterClause]
         : internalClauses;
+      const tablePredicates = tableClauses.map((clause) => clause.predicate);
       const predicate =
-        tableClauses.length > 0 ? mSql.and(...tableClauses) : null;
+        tablePredicates.length > 0 ? mSql.and(...tablePredicates) : null;
 
       this.tableFilterSelection.update({
         source: this,
@@ -512,7 +517,7 @@ export class MosaicDataTable<
       mapper: this.#columnMapper,
       mapping: this.options.mapping,
       filterRegistry: this.filterRegistry,
-    });
+    }).map((filter) => filter.predicate);
   }
 
   override queryPending(): this {

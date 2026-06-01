@@ -20,6 +20,7 @@ import type {
 import type { FilterStrategy } from '../query/filter-factory';
 import type { GroupLevel, GroupMetric, LeafColumn } from '../grouped/types';
 import type { FacetStrategyMap } from '../registry';
+import type { SqlFilterClauseTarget } from '../query/filter-routing';
 
 export type MosaicDataTableSqlFilterType =
   | 'EQUALS'
@@ -210,6 +211,12 @@ export type MosaicColumnMeta<TValue = unknown> = {
    * STRICTLY TYPED based on the column's data type (TValue).
    */
   sqlFilterType?: AllowedFilterTypeFor<TValue> | (string & {});
+  /**
+   * SQL clause target for the filter predicate generated from this column.
+   *
+   * Defaults to `where`. Currently only `where` is supported.
+   */
+  filterClauseTarget?: SqlFilterClauseTarget;
   facetSortMode?: FacetSortMode;
   /**
    * The Facet Type.
@@ -261,7 +268,11 @@ export interface IMosaicLifecycleHooks {
 export type MosaicDataTableColumnDefMetaOptions<TValue = unknown> = {
   mosaicDataTable?: Pick<
     MosaicColumnMeta<TValue>,
-    'sqlColumn' | 'sqlFilterType' | 'facetSortMode' | 'facet'
+    | 'sqlColumn'
+    | 'sqlFilterType'
+    | 'filterClauseTarget'
+    | 'facetSortMode'
+    | 'facet'
   >;
   mosaic?: MosaicColumnMeta<TValue>;
 };
@@ -287,7 +298,7 @@ export type SubsetTableOptions<TData extends RowData> = Omit<
 export type MosaicTableSource =
   | string
   | Param<string>
-  | ((filter?: FilterExpr | null) => SelectQuery);
+  | ((args: { [K in SqlFilterClauseTarget]: FilterExpr | null }) => SelectQuery);
 
 export interface MosaicDataTableOptions<
   TData extends RowData,
@@ -308,6 +319,11 @@ export interface MosaicDataTableOptions<
 
   coordinator?: Coordinator;
   filterBy?: Selection | undefined;
+  /**
+   * HAVING-targeted filter-builder Selection placeholder. Currently no
+   * predicates can be routed here because only `where` is supported.
+   */
+  havingBy?: Selection | undefined;
   highlightBy?: Selection | undefined;
   manualHighlight?: boolean;
   rowSelection?: {
@@ -323,6 +339,13 @@ export interface MosaicDataTableOptions<
   tableOptions?: Partial<SubsetTableOptions<TData>>;
   totalRowsColumnName?: string;
   totalRowsMode?: 'split' | 'window';
+  /**
+   * SQL clause target for the predicate generated from TanStack global filter
+   * state.
+   *
+   * Defaults to `where`. Currently only `where` is supported.
+   */
+  globalFilterClauseTarget?: SqlFilterClauseTarget;
   onTableStateChange?: 'requestQuery' | 'requestUpdate';
   __debugName?: string;
 
@@ -364,6 +387,12 @@ export interface MosaicDataTableOptions<
     metrics: Array<GroupMetric>;
     /** Additional static WHERE clauses (e.g., NULL exclusion). */
     additionalWhere?: FilterExpr | null;
+    /**
+     * SQL clause target for grouped table filter predicates.
+     *
+     * Defaults to `where`. Currently only `where` is supported.
+     */
+    filterClauseTarget?: SqlFilterClauseTarget;
     /** Maximum rows per group level. Defaults to 200. */
     pageSize?: number;
     /** Columns to fetch for raw leaf rows at the deepest level. */

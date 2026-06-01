@@ -341,7 +341,10 @@ function AthletesTable({
         ),
         meta: {
           filterVariant: 'select',
-          mosaicDataTable: { facet: 'unique' },
+          mosaic: {
+            facet: 'unique',
+            filterClauseTarget: 'where',
+          },
         },
       }),
       columnHelper.accessor('sex', {
@@ -446,6 +449,7 @@ function AthletesTable({
     table: tableName,
     filterBy: topology.$tableContext,
     tableFilterSelection: topology.$tableFilter,
+    globalFilterClauseTarget: 'where',
     columns,
     mapping: AthleteMapping,
     converter: (row) =>
@@ -566,6 +570,7 @@ function AthletesGroupedTable({
     groupBy: {
       levels: GROUPED_LEVELS,
       metrics: GROUPED_METRICS,
+      filterClauseTarget: 'where',
       leafColumns: LEAF_COLUMNS,
       leafSelectAll: true,
     },

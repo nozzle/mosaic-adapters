@@ -524,6 +524,7 @@ export class GroupedTableController<
       metrics: groupBy.metrics,
       parentConstraints,
       filterPredicate,
+      filterClauseTarget: groupBy.filterClauseTarget ?? 'where',
       additionalWhere: groupBy.additionalWhere ?? undefined,
       limit: groupBy.pageSize ?? 200,
     });
@@ -550,6 +551,7 @@ export class GroupedTableController<
       leafColumns: groupBy.leafColumns,
       parentConstraints,
       filterPredicate,
+      filterClauseTarget: groupBy.filterClauseTarget ?? 'where',
       additionalWhere: groupBy.additionalWhere ?? undefined,
       limit: groupBy.leafPageSize ?? 50,
       selectAll: groupBy.leafSelectAll ?? false,

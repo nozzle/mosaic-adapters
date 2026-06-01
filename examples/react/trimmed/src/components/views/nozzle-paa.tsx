@@ -440,20 +440,33 @@ function HeaderSection({
   topology: ReturnType<typeof usePaaTopology>;
   enabled: boolean;
 }) {
-  const qPhrases = (filter: any) =>
-    mSql.Query.from(TABLE_NAME)
-      .select({ value: mSql.count('phrase').distinct() })
-      .where(filter);
-  const qQuestions = (filter: any) =>
-    mSql.Query.from(TABLE_NAME)
-      .select({
-        value: mSql.count(mSql.sql`"related_phrase"."phrase"`).distinct(),
-      })
-      .where(filter);
-  const qDays = (filter: any) =>
-    mSql.Query.from(TABLE_NAME)
-      .select({ value: mSql.count('requested').distinct() })
-      .where(filter);
+  const qPhrases = (filter: FilterExpr | null) => {
+    const query = mSql.Query.from(TABLE_NAME).select({
+      value: mSql.count('phrase').distinct(),
+    });
+    if (filter) {
+      query.where(filter);
+    }
+    return query;
+  };
+  const qQuestions = (filter: FilterExpr | null) => {
+    const query = mSql.Query.from(TABLE_NAME).select({
+      value: mSql.count(mSql.sql`"related_phrase"."phrase"`).distinct(),
+    });
+    if (filter) {
+      query.where(filter);
+    }
+    return query;
+  };
+  const qDays = (filter: FilterExpr | null) => {
+    const query = mSql.Query.from(TABLE_NAME).select({
+      value: mSql.count('requested').distinct(),
+    });
+    if (filter) {
+      query.where(filter);
+    }
+    return query;
+  };
 
   // KPIs use the Global Context (All Inputs + All Summaries + Detail)
   const valPhrases = useMosaicValue(qPhrases, topology.globalContext, {
@@ -553,7 +566,7 @@ function SummaryTable({
   promoted?: boolean;
 }) {
   const queryFactory = useMemo(
-    () => (filter: FilterExpr | null | undefined) => {
+    () => ({ where: filter }: { where: FilterExpr | null }) => {
       const groupKey = getGroupByExpression(groupBy);
 
       const highlightPred = selection.predicate(null);

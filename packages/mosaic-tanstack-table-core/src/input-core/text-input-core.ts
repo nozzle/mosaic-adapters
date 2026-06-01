@@ -1,5 +1,6 @@
 import { clauseMatch, isParam } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
+import { applyRoutedFilters, routeFilter } from '../query/filter-routing';
 import { createStructAccess } from '../utils';
 import { SqlIdentifier } from '../domain/sql-identifier';
 import { BaseInputCore } from './base-input-core';
@@ -147,9 +148,7 @@ export class TextInputCore extends BaseInputCore<
       .orderby(mSql.asc(columnExpr));
     const effectiveFilter = filterBy ? filterBy.predicate(this) : filter;
 
-    if (effectiveFilter) {
-      query.where(effectiveFilter);
-    }
+    applyRoutedFilters(query, [routeFilter(effectiveFilter, 'where')]);
 
     return query;
   }
