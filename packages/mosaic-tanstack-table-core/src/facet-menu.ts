@@ -393,7 +393,7 @@ export class MosaicFacetMenu extends MosaicClient implements IMosaicClient {
     const { table } = this.options;
 
     if (typeof table === 'function') {
-      return table({ where: effectiveFilter ?? null });
+      return table({ where: effectiveFilter ?? null, having: null });
     }
     if (isParam(table)) {
       return table.value as string;

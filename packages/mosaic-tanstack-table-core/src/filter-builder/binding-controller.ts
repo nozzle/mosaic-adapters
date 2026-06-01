@@ -12,6 +12,11 @@ import type {
   FilterRuntime,
   FilterValueKind,
 } from './types';
+import type { SqlFilterClauseTarget } from '../query/filter-routing';
+
+export interface FilterBindingControllerOptions {
+  filterClauseTarget?: SqlFilterClauseTarget;
+}
 
 function isRangeValueKind(valueKind: FilterValueKind) {
   return valueKind === 'date-range' || valueKind === 'number-range';
@@ -31,6 +36,7 @@ function toRangeTuple(
 export class FilterBindingController {
   readonly runtime: FilterRuntime;
   readonly store: Store<FilterBindingState>;
+  readonly filterClauseTarget: SqlFilterClauseTarget;
 
   #isConnected = false;
   #syncVersion = 0;
@@ -46,8 +52,12 @@ export class FilterBindingController {
     });
   };
 
-  constructor(runtime: FilterRuntime) {
+  constructor(
+    runtime: FilterRuntime,
+    options?: FilterBindingControllerOptions,
+  ) {
     this.runtime = runtime;
+    this.filterClauseTarget = options?.filterClauseTarget ?? 'where';
     this.store = createStore(readFilterSelectionState(runtime));
   }
 
@@ -115,11 +125,15 @@ export class FilterBindingController {
   };
 
   apply = (): void => {
-    applyFilterSelection(this.runtime, this.getSnapshot());
+    applyFilterSelection(
+      this.runtime,
+      this.getSnapshot(),
+      this.filterClauseTarget,
+    );
   };
 
   clear = (): void => {
-    clearFilterSelection(this.runtime);
+    clearFilterSelection(this.runtime, this.filterClauseTarget);
   };
 
   connect = (): void => {

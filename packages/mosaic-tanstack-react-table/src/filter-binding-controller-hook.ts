@@ -30,9 +30,10 @@ export function useFilterBindingControllerState(
   state: FilterBindingState;
 } {
   const persister = options?.persister;
+  const filterClauseTarget = options?.filterClauseTarget ?? 'where';
   const controller = React.useMemo(
-    () => new FilterBindingController(filter),
-    [filter],
+    () => new FilterBindingController(filter, { filterClauseTarget }),
+    [filter, filterClauseTarget],
   );
   const bindingContext = React.useMemo(
     () => createFilterBindingPersistenceContext(filter),
@@ -81,8 +82,8 @@ export function useFilterBindingControllerState(
     suppressedHydrationWriteKeyRef.current =
       getFilterBindingStateKey(persistedState);
     markRecentPersistedHydration(filter.selection, 'binding', persistedState);
-    applyFilterSelection(filter, persistedState);
-  }, [bindingContext, filter, persister]);
+    applyFilterSelection(filter, persistedState, filterClauseTarget);
+  }, [bindingContext, filter, filterClauseTarget, persister]);
 
   React.useEffect(() => {
     if (!persister) {

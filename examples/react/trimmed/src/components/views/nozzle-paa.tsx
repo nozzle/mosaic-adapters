@@ -566,43 +566,53 @@ function SummaryTable({
   promoted?: boolean;
 }) {
   const queryFactory = useMemo(
-    () => ({ where: filter }: { where: FilterExpr | null }) => {
-      const groupKey = getGroupByExpression(groupBy);
+    () =>
+      ({
+        where: filter,
+        having,
+      }: {
+        where: FilterExpr | null;
+        having: FilterExpr | null;
+      }) => {
+        const groupKey = getGroupByExpression(groupBy);
 
-      const highlightPred = selection.predicate(null);
-      let highlightCol;
-      const hasPred =
-        highlightPred &&
-        (!Array.isArray(highlightPred) || highlightPred.length > 0);
+        const highlightPred = selection.predicate(null);
+        let highlightCol;
+        const hasPred =
+          highlightPred &&
+          (!Array.isArray(highlightPred) || highlightPred.length > 0);
 
-      if (hasPred) {
-        const safePredicate = Array.isArray(highlightPred)
-          ? mSql.and(...highlightPred)
-          : highlightPred;
-        highlightCol = mSql.max(
-          mSql.sql`CASE WHEN ${safePredicate} THEN 1 ELSE 0 END`,
-        );
-      } else {
-        highlightCol = mSql.literal(1);
-      }
+        if (hasPred) {
+          const safePredicate = Array.isArray(highlightPred)
+            ? mSql.and(...highlightPred)
+            : highlightPred;
+          highlightCol = mSql.max(
+            mSql.sql`CASE WHEN ${safePredicate} THEN 1 ELSE 0 END`,
+          );
+        } else {
+          highlightCol = mSql.literal(1);
+        }
 
-      const q = mSql.Query.from(TABLE_NAME)
-        .select({
-          key: groupKey,
-          metric: metric === '*' ? aggFn() : aggFn(metric),
-          __is_highlighted: highlightCol,
-        })
-        .groupby(groupKey);
+        const q = mSql.Query.from(TABLE_NAME)
+          .select({
+            key: groupKey,
+            metric: metric === '*' ? aggFn() : aggFn(metric),
+            __is_highlighted: highlightCol,
+          })
+          .groupby(groupKey);
 
-      if (filter) {
-        q.where(filter);
-      }
-      if (where) {
-        q.where(where);
-      }
+        if (filter) {
+          q.where(filter);
+        }
+        if (where) {
+          q.where(where);
+        }
+        if (having) {
+          q.having(having);
+        }
 
-      return q;
-    },
+        return q;
+      },
     [groupBy, metric, aggFn, where, selection],
   );
 
@@ -610,6 +620,7 @@ function SummaryTable({
 
   const columns = useMemo(
     () => [
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
       {
         id: 'select',
         header: '',

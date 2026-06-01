@@ -4,6 +4,7 @@ import { useFilterBinding } from '@nozzleio/mosaic-tanstack-react-table';
 import type {
   FilterBindingPersister,
   FilterRuntime,
+  SqlFilterClauseTarget,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import type { Selection as MosaicSelection } from '@uwdata/mosaic-core';
 import { DynamicFilterEditor } from '@/components/filter-builder/dynamic-filter-editor';
@@ -43,6 +44,7 @@ export function ActiveFilterRow({
   filter,
   filterBy,
   bindingPersister,
+  filterClauseTarget = 'where',
   scopeId,
   scopeLabel,
   onRemoveFilter,
@@ -50,14 +52,15 @@ export function ActiveFilterRow({
   filter: FilterRuntime;
   filterBy?: MosaicSelection;
   bindingPersister?: FilterBindingPersister;
+  filterClauseTarget?: SqlFilterClauseTarget;
   scopeId: string;
   scopeLabel: string;
   onRemoveFilter: (id: string) => void;
 }) {
-  const binding = useFilterBinding(
-    filter,
-    bindingPersister ? { persister: bindingPersister } : undefined,
-  );
+  const binding = useFilterBinding(filter, {
+    filterClauseTarget,
+    ...(bindingPersister ? { persister: bindingPersister } : {}),
+  });
   const showOperatorSelect = filter.definition.operators.length > 1;
 
   return (

@@ -185,16 +185,46 @@ group-derived IDs for expansion and row helper APIs.
 
 ### groupBy Option
 
-| Property          | Type            | Default | Description                                             |
-| ----------------- | --------------- | ------- | ------------------------------------------------------- |
-| `levels`          | `GroupLevel[]`  | —       | Hierarchy of columns to group by, in order              |
-| `metrics`         | `GroupMetric[]` | —       | Aggregation metrics to compute at each level            |
-| `additionalWhere` | `FilterExpr`    | —       | Additional static WHERE clauses (e.g. NULL exclusion)   |
-| `filterClauseTarget` | `'where'`    | `'where'` | SQL clause target for grouped filter predicates         |
-| `pageSize`        | `number`        | `200`   | Maximum rows per level                                  |
-| `leafColumns`     | `LeafColumn[]`  | —       | Columns for raw leaf rows at the deepest level          |
-| `leafPageSize`    | `number`        | `50`    | Maximum leaf rows per parent                            |
-| `leafSelectAll`   | `boolean`       | `false` | Use SELECT \* for leaf queries instead of named columns |
+| Property             | Type                  | Default   | Description                                             |
+| -------------------- | --------------------- | --------- | ------------------------------------------------------- |
+| `levels`             | `GroupLevel[]`        | —         | Hierarchy of columns to group by, in order              |
+| `metrics`            | `GroupMetric[]`       | —         | Aggregation metrics to compute at each level            |
+| `additionalWhere`    | `FilterExpr`          | —         | Additional static WHERE clauses (e.g. NULL exclusion)   |
+| `filterClauseTarget` | `'where' \| 'having'` | `'where'` | SQL clause target for grouped filter predicates         |
+| `pageSize`           | `number`              | `200`     | Maximum rows per level                                  |
+| `leafColumns`        | `LeafColumn[]`        | —         | Columns for raw leaf rows at the deepest level          |
+| `leafPageSize`       | `number`              | `50`      | Maximum leaf rows per parent                            |
+| `leafSelectAll`      | `boolean`             | `false`   | Use SELECT \* for leaf queries instead of named columns |
+
+### WHERE and HAVING Filters
+
+Grouped tables support both SQL filter phases:
+
+- `filterBy` supplies row-level filters and targets `WHERE` by default. These
+  predicates run before grouping, so they change which source rows contribute
+  to each group.
+- `havingBy` supplies aggregate filters and targets `HAVING`. These predicates
+  run after grouping, so they filter grouped results without changing the rows
+  used to compute each aggregate.
+
+Use `filterClauseTarget: 'having'` only when the grouped selection predicate
+itself references aggregate output. For separate aggregate controls, prefer
+passing a dedicated `havingBy` selection:
+
+```tsx
+useMosaicReactTable({
+  table: 'athletes',
+  filterBy: rowFilters,
+  havingBy: aggregateFilters,
+  groupBy: {
+    levels: [{ column: 'nationality' }],
+    metrics: [
+      { id: 'total_gold', expression: sql`SUM(gold)`, label: 'Gold' },
+      { id: 'athlete_count', expression: sql`COUNT(*)`, label: 'Athletes' },
+    ],
+  },
+});
+```
 
 ### GroupLevel
 

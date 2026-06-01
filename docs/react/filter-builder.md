@@ -279,8 +279,8 @@ const filterBy = useComposedSelection([page.context, orSelection]);
 Clauses inside `orSelection` are not managed by the filter-builder UI; you
 write to it directly with `orSelection.update(...)`.
 
-Filter-builder table wiring may also pass a placeholder `havingBy` Selection
-next to `filterBy` so the API shape is ready for a future HAVING pass:
+Filter-builder table wiring may also pass a `havingBy` Selection next to
+`filterBy` for aggregate predicates:
 
 ```tsx
 const filterBy = page.context;
@@ -293,8 +293,32 @@ useMosaicReactTable({
 });
 ```
 
-Today, generated filter-builder predicates still route to `WHERE`; `HAVING`
-is not wired yet.
+`filterBy` remains the row-filter path and routes to SQL `WHERE` by default.
+`havingBy` is the aggregate-filter path and routes to SQL `HAVING`, which runs
+after grouping. Keep using `WHERE` for source-row filters and use `HAVING` only
+for predicates that depend on grouped results, such as:
+
+```tsx
+havingBy.update({
+  source: { id: 'min-gold' },
+  value: { minGold: 3 },
+  predicate: sql`SUM(gold) >= 3`,
+});
+
+havingBy.update({
+  source: { id: 'min-athletes' },
+  value: { minAthletes: 10 },
+  predicate: sql`COUNT(*) >= 10`,
+});
+```
+
+When a generated filter definition itself should write an aggregate predicate,
+apply or clear it with the HAVING target:
+
+```tsx
+applyFilterSelection(filter, state, 'having');
+clearFilterSelection(filter, 'having');
+```
 
 Native OR support inside `useMosaicFilters` (e.g. a `mode: 'union'` scope
 option) is a potential future addition — see

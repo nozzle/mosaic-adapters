@@ -1,12 +1,17 @@
 import { expect, test } from '@playwright/test';
 
-import type { Locator, Page } from '@playwright/test';
 import { getInit } from './utils/init';
+import type { Locator, Page } from '@playwright/test';
 
 const init = getInit('filter-builder');
 
 async function readSummary(summary: Locator) {
   await expect(summary).toContainText('Visible rows:');
+  return (await summary.textContent()) ?? '';
+}
+
+async function readAggregateSummary(summary: Locator) {
+  await expect(summary).toContainText('Visible groups:');
   return (await summary.textContent()) ?? '';
 }
 
@@ -29,6 +34,10 @@ function getPageSummary(page: Page) {
 
 function getWidgetSummary(page: Page) {
   return page.getByTestId('widget-medals-summary');
+}
+
+function getAggregateSummary(page: Page) {
+  return page.getByTestId('aggregate-having-summary');
 }
 
 async function readSearchParams(page: Page) {
@@ -90,6 +99,47 @@ test.describe('filter-builder page', () => {
 
     await expectSummaryToChange(widgetSummary, widgetBefore);
     await expect(pageSummary).toHaveText(pageBefore);
+  });
+
+  test('aggregate filter builder applies filters through HAVING', async ({
+    page,
+  }) => {
+    await init(page);
+
+    const aggregateScope = page.getByTestId('aggregate-having-filter-scope');
+    const aggregateSummary = getAggregateSummary(page);
+    const initialSummary = await readAggregateSummary(aggregateSummary);
+    const totalGoldRow = page.getByTestId(
+      'aggregate-having-active-filter-total_gold',
+    );
+
+    await expect(totalGoldRow).toBeVisible();
+    await totalGoldRow
+      .getByLabel('aggregate HAVING Total Gold operator')
+      .selectOption('after');
+    await totalGoldRow
+      .getByLabel('aggregate HAVING Total Gold start')
+      .fill('50');
+    await totalGoldRow.getByRole('button', { name: 'Apply' }).click();
+
+    await expectSummaryToChange(aggregateSummary, initialSummary);
+    const goldFilteredSummary = await readAggregateSummary(aggregateSummary);
+
+    await addFilter(aggregateScope, 'Athlete Count');
+
+    const athleteCountRow = page.getByTestId(
+      'aggregate-having-active-filter-athlete_count',
+    );
+    await expect(athleteCountRow).toBeVisible();
+    await athleteCountRow
+      .getByLabel('aggregate HAVING Athlete Count operator')
+      .selectOption('after');
+    await athleteCountRow
+      .getByLabel('aggregate HAVING Athlete Count start')
+      .fill('500');
+    await athleteCountRow.getByRole('button', { name: 'Apply' }).click();
+
+    await expectSummaryToChange(aggregateSummary, goldFilteredSummary);
   });
 
   test('widget facet-single filters can clear back to All', async ({

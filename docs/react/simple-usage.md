@@ -218,8 +218,49 @@ function AthletesTable() {
 - `columns`: TanStack column definitions with `meta.mosaic`
 - `converter`: Transform raw DB rows into typed app data (handles nulls, dates)
 
-Generated table filters target SQL `WHERE` by default. The explicit clause
-target options currently accept only `where`; `HAVING` is not available yet.
+Generated table filters target SQL `WHERE` by default. Use `WHERE` filters for
+row-level predicates that should run before grouping or aggregation. Use
+`HAVING` filters for aggregate predicates that should run after grouping, such
+as `SUM(gold) >= 3` or `COUNT(*) >= 10`.
+
+Clause routing is explicit where the adapter creates SQL predicates:
+
+```tsx
+useMosaicReactTable({
+  table: 'athletes',
+  filterBy: rowFilters,
+  havingBy: aggregateFilters,
+  globalFilterClauseTarget: 'where',
+  groupBy: {
+    levels: [{ column: 'nationality' }],
+    metrics: [
+      { id: 'total_gold', expression: sql`SUM(gold)`, label: 'Gold' },
+      { id: 'athlete_count', expression: sql`COUNT(*)`, label: 'Athletes' },
+    ],
+    filterClauseTarget: 'where',
+  },
+});
+```
+
+Function-form table sources receive both routed clauses:
+
+```tsx
+const table = ({ where, having }) => {
+  const query = Query.from('athletes')
+    .select({ nationality: column('nationality'), total_gold: sql`SUM(gold)` })
+    .groupby('nationality');
+
+  if (where) {
+    query.where(where);
+  }
+
+  if (having) {
+    query.having(having);
+  }
+
+  return query;
+};
+```
 
 `meta.mosaicDataTable` is still supported for existing code. When both
 namespaces configure the same metadata option, `meta.mosaic` takes precedence.
