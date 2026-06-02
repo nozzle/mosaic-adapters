@@ -42,3 +42,8 @@ overrides:
   '@nozzleio/mosaic-tanstack-table-core': 'workspace:*'
   '@nozzleio/mosaic-tanstack-react-table': 'workspace:*'
   '@nozzleio/react-mosaic': 'workspace:*'
+
+allowBuilds:
+  esbuild: true
+  nx: true
+  unrs-resolver: true

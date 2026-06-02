@@ -5,14 +5,13 @@
     "type": "git",
     "url": "https://github.com/nozzle/mosaic-adapters.git"
   },
-  "packageManager": "pnpm@10.19.0",
+  "packageManager": "pnpm@11.2.2",
   "type": "module",
   "scripts": {
     "clear-build": "nx run-many --target=clear-build --exclude=examples/**",
     "changeset": "changeset",
     "changeset:publish": "changeset publish",
     "changeset:version": "changeset version",
-    "preinstall": "node -e \"if(process.env.CI == 'true') {console.info('Skipping preinstall...')} else {process.exit(1)}\" || npx -y only-allow pnpm",
     "actions:pin-check": "node ./tools/check-github-action-pins.mjs",
     "test:ci": "pnpm run test:format && pnpm run test:manifests && pnpm run actions:pin-check && pnpm run test:types:all && pnpm run test:lint:all && pnpm run test:lib:all && pnpm run test:build:all",
     "test:format": "prettier . --check",
