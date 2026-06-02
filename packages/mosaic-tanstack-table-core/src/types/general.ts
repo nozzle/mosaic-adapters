@@ -296,12 +296,14 @@ export type SubsetTableOptions<TData extends RowData> = Omit<
   | 'getCoreRowModel'
 >;
 
+export type MosaicTableSourceQueryFn = (args: {
+  [K in SqlFilterClauseTarget]: FilterExpr | null;
+}) => SelectQuery;
+
 export type MosaicTableSource =
   | string
   | Param<string>
-  | ((args: {
-      [K in SqlFilterClauseTarget]: FilterExpr | null;
-    }) => SelectQuery);
+  | MosaicTableSourceQueryFn;
 
 export interface MosaicDataTableOptions<
   TData extends RowData,
