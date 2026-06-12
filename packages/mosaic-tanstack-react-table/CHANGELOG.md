@@ -1,5 +1,44 @@
 # @nozzleio/mosaic-tanstack-react-table
 
+## 0.8.0
+
+### Minor Changes
+
+- [#150](https://github.com/nozzle/mosaic-adapters/pull/150) [`889066f`](https://github.com/nozzle/mosaic-adapters/commit/889066f74377b7e6aa4b9d244568b3fdec07ca2a) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - feat: subquery membership filters (`column [NOT] IN (SELECT ...)`)
+  - `buildSubqueryPredicate` / `normalizeSubqueryFilterQuery` build IN-subquery
+    predicates from mosaic-sql queries; `createSubqueryClause` publishes them as
+    Selection clauses that never carry optimizer `meta`
+  - filter-builder definitions accept a `subquery` factory: the predicate is
+    rebuilt from the serializable binding state, so bindings, facets, and
+    persistence work unchanged; runtimes accept a `context` Selection so
+    factories can embed sibling-filter predicates, with automatic, convergent
+    rebuilds on context changes (`reapplyCommittedFilterSelection`)
+  - `MosaicFilter` / `useMosaicTableFilter` gain a `SUBQUERY` mode with a
+    type-required `subquery` factory option
+
+### Patch Changes
+
+- [#150](https://github.com/nozzle/mosaic-adapters/pull/150) [`2c00d03`](https://github.com/nozzle/mosaic-adapters/commit/2c00d036c0df450b1a558c14ce9c438c8131c4e0) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - fix: upgrade mosaic packages to `^0.27.0`
+
+- [#150](https://github.com/nozzle/mosaic-adapters/pull/150) [`744a74c`](https://github.com/nozzle/mosaic-adapters/commit/744a74cb5387509cd08e40d63557637cae554459) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - refactor(table-core,react-table): carve out clause construction and filter dispatch for subquery support
+
+  Stage 1 of subquery-filter support; no behavior changes.
+  - add clause-factory module (createValueClause/createClearClause) as the
+    single construction point for Selection clauses, centralizing the
+    clause meta policy ahead of meta-free subquery clauses
+  - route all selection.update sites in table-core through the factory
+  - export ResolvedFilter/StoredFilterValue(Mode)/FilterBuilderDataType
+    from filter-builder types; make predicate dispatch and filter-client
+    mode switches exhaustive (never guards)
+  - make stored-filter-value reads mode-aware: unknown future modes (e.g.
+    SUBQUERY) hydrate as empty state instead of being coerced into
+    condition values
+  - react-table: reuse createClearClause in filter-scope-hook; re-export
+    the new filter-builder types
+
+- Updated dependencies [[`01d660d`](https://github.com/nozzle/mosaic-adapters/commit/01d660d57273fda2c9c893bc4691c592c7e86066), [`2c00d03`](https://github.com/nozzle/mosaic-adapters/commit/2c00d036c0df450b1a558c14ce9c438c8131c4e0), [`36162a6`](https://github.com/nozzle/mosaic-adapters/commit/36162a625f8db8440dbf43550d8f13d28cfeb068), [`744a74c`](https://github.com/nozzle/mosaic-adapters/commit/744a74cb5387509cd08e40d63557637cae554459), [`59caedb`](https://github.com/nozzle/mosaic-adapters/commit/59caedba242a58e6e7017da3e30363006285e503), [`889066f`](https://github.com/nozzle/mosaic-adapters/commit/889066f74377b7e6aa4b9d244568b3fdec07ca2a)]:
+  - @nozzleio/mosaic-tanstack-table-core@0.7.0
+
 ## 0.7.0
 
 ### Minor Changes
