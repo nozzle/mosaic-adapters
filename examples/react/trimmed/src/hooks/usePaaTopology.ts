@@ -9,6 +9,7 @@ import { useMemo } from 'react';
 import { Selection } from '@uwdata/mosaic-core';
 import {
   useCascadingContexts,
+  useComposedSelection,
   useMosaicSelection,
   useMosaicSelections,
   useRegisterSelections,
@@ -26,6 +27,8 @@ const INPUT_KEYS = [
   'date',
   'device',
   'question',
+  // Subquery membership input: question seen on >= N distinct domains.
+  'questionDomains',
 ] as const;
 
 const SUMMARY_KEYS = ['domain', 'phrase', 'question', 'url'] as const;
@@ -40,11 +43,23 @@ export function usePaaTopology() {
   // 3. Instantiate Explicit Outputs for Summary Tables (Batch)
   const summaries = useMosaicSelections(SUMMARY_KEYS);
 
+  // 3b. SERP Appearances widget filter (PAA Questions table).
+  //     One logical filter, two predicates:
+  //     - `serpHaving` carries `HAVING count(*) > N` for the question table's
+  //       own grouped query (via `havingBy`).
+  //     - `serpMembers` carries the membership subquery
+  //       `related_phrase.phrase IN (SELECT ... GROUP BY ... HAVING ...)`
+  //       that cross-filters the sibling widgets to the matching subset.
+  const serpHaving = useMosaicSelection('intersect');
+  const serpMembers = useMosaicSelection('intersect');
+
   // Register all selections with the global reset context
   useRegisterSelections([
     ...Object.values(inputs),
     detail,
     ...Object.values(summaries),
+    serpHaving,
+    serpMembers,
   ]);
 
   // 4. Compute Derived Topology
@@ -64,13 +79,15 @@ export function usePaaTopology() {
 
     // C. External Context
     // What the Input Dropdowns should see from the "Outside World"
+    // (includes the SERP membership subquery so facet options match the
+    // question-widget subset)
     const externalContext = Selection.intersect({
-      include: [detail, globalCross],
+      include: [detail, globalCross, serpMembers],
     });
 
     // D. Global Context (KPIs)
     const globalContext = Selection.intersect({
-      include: [globalInput, detail, globalCross],
+      include: [globalInput, detail, globalCross, serpMembers],
     });
 
     return {
@@ -79,7 +96,7 @@ export function usePaaTopology() {
       externalContext,
       globalContext,
     };
-  }, [inputs, summaries, detail]);
+  }, [inputs, summaries, detail, serpMembers]);
 
   // 5. Wire Cascading Contexts
   //    Each input gets a context containing: [All Other Inputs] + [External Context]
@@ -97,6 +114,20 @@ export function usePaaTopology() {
     [topology.globalInput, detail],
   );
   const summaryContexts = useCascadingContexts(summaries, summaryExternals);
+
+  // 6b. Layer the SERP membership subquery onto the sibling summary tables.
+  //     The question table is deliberately excluded: it applies the same
+  //     restriction as `HAVING count(*) > N` on its own grouped query
+  //     (`serpHaving`), so the membership subquery would be redundant there.
+  const phraseContext = useComposedSelection([
+    summaryContexts.phrase,
+    serpMembers,
+  ]);
+  const domainContext = useComposedSelection([
+    summaryContexts.domain,
+    serpMembers,
+  ]);
+  const urlContext = useComposedSelection([summaryContexts.url, serpMembers]);
 
   // 7. Define Column Metadata Helpers
   const getColumnMeta = (
@@ -124,9 +155,9 @@ export function usePaaTopology() {
     detailContext: useMemo(
       () =>
         Selection.intersect({
-          include: [topology.globalInput, topology.globalCross],
+          include: [topology.globalInput, topology.globalCross, serpMembers],
         }),
-      [topology.globalInput, topology.globalCross],
+      [topology.globalInput, topology.globalCross, serpMembers],
     ),
     // Map Summary Selections/Contexts to semantic names expected by the view
     selections: {
@@ -135,10 +166,16 @@ export function usePaaTopology() {
       question: summaries.question,
       url: summaries.url,
     },
-    domainContext: summaryContexts.domain,
-    phraseContext: summaryContexts.phrase,
+    domainContext,
+    phraseContext,
     questionContext: summaryContexts.question,
-    urlContext: summaryContexts.url,
+    urlContext,
+
+    // SERP Appearances widget filter selections (PAA Questions table)
+    questionSerp: {
+      having: serpHaving,
+      members: serpMembers,
+    },
 
     globalInput: topology.globalInput,
     globalContext: topology.globalContext,
