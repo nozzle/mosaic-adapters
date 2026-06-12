@@ -11,9 +11,9 @@ catalog:
   '@tanstack/table-core': ^8.17.3
   '@tanstack/vite-config': ^0.5.2
   '@types/node': ^25.0.8
-  '@uwdata/mosaic-core': ^0.24.3
-  '@uwdata/mosaic-sql': ^0.24.3
-  '@uwdata/vgplot': ^0.24.3
+  '@uwdata/mosaic-core': ^0.27.0
+  '@uwdata/mosaic-sql': ^0.27.0
+  '@uwdata/vgplot': ^0.27.0
   '@vitejs/plugin-react': ^6.0.1
   eslint: ^10.2.1
   eslint-plugin-react-hooks: ^7.1.1
@@ -37,6 +37,8 @@ preferWorkspacePackages: true
 minimumReleaseAge: 10080
 minimumReleaseAgeExclude:
   - '@nozzleio/*'
+  - '@uwdata/mosaic-*'
+  - '@uwdata/vgplot'
 
 overrides:
   '@nozzleio/mosaic-tanstack-table-core': 'workspace:*'
