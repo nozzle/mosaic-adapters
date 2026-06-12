@@ -440,6 +440,17 @@ export type MosaicDataTableStore<TData extends RowData, TValue = unknown> = {
   totalRows: number | undefined;
   tableOptions: SubsetTableOptions<TData>;
   _facetsUpdateCount: number;
+  /**
+   * The SQL of the most recent main query submitted to the coordinator,
+   * stringified right before execution. Covers the flat table query only
+   * (not pinned-row, sidecar/facet, or grouped child queries).
+   *
+   * @internal Debug affordance for surfacing executed SQL in development
+   * tooling and examples. Not part of the supported public API.
+   * @experimental May change shape or be removed in any release without a
+   * major version bump; do not build product features on it.
+   */
+  _lastQuery: string | undefined;
   /** Grouped-mode state. Only meaningful when `groupBy` is active. */
   _grouped: {
     /** Expanded state for the tree. */

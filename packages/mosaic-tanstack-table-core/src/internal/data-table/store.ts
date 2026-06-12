@@ -40,6 +40,7 @@ export function createInitialDataTableStore<
     totalRows: undefined,
     columnDefs: options.columns ?? [],
     _facetsUpdateCount: 0,
+    _lastQuery: undefined,
     _grouped: createInitialGroupedState<TData, TValue>(),
   };
 }
