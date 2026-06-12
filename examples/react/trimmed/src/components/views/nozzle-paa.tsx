@@ -31,10 +31,16 @@ import { useMosaicValue } from '@/hooks/useMosaicValue';
 import {
   ArraySelectFilter,
   DateRangeFilter,
+  QuestionMinDomainsFilter,
   SearchableSelectFilter,
   TextFilter,
 } from '@/components/paa/paa-filters';
+import {
+  SerpAppearancesControls,
+  useSerpAppearancesFilter,
+} from '@/components/paa/serp-appearances-filter';
 import { SparklineCell } from '@/components/paa/sparkline';
+import { WidgetSqlDetails } from '@/components/widget-sql-details';
 import { ActiveFilterBar } from '@/components/active-filter-bar';
 import { Button } from '@/components/ui/button';
 
@@ -99,6 +105,16 @@ export function NozzlePaaView() {
   const topology = usePaaTopology();
   const filterRegistry = useFilterRegistry();
 
+  // SERP Appearances widget filter (PAA Questions table). State lives here
+  // so it survives the Enlarge/Return remounts of the summary table.
+  const serpFilter = useSerpAppearancesFilter({
+    tableName: TABLE_NAME,
+    having: topology.questionSerp.having,
+    members: topology.questionSerp.members,
+    context: topology.questionContext,
+    enabled: isReady,
+  });
+
   // Stable Aggregation Function for Phrase Table
   const maxAgg = useMemo(() => (e: any) => mSql.max(e), []);
 
@@ -132,6 +148,9 @@ export function NozzlePaaView() {
           aggFn: mSql.count,
           filterBy: topology.questionContext,
           selection: topology.selections.question,
+          // SERP Appearances filter routes to this table's HAVING clause;
+          // siblings receive the membership subquery via their contexts.
+          havingBy: topology.questionSerp.having,
         },
         {
           id: 'domain',
@@ -202,6 +221,9 @@ export function NozzlePaaView() {
   useRegisterFilterSource(topology.inputs.question, 'global', {
     labelMap: { 'related_phrase.phrase': 'Question' },
   });
+  useRegisterFilterSource(topology.inputs.questionDomains, 'global', {
+    labelMap: { 'related_phrase.phrase': 'Min Domains' },
+  });
 
   // Register Summary Table Output Selections
   useRegisterFilterSource(topology.selections.phrase, 'summary', {
@@ -219,6 +241,12 @@ export function NozzlePaaView() {
   useRegisterFilterSource(topology.selections.url, 'summary', {
     labelMap: { url: 'Selected URL' },
     explodeArrayValues: true,
+  });
+
+  // Register the SERP Appearances membership filter (the chip's X clears the
+  // members clause; the widget hook then un-applies and drops HAVING too).
+  useRegisterFilterSource(topology.questionSerp.members, 'summary', {
+    labelMap: { serp_appearances: 'SERP Appears' },
   });
 
   // Register Detail Table Column Filters
@@ -354,6 +382,12 @@ export function NozzlePaaView() {
             column="related_phrase.phrase"
             selection={topology.inputs.question}
           />
+          <QuestionMinDomainsFilter
+            label="Question Domains"
+            table={TABLE_NAME}
+            column="related_phrase.phrase"
+            selection={topology.inputs.questionDomains}
+          />
         </div>
       </div>
 
@@ -377,6 +411,11 @@ export function NozzlePaaView() {
               {...summaryTable}
               enabled={isReady}
               heightClassName="h-[700px]"
+              headerControls={
+                summaryTable.id === 'question' ? (
+                  <SerpAppearancesControls state={serpFilter} />
+                ) : undefined
+              }
               promotionButton={
                 <Button
                   variant="ghost"
@@ -403,6 +442,11 @@ export function NozzlePaaView() {
             enabled={isReady}
             heightClassName="h-[820px]"
             promoted
+            headerControls={
+              expandedTable.id === 'question' ? (
+                <SerpAppearancesControls state={serpFilter} />
+              ) : undefined
+            }
             promotionButton={
               <Button
                 variant="outline"
@@ -523,6 +567,8 @@ type SummaryTableConfig = {
   filterBy: Selection;
   selection: Selection;
   sparkline?: SparklineCellConfig;
+  /** Optional HAVING-targeted Selection for aggregate predicates. */
+  havingBy?: Selection;
 };
 
 function getGroupByExpression(groupBy: string) {
@@ -544,9 +590,11 @@ function SummaryTable({
   where,
   filterBy,
   selection,
+  havingBy,
   enabled,
   sparkline,
   heightClassName,
+  headerControls,
   promotionButton,
   promoted = false,
 }: {
@@ -559,9 +607,11 @@ function SummaryTable({
   where?: FilterExpr;
   filterBy: Selection;
   selection: Selection;
+  havingBy?: Selection;
   enabled: boolean;
   sparkline?: SparklineCellConfig;
   heightClassName: string;
+  headerControls?: React.ReactNode;
   promotionButton?: React.ReactNode;
   promoted?: boolean;
 }) {
@@ -643,10 +693,18 @@ function SummaryTable({
         id: 'key',
         header: title,
         enableColumnFilter: false,
+        // No explicit size: the key column absorbs the space left over by
+        // the fixed-width columns (fitColumns mode truncates long values).
+        cell: (info) => {
+          const value = info.getValue();
+          const text = value === null ? '' : String(value);
+          return <span title={text}>{text}</span>;
+        },
       }),
       helper.accessor('metric', {
         id: 'metric',
         header: metricLabel,
+        size: 105,
         cell: (info) => info.getValue()?.toLocaleString(),
         enableColumnFilter: false,
       }),
@@ -684,9 +742,10 @@ function SummaryTable({
     [groupBy, title, metricLabel, helper, sparkline, filterBy, enabled],
   );
 
-  const { tableOptions } = useMosaicReactTable<GroupByRow>({
+  const { tableOptions, client } = useMosaicReactTable<GroupByRow>({
     table: queryFactory,
     filterBy: filterBy,
+    havingBy,
     manualHighlight: true,
     totalRowsMode: 'split',
     rowSelection: {
@@ -766,6 +825,11 @@ function SummaryTable({
           {promotionButton}
         </div>
       </div>
+      {headerControls ? (
+        <div className="px-4 py-2 border-b bg-amber-50/60 flex items-center justify-between gap-3">
+          {headerControls}
+        </div>
+      ) : null}
       {selectedValues.length > 0 ? (
         <div className="px-4 py-3 border-b bg-blue-50/60 flex flex-wrap items-center gap-2">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
@@ -802,13 +866,15 @@ function SummaryTable({
           </Button>
         </div>
       ) : null}
-      <div className="flex-1 overflow-auto p-2">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-2">
         <RenderTable
           table={table}
           columns={tableOptions.columns}
           onRowClick={(row) => row.toggleSelected()}
+          fitColumns
         />
       </div>
+      <WidgetSqlDetails client={client} />
     </div>
   );
 }
@@ -881,7 +947,7 @@ function DetailTable({
     [helper],
   );
 
-  const { tableOptions } = useMosaicReactTable<PaaRowData>({
+  const { tableOptions, client } = useMosaicReactTable<PaaRowData>({
     table: TABLE_NAME,
     filterBy: topology.detailContext,
     tableFilterSelection: topology.detail,
@@ -898,5 +964,12 @@ function DetailTable({
   });
 
   const table = useReactTable(tableOptions);
-  return <RenderTable table={table} columns={columns} />;
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex-1 overflow-auto">
+        <RenderTable table={table} columns={columns} />
+      </div>
+      <WidgetSqlDetails client={client} />
+    </div>
+  );
 }

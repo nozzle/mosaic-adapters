@@ -23,20 +23,32 @@ export function BareTable<TData extends RowData>(props: {
   columns: Array<ColumnDef<TData, any>>;
   onRowClick?: (row: Row<TData>) => void;
   onRowHover?: (row: Row<TData> | null) => void;
+  /** Fixed table layout: all columns fit the available width, cells truncate. */
+  fitColumns?: boolean;
 }) {
-  const { table, onRowClick, onRowHover } = props;
+  const { table, onRowClick, onRowHover, fitColumns = false } = props;
 
   return (
-    <div className="grid gap-4 overflow-scroll">
+    <div className={cn('grid gap-4', fitColumns ? '' : 'overflow-scroll')}>
       <div>
         <ColumnVisibilityControls table={table} />
       </div>
-      <table className="table-auto w-full">
+      <table
+        className={cn('w-full', fitColumns ? 'table-fixed' : 'table-auto')}
+      >
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id} className="py-1">
               {headerGroup.headers.map((header) => (
-                <th key={header.id} className="px-2 py-0.5">
+                <th
+                  key={header.id}
+                  className={cn('px-2 py-0.5', fitColumns && 'truncate')}
+                  style={
+                    fitColumns && header.column.columnDef.size !== undefined
+                      ? { width: header.column.columnDef.size }
+                      : undefined
+                  }
+                >
                   {header.isPlaceholder ? null : (
                     <div className="h-full grid gap-1 items-start justify-start m-0">
                       {flexRender(
@@ -72,7 +84,10 @@ export function BareTable<TData extends RowData>(props: {
                 onMouseLeave={() => onRowHover?.(null)}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="text-nowrap px-2">
+                  <td
+                    key={cell.id}
+                    className={cn('text-nowrap px-2', fitColumns && 'truncate')}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { Check, ChevronDown, X } from 'lucide-react';
+import * as mSql from '@uwdata/mosaic-sql';
 import {
   useMosaicTableFacetMenu,
   useMosaicTableFilter,
@@ -508,6 +509,84 @@ export function DateRangeFilter({ label, column, selection }: FilterProps) {
           onChange={(e) => setEnd(e.target.value)}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Subquery membership filter: keep rows whose PAA question appears on at
+ * least N distinct domains. Demonstrates `useMosaicTableFilter` in SUBQUERY
+ * mode — the predicate becomes:
+ *
+ *   related_phrase.phrase IN (
+ *     SELECT related_phrase.phrase FROM <table>
+ *     GROUP BY related_phrase.phrase
+ *     HAVING count(DISTINCT domain) >= N
+ *   )
+ */
+export function QuestionMinDomainsFilter({
+  label,
+  table,
+  selection,
+}: FilterProps) {
+  const filter = useMosaicTableFilter({
+    selection,
+    column: 'related_phrase.phrase',
+    mode: 'SUBQUERY',
+    debounceTime: 400,
+    id: 'question-min-domains',
+    subquery: (value) => {
+      const minDomains = Number(value);
+      if (!Number.isFinite(minDomains) || minDomains <= 0) {
+        return null;
+      }
+
+      const questionExpr = mSql.sql`"related_phrase"."phrase"`;
+      return mSql.Query.select({ question: questionExpr })
+        .from(table)
+        .groupby(questionExpr)
+        .having(mSql.gte(mSql.count('domain').distinct(), minDomains));
+    },
+  });
+
+  const [val, setVal] = useState('');
+
+  useEffect(() => {
+    const onSelectionChange = () => {
+      // Robust check for "Empty Selection" (global reset / chip removal)
+      const v = selection.value;
+      const isEmpty =
+        v === null || v === undefined || (Array.isArray(v) && v.length === 0);
+
+      if (isEmpty) {
+        setVal('');
+      }
+    };
+
+    selection.addEventListener('value', onSelectionChange);
+    return () => selection.removeEventListener('value', onSelectionChange);
+  }, [selection]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setVal(value);
+    filter.setValue(value === '' ? null : Number(value));
+  };
+
+  return (
+    <div className="flex flex-col gap-1 w-[150px]">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </label>
+      <Input
+        data-testid="question-min-domains-input"
+        type="number"
+        min={1}
+        value={val}
+        onChange={handleChange}
+        className="h-9 bg-white border-slate-200"
+        placeholder="≥ N domains"
+      />
     </div>
   );
 }

@@ -64,8 +64,10 @@ export function ShadcnTable<TData extends RowData>(props: {
   columns: Array<ColumnDef<TData, any>>;
   onRowClick?: (row: Row<TData>) => void;
   onRowHover?: (row: Row<TData> | null) => void;
+  /** Fixed table layout: all columns fit the available width, cells truncate. */
+  fitColumns?: boolean;
 }) {
-  const { table, columns, onRowClick, onRowHover } = props;
+  const { table, columns, onRowClick, onRowHover, fitColumns = false } = props;
 
   return (
     <div className="grid gap-2">
@@ -78,13 +80,25 @@ export function ShadcnTable<TData extends RowData>(props: {
         </div>
       </div>
       <div className="overflow-hidden rounded-md border">
-        <Table>
+        <Table className={cn(fitColumns && 'table-fixed')}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
+                  // In fitColumns mode, only explicitly sized columns get a
+                  // width; the remaining columns share the leftover space.
+                  const explicitSize = header.column.columnDef.size;
+
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead
+                      key={header.id}
+                      className={cn(fitColumns && 'truncate')}
+                      style={
+                        fitColumns && explicitSize !== undefined
+                          ? { width: explicitSize }
+                          : undefined
+                      }
+                    >
                       <div className="grid gap-1 items-start h-full">
                         {header.isPlaceholder
                           ? null
@@ -125,7 +139,10 @@ export function ShadcnTable<TData extends RowData>(props: {
                     )}
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
+                      <TableCell
+                        key={cell.id}
+                        className={cn(fitColumns && 'truncate')}
+                      >
                         {flexRender(
                           cell.column.columnDef.cell,
                           cell.getContext(),
@@ -159,14 +176,14 @@ function DataTablePagination<TData>({
   table: TanStackTable<TData>;
 }) {
   return (
-    <div className="flex items-center justify-between px-2">
+    <div className="flex flex-wrap items-center justify-between gap-2 px-2">
       <div className="text-muted-foreground flex-1 text-sm">
         {/* {table.getFilteredSelectedRowModel().rows.length} of{' '} */}
         {/* {table.getFilteredRowModel().rows.length} row(s) selected. */}
       </div>
-      <div className="flex items-center space-x-6 lg:space-x-8">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 lg:gap-x-8">
         <div className="flex items-center space-x-2">
-          <p className="text-sm">Rows per page</p>
+          <p className="text-sm text-nowrap">Rows per page</p>
           <Select
             value={`${table.getState().pagination.pageSize}`}
             onValueChange={(value) => {
@@ -198,7 +215,7 @@ function DataTablePagination<TData>({
 
         <div className="flex items-center space-x-2">
           <p className="text-sm text-nowrap">Go to page</p>
-          <div>
+          <div className="w-20">
             <Input
               type="number"
               min="1"

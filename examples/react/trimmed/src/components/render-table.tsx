@@ -18,6 +18,12 @@ export function RenderTable<TData extends RowData>(props: {
   columns: Array<ColumnDef<TData, any>>;
   onRowClick?: (row: Row<TData>) => void;
   onRowHover?: (row: Row<TData> | null) => void;
+  /**
+   * Fit all columns inside the available width (fixed table layout with
+   * truncated cells) instead of allowing horizontal overflow. Columns with
+   * an explicit `size` keep it; the rest share the remaining space.
+   */
+  fitColumns?: boolean;
 }) {
   const [view] = useURLSearchParam('table-view', 'shadcn-1');
 
@@ -31,6 +37,7 @@ export function RenderTable<TData extends RowData>(props: {
             columns={props.columns}
             onRowClick={props.onRowClick}
             onRowHover={props.onRowHover}
+            fitColumns={props.fitColumns}
           />
         ) : null,
       )}

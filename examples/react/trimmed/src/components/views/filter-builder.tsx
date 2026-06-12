@@ -7,11 +7,13 @@ import { Selection } from '@uwdata/mosaic-core';
 import {
   DATE_RANGE_CONDITIONS,
   MULTISELECT_SCALAR_CONDITIONS,
+  NUMBER_CONDITIONS,
   NUMBER_RANGE_CONDITIONS,
   SELECT_CONDITIONS,
   TEXT_CONDITIONS,
   useMosaicFilters,
   useMosaicReactTable,
+  useMosaicTableFilter,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import {
   coerceDate,
@@ -22,6 +24,8 @@ import {
 import {
   useCascadingContexts,
   useComposedSelection,
+  useMosaicSelection,
+  useRegisterSelections,
 } from '@nozzleio/react-mosaic';
 
 import type { ColumnDef } from '@tanstack/react-table';
@@ -186,6 +190,47 @@ const pageDefinitions: Array<FilterDefinition> = [
     defaultOperator: NUMBER_RANGE_CONDITIONS.BETWEEN,
     dataType: 'number',
   },
+  // Subquery membership filter: the binding edits a plain number (the gold
+  // threshold), and the factory turns it into
+  //   nationality IN (SELECT nationality FROM athletes
+  //                   GROUP BY nationality HAVING SUM(gold) >=/<= N)
+  // `contextPredicate` carries the OTHER active page filters, so the medal
+  // tally inside the subquery respects e.g. an active sport filter, and the
+  // clause is rebuilt automatically when those sibling filters change.
+  // See docs/react/filter-builder.md#subquery-filters.
+  {
+    id: 'nationality_medal_strength',
+    label: 'Country Golds',
+    column: 'nationality',
+    valueKind: 'number',
+    operators: [NUMBER_CONDITIONS.GTE, NUMBER_CONDITIONS.LTE],
+    defaultOperator: NUMBER_CONDITIONS.GTE,
+    dataType: 'number',
+    description:
+      'Subquery filter: athletes from countries whose total golds pass the threshold',
+    subquery: ({ state, contextPredicate }) => {
+      const threshold = Number(state.value);
+      if (!Number.isFinite(threshold)) {
+        return null;
+      }
+
+      const compare =
+        state.operator === NUMBER_CONDITIONS.LTE ? mSql.lte : mSql.gte;
+      const query = mSql.Query.select('nationality')
+        .from(tableName)
+        .where(mSql.isNotNull(mSql.column('nationality')))
+        .groupby('nationality')
+        .having(
+          compare(mSql.sql`COALESCE(SUM(gold), 0)`, mSql.literal(threshold)),
+        );
+
+      if (contextPredicate) {
+        query.where(contextPredicate);
+      }
+
+      return query;
+    },
+  },
   // Two definitions targeting the same SQL column (`date_of_birth`).
   // Each has a distinct `id`, so `useMosaicFilters` creates a separate
   // Selection for each. When both are active they AND together in the
@@ -329,6 +374,16 @@ export function FilterBuilderView() {
     page.context,
   ]);
   const widgetContext = useComposedSelection([page.context, widget.context]);
+
+  // Imperative subquery filter (no filter-builder involvement): a standalone
+  // `useMosaicTableFilter` SUBQUERY input scoped to the roster table only.
+  const sportSubquery = useMosaicSelection('intersect');
+  const sportSubquerySelections = useMemo(
+    () => [sportSubquery],
+    [sportSubquery],
+  );
+  useRegisterSelections(sportSubquerySelections);
+  const rosterContext = useComposedSelection([page.context, sportSubquery]);
   const pageAvailableDefinitions = useMemo(
     () =>
       getAvailableFiltersForScope(
@@ -518,10 +573,11 @@ export function FilterBuilderView() {
         <AthleteTableCard
           cardId="page-roster"
           title="Roster Table"
-          description="This table only consumes page filters."
-          filterBy={page.context}
+          description="This table consumes page filters plus the imperative sport subquery filter below."
+          filterBy={rosterContext}
           columns={rosterColumns}
           debugName="FilterBuilderRosterTable"
+          controls={<SportSubqueryControl selection={sportSubquery} />}
         />
       </div>
 
@@ -766,6 +822,7 @@ function AthleteTableCard({
   filterBy,
   columns,
   debugName,
+  controls,
 }: {
   cardId: string;
   title: string;
@@ -773,6 +830,7 @@ function AthleteTableCard({
   filterBy: MosaicSelection;
   columns: Array<ColumnDef<AthleteRowData, any>>;
   debugName: string;
+  controls?: React.ReactNode;
 }) {
   const havingBy = useMemo(() => Selection.intersect(), []);
   const { client, tableOptions } = useMosaicReactTable<AthleteRowData>({
@@ -845,8 +903,85 @@ function AthleteTableCard({
           {summaryText}
         </p>
       </div>
+      {controls}
       <RenderTable table={table} columns={columns} />
     </div>
+  );
+}
+
+/**
+ * Imperative subquery filter over the roster table:
+ * `sport IN (SELECT sport FROM athletes GROUP BY sport
+ *            HAVING COUNT(CASE WHEN gold > 0 THEN 1 END) >= N)`.
+ *
+ * Uses `useMosaicTableFilter` in SUBQUERY mode — no filter-builder
+ * definitions involved; the predicate is published into a dedicated
+ * Selection composed into the roster's `filterBy`.
+ */
+function SportSubqueryControl({ selection }: { selection: MosaicSelection }) {
+  const filter = useMosaicTableFilter({
+    selection,
+    column: 'sport',
+    mode: 'SUBQUERY',
+    debounceTime: 300,
+    id: 'roster-sport-subquery',
+    subquery: (value) => {
+      const minGoldMedalists = Number(value);
+      if (!Number.isFinite(minGoldMedalists) || minGoldMedalists <= 0) {
+        return null;
+      }
+
+      return mSql.Query.select('sport')
+        .from(tableName)
+        .where(mSql.isNotNull(mSql.column('sport')))
+        .groupby('sport')
+        .having(
+          mSql.gte(
+            mSql.sql`COUNT(CASE WHEN gold > 0 THEN 1 END)`,
+            mSql.literal(minGoldMedalists),
+          ),
+        );
+    },
+  });
+  const [value, setValue] = useState('');
+
+  useEffect(() => {
+    const onSelectionChange = () => {
+      // Sync the input when the selection is cleared externally
+      // (e.g. global reset).
+      if (selection.value === null || selection.value === undefined) {
+        setValue('');
+      }
+    };
+
+    selection.addEventListener('value', onSelectionChange);
+    return () => selection.removeEventListener('value', onSelectionChange);
+  }, [selection]);
+
+  return (
+    <label className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+      <span className="font-medium">
+        Only sports with at least
+        <input
+          data-testid="roster-sport-subquery-input"
+          aria-label="Minimum gold medalists per sport"
+          type="number"
+          min={1}
+          placeholder="N"
+          className="mx-2 h-8 w-20 rounded-md border border-slate-300 bg-white px-2 text-sm"
+          value={value}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setValue(nextValue);
+            filter.setValue(nextValue === '' ? null : Number(nextValue));
+          }}
+        />
+        gold medalists
+      </span>
+      <span className="text-xs text-slate-500">
+        (imperative `useMosaicTableFilter` SUBQUERY mode)
+      </span>
+    </label>
   );
 }
 

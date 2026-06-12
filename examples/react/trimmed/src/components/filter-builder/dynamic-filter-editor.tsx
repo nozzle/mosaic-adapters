@@ -267,6 +267,41 @@ export function DynamicFilterEditor({
     );
   }
 
+  if (filter.definition.valueKind === 'number') {
+    return (
+      <FilterValueShell label="Value">
+        {unary ? (
+          <ApplyUnaryButton
+            binding={binding}
+            filterLabel={filter.definition.label}
+            scopeLabel={scopeLabel}
+          />
+        ) : (
+          <div className="grid gap-2">
+            <input
+              aria-label={`${scopeLabel} ${filter.definition.label} value`}
+              className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+              type="number"
+              value={toSingleInputValue(binding.value)}
+              onChange={(event) =>
+                binding.setValue(normalizeNumberValue(event.target.value))
+              }
+            />
+            <div className="flex justify-start">
+              <button
+                type="button"
+                className="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                onClick={() => binding.apply()}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        )}
+      </FilterValueShell>
+    );
+  }
+
   if (
     filter.definition.valueKind === 'date-range' ||
     filter.definition.valueKind === 'number-range'
