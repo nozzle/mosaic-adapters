@@ -75,6 +75,7 @@ test.describe('filter-builder subquery filters', () => {
 
     const pageScope = page.getByTestId('page-filter-scope');
     const pageSummary = page.getByTestId('page-roster-summary');
+    const initialPageSummary = await readSummary(pageSummary);
 
     await addFilter(pageScope, 'Country Golds');
     const subqueryRow = page.getByTestId(
@@ -83,6 +84,12 @@ test.describe('filter-builder subquery filters', () => {
     await subqueryRow.getByLabel('page Country Golds value').fill('5');
     await subqueryRow.getByRole('button', { name: 'Apply' }).click();
 
+    // Wait for the subquery filter to actually narrow the roster before
+    // capturing the baseline. `readSummary` only waits for the static
+    // "Visible rows:" label, so reading it immediately after Apply can
+    // capture the still-unfiltered summary under load — which makes the
+    // sibling-context assertion below race against the initial query.
+    await expectSummaryToChange(pageSummary, initialPageSummary);
     const goldsOnlySummary = await readSummary(pageSummary);
 
     // Constrain the sibling sport filter. The subquery factory embeds the

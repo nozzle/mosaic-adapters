@@ -897,6 +897,12 @@ export function applyFilterSelection(
 }
 
 /**
+ * Selections whose committed clause is mid-publish. Guards against the
+ * synchronous reentrancy described in {@link reapplyCommittedFilterSelection}.
+ */
+const reapplyInProgress = new WeakSet<Selection>();
+
+/**
  * Re-resolves a filter's committed state and republishes its clause when the
  * resulting predicate changed (e.g. a subquery factory embedding sibling
  * context after the context changed).
@@ -935,7 +941,26 @@ export function reapplyCommittedFilterSelection(
     return false;
   }
 
-  applyFilterSelection(filter, state, target);
+  // Publishing the rebuilt clause relays synchronously back through any
+  // downstream scope context (Mosaic's `Selection.update` relays before it
+  // commits its own value). Listeners wired to that context — including the
+  // one that drives this reapply — therefore re-enter before
+  // `filter.selection.clauses` reflects the value we just published, so the
+  // convergence guard above still sees the stale predicate and would
+  // republish indefinitely. Suppress reentrant reapplies for this selection
+  // while the publish settles; the outer call already publishes the final
+  // predicate.
+  if (reapplyInProgress.has(filter.selection)) {
+    return false;
+  }
+
+  reapplyInProgress.add(filter.selection);
+  try {
+    applyFilterSelection(filter, state, target);
+  } finally {
+    reapplyInProgress.delete(filter.selection);
+  }
+
   return true;
 }
 
