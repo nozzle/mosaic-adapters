@@ -769,6 +769,55 @@ describe('subquery filters', () => {
     expect(runtime.selection.clauses).toHaveLength(0);
   });
 
+  test('reapplyCommittedFilterSelection terminates when its republish relays back through the scope context', () => {
+    // Mirror the production topology: the filter's own selection relays its
+    // clauses into a shared scope context, and a listener on that context
+    // rebuilds the subquery whenever sibling filters change. Mosaic relays an
+    // update to derived selections *before* committing its own value, so the
+    // republish re-enters this listener synchronously while
+    // `runtime.selection.clauses` still reports the stale predicate — which
+    // previously caused unbounded recursion.
+    const scopeContext = Selection.intersect();
+    const runtime: FilterRuntime = {
+      ...createRuntime(subqueryDefinition),
+      context: scopeContext,
+    };
+
+    // Relay the filter selection into the scope context, exactly as
+    // `useFilterScopeContext` wires it via Mosaic's `_relay`.
+    (runtime.selection as unknown as { _relay: Set<Selection> })._relay.add(
+      scopeContext,
+    );
+
+    applyFilterSelection(runtime, {
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 2,
+      valueTo: null,
+    });
+
+    let listenerCalls = 0;
+    scopeContext.addEventListener('value', () => {
+      listenerCalls += 1;
+      if (listenerCalls > 50) {
+        throw new Error('reapply listener did not converge');
+      }
+
+      reapplyCommittedFilterSelection(runtime);
+    });
+
+    // A sibling filter publishes into the scope context, driving the rebuild.
+    expect(() => {
+      scopeContext.update({
+        source: createForeignSource('country-filter'),
+        value: 'NZL',
+        predicate: mSql.eq(mSql.column('country'), mSql.literal('NZL')),
+      });
+    }).not.toThrow();
+
+    // The rebuilt predicate embeds the sibling context and the loop settled.
+    expect(getPredicateText(runtime)).toContain("'NZL'");
+  });
+
   test('FilterBindingController rebuilds committed subquery predicates on context changes', async () => {
     const context = Selection.intersect();
     const runtime: FilterRuntime = {
