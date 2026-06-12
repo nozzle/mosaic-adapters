@@ -4,6 +4,7 @@ import {
   areFilterBindingStatesEqual,
   clearFilterSelection,
   readFilterSelectionState,
+  reapplyCommittedFilterSelection,
 } from './helpers';
 import type { Store } from '@tanstack/store';
 
@@ -40,6 +41,7 @@ export class FilterBindingController {
 
   #isConnected = false;
   #syncVersion = 0;
+  #contextVersion = 0;
   #selectionListener = () => {
     const syncVersion = ++this.#syncVersion;
 
@@ -49,6 +51,21 @@ export class FilterBindingController {
       }
 
       this.syncFromSelection();
+    });
+  };
+
+  // Rebuilds a committed subquery predicate when sibling context changes.
+  // Safe against feedback loops: the reapply no-ops when the rebuilt
+  // predicate is unchanged, so a converged state publishes nothing.
+  #contextListener = () => {
+    const contextVersion = ++this.#contextVersion;
+
+    queueMicrotask(() => {
+      if (!this.#isConnected || contextVersion !== this.#contextVersion) {
+        return;
+      }
+
+      reapplyCommittedFilterSelection(this.runtime, this.filterClauseTarget);
     });
   };
 
@@ -143,7 +160,13 @@ export class FilterBindingController {
 
     this.#isConnected = true;
     this.#syncVersion += 1;
+    this.#contextVersion += 1;
     this.runtime.selection.addEventListener('value', this.#selectionListener);
+
+    if (this.#shouldTrackContext()) {
+      this.runtime.context?.addEventListener('value', this.#contextListener);
+    }
+
     this.syncFromSelection();
   };
 
@@ -154,11 +177,22 @@ export class FilterBindingController {
 
     this.#isConnected = false;
     this.#syncVersion += 1;
+    this.#contextVersion += 1;
     this.runtime.selection.removeEventListener(
       'value',
       this.#selectionListener,
     );
+
+    if (this.#shouldTrackContext()) {
+      this.runtime.context?.removeEventListener('value', this.#contextListener);
+    }
   };
+
+  #shouldTrackContext(): boolean {
+    return (
+      this.runtime.definition.subquery != null && this.runtime.context != null
+    );
+  }
 
   dispose = (): void => {
     this.disconnect();

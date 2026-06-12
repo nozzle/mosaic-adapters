@@ -7,6 +7,7 @@ import {
   FilterBindingController,
   MULTISELECT_ARRAY_CONDITIONS,
   MULTISELECT_SCALAR_CONDITIONS,
+  NUMBER_CONDITIONS,
   NUMBER_RANGE_CONDITIONS,
   SELECT_CONDITIONS,
   TEXT_CONDITIONS,
@@ -16,6 +17,7 @@ import {
   getFacetSelectedValues,
   normalizeFilterBindingState,
   readFilterSelectionState,
+  reapplyCommittedFilterSelection,
 } from '../src/filter-builder';
 
 import type {
@@ -243,10 +245,10 @@ describe('filter-builder helpers', () => {
   });
 
   test('stored values with unsupported modes are not coerced into condition values', () => {
-    // Forward-compat: stored values written by future filter families (e.g.
-    // subquery-backed filters) must hydrate as "empty", never as a condition.
+    // Forward-compat: stored values written by future filter families must
+    // hydrate as "empty", never as a condition.
     const futureStoredValue = {
-      mode: 'SUBQUERY',
+      mode: 'FUTURE_MODE',
       operator: 'in',
       value: { threshold: 100 },
       filterId: textDefinition.id,
@@ -264,7 +266,7 @@ describe('filter-builder helpers', () => {
     runtime.selection.update({
       source: createFilterBuilderSource(runtime),
       value: {
-        mode: 'SUBQUERY',
+        mode: 'FUTURE_MODE',
         operator: 'in',
         value: { threshold: 100 },
         filterId: runtime.definition.id,
@@ -575,6 +577,225 @@ describe('filter-builder helpers', () => {
     expect(readFilterSelectionState(runtime)).toEqual(
       createEmptyFilterBindingState(textDefinition),
     );
+  });
+});
+
+const subqueryDefinition: FilterDefinition = {
+  id: 'popular',
+  label: 'Popular questions',
+  column: 'question',
+  valueKind: 'number',
+  operators: [NUMBER_CONDITIONS.GTE],
+  defaultOperator: NUMBER_CONDITIONS.GTE,
+  dataType: 'number',
+  subquery: ({ state, contextPredicate }) => {
+    if (state.value === null || state.value === undefined) {
+      return null;
+    }
+
+    const query = mSql.Query.select('question')
+      .from('data')
+      .groupby('question')
+      .having(mSql.gte(mSql.count(), Number(state.value)));
+
+    if (contextPredicate) {
+      query.where(contextPredicate);
+    }
+
+    return query;
+  },
+};
+
+describe('subquery filters', () => {
+  test('apply publishes an IN-subquery predicate with a SUBQUERY stored value', () => {
+    const runtime = createRuntime(subqueryDefinition);
+
+    applyFilterSelection(runtime, {
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 100,
+      valueTo: null,
+    });
+
+    expect(getPredicateText(runtime)).toBe(
+      '("question" IN (SELECT "question" FROM "data" GROUP BY "question" HAVING (count(*) >= 100)))',
+    );
+
+    const [clause] = runtime.selection.clauses;
+    expect(clause?.value).toMatchObject({
+      mode: 'SUBQUERY',
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 100,
+      filterId: subqueryDefinition.id,
+    });
+    expect(clause?.meta).toBeUndefined();
+  });
+
+  test('committed subquery state reads back and clears like value filters', () => {
+    const runtime = createRuntime(subqueryDefinition);
+
+    applyFilterSelection(runtime, {
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 3,
+      valueTo: null,
+    });
+
+    expect(readFilterSelectionState(runtime)).toEqual({
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 3,
+      valueTo: null,
+    });
+
+    clearFilterSelection(runtime);
+    expect(runtime.selection.clauses).toHaveLength(0);
+  });
+
+  test('empty values clear the clause instead of invoking the factory', () => {
+    const runtime = createRuntime(subqueryDefinition);
+
+    applyFilterSelection(runtime, {
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 2,
+      valueTo: null,
+    });
+    applyFilterSelection(runtime, {
+      operator: NUMBER_CONDITIONS.GTE,
+      value: null,
+      valueTo: null,
+    });
+
+    expect(runtime.selection.clauses).toHaveLength(0);
+  });
+
+  test('persisted state rebuilds the same predicate through the factory', () => {
+    const runtime = createRuntime(subqueryDefinition);
+    applyFilterSelection(runtime, {
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 5,
+      valueTo: null,
+    });
+
+    // Simulate persister round-trip: JSON-serialize the stored clause value.
+    const persisted = JSON.parse(
+      JSON.stringify(runtime.selection.clauses[0]?.value),
+    );
+
+    const rehydrated = createRuntime(subqueryDefinition);
+    applyFilterSelection(
+      rehydrated,
+      normalizeFilterBindingState(subqueryDefinition, persisted),
+    );
+
+    expect(getPredicateText(rehydrated)).toBe(getPredicateText(runtime));
+  });
+
+  test("factories receive sibling context and exclude the filter's own clause", () => {
+    const context = Selection.intersect();
+    const runtime: FilterRuntime = {
+      ...createRuntime(subqueryDefinition),
+      context,
+    };
+
+    context.update({
+      source: createForeignSource('country-filter'),
+      value: 'NZL',
+      predicate: mSql.eq(mSql.column('country'), mSql.literal('NZL')),
+    });
+
+    applyFilterSelection(runtime, {
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 2,
+      valueTo: null,
+    });
+
+    expect(getPredicateText(runtime)).toContain('WHERE ("country" = \'NZL\')');
+
+    // A context mirroring the filter's own clause contributes nothing.
+    const selfBase = createRuntime(subqueryDefinition);
+    const selfRuntime: FilterRuntime = {
+      ...selfBase,
+      context: selfBase.selection,
+    };
+
+    applyFilterSelection(selfRuntime, {
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 2,
+      valueTo: null,
+    });
+
+    expect(getPredicateText(selfRuntime)).not.toContain('WHERE');
+
+    // Reapplying with the own clause now present must not embed it either.
+    expect(reapplyCommittedFilterSelection(selfRuntime)).toBe(false);
+    expect(getPredicateText(selfRuntime)).not.toContain('WHERE');
+  });
+
+  test('reapplyCommittedFilterSelection republishes only when the predicate changed', () => {
+    const context = Selection.intersect();
+    const runtime: FilterRuntime = {
+      ...createRuntime(subqueryDefinition),
+      context,
+    };
+
+    applyFilterSelection(runtime, {
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 2,
+      valueTo: null,
+    });
+    expect(getPredicateText(runtime)).not.toContain('NZL');
+
+    // No context change -> no republish.
+    expect(reapplyCommittedFilterSelection(runtime)).toBe(false);
+
+    context.update({
+      source: createForeignSource('country-filter'),
+      value: 'NZL',
+      predicate: mSql.eq(mSql.column('country'), mSql.literal('NZL')),
+    });
+
+    expect(reapplyCommittedFilterSelection(runtime)).toBe(true);
+    expect(getPredicateText(runtime)).toContain("'NZL'");
+
+    // Converged -> further reapplies are no-ops (loop guard).
+    expect(reapplyCommittedFilterSelection(runtime)).toBe(false);
+  });
+
+  test('reapplyCommittedFilterSelection ignores filters without committed state', () => {
+    const runtime: FilterRuntime = {
+      ...createRuntime(subqueryDefinition),
+      context: Selection.intersect(),
+    };
+
+    expect(reapplyCommittedFilterSelection(runtime)).toBe(false);
+    expect(runtime.selection.clauses).toHaveLength(0);
+  });
+
+  test('FilterBindingController rebuilds committed subquery predicates on context changes', async () => {
+    const context = Selection.intersect();
+    const runtime: FilterRuntime = {
+      ...createRuntime(subqueryDefinition),
+      context,
+    };
+    const controller = new FilterBindingController(runtime);
+    controller.connect();
+
+    applyFilterSelection(runtime, {
+      operator: NUMBER_CONDITIONS.GTE,
+      value: 2,
+      valueTo: null,
+    });
+
+    context.update({
+      source: createForeignSource('country-filter'),
+      value: 'NZL',
+      predicate: mSql.eq(mSql.column('country'), mSql.literal('NZL')),
+    });
+
+    for (let i = 0; i < 10 && !getPredicateText(runtime).includes('NZL'); i++) {
+      await flushMicrotask();
+    }
+
+    expect(getPredicateText(runtime)).toContain("'NZL'");
+    controller.dispose();
   });
 });
 

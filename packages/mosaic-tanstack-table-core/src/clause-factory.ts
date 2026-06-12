@@ -52,6 +52,31 @@ export function createValueClause(spec: ValueClauseSpec): SelectionClause {
 }
 
 /**
+ * A clause spec for subquery-bearing predicates. Identical to
+ * {@link ValueClauseSpec} except that `meta` is structurally forbidden:
+ * Mosaic's PreAggregator assumes `point`/`interval` predicates have simple
+ * value-test shapes, and a subquery predicate tagged that way produces
+ * incorrect optimized queries. Without `meta`, Mosaic safely uses the
+ * standard query path.
+ */
+export type SubqueryClauseSpec = Omit<ValueClauseSpec, 'meta'>;
+
+/**
+ * Builds a Selection clause whose predicate embeds a scalar subquery
+ * (e.g. `col IN (SELECT ...)`). Never attaches optimizer `meta`.
+ */
+export function createSubqueryClause(
+  spec: SubqueryClauseSpec,
+): SelectionClause {
+  return {
+    source: spec.source,
+    clients: spec.clients,
+    value: spec.value,
+    predicate: spec.predicate,
+  };
+}
+
+/**
  * Builds a clause that removes the source's active clause from a Selection.
  */
 export function createClearClause(

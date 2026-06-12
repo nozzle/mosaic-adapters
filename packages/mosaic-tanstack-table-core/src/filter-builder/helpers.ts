@@ -1,9 +1,18 @@
+import { and } from '@uwdata/mosaic-sql';
 import {
   buildCollectionPredicate,
   buildConditionPredicate,
   buildEmptyValuePredicate,
 } from '../condition-predicate';
-import { createClearClause, createValueClause } from '../clause-factory';
+import {
+  buildSubqueryPredicate,
+  normalizeSubqueryFilterQuery,
+} from '../subquery-predicate';
+import {
+  createClearClause,
+  createSubqueryClause,
+  createValueClause,
+} from '../clause-factory';
 
 import type {
   ColumnType,
@@ -13,6 +22,7 @@ import type {
 } from '../types';
 import type { SqlFilterClauseTarget } from '../query/filter-routing';
 import type { Selection, SelectionClause } from '@uwdata/mosaic-core';
+import type { ExprNode } from '@uwdata/mosaic-sql';
 import type {
   FilterBindingState,
   FilterBuilderDataType,
@@ -236,7 +246,7 @@ function normalizeStoredValue(
  * into condition values.
  */
 const SUPPORTED_STORED_FILTER_VALUE_MODES: ReadonlySet<StoredFilterValueMode> =
-  new Set(['CONDITION']);
+  new Set(['CONDITION', 'SUBQUERY']);
 
 /**
  * True for any value that carries a stored-filter-value `mode` discriminator,
@@ -599,6 +609,36 @@ export function normalizeFilterBindingState(
   };
 }
 
+/**
+ * Resolves the AND of sibling-filter predicates from the runtime's `context`
+ * Selection, excluding any clause sourced by this filter itself.
+ */
+function resolveSubqueryContextPredicate(
+  filter: FilterRuntime,
+): ExprNode | null {
+  const context = filter.context;
+
+  if (!context) {
+    return null;
+  }
+
+  const source = getFilterSource(filter);
+  const predicates = context.clauses
+    .filter((clause) => clause.source !== source)
+    .map((clause) => clause.predicate)
+    .filter((predicate): predicate is ExprNode => predicate != null);
+
+  if (predicates.length === 0) {
+    return null;
+  }
+
+  if (predicates.length === 1) {
+    return predicates[0] ?? null;
+  }
+
+  return and(...predicates);
+}
+
 function resolveAppliedFilterSelection(
   filter: FilterRuntime,
   state: FilterBindingState,
@@ -622,20 +662,29 @@ function resolveAppliedFilterSelection(
     }
   }
 
-  const resolvedOperator = resolveOperatorAlias(
-    filter.definition,
-    operator,
-    state.value,
-    state.valueTo,
-  );
+  const resolvedFilter: ResolvedFilter | null = filter.definition.subquery
+    ? {
+        kind: 'subquery',
+        state: {
+          operator,
+          value: normalizedValue,
+          valueTo: state.valueTo ?? null,
+        },
+      }
+    : resolveOperatorAlias(
+        filter.definition,
+        operator,
+        state.value,
+        state.valueTo,
+      );
 
-  if (!resolvedOperator) {
+  if (!resolvedFilter) {
     return null;
   }
 
   const predicate = buildResolvedPredicate(
     filter,
-    resolvedOperator,
+    resolvedFilter,
   ) as SelectionClause['predicate'];
 
   if (!predicate) {
@@ -707,7 +756,7 @@ function createStoredFilterValue(
   state: FilterBindingState,
 ): StoredFilterValue {
   return {
-    mode: 'CONDITION',
+    mode: filter.definition.subquery ? 'SUBQUERY' : 'CONDITION',
     operator: state.operator,
     value: state.value,
     valueTo: state.valueTo,
@@ -775,6 +824,30 @@ function buildResolvedPredicate(
         match: resolvedFilter.match,
         negate: resolvedFilter.negate,
       });
+    case 'subquery': {
+      const factory = filter.definition.subquery;
+
+      if (!factory) {
+        return undefined;
+      }
+
+      const normalized = normalizeSubqueryFilterQuery(
+        factory({
+          state: resolvedFilter.state,
+          contextPredicate: resolveSubqueryContextPredicate(filter),
+        }),
+      );
+
+      if (!normalized) {
+        return undefined;
+      }
+
+      return buildSubqueryPredicate({
+        column: filter.definition.column,
+        query: normalized.query,
+        negate: normalized.negate,
+      });
+    }
     default: {
       const exhaustive: never = resolvedFilter;
       return exhaustive;
@@ -796,24 +869,74 @@ export function applyFilterSelection(
 
   switch (target) {
     case 'where':
-    case 'having':
-      filter.selection.update(
-        createValueClause({
-          source: getFilterSource(filter),
-          value: createStoredFilterValue(filter, {
-            operator: resolvedSelection.operator,
-            value: resolvedSelection.normalizedValue,
-            valueTo: state.valueTo,
-          }),
-          predicate: resolvedSelection.predicate,
+    case 'having': {
+      const clauseSpec = {
+        source: getFilterSource(filter),
+        value: createStoredFilterValue(filter, {
+          operator: resolvedSelection.operator,
+          value: resolvedSelection.normalizedValue,
+          valueTo: state.valueTo,
         }),
+        predicate: resolvedSelection.predicate,
+      };
+
+      // Subquery predicates must never carry optimizer `meta`; route them
+      // through the dedicated clause constructor.
+      filter.selection.update(
+        filter.definition.subquery
+          ? createSubqueryClause(clauseSpec)
+          : createValueClause(clauseSpec),
       );
       break;
+    }
     default: {
       const exhaustive: never = target;
       return exhaustive;
     }
   }
+}
+
+/**
+ * Re-resolves a filter's committed state and republishes its clause when the
+ * resulting predicate changed (e.g. a subquery factory embedding sibling
+ * context after the context changed).
+ *
+ * No-ops when the filter has no committed state or the predicate is
+ * unchanged, which makes it safe to call from change listeners: a republish
+ * that converges produces no further updates.
+ *
+ * @returns true when an updated clause was published.
+ */
+export function reapplyCommittedFilterSelection(
+  filter: FilterRuntime,
+  target: SqlFilterClauseTarget = 'where',
+): boolean {
+  const { hasCommittedState, state } = readResolvedFilterSelectionState(filter);
+
+  if (!hasCommittedState) {
+    return false;
+  }
+
+  const resolvedSelection = resolveAppliedFilterSelection(filter, state);
+
+  if (!resolvedSelection) {
+    return false;
+  }
+
+  const source = getFilterSource(filter);
+  const currentClause = filter.selection.clauses.find(
+    (clause) => clause.source === source,
+  );
+
+  if (
+    currentClause?.predicate != null &&
+    String(currentClause.predicate) === String(resolvedSelection.predicate)
+  ) {
+    return false;
+  }
+
+  applyFilterSelection(filter, state, target);
+  return true;
 }
 
 export function getFacetSelectedValues(

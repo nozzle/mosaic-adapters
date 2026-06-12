@@ -2,7 +2,12 @@ import { Selection } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
-import { createClearClause, createValueClause } from '../src/clause-factory';
+import {
+  createClearClause,
+  createSubqueryClause,
+  createValueClause,
+} from '../src/clause-factory';
+import { buildSubqueryPredicate } from '../src/subquery-predicate';
 
 function createSource(id: string) {
   return { id };
@@ -39,6 +44,28 @@ describe('clause-factory', () => {
 
     expect(clause.clients).toBeUndefined();
     expect(clause.meta).toBeUndefined();
+  });
+
+  test('createSubqueryClause never carries optimizer meta', () => {
+    const source = createSource('subquery-clause');
+    const predicate = buildSubqueryPredicate({
+      column: 'question',
+      query: mSql.Query.select('question').from('data'),
+    });
+
+    const clause = createSubqueryClause({
+      source,
+      value: { threshold: 100 },
+      predicate,
+    });
+
+    expect(clause).toEqual({
+      source,
+      clients: undefined,
+      value: { threshold: 100 },
+      predicate,
+    });
+    expect('meta' in clause).toBe(false);
   });
 
   test('createClearClause produces a null value and predicate', () => {

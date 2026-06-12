@@ -242,6 +242,16 @@ export type FilterInput =
       value?: ConditionValue | null;
       valueTo?: ConditionComparableValue | null;
       dataType?: 'string' | 'number' | 'date' | 'boolean';
+    }
+  | {
+      /**
+       * Subquery membership filter: `column [NOT] IN (SELECT ...)`. The
+       * value is an app-defined parameter object handed to a subquery
+       * factory (e.g. `MosaicFilterOptions.subquery`); it is never used for
+       * SQL generation directly.
+       */
+      mode: 'SUBQUERY';
+      value: unknown;
     };
 
 export type FilterMode = FilterInput['mode'];
