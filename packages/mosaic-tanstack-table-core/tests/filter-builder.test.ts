@@ -242,6 +242,42 @@ describe('filter-builder helpers', () => {
     });
   });
 
+  test('stored values with unsupported modes are not coerced into condition values', () => {
+    // Forward-compat: stored values written by future filter families (e.g.
+    // subquery-backed filters) must hydrate as "empty", never as a condition.
+    const futureStoredValue = {
+      mode: 'SUBQUERY',
+      operator: 'in',
+      value: { threshold: 100 },
+      filterId: textDefinition.id,
+      scopeId: 'scope',
+    };
+
+    expect(
+      normalizeFilterBindingState(textDefinition, futureStoredValue),
+    ).toEqual(createEmptyFilterBindingState(textDefinition));
+  });
+
+  test('clauses storing unsupported modes read back as uncommitted state', () => {
+    const runtime = createRuntime(textDefinition);
+
+    runtime.selection.update({
+      source: createFilterBuilderSource(runtime),
+      value: {
+        mode: 'SUBQUERY',
+        operator: 'in',
+        value: { threshold: 100 },
+        filterId: runtime.definition.id,
+        scopeId: runtime.scopeId,
+      },
+      predicate: getTestPredicate(),
+    });
+
+    expect(readFilterSelectionState(runtime)).toEqual(
+      createEmptyFilterBindingState(textDefinition),
+    );
+  });
+
   test.each<
     [
       string,

@@ -3,6 +3,7 @@ import {
   buildConditionPredicate,
   buildEmptyValuePredicate,
 } from '../condition-predicate';
+import { createClearClause, createValueClause } from '../clause-factory';
 
 import type {
   ColumnType,
@@ -14,44 +15,14 @@ import type { SqlFilterClauseTarget } from '../query/filter-routing';
 import type { Selection, SelectionClause } from '@uwdata/mosaic-core';
 import type {
   FilterBindingState,
+  FilterBuilderDataType,
   FilterDefinition,
   FilterRuntime,
   FilterValueKind,
+  ResolvedFilter,
+  StoredFilterValue,
+  StoredFilterValueMode,
 } from './types';
-
-type FilterBuilderDataType = 'string' | 'number' | 'date' | 'boolean';
-
-type ResolvedFilter =
-  | {
-      kind: 'condition';
-      operator: FilterOperator;
-      value?: ConditionValue | null;
-      valueTo?: ConditionComparableValue | null;
-    }
-  | {
-      kind: 'collection';
-      columnType: ColumnType;
-      dataType: FilterBuilderDataType;
-      values: Array<ConditionComparableValue>;
-      match: 'any' | 'all';
-      negate: boolean;
-    }
-  | {
-      kind: 'empty';
-      columnType: ColumnType;
-      dataType: FilterBuilderDataType;
-      negate: boolean;
-    };
-
-type StoredFilterValue = {
-  mode: 'CONDITION';
-  operator: string | null;
-  value?: unknown;
-  valueTo?: unknown;
-  dataType?: FilterBuilderDataType;
-  filterId: string;
-  scopeId: string;
-};
 
 type FilterBuilderSource = {
   id: string;
@@ -258,12 +229,34 @@ function normalizeStoredValue(
   return value ?? null;
 }
 
-function isStoredFilterValue(value: unknown): value is StoredFilterValue {
+/**
+ * Stored-value modes this version of the filter builder can resolve into
+ * predicates. Values carrying other modes are "stored but unsupported": they
+ * are recognized as stored filter values (and left alone) but never coerced
+ * into condition values.
+ */
+const SUPPORTED_STORED_FILTER_VALUE_MODES: ReadonlySet<StoredFilterValueMode> =
+  new Set(['CONDITION']);
+
+/**
+ * True for any value that carries a stored-filter-value `mode` discriminator,
+ * including modes this version does not understand.
+ */
+function isStoredFilterValueLike(
+  value: unknown,
+): value is { mode: string } & Record<string, unknown> {
   return (
     typeof value === 'object' &&
     value !== null &&
     'mode' in value &&
-    value.mode === 'CONDITION'
+    typeof value.mode === 'string'
+  );
+}
+
+function isStoredFilterValue(value: unknown): value is StoredFilterValue {
+  return (
+    isStoredFilterValueLike(value) &&
+    SUPPORTED_STORED_FILTER_VALUE_MODES.has(value.mode as StoredFilterValueMode)
   );
 }
 
@@ -583,6 +576,13 @@ export function normalizeFilterBindingState(
     };
   }
 
+  if (isStoredFilterValueLike(rawValue)) {
+    // Stored filter value with an unsupported mode (e.g. written by a newer
+    // version or a different filter family). Never coerce the envelope
+    // itself into a condition value.
+    return fallbackState;
+  }
+
   if (isRangeValueKind(definition.valueKind)) {
     const [rangeFrom, rangeTo] = normalizeRangeTuple(rawValue, null);
     return {
@@ -731,11 +731,7 @@ export function clearFilterSelection(
   switch (target) {
     case 'where':
     case 'having':
-      filter.selection.update({
-        source: getFilterSource(filter),
-        value: null,
-        predicate: null,
-      });
+      filter.selection.update(createClearClause(getFilterSource(filter)));
       break;
     default: {
       const exhaustive: never = target;
@@ -779,6 +775,10 @@ function buildResolvedPredicate(
         match: resolvedFilter.match,
         negate: resolvedFilter.negate,
       });
+    default: {
+      const exhaustive: never = resolvedFilter;
+      return exhaustive;
+    }
   }
 }
 
@@ -797,15 +797,17 @@ export function applyFilterSelection(
   switch (target) {
     case 'where':
     case 'having':
-      filter.selection.update({
-        source: getFilterSource(filter),
-        value: createStoredFilterValue(filter, {
-          operator: resolvedSelection.operator,
-          value: resolvedSelection.normalizedValue,
-          valueTo: state.valueTo,
+      filter.selection.update(
+        createValueClause({
+          source: getFilterSource(filter),
+          value: createStoredFilterValue(filter, {
+            operator: resolvedSelection.operator,
+            value: resolvedSelection.normalizedValue,
+            valueTo: state.valueTo,
+          }),
+          predicate: resolvedSelection.predicate,
         }),
-        predicate: resolvedSelection.predicate,
-      });
+      );
       break;
     default: {
       const exhaustive: never = target;

@@ -24,6 +24,7 @@ import {
   extractInternalFilters,
 } from './query/query-builder';
 import { applyRoutedFilters, routeFilter } from './query/filter-routing';
+import { createValueClause } from './clause-factory';
 import { MosaicSelectionManager } from './selection-manager';
 import { createLifecycleManager, handleQueryError } from './client-utils';
 import { SidecarManager } from './sidecar-manager';
@@ -309,12 +310,14 @@ export class MosaicDataTable<
     }
 
     const clause = row ? this.#createRowIdentityClause(row) : null;
-    this.options.highlightBy.update({
-      source: this,
-      clients: new Set([this]),
-      value: clause?.value ?? null,
-      predicate: (clause?.predicate ?? null) as SelectionClause['predicate'],
-    });
+    this.options.highlightBy.update(
+      createValueClause({
+        source: this,
+        clients: new Set([this]),
+        value: clause?.value ?? null,
+        predicate: (clause?.predicate ?? null) as SelectionClause['predicate'],
+      }),
+    );
   }
 
   public selectRow(row: TData | null): void {
@@ -518,11 +521,13 @@ export class MosaicDataTable<
       const predicate =
         tablePredicates.length > 0 ? mSql.and(...tablePredicates) : null;
 
-      this.tableFilterSelection.update({
-        source: this,
-        value: tableState.columnFilters,
-        predicate,
-      });
+      this.tableFilterSelection.update(
+        createValueClause({
+          source: this,
+          value: tableState.columnFilters,
+          predicate,
+        }),
+      );
     } else {
       statement.limit(tableState.pagination.pageSize || 50);
       if (tableState.pagination.pageIndex > 0) {
@@ -1092,11 +1097,13 @@ export class MosaicDataTable<
     });
 
     this.#groupedController.reset();
-    this.tableFilterSelection.update({
-      source: this,
-      value: [],
-      predicate: null,
-    });
+    this.tableFilterSelection.update(
+      createValueClause({
+        source: this,
+        value: [],
+        predicate: null,
+      }),
+    );
   }
 
   #configureRowSelection(options: MosaicDataTableOptions<TData, TValue>): void {

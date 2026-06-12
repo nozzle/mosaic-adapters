@@ -11,14 +11,18 @@ export type {
   DateFilterDefinition,
   DateRangeFilterDefinition,
   FilterBindingState,
+  FilterBuilderDataType,
   FilterCollection,
   FilterDefinition,
   FilterRuntime,
   FilterValueKind,
   NumberFilterDefinition,
   NumberRangeFilterDefinition,
+  ResolvedFilter,
   ScalarMultiselectFilterDefinition,
   SelectFilterDefinition,
+  StoredFilterValue,
+  StoredFilterValueMode,
   TextFilterDefinition,
 } from '@nozzleio/mosaic-tanstack-table-core/filter-builder';
 

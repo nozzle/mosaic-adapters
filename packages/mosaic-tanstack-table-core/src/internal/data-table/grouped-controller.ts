@@ -11,6 +11,7 @@ import {
 import { GROUP_ID_SEPARATOR } from '../../grouped/types';
 import { createMosaicFeature } from '../../feature';
 import { functionalUpdate } from '../../utils';
+import { createClearClause } from '../../clause-factory';
 
 import type { MosaicDataTable } from '../../data-table';
 import type { MosaicDataTableStore, PrimitiveSqlValue } from '../../types';
@@ -283,11 +284,7 @@ export class GroupedTableController<
       return;
     }
 
-    selection.update({
-      source: this.client,
-      value: null,
-      predicate: null,
-    });
+    selection.update(createClearClause(this.client));
   }
 
   async #loadChildrenIfNeeded(rowId: string): Promise<void> {
