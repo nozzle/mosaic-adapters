@@ -2,6 +2,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { clausePoint, clausePoints } from '@uwdata/mosaic-core';
 import { createStructAccess } from './utils';
 import { SqlIdentifier } from './domain/sql-identifier';
+import { createValueClause } from './clause-factory';
 import type {
   MosaicClient,
   Selection,
@@ -224,14 +225,16 @@ export class MosaicSelectionManager<
       this.selection.reset(staleClauses);
     }
 
-    this.selection.update({
-      source: this.client,
-      // Critical: Exclude self from the filter so menus/tables don't filter themselves empty
-      clients: new Set([this.client]),
-      value: clause.value,
-      predicate: clause.predicate,
-      meta: clause.meta,
-    });
+    this.selection.update(
+      createValueClause({
+        source: this.client,
+        // Critical: Exclude self from the filter so menus/tables don't filter themselves empty
+        clients: new Set([this.client]),
+        value: clause.value,
+        predicate: clause.predicate,
+        meta: clause.meta,
+      }),
+    );
   }
 
   private createPointPredicate(

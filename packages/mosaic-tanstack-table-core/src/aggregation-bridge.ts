@@ -3,6 +3,7 @@
  * Used for "Cross-Filtering Aggregations" where a summary table filters a detail table via a subquery.
  */
 
+import { createClearClause, createValueClause } from './clause-factory';
 import type { Selection, SelectionClause } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { SelectionSource } from './types';
@@ -57,11 +58,7 @@ export class AggregationBridge {
     if (!inputPred || inputPred.toString() === 'true') {
       // Only clear if not already empty to avoid loops
       if (outputSelection.value !== null) {
-        outputSelection.update({
-          source,
-          value: null,
-          predicate: null,
-        });
+        outputSelection.update(createClearClause(source));
       }
       return;
     }
@@ -73,11 +70,13 @@ export class AggregationBridge {
     );
 
     // 3. Update Output
-    outputSelection.update({
-      source,
-      value: 'custom', // Arbitrary value, we rely on the predicate
-      predicate: resultPredicate as SelectionClause['predicate'],
-    });
+    outputSelection.update(
+      createValueClause({
+        source,
+        value: 'custom', // Arbitrary value, we rely on the predicate
+        predicate: resultPredicate as SelectionClause['predicate'],
+      }),
+    );
   };
 
   /**

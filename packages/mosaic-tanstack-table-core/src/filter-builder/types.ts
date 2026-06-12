@@ -1,4 +1,11 @@
-import type { ColumnType, FacetSortMode, MosaicTableSource } from '../types';
+import type {
+  ColumnType,
+  ConditionComparableValue,
+  ConditionValue,
+  FacetSortMode,
+  FilterOperator,
+  MosaicTableSource,
+} from '../types';
 import type { Selection } from '@uwdata/mosaic-core';
 import type {
   ArrayMultiselectConditionOperatorId,
@@ -21,6 +28,61 @@ export type FilterValueKind =
   | 'number'
   | 'number-range';
 
+export type FilterBuilderDataType = 'string' | 'number' | 'date' | 'boolean';
+
+/**
+ * Discriminator for the app-level values stored on filter-builder Selection
+ * clauses. `CONDITION` covers all predicates built from literal values.
+ *
+ * Future modes (e.g. subquery-backed filters) extend this union; readers must
+ * treat unrecognized modes as "stored but unsupported" and never coerce them
+ * into condition values.
+ */
+export type StoredFilterValueMode = 'CONDITION';
+
+/**
+ * The app-level value written to a filter-builder Selection clause. This is
+ * what `selection.valueFor(source)` returns and what persisters serialize, so
+ * it must remain JSON-serializable.
+ */
+export type StoredFilterValue = {
+  mode: StoredFilterValueMode;
+  operator: string | null;
+  value?: unknown;
+  valueTo?: unknown;
+  dataType?: FilterBuilderDataType;
+  filterId: string;
+  scopeId: string;
+};
+
+/**
+ * Normalized predicate request produced by operator-alias resolution and
+ * consumed by predicate building. Each `kind` maps to one predicate builder;
+ * the dispatch is exhaustive, so adding a kind (e.g. `subquery`) is a
+ * compile-driven change.
+ */
+export type ResolvedFilter =
+  | {
+      kind: 'condition';
+      operator: FilterOperator;
+      value?: ConditionValue | null;
+      valueTo?: ConditionComparableValue | null;
+    }
+  | {
+      kind: 'collection';
+      columnType: ColumnType;
+      dataType: FilterBuilderDataType;
+      values: Array<ConditionComparableValue>;
+      match: 'any' | 'all';
+      negate: boolean;
+    }
+  | {
+      kind: 'empty';
+      columnType: ColumnType;
+      dataType: FilterBuilderDataType;
+      negate: boolean;
+    };
+
 type FilterDefinitionBase<
   TValueKind extends FilterValueKind,
   TOperator extends FilterOperatorId,
@@ -31,7 +93,7 @@ type FilterDefinitionBase<
   valueKind: TValueKind;
   operators: Array<TOperator>;
   defaultOperator?: TOperator;
-  dataType?: 'string' | 'number' | 'date' | 'boolean';
+  dataType?: FilterBuilderDataType;
   groupId?: string;
   description?: string;
   columnType?: ColumnType;

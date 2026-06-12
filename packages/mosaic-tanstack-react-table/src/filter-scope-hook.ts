@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useRegisterSelections } from '@nozzleio/react-mosaic';
 import { Selection } from '@uwdata/mosaic-core';
+import { createClearClause } from '@nozzleio/mosaic-tanstack-table-core';
 import { applyFilterSelection } from '@nozzleio/mosaic-tanstack-table-core/filter-builder';
 
 import {
@@ -18,7 +19,6 @@ import type {
   FilterScope,
   UseMosaicFiltersOptions,
 } from './filter-builder-types';
-import type { SelectionClause } from '@uwdata/mosaic-core';
 
 type LinkedSelection = Selection & { _relay: Set<Selection> };
 
@@ -46,11 +46,7 @@ function clearSeededClauses(
 ) {
   includedSelections.forEach((selection) => {
     selection.clauses.forEach((clause) => {
-      context.update({
-        source: clause.source,
-        value: null,
-        predicate: null,
-      } as SelectionClause);
+      context.update(createClearClause(clause.source));
     });
   });
 }

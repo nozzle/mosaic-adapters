@@ -2,6 +2,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { Store } from '@tanstack/store';
 import { SqlIdentifier } from './domain/sql-identifier';
 import { createStructAccess } from './utils';
+import { createClearClause, createValueClause } from './clause-factory';
 import type {
   ClauseSource,
   Selection,
@@ -321,11 +322,13 @@ export class MosaicFilterRegistry {
       // Filter out the specific item
       const nextVal = currentVal.filter((item) => item.id !== filter.subId);
 
-      filter.selection.update({
-        source: filter.sourceObject,
-        value: nextVal,
-        predicate: null,
-      });
+      filter.selection.update(
+        createValueClause({
+          source: filter.sourceObject,
+          value: nextVal,
+          predicate: null,
+        }),
+      );
     } else if (
       filter.subId &&
       Array.isArray(filter.selection.value) &&
@@ -335,18 +338,16 @@ export class MosaicFilterRegistry {
         (item) => !Object.is(item, filter.value),
       );
 
-      filter.selection.update({
-        source: filter.sourceObject,
-        value: nextVal.length > 0 ? nextVal : null,
-        predicate: buildScalarSelectionPredicate(filter.sourceId, nextVal),
-      });
+      filter.selection.update(
+        createValueClause({
+          source: filter.sourceObject,
+          value: nextVal.length > 0 ? nextVal : null,
+          predicate: buildScalarSelectionPredicate(filter.sourceId, nextVal),
+        }),
+      );
     } else {
       // Standard clearing
-      filter.selection.update({
-        source: filter.sourceObject,
-        value: null,
-        predicate: null,
-      });
+      filter.selection.update(createClearClause(filter.sourceObject));
     }
   }
 

@@ -3,6 +3,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import { applyRoutedFilters, routeFilter } from '../query/filter-routing';
 import { createStructAccess } from '../utils';
 import { SqlIdentifier } from '../domain/sql-identifier';
+import { createValueClause } from '../clause-factory';
 import { BaseInputCore } from './base-input-core';
 import { isScalarParamTarget, isSelectionTarget } from './guards';
 import { normalizeSelectOptions } from './options';
@@ -381,24 +382,24 @@ export class SelectInputCore<T = unknown> extends BaseInputCore<
     const outputValue = this.#createOutputValue(value);
 
     if (!field || outputValue === null) {
-      return {
+      return createValueClause({
         source: this,
         value: null,
         predicate: null,
         meta: { type: 'point' },
-      };
+      });
     }
 
     const columnExpr = createStructAccess(SqlIdentifier.from(field));
     const values = Array.isArray(outputValue) ? outputValue : [outputValue];
 
     if (values.length === 0) {
-      return {
+      return createValueClause({
         source: this,
         value: null,
         predicate: null,
         meta: { type: 'point' },
-      };
+      });
     }
 
     const predicate = this.config.listMatch
@@ -408,13 +409,13 @@ export class SelectInputCore<T = unknown> extends BaseInputCore<
           values.map((item) => mSql.literal(item)),
         );
 
-    return {
+    return createValueClause({
       source: this,
       clients: new Set([this]),
       value: outputValue,
       predicate,
       meta: { type: 'point' },
-    };
+    });
   }
 
   #bindExternalOutput(): void {

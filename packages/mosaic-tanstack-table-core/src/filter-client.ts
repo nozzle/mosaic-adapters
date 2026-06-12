@@ -2,6 +2,7 @@ import { MosaicClient } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import { createStructAccess } from './utils';
 import { SqlIdentifier } from './domain/sql-identifier';
+import { createClearClause, createValueClause } from './clause-factory';
 import type { Selection, SelectionClause } from '@uwdata/mosaic-core';
 import type { FilterInput, FilterMode } from './types';
 
@@ -66,11 +67,13 @@ export class MosaicFilter<TMode extends FilterMode> extends MosaicClient {
   public apply(value: FilterValueFor<TMode>) {
     const predicate = this.generatePredicate(value);
 
-    this.selection.update({
-      source: this,
-      value: value,
-      predicate,
-    });
+    this.selection.update(
+      createValueClause({
+        source: this,
+        value: value,
+        predicate,
+      }),
+    );
   }
 
   /**
@@ -80,11 +83,7 @@ export class MosaicFilter<TMode extends FilterMode> extends MosaicClient {
     if (this.timer) {
       clearTimeout(this.timer);
     }
-    this.selection.update({
-      source: this,
-      value: null,
-      predicate: null,
-    });
+    this.selection.update(createClearClause(this));
   }
 
   private generatePredicate(
@@ -95,8 +94,11 @@ export class MosaicFilter<TMode extends FilterMode> extends MosaicClient {
     }
 
     const colExpr = createStructAccess(SqlIdentifier.from(this.column));
+    // Widen to the full mode union so the switch stays exhaustive: adding a
+    // new FilterInput mode is a compile-driven change here.
+    const mode: FilterMode = this.mode;
 
-    switch (this.mode) {
+    switch (mode) {
       case 'TEXT': {
         return mSql.sql`${colExpr} ILIKE ${mSql.literal('%' + value + '%')}`;
       }
@@ -148,8 +150,16 @@ export class MosaicFilter<TMode extends FilterMode> extends MosaicClient {
         return null;
       }
 
-      default:
+      case 'CONDITION': {
+        // CONDITION filters are resolved by the filter-builder / table filter
+        // strategies, not by this controller.
         return null;
+      }
+
+      default: {
+        const exhaustive: never = mode;
+        return exhaustive;
+      }
     }
   }
 }
