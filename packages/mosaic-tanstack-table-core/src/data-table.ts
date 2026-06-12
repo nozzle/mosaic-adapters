@@ -213,6 +213,11 @@ export class MosaicDataTable<
         preaggregator?: { clear: () => void };
       }
     ).preaggregator?.clear();
+    // @internal @experimental debug surface; see MosaicDataTableStore._lastQuery
+    this.store.setState((previousState) => ({
+      ...previousState,
+      _lastQuery: String(statement),
+    }));
     this.queryPending();
     this._pending = Promise.resolve(this.coordinator.query(statement))
       .then((data) => {

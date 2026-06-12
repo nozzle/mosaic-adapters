@@ -584,6 +584,32 @@ describe('MosaicDataTable characterization', () => {
     ).toBe(true);
   });
 
+  test('records the executed main query SQL on the internal _lastQuery store field', async () => {
+    const { client, coordinator } = createFlatClient();
+
+    coordinator.enqueueResponse(
+      'FROM "athletes"',
+      createArrowTable([
+        { id: '1', name: 'Alice', age: 31, country: 'NZ', status: 'active' },
+      ]),
+    );
+
+    expect(client.store.state._lastQuery).toBeUndefined();
+
+    client.connect();
+    await client.pending;
+
+    await waitFor(() => {
+      const lastQuery = client.store.state._lastQuery;
+      expect(lastQuery).toBeDefined();
+      expect(lastQuery).toContain('FROM "athletes"');
+      // Matches the SQL the coordinator actually received.
+      expect(coordinator.requestLog.some(({ sql }) => sql === lastQuery)).toBe(
+        true,
+      );
+    });
+  });
+
   test('resets pagination and requeries when an external filter selection changes', async () => {
     const filterBy = new Selection();
     const { client, coordinator } = createFlatClient({ filterBy });
