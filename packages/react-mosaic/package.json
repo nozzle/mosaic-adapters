@@ -55,13 +55,13 @@
   },
   "devDependencies": {
     "@eslint-react/eslint-plugin": "catalog:",
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
-    "react-dom": "^19.2.4",
+    "react-dom": "^19.2.7",
     "rimraf": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"
