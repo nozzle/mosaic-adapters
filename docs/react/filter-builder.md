@@ -324,6 +324,66 @@ Native OR support inside `useMosaicFilters` (e.g. a `mode: 'union'` scope
 option) is a potential future addition — see
 `docs/react/filter-builder-design.md`.
 
+## Subquery Filters
+
+Add a `subquery` factory to any definition to build its predicate as
+`column [NOT] IN (SELECT ...)` instead of a literal-value condition. The
+factory receives the committed binding state and returns a mosaic-sql `Query`
+(or `{ query, negate }`, or `null` for "no filter"):
+
+```ts
+import { Query, count, gte } from '@uwdata/mosaic-sql';
+
+const popularQuestions = {
+  id: 'popular',
+  label: 'Popular questions',
+  column: 'question',
+  valueKind: 'number', // the UI edits the threshold parameter
+  operators: [NUMBER_CONDITIONS.GTE],
+  defaultOperator: NUMBER_CONDITIONS.GTE,
+  dataType: 'number',
+  subquery: ({ state, contextPredicate }) => {
+    if (state.value == null) return null;
+
+    const query = Query.select('question')
+      .from('data')
+      .groupby('question')
+      .having(gte(count(), Number(state.value)));
+
+    // Optional: respect sibling filters inside the subquery. Mosaic does
+    // not push other clauses into scalar subqueries automatically.
+    if (contextPredicate) query.where(contextPredicate);
+
+    return query;
+  },
+} satisfies FilterDefinition;
+```
+
+Key properties:
+
+- **`valueKind` describes the parameter UI, not the predicate.** The binding
+  state (`operator`, `value`, `valueTo`) is handed to the factory; the
+  factory interprets it. Bindings, facets, and persistence work unchanged.
+- **Persistence works out of the box.** Only the serializable binding state
+  is persisted; hydration rebuilds the predicate through the definition's
+  factory. No query serialization, no factory registry.
+- **Sibling context.** Inside `useMosaicFilters`, subquery runtimes receive
+  the scope context automatically: `contextPredicate` is the AND of the other
+  filters' predicates (the filter's own clause is excluded). Committed
+  subquery clauses are rebuilt when siblings change; rebuilds no-op once the
+  predicate converges. Avoid making two subquery filters mutually
+  context-dependent — each rebuild would embed the other's previous predicate
+  and never converge.
+- **No pre-aggregation.** Subquery clauses are published without optimizer
+  `meta`, so Mosaic uses the standard (non pre-aggregated) query path.
+- **Factories must be pure and cheap.** They run on apply, on hydration, and
+  during committed-state reads.
+
+For imperative use outside the filter-builder, `useMosaicTableFilter`
+supports `mode: 'SUBQUERY'` with a `subquery: (value) => Query | { query,
+negate } | null` factory, and the core exports `buildSubqueryPredicate` /
+`createSubqueryClause` for fully manual wiring.
+
 ## Native HTML Controls
 
 ### Text Input

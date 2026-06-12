@@ -15,6 +15,8 @@ export type {
   FilterCollection,
   FilterDefinition,
   FilterRuntime,
+  FilterSubqueryFactory,
+  FilterSubqueryFactoryArgs,
   FilterValueKind,
   NumberFilterDefinition,
   NumberRangeFilterDefinition,

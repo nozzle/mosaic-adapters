@@ -6,7 +6,9 @@ import type {
   FilterOperator,
   MosaicTableSource,
 } from '../types';
+import type { SubqueryFilterQuery } from '../subquery-predicate';
 import type { Selection } from '@uwdata/mosaic-core';
+import type { ExprNode } from '@uwdata/mosaic-sql';
 import type {
   ArrayMultiselectConditionOperatorId,
   DateConditionOperatorId,
@@ -32,13 +34,14 @@ export type FilterBuilderDataType = 'string' | 'number' | 'date' | 'boolean';
 
 /**
  * Discriminator for the app-level values stored on filter-builder Selection
- * clauses. `CONDITION` covers all predicates built from literal values.
+ * clauses. `CONDITION` covers all predicates built from literal values;
+ * `SUBQUERY` marks values whose predicate is rebuilt through the
+ * definition's `subquery` factory.
  *
- * Future modes (e.g. subquery-backed filters) extend this union; readers must
- * treat unrecognized modes as "stored but unsupported" and never coerce them
- * into condition values.
+ * Future modes extend this union; readers must treat unrecognized modes as
+ * "stored but unsupported" and never coerce them into condition values.
  */
-export type StoredFilterValueMode = 'CONDITION';
+export type StoredFilterValueMode = 'CONDITION' | 'SUBQUERY';
 
 /**
  * The app-level value written to a filter-builder Selection clause. This is
@@ -81,7 +84,39 @@ export type ResolvedFilter =
       columnType: ColumnType;
       dataType: FilterBuilderDataType;
       negate: boolean;
+    }
+  | {
+      kind: 'subquery';
+      /** The committed binding state handed to the definition's `subquery` factory. */
+      state: FilterBindingState;
     };
+
+/** Arguments passed to a filter definition's `subquery` factory. */
+export interface FilterSubqueryFactoryArgs {
+  /** The committed binding state (operator, value, valueTo). */
+  state: FilterBindingState;
+  /**
+   * The AND of sibling filter predicates from the runtime's `context`
+   * Selection, with this filter's own clause excluded. `null` when no
+   * context is attached or no sibling filters are active.
+   *
+   * Mosaic does not push other Selection clauses into scalar subqueries;
+   * embed this predicate in the subquery if it should respect sibling
+   * filters. The clause is rebuilt automatically when the context changes.
+   */
+  contextPredicate: ExprNode | null;
+}
+
+/**
+ * Builds the membership subquery for a subquery-backed filter definition.
+ * The resulting predicate is `definition.column [NOT] IN (<query>)`.
+ *
+ * Must be pure and cheap: it runs on every apply, on hydration, and during
+ * committed-state reads.
+ */
+export type FilterSubqueryFactory = (
+  args: FilterSubqueryFactoryArgs,
+) => SubqueryFilterQuery;
 
 type FilterDefinitionBase<
   TValueKind extends FilterValueKind,
@@ -97,6 +132,17 @@ type FilterDefinitionBase<
   groupId?: string;
   description?: string;
   columnType?: ColumnType;
+  /**
+   * When present, this filter's predicate is built as
+   * `column [NOT] IN (<subquery>)` instead of a literal-value condition: the
+   * factory receives the committed binding state (and sibling context, when
+   * a runtime `context` Selection is attached) and returns the membership
+   * query. Operator/value semantics are interpreted by the factory.
+   *
+   * The binding state stays JSON-serializable, so persistence works
+   * unchanged: hydration rebuilds the predicate through this factory.
+   */
+  subquery?: FilterSubqueryFactory;
   facet?: {
     table: MosaicTableSource;
     sortMode?: FacetSortMode;
@@ -169,6 +215,17 @@ export interface FilterRuntime {
   definition: FilterDefinition;
   selection: Selection;
   scopeId: string;
+  /**
+   * Optional Selection providing sibling-filter context to this filter's
+   * `subquery` factory (e.g. the scope's composed context). Clauses sourced
+   * by this filter itself are excluded automatically, so passing a context
+   * that mirrors the filter's own selection is safe.
+   *
+   * When attached, subquery predicates are rebuilt whenever the context
+   * changes. Avoid making two subquery filters mutually context-dependent:
+   * each rebuild embeds the other's previous predicate and never converges.
+   */
+  context?: Selection;
 }
 
 export interface FilterBindingState {

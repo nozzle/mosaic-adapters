@@ -95,7 +95,7 @@ test('publishes a hook-only inputs surface', () => {
 
 test('publishes the narrowed adapter hook contracts', () => {
   expectTypeOf<MosaicTableFilterMode>().toEqualTypeOf<
-    'TEXT' | 'MATCH' | 'SELECT' | 'DATE_RANGE' | 'RANGE'
+    'TEXT' | 'MATCH' | 'SELECT' | 'DATE_RANGE' | 'RANGE' | 'SUBQUERY'
   >();
   expectTypeOf<
     MosaicTableFilterOptions<'TEXT'>['mode']

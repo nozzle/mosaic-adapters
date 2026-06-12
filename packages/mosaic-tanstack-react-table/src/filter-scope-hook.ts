@@ -2,7 +2,10 @@ import * as React from 'react';
 import { useRegisterSelections } from '@nozzleio/react-mosaic';
 import { Selection } from '@uwdata/mosaic-core';
 import { createClearClause } from '@nozzleio/mosaic-tanstack-table-core';
-import { applyFilterSelection } from '@nozzleio/mosaic-tanstack-table-core/filter-builder';
+import {
+  applyFilterSelection,
+  reapplyCommittedFilterSelection,
+} from '@nozzleio/mosaic-tanstack-table-core/filter-builder';
 
 import {
   createFilterScopePersistenceContext,
@@ -154,8 +157,35 @@ export function useMosaicFilters(
       definition,
       selection: selections[definition.id]!,
       scopeId: options.scopeId,
+      // Subquery factories receive sibling-filter context from the scope
+      // context; the filter's own clauses are excluded during resolution.
+      ...(definition.subquery ? { context } : {}),
     }));
-  }, [options.definitions, options.scopeId, selections]);
+  }, [context, options.definitions, options.scopeId, selections]);
+
+  // Rebuild committed subquery predicates when sibling filters change, even
+  // when no filter editor (binding controller) is mounted. The reapply
+  // no-ops when the rebuilt predicate is unchanged, so converged states
+  // publish nothing and feedback loops terminate.
+  React.useEffect(() => {
+    const cleanups = runtimes
+      .filter((runtime) => runtime.definition.subquery && runtime.context)
+      .map((runtime) => {
+        const scopeContext = runtime.context!;
+        const listener = () => {
+          reapplyCommittedFilterSelection(runtime);
+        };
+
+        scopeContext.addEventListener('value', listener);
+        return () => {
+          scopeContext.removeEventListener('value', listener);
+        };
+      });
+
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  }, [runtimes]);
 
   const runtimeMap = React.useMemo(() => {
     return new Map(runtimes.map((runtime) => [runtime.definition.id, runtime]));

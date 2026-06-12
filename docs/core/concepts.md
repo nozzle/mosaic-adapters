@@ -166,6 +166,12 @@ The adapter supports several filter strategies out of the box:
 
 Custom strategies can be registered via `filterStrategies` option.
 
+Beyond literal-value strategies, subquery membership predicates
+(`column [NOT] IN (SELECT ...)`) are supported via `buildSubqueryPredicate`,
+`MosaicFilter` mode `SUBQUERY`, and filter-builder definitions with a
+`subquery` factory — see
+[Subquery Filters](../react/filter-builder.md#subquery-filters).
+
 ## Facets
 
 A **Facet** is metadata about a column's values, used to populate dropdowns or determine slider bounds.
