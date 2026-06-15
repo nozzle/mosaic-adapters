@@ -29,6 +29,21 @@ export type SubqueryFilterQuery =
   | { query: Query; negate?: boolean }
   | null;
 
+/**
+ * Builds the membership subquery for a SUBQUERY-mode TanStack `columnFilters`
+ * entry from that filter's stored value (the app-defined params). Rides on a
+ * column's config (`MosaicColumnMeta.subquery` or
+ * `StrictSqlColumnConfig.subquery`) so the persisted `columnFilters` state
+ * stays JSON-serializable: only the params are stored and the predicate is
+ * rebuilt through this factory on every query build.
+ *
+ * Must be pure and cheap: it also runs on the cascading facet/sidecar path
+ * (`getCascadingFilters`), once per dependent facet query.
+ */
+export type ColumnSubqueryFactory<TValue = unknown> = (
+  value: TValue,
+) => SubqueryFilterQuery;
+
 export interface BuildSubqueryPredicateOptions {
   /** The outer column (or struct path "a.b") tested for membership. */
   column: string | SqlIdentifier;

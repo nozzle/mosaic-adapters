@@ -6,8 +6,13 @@ import {
   escapeSqlLikePattern,
 } from '../utils';
 import { buildConditionPredicate } from '../condition-predicate';
+import {
+  buildSubqueryPredicate,
+  normalizeSubqueryFilterQuery,
+} from '../subquery-predicate';
 import type { SqlIdentifier } from '../domain/sql-identifier';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
+import type { ColumnSubqueryFactory } from '../subquery-predicate';
 import type { FilterInput, FilterOptions } from '../types';
 
 /**
@@ -20,6 +25,12 @@ export type FilterStrategy = (options: {
   input: FilterInput;
   columnId?: string;
   filterOptions?: FilterOptions;
+  /**
+   * Membership-subquery factory resolved from the column's config (mapping or
+   * mosaic meta). Only the `SUBQUERY` strategy reads it; other strategies
+   * ignore it.
+   */
+  subqueryFactory?: ColumnSubqueryFactory;
 }) => FilterExpr | undefined;
 
 const strategies: Record<string, FilterStrategy> = {
@@ -205,6 +216,49 @@ const strategies: Record<string, FilterStrategy> = {
       createStructAccess(columnAccessor),
       mSql.literal(input.value),
     );
+  },
+
+  SUBQUERY: ({ columnAccessor, input, columnId, subqueryFactory }) => {
+    if (input.mode !== 'SUBQUERY') {
+      return undefined;
+    }
+
+    // The membership query must come from app code: a `subquery` factory on
+    // the column's mapping config or mosaic meta. Without one there is nothing
+    // to build, so skip (rather than guess) and warn.
+    if (!subqueryFactory) {
+      logger.warn(
+        'Core',
+        `[FilterStrategy:SUBQUERY] No subquery factory configured for column "${columnId}". ` +
+          `Provide one via the column's mapping config or mosaic meta (\`subquery\`).`,
+      );
+      return undefined;
+    }
+
+    const normalized = normalizeSubqueryFilterQuery(
+      subqueryFactory(input.value),
+    );
+
+    if (!normalized) {
+      logger.debug(
+        'Core',
+        `[FilterStrategy:SUBQUERY] Factory produced no query for column "${columnId}"; skipping.`,
+      );
+      return undefined;
+    }
+
+    const expr = buildSubqueryPredicate({
+      column: columnAccessor,
+      query: normalized.query,
+      negate: normalized.negate,
+    });
+
+    logger.debug(
+      'SQL',
+      `[FilterStrategy:SUBQUERY] Generated SQL: ${expr.toString()}`,
+    );
+
+    return expr;
   },
 };
 

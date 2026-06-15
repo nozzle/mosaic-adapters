@@ -268,6 +268,72 @@ describe('MosaicDataTable characterization', () => {
     );
   });
 
+  test('routes SUBQUERY column filters into SQL, cascading filters, and the mirrored selection without meta', () => {
+    const tableFilterSelection = new Selection();
+    const client = new MosaicDataTable<AthleteRow>({
+      table: 'athletes',
+      tableFilterSelection,
+      columns: [
+        { accessorKey: 'name', header: 'Name' },
+        { accessorKey: 'country', header: 'Country' },
+      ],
+      mapping: {
+        name: {
+          sqlColumn: 'athlete_name',
+          type: 'VARCHAR',
+          filterType: 'PARTIAL_ILIKE',
+        },
+        country: {
+          sqlColumn: 'country',
+          type: 'VARCHAR',
+          subquery: (value) =>
+            value == null
+              ? null
+              : mSql.Query.select('country')
+                  .from('medals')
+                  .groupby('country')
+                  .having(mSql.gte(mSql.count(), Number(value))),
+        },
+      },
+    });
+
+    client.store.setState((prev) => ({
+      ...prev,
+      tableState: {
+        ...prev.tableState,
+        columnFilters: [
+          { id: 'name', value: 'al' },
+          { id: 'country', value: { mode: 'SUBQUERY', value: 5 } },
+        ],
+      },
+    }));
+
+    const sql = client.query()?.toString();
+    expect(sql).toContain('FROM "athletes"');
+    expect(sql).toContain('"athlete_name" ILIKE \'%al%\'');
+    expect(sql).toContain('"country" IN (SELECT "country" FROM "medals"');
+
+    // Subquery filters narrow sibling facets via the cascading path.
+    const cascading = client.getCascadingFilters().map((p) => p.toString());
+    expect(cascading.some((p) => p.includes('"country" IN (SELECT'))).toBe(
+      true,
+    );
+
+    // Excluding the subquery column drops its predicate (facet self-exclusion).
+    const excluded = client
+      .getCascadingFilters({ excludeColumnId: 'country' })
+      .map((p) => p.toString());
+    expect(excluded.some((p) => p.includes('IN (SELECT'))).toBe(false);
+
+    // The mirrored table-filter clause embeds the subquery predicate but never
+    // carries optimizer meta (subquery predicates use the standard path).
+    const clause = tableFilterSelection.clauses.find(
+      (entry) => entry.source === client,
+    );
+    expect(clause?.predicate?.toString()).toContain('"country" IN (SELECT');
+    expect(clause?.meta).toBeUndefined();
+  });
+
   test('continues to support legacy mosaicDataTable metadata', () => {
     const client = new MosaicDataTable<AthleteRow>({
       table: 'athletes',

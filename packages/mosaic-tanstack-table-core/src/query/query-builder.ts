@@ -202,6 +202,12 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
     const columnMeta = colDef ? readMosaicColumnMeta(colDef) : undefined;
     const target = columnMeta?.filterClauseTarget ?? 'where';
 
+    // Membership-subquery factory for SUBQUERY filters. Mapping config wins
+    // over mosaic meta, mirroring filterType resolution below. Shared by the
+    // dynamic-mode and static-filterType paths.
+    const subqueryFactory =
+      options.mapping?.[filter.id]?.subquery ?? columnMeta?.subquery;
+
     // DYNAMIC OVERRIDE:
     // If the UI passed a full FilterInput object (which has a 'mode'), use that mode
     // to determine the strategy, ignoring the static column config.
@@ -220,6 +226,7 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
           columnAccessor: sqlColumn,
           input: rawValue as FilterInput,
           columnId: filter.id,
+          subqueryFactory,
         });
         if (clause) {
           clauses.push(routeFilter(clause, target)!);
@@ -351,6 +358,13 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
         }
         break;
 
+      case 'SUBQUERY':
+        // Statically-typed subquery column: the raw columnFilter value is the
+        // app-defined params. Wrap it so the SUBQUERY strategy resolves the
+        // membership query via the column's `subquery` factory.
+        safeInput = { mode: 'SUBQUERY', value: rawValue };
+        break;
+
       default:
         // Attempt to guess text for unhandled custom types
         if (typeof rawValue === 'string') {
@@ -370,6 +384,7 @@ export function extractInternalFilters<TData extends RowData, TValue>(options: {
         input: safeInput,
         columnId: filter.id,
         filterOptions,
+        subqueryFactory,
       });
 
       if (clause) {

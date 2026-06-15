@@ -163,13 +163,55 @@ The adapter supports several filter strategies out of the box:
 | `DATE_RANGE`    | Date/timestamp range      | `date >= '2020-01-01'`       |
 | `MATCH`         | Boolean/enum match        | `active = true`              |
 | `SELECT`        | Dropdown selection        | `sport = 'Swimming'`         |
+| `SUBQUERY`      | Membership subquery       | `id IN (SELECT ...)`         |
 
 Custom strategies can be registered via `filterStrategies` option.
 
-Beyond literal-value strategies, subquery membership predicates
-(`column [NOT] IN (SELECT ...)`) are supported via `buildSubqueryPredicate`,
-`MosaicFilter` mode `SUBQUERY`, and filter-builder definitions with a
-`subquery` factory — see
+### Subquery membership filters
+
+The adapter ships a default `SUBQUERY` strategy that builds
+`column [NOT] IN (SELECT ...)` predicates for TanStack `columnFilters`. The
+membership query comes from a `subquery` factory on the column's mapping
+config (or `meta.mosaic`); the stored filter value carries only the
+serializable params handed to that factory:
+
+```ts
+import { Query, count, gte } from '@uwdata/mosaic-sql';
+
+const AthleteMapping = createMosaicMapping<AthleteRowData>({
+  // ...other columns
+  name: {
+    sqlColumn: 'name',
+    type: 'VARCHAR',
+    // `value` is the columnFilter value (the params); return the membership
+    // query, `{ query, negate }`, or `null` to clear the filter.
+    subquery: (value) =>
+      value == null
+        ? null
+        : Query.select('name')
+            .from('medals')
+            .groupby('name')
+            .having(gte(count(), Number(value))),
+  },
+});
+```
+
+Set the column filter value to activate it. Two shapes are supported:
+
+- **Dynamic mode:** `columnFilters: [{ id: 'name', value: { mode: 'SUBQUERY', value: 5 } }]`.
+- **Static type:** declare `filterType: 'SUBQUERY'` (mapping) or
+  `sqlFilterType: 'SUBQUERY'` (meta) and store the raw params as the value:
+  `{ id: 'name', value: 5 }`.
+
+Persisted table state stays JSON-serializable (only the params are stored);
+the predicate is rebuilt through the factory on every query, including the
+cascading facet/sidecar path — so a subquery filter narrows sibling facets
+like any other filter. Subquery clauses never carry optimizer `meta`, so
+Mosaic uses the standard (non pre-aggregated) query path.
+
+For imperative use (`MosaicFilter` mode `SUBQUERY`), filter-builder
+definitions with a `subquery` factory, and the lower-level
+`buildSubqueryPredicate` helper, see
 [Subquery Filters](../react/filter-builder.md#subquery-filters).
 
 ## Facets

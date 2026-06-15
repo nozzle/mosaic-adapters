@@ -384,6 +384,11 @@ supports `mode: 'SUBQUERY'` with a `subquery: (value) => Query | { query,
 negate } | null` factory, and the core exports `buildSubqueryPredicate` /
 `createSubqueryClause` for fully manual wiring.
 
+For plain TanStack `columnFilters` (outside the filter-builder), the adapter
+ships a default `SUBQUERY` strategy driven by a `subquery` factory on the
+column's mapping config or `meta.mosaic` — see
+[Subquery membership filters](../core/concepts.md#subquery-membership-filters).
+
 ## Native HTML Controls
 
 ### Text Input

@@ -18,6 +18,7 @@ import type {
   TableState,
 } from '@tanstack/table-core';
 import type { FilterStrategy } from '../query/filter-factory';
+import type { ColumnSubqueryFactory } from '../subquery-predicate';
 import type { GroupLevel, GroupMetric, LeafColumn } from '../grouped/types';
 import type { FacetStrategyMap } from '../registry';
 import type { SqlFilterClauseTarget } from '../query/filter-routing';
@@ -173,6 +174,14 @@ export interface StrictSqlColumnConfig<TType extends SqlType> {
   type: TType;
   filterType?: FilterCompatibility[TType] | (string & {});
   filterOptions?: FilterOptions;
+  /**
+   * Builds the membership subquery for a `SUBQUERY` filter on this column,
+   * producing `column [NOT] IN (<query>)`. Used when the column's
+   * `columnFilters` value is a `{ mode: 'SUBQUERY', value }` input, or when
+   * `filterType` is `'SUBQUERY'`. The stored `columnFilters` value carries
+   * only the serializable params handed to this factory.
+   */
+  subquery?: ColumnSubqueryFactory;
 }
 
 /**
@@ -224,6 +233,15 @@ export type MosaicColumnMeta<TValue = unknown> = {
    * STRICTLY TYPED based on the column's data type (TValue).
    */
   facet?: AllowedFacetTypeFor<TValue> | (string & {});
+  /**
+   * Builds the membership subquery for a `SUBQUERY` filter on this column,
+   * producing `column [NOT] IN (<query>)`. Used when the column's
+   * `columnFilters` value is a `{ mode: 'SUBQUERY', value }` input, or when
+   * `sqlFilterType` is `'SUBQUERY'`. The stored `columnFilters` value carries
+   * only the serializable params handed to this factory; the predicate is
+   * rebuilt on every query build (including cascading facets).
+   */
+  subquery?: ColumnSubqueryFactory;
 };
 
 /**
