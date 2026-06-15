@@ -5,6 +5,7 @@ import type { Locator, Page } from '@playwright/test';
 
 const initFilterBuilder = getInit('filter-builder');
 const initNozzlePaa = getInit('nozzle-paa');
+const initAthletesSimple = getInit('athletes-simple');
 
 async function readSummary(summary: Locator) {
   await expect(summary).toContainText('Visible rows:');
@@ -264,5 +265,41 @@ test.describe('nozzle-paa subquery filters', () => {
       .poll(() => readUniqueQuestionsKpi(page), { timeout: 15000 })
       .toBe(initialKpi);
     await expect(page.getByText('Min Domains:')).toHaveCount(0);
+  });
+});
+
+test.describe('athletes-simple columnFilters SUBQUERY strategy', () => {
+  test('a column `subquery` factory drives a default columnFilters IN (SELECT ...) predicate', async ({
+    page,
+  }) => {
+    await initAthletesSimple(page);
+
+    // The single table on this view surfaces its executed SQL.
+    const sql = page.getByTestId('widget-sql');
+    await expect(sql).toContainText('FROM "athletes_simple"', {
+      timeout: 15000,
+    });
+    await expect(sql).not.toContainText('IN (SELECT');
+
+    // Setting the threshold writes a `{ mode: 'SUBQUERY', value }` columnFilter
+    // on `nationality`; the default strategy resolves the column's `subquery`
+    // factory into a membership predicate.
+    const input = page.getByTestId('athletes-simple-gold-subquery-input');
+    await input.fill('100');
+
+    await expect(sql).toContainText('"nationality" IN (SELECT', {
+      timeout: 15000,
+    });
+    await expect(sql).toContainText('sum("gold")');
+    await expect(sql).toContainText('>= 100');
+
+    // An impossible threshold yields an empty membership set -> no rows.
+    await input.fill('100000');
+    await expect(page.getByText('No results.')).toBeVisible({ timeout: 15000 });
+
+    // Clearing removes the subquery predicate and restores the full roster.
+    await input.fill('');
+    await expect(sql).not.toContainText('IN (SELECT', { timeout: 15000 });
+    await expect(page.getByText('No results.')).toHaveCount(0);
   });
 });

@@ -14,6 +14,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactTable } from '@tanstack/react-table';
 import * as vg from '@uwdata/vgplot';
+import * as mSql from '@uwdata/mosaic-sql';
 import { useMosaicReactTable } from '@nozzleio/mosaic-tanstack-react-table';
 import {
   useMosaicSelectInput,
@@ -24,9 +25,10 @@ import {
   coerceNumber,
 } from '@nozzleio/mosaic-tanstack-react-table/helpers';
 import { useRegisterSelections } from '@nozzleio/react-mosaic';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, Table } from '@tanstack/react-table';
 import { RenderTable } from '@/components/render-table';
 import { RenderTableHeader } from '@/components/render-table-header';
+import { WidgetSqlDetails } from '@/components/widget-sql-details';
 import { simpleDateFormatter } from '@/lib/utils';
 import { useURLSearchParam } from '@/hooks/useURLSearchParam';
 
@@ -285,13 +287,28 @@ function AthletesTable() {
         header: ({ column }) => (
           <RenderTableHeader column={column} title="Nationality" view={view} />
         ),
+        // Driven by the dedicated subquery control below rather than the
+        // auto-rendered header filter, so the built-in filter UI is disabled.
+        enableColumnFilter: false,
         meta: {
-          filterVariant: 'select',
-          // SQL Config: Use EQUALS filter and trigger 'unique' facet strategy for dropdowns
+          // SQL Config: a `subquery` factory turns this column's columnFilter
+          // into `nationality IN (SELECT ...)` via the default SUBQUERY
+          // strategy. The stored columnFilter value is only the serializable
+          // params (a gold-medal threshold); the predicate is rebuilt here.
           mosaic: {
             sqlColumn: 'nationality',
-            sqlFilterType: 'EQUALS',
-            facet: 'unique',
+            subquery: (value) => {
+              const minGold = Number(value);
+              if (!Number.isFinite(minGold) || minGold <= 0) {
+                return null;
+              }
+
+              return mSql.Query.select('nationality')
+                .from(tableName)
+                .where(mSql.isNotNull(mSql.column('nationality')))
+                .groupby('nationality')
+                .having(mSql.gte(mSql.sum('gold'), mSql.literal(minGold)));
+            },
           },
         },
       },
@@ -415,7 +432,7 @@ function AthletesTable() {
     [view],
   );
 
-  const { tableOptions } = useMosaicReactTable<AthleteRowData>({
+  const { tableOptions, client } = useMosaicReactTable<AthleteRowData>({
     table: tableName,
     filterBy: $query,
     tableFilterSelection: $tableFilter,
@@ -453,7 +470,59 @@ function AthletesTable() {
           defined directly in the column metadata.
         </p>
       </div>
+      <NationalityGoldSubqueryControl table={table} />
       <RenderTable table={table} columns={columns} />
+      <WidgetSqlDetails client={client} />
     </div>
+  );
+}
+
+/**
+ * Drives the `nationality` column's filter through the default `SUBQUERY`
+ * strategy. Setting a `{ mode: 'SUBQUERY', value }` columnFilter hands the
+ * threshold to the column's `subquery` factory (see the `nationality` column
+ * meta above), producing
+ * `nationality IN (SELECT nationality ... HAVING sum(gold) >= N)`.
+ */
+function NationalityGoldSubqueryControl({
+  table,
+}: {
+  table: Table<AthleteRowData>;
+}) {
+  const [value, setValue] = useState('');
+
+  const apply = (next: string) => {
+    setValue(next);
+    const minGold = Number(next);
+    table
+      .getColumn('nationality')
+      ?.setFilterValue(
+        next !== '' && Number.isFinite(minGold) && minGold > 0
+          ? { mode: 'SUBQUERY', value: minGold }
+          : undefined,
+      );
+  };
+
+  return (
+    <label className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+      <span className="font-medium">
+        Show athletes whose country has at least
+        <input
+          data-testid="athletes-simple-gold-subquery-input"
+          aria-label="Minimum total gold medals per country"
+          type="number"
+          min={1}
+          placeholder="N"
+          className="mx-2 h-8 w-20 rounded-md border border-slate-300 bg-white px-2 text-sm"
+          value={value}
+          onChange={(event) => apply(event.target.value)}
+        />
+        total gold medals
+      </span>
+      <span className="text-xs text-slate-500">
+        (TanStack columnFilters → default <code>SUBQUERY</code> strategy:{' '}
+        <code>nationality IN (SELECT …)</code>)
+      </span>
+    </label>
   );
 }
