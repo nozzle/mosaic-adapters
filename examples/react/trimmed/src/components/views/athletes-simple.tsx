@@ -287,16 +287,20 @@ function AthletesTable() {
         header: ({ column }) => (
           <RenderTableHeader column={column} title="Nationality" view={view} />
         ),
-        // Driven by the dedicated subquery control below rather than the
-        // auto-rendered header filter, so the built-in filter UI is disabled.
-        enableColumnFilter: false,
         meta: {
-          // SQL Config: a `subquery` factory turns this column's columnFilter
-          // into `nationality IN (SELECT ...)` via the default SUBQUERY
-          // strategy. The stored columnFilter value is only the serializable
-          // params (a gold-medal threshold); the predicate is rebuilt here.
+          filterVariant: 'select',
+          // SQL Config: this column's single columnFilter slot is shared by two
+          // controls. The header dropdown writes a string (EQUALS via the
+          // 'unique' facet); the dedicated control below writes a
+          // `{ mode: 'SUBQUERY', value }` input that routes through the default
+          // SUBQUERY strategy. Last writer wins; the control resets itself when
+          // the dropdown takes over.
           mosaic: {
             sqlColumn: 'nationality',
+            sqlFilterType: 'EQUALS',
+            facet: 'unique',
+            // Rebuilds `nationality IN (SELECT ... HAVING sum(gold) >= N)` from
+            // the serializable threshold whenever a SUBQUERY value is set.
             subquery: (value) => {
               const minGold = Number(value);
               if (!Number.isFinite(minGold) || minGold <= 0) {
@@ -483,6 +487,10 @@ function AthletesTable() {
  * threshold to the column's `subquery` factory (see the `nationality` column
  * meta above), producing
  * `nationality IN (SELECT nationality ... HAVING sum(gold) >= N)`.
+ *
+ * The column's header facet dropdown shares the same single columnFilter slot,
+ * so this control resets its input whenever the column is driven by the
+ * dropdown (an EQUALS string) or cleared — avoiding a stale threshold.
  */
 function NationalityGoldSubqueryControl({
   table,
@@ -490,6 +498,18 @@ function NationalityGoldSubqueryControl({
   table: Table<AthleteRowData>;
 }) {
   const [value, setValue] = useState('');
+
+  const currentFilter = table.getColumn('nationality')?.getFilterValue();
+  const isSubqueryActive =
+    typeof currentFilter === 'object' &&
+    currentFilter !== null &&
+    (currentFilter as { mode?: unknown }).mode === 'SUBQUERY';
+
+  useEffect(() => {
+    if (!isSubqueryActive) {
+      setValue('');
+    }
+  }, [isSubqueryActive]);
 
   const apply = (next: string) => {
     setValue(next);
@@ -521,7 +541,8 @@ function NationalityGoldSubqueryControl({
       </span>
       <span className="text-xs text-slate-500">
         (TanStack columnFilters → default <code>SUBQUERY</code> strategy:{' '}
-        <code>nationality IN (SELECT …)</code>)
+        <code>nationality IN (SELECT …)</code>; the Nationality header dropdown
+        shares this filter)
       </span>
     </label>
   );
