@@ -1,5 +1,11 @@
 # @nozzleio/react-mosaic
 
+## 0.3.2
+
+### Patch Changes
+
+- [#150](https://github.com/nozzle/mosaic-adapters/pull/150) [`2c00d03`](https://github.com/nozzle/mosaic-adapters/commit/2c00d036c0df450b1a558c14ce9c438c8131c4e0) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - fix: upgrade mosaic packages to `^0.27.0`
+
 ## 0.3.1
 
 ### Patch Changes
