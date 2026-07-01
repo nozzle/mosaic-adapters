@@ -20,13 +20,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Tools
-        uses: TanStack/config/.github/setup@a4c6d06ed525a310901e3e9fbed9b2301ebecfd5 # main
+        uses: TanStack/config/.github/setup@b313637fa7d314532b98638f6b57b7b9c169d390 # main
 
       - name: Check GitHub Action pins
         run: pnpm run actions:pin-check
@@ -40,7 +40,7 @@ jobs:
         # Keep this PR workflow's cache scoped to the PR so PR runs do not pollute main.
         # If a similar setup is needed on main, create a separate ci.yml that is
         # audited exclusively for the main context, especially cache poisoning risks.
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-pr-${{ github.event.pull_request.number }}
