@@ -1,5 +1,5 @@
 {
-  "name": "example-react-trimmed",
+  "name": "example-react-athletes",
   "private": true,
   "version": "0.0.13",
   "type": "module",
@@ -7,21 +7,29 @@
     "clear-build": "rimraf dist",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ./src",
+    "lint": "eslint ./src ./tests",
     "build": "pnpm run typecheck && vite build",
     "preview": "vite preview",
     "test:build": "pnpm run build",
     "test:lint": "pnpm run lint",
+    "test:e2e": "playwright test",
     "test:types": "pnpm run typecheck"
   },
   "dependencies": {
+    "@nozzleio/mosaic-tanstack-react-table": "workspace:*",
     "@nozzleio/react-mosaic": "workspace:*",
+    "@tanstack/react-table": "catalog:",
+    "@uwdata/mosaic-core": "catalog:",
+    "@uwdata/mosaic-sql": "catalog:",
+    "@uwdata/vgplot": "catalog:",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwindcss": "^4.1.17"
   },
   "devDependencies": {
+    "@playwright/test": "catalog:",
     "@tailwindcss/vite": "^4.1.17",
+    "@types/node": "catalog:",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "catalog:",

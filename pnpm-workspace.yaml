@@ -7,9 +7,11 @@ catalog:
   '@playwright/test': ^1.59.1
   '@tanstack/eslint-config': ^0.4.0
   '@tanstack/react-store': ^0.9.1
+  '@tanstack/react-table': ^8.21.3
   '@tanstack/store': ^0.9.1
   '@tanstack/table-core': ^8.21.3
   '@tanstack/vite-config': ^0.5.2
+  '@types/node': ^24.10.9
   '@uwdata/mosaic-core': ^0.27.0
   '@uwdata/mosaic-sql': ^0.27.0
   '@uwdata/vgplot': ^0.27.0
