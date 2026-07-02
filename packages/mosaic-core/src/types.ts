@@ -92,6 +92,8 @@ export interface DataClient<
   /** Force a re-query with current inputs/filters. */
   refetch: () => Promise<void>;
   destroy: () => void;
+  /** True once `destroy()` has run; destroyed clients never query again. */
+  readonly destroyed: boolean;
   /**
    * The wrapped MosaicClient (built on upstream `makeClient`) — escape hatch
    * for coordinator/vgplot interop.

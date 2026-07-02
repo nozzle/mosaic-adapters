@@ -93,7 +93,7 @@ export abstract class BaseDataClient<
     return this.#client;
   }
 
-  protected get destroyed(): boolean {
+  get destroyed(): boolean {
     return this.#destroyed;
   }
 
