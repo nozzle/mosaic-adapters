@@ -19,7 +19,9 @@ export default defineConfig([
     // The binding engine deliberately creates clients during render behind a
     // ref guard (the React-docs lazy-initialization pattern) so the client
     // exists on the first render; react-hooks/refs cannot see the guard.
-    files: ['src/use-data-client.ts'],
+    // use-mosaic-schema.ts applies the same pattern to the (setter-less)
+    // schema client.
+    files: ['src/use-data-client.ts', 'src/use-mosaic-schema.ts'],
     rules: {
       'react-hooks/refs': 'off',
     },

@@ -19,5 +19,41 @@ export type {
   UseMosaicValuesResult,
 } from './use-mosaic-values';
 
+export { useMosaicFacet } from './use-mosaic-facet';
+export type {
+  UseMosaicFacetOptions,
+  UseMosaicFacetResult,
+} from './use-mosaic-facet';
+
+export { useMosaicHistogram } from './use-mosaic-histogram';
+export type {
+  UseMosaicHistogramOptions,
+  UseMosaicHistogramResult,
+} from './use-mosaic-histogram';
+
+export { useMosaicSparkline } from './use-mosaic-sparkline';
+export type {
+  UseMosaicSparklineOptions,
+  UseMosaicSparklineResult,
+} from './use-mosaic-sparkline';
+
+export { useMosaicRollup } from './use-mosaic-rollup';
+export type {
+  UseMosaicRollupOptions,
+  UseMosaicRollupResult,
+} from './use-mosaic-rollup';
+
+export { useMosaicPivot } from './use-mosaic-pivot';
+export type {
+  UseMosaicPivotOptions,
+  UseMosaicPivotResult,
+} from './use-mosaic-pivot';
+
+export { useMosaicSchema } from './use-mosaic-schema';
+export type {
+  UseMosaicSchemaOptions,
+  UseMosaicSchemaResult,
+} from './use-mosaic-schema';
+
 export { useVgPlot } from './use-vg-plot';
 export type { VgPlotElement } from './use-vg-plot';
