@@ -1,6 +1,8 @@
-/**
- * @nozzleio/mosaic-tanstack-react-table is being re-cut as part of the
- * data-first re-architecture (https://github.com/nozzle/mosaic-adapters/issues/131).
- * Phase 3 (#161) rebuilds this package's contents; until then it exports nothing.
- */
-export {};
+// Distribution model: users install this package only. The framework-agnostic
+// TanStack glue core is a regular dependency whose public API is re-exported
+// in full (the @tanstack/react-table model) — anything a consumer needs from
+// the glue core is importable from here.
+export * from '@nozzleio/mosaic-tanstack-table-core';
+
+export { useTanStackFilterBridge } from './use-tanstack-filter-bridge';
+export type { UseTanStackFilterBridgeOptions } from './use-tanstack-filter-bridge';

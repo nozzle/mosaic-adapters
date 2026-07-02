@@ -21,6 +21,9 @@ catalogs:
     '@tanstack/store':
       specifier: ^0.9.1
       version: 0.9.1
+    '@tanstack/table-core':
+      specifier: ^8.21.3
+      version: 8.21.3
     '@tanstack/vite-config':
       specifier: ^0.5.2
       version: 0.5.2
@@ -198,10 +201,56 @@ importers:
         version: 5.9.3
 
   packages/mosaic-tanstack-react-table:
+    dependencies:
+      '@nozzleio/mosaic-tanstack-table-core':
+        specifier: workspace:*
+        version: link:../mosaic-tanstack-table-core
+      '@tanstack/table-core':
+        specifier: 'catalog:'
+        version: 8.21.3
     devDependencies:
+      '@duckdb/duckdb-wasm':
+        specifier: 1.33.1-dev45.0
+        version: 1.33.1-dev45.0
+      '@eslint-react/eslint-plugin':
+        specifier: 'catalog:'
+        version: 3.0.0(eslint@10.2.1(jiti@2.6.1))(typescript@5.9.3)
+      '@nozzleio/mosaic-core':
+        specifier: workspace:*
+        version: link:../mosaic-core
+      '@nozzleio/react-mosaic':
+        specifier: workspace:*
+        version: link:../react-mosaic
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
+      '@uwdata/flechette':
+        specifier: ^2.5.0
+        version: 2.5.0
+      '@uwdata/mosaic-core':
+        specifier: 'catalog:'
+        version: 0.27.0
+      '@uwdata/mosaic-sql':
+        specifier: 'catalog:'
+        version: 0.27.0
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.0.1(vite@8.0.10(@types/node@20.19.30)(jiti@2.6.1)(yaml@2.8.0))
       eslint:
         specifier: 'catalog:'
         version: 10.2.1(jiti@2.6.1)
+      eslint-plugin-react-hooks:
+        specifier: 'catalog:'
+        version: 7.1.1(eslint@10.2.1(jiti@2.6.1))
+      react:
+        specifier: ^19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.2.4
+        version: 19.2.4(react@19.2.4)
       rimraf:
         specifier: 'catalog:'
         version: 6.1.3
@@ -210,7 +259,26 @@ importers:
         version: 5.9.3
 
   packages/mosaic-tanstack-table-core:
+    dependencies:
+      '@nozzleio/mosaic-core':
+        specifier: workspace:*
+        version: link:../mosaic-core
+      '@tanstack/table-core':
+        specifier: 'catalog:'
+        version: 8.21.3
     devDependencies:
+      '@duckdb/duckdb-wasm':
+        specifier: 1.33.1-dev45.0
+        version: 1.33.1-dev45.0
+      '@uwdata/flechette':
+        specifier: ^2.5.0
+        version: 2.5.0
+      '@uwdata/mosaic-core':
+        specifier: 'catalog:'
+        version: 0.27.0
+      '@uwdata/mosaic-sql':
+        specifier: 'catalog:'
+        version: 0.27.0
       eslint:
         specifier: 'catalog:'
         version: 10.2.1(jiti@2.6.1)
@@ -987,6 +1055,10 @@ packages:
 
   '@tanstack/store@0.9.3':
     resolution: {integrity: sha512-8reSzl/qGWGGVKhBoxXPMWzATSbZLZFWhwBAFO9NAyp0TxzfBP0mIrGb8CP8KrQTmvzXlR/vFPPUrHTLBGyFyw==}
+
+  '@tanstack/table-core@8.21.3':
+    resolution: {integrity: sha512-ldZXEhOBb8Is7xLs01fR3YEc3DERiz5silj8tnGkFZytt1abEvl/GhUmCE0PMLaMPTa3Jk4HbKmRlHmu+gCftg==}
+    engines: {node: '>=12'}
 
   '@tanstack/vite-config@0.5.2':
     resolution: {integrity: sha512-cTswDmoTn5UZA5pV2z/IWhGYgb8NS0zPRYYLv5q9JxHY4WxL/l/Riy6Aq76QttH8w6IHAIO/ZGwHBfF/OV0Kcw==}
@@ -4153,6 +4225,8 @@ snapshots:
   '@tanstack/store@0.9.1': {}
 
   '@tanstack/store@0.9.3': {}
+
+  '@tanstack/table-core@8.21.3': {}
 
   '@tanstack/vite-config@0.5.2(@types/node@20.19.30)(typescript@5.9.3)(vite@8.0.10(@types/node@20.19.30)(jiti@2.6.1)(yaml@2.8.0))':
     dependencies:

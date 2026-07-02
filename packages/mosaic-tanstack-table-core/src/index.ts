@@ -1,6 +1,11 @@
-/**
- * @nozzleio/mosaic-tanstack-table-core is being re-cut as part of the
- * data-first re-architecture (https://github.com/nozzle/mosaic-adapters/issues/131).
- * Phase 3 (#161) rebuilds this package's contents; until then it exports nothing.
- */
-export {};
+export { paginationToWindow, sortingToOrderBy } from './translators';
+
+export { createFilterBridge } from './filter-bridge';
+
+export type {
+  ColumnFilterClauseKind,
+  FilterBridge,
+  FilterBridgeColumn,
+  FilterBridgeColumns,
+  FilterBridgeOptions,
+} from './types';

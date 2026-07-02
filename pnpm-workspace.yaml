@@ -8,6 +8,7 @@ catalog:
   '@tanstack/eslint-config': ^0.4.0
   '@tanstack/react-store': ^0.9.1
   '@tanstack/store': ^0.9.1
+  '@tanstack/table-core': ^8.21.3
   '@tanstack/vite-config': ^0.5.2
   '@uwdata/mosaic-core': ^0.27.0
   '@uwdata/mosaic-sql': ^0.27.0
