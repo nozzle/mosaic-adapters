@@ -42,28 +42,13 @@
   "scripts": {
     "clear-build": "rimraf dist",
     "build": "vite build",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint ./src",
-    "test:types": "pnpm run typecheck",
-    "test:build": "pnpm run build",
-    "test:lib": "vitest",
-    "test:lint": "pnpm run lint"
-  },
-  "peerDependencies": {
-    "@uwdata/mosaic-core": ">=0.24.3 <1",
-    "react": ">=19.2.0"
+    "test:types": "tsc --noEmit",
+    "test:build": "vite build",
+    "test:lint": "eslint ./src"
   },
   "devDependencies": {
-    "@eslint-react/eslint-plugin": "catalog:",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "catalog:",
-    "@uwdata/mosaic-core": "catalog:",
     "eslint": "catalog:",
-    "eslint-plugin-react-hooks": "catalog:",
-    "react-dom": "^19.2.4",
     "rimraf": "catalog:",
-    "typescript": "catalog:",
-    "vite": "catalog:"
+    "typescript": "catalog:"
   }
 }

@@ -37,55 +37,16 @@
       "types": "./dist/esm/index.d.ts",
       "default": "./dist/esm/index.js"
     },
-    "./helpers": {
-      "types": "./dist/esm/helpers.d.ts",
-      "default": "./dist/esm/helpers.js"
-    },
-    "./controllers": {
-      "types": "./dist/esm/controllers.d.ts",
-      "default": "./dist/esm/controllers.js"
-    },
-    "./debug": {
-      "types": "./dist/esm/debug.d.ts",
-      "default": "./dist/esm/debug.js"
-    },
-    "./inputs": {
-      "types": "./dist/esm/inputs/index.d.ts",
-      "default": "./dist/esm/inputs/index.js"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {
     "clear-build": "rimraf dist",
     "build": "vite build",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint ./src",
-    "test:types": "pnpm run typecheck",
-    "test:build": "pnpm run build",
-    "test:lib": "vitest",
-    "test:lint": "pnpm run lint"
-  },
-  "dependencies": {
-    "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
-    "@tanstack/react-store": "catalog:"
-  },
-  "peerDependencies": {
-    "@nozzleio/react-mosaic": ">=0.1.0 <1",
-    "@tanstack/react-table": ">=8.17.3",
-    "@uwdata/mosaic-core": ">=0.24.3 <1",
-    "@uwdata/mosaic-sql": ">=0.24.3 <1",
-    "react": ">=19.2.4",
-    "react-dom": ">=19.2.4"
+    "test:types": "tsc --noEmit",
+    "test:build": "vite build",
+    "test:lint": "eslint ./src"
   },
   "devDependencies": {
-    "@nozzleio/react-mosaic": "workspace:*",
-    "@eslint-react/eslint-plugin": "catalog:",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "catalog:",
-    "@uwdata/mosaic-core": "catalog:",
-    "@uwdata/mosaic-sql": "catalog:",
-    "eslint-plugin-react-hooks": "catalog:",
     "eslint": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:"
