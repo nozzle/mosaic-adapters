@@ -157,3 +157,178 @@ test('row clicks publish picked athletes', async ({ page }) => {
   await page.getByTestId('picked-clear').click();
   await expect(page.getByTestId('picked-strip')).toHaveCount(0);
 });
+
+test('the sport facet is data-driven, cascades KPIs, and never filters itself', async ({
+  page,
+}) => {
+  await gotoDashboard(page);
+
+  const facet = page.getByTestId('sport-facet');
+  const options = facet.locator('option');
+  // Data-driven options: every sport in the dataset plus "All sports" —
+  // strictly more than the 7 hardcoded sports this select replaces.
+  await expect
+    .poll(async () => options.count(), { timeout: 15_000 })
+    .toBeGreaterThan(8);
+
+  // Each option label carries its cascading count; selecting a sport must
+  // filter every other client to exactly that count.
+  const label = await options.nth(1).innerText();
+  const match = /^(.+) \(([\d,]+)\)$/.exec(label.trim());
+  if (match === null) {
+    throw new Error(`facet option label has no count: ${label}`);
+  }
+  const [, sport, count] = match;
+  const optionCountBefore = await options.count();
+
+  await facet.selectOption(sport!);
+  await expect(page.getByTestId('kpi-athletes')).toHaveText(count!);
+  await expect(page.getByTestId('total-rows')).toHaveText(
+    `${count} athletes match`,
+  );
+
+  // Crossfilter self-exclusion: its own clause never prunes its own options.
+  await expect(options).toHaveCount(optionCountBefore);
+
+  await facet.selectOption('');
+  await expect(page.getByTestId('kpi-athletes')).toHaveText(TOTAL);
+});
+
+test('clicking a histogram bar publishes an interval clause, but never filters its own bins', async ({
+  page,
+}) => {
+  await gotoDashboard(page);
+
+  const bars = page.locator('[data-testid="histogram-bar"]');
+  await expect
+    .poll(async () => bars.count(), { timeout: 15_000 })
+    .toBeGreaterThan(10);
+
+  // Bin counts before the brush, from the client's zero-filled bins.
+  const countsBefore = await bars.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('data-count')),
+  );
+  const clickIndex = countsBefore.findIndex((count) => Number(count) > 100);
+  expect(clickIndex).toBeGreaterThanOrEqual(0);
+
+  await page.getByTestId('histogram-bin').nth(clickIndex).click();
+
+  // The interval clause filters the table and KPIs…
+  await expect(page.getByTestId('kpi-athletes')).not.toHaveText(TOTAL);
+  const filtered = Number(
+    (await page.getByTestId('kpi-athletes').innerText()).replaceAll(',', ''),
+  );
+  expect(filtered).toBeGreaterThan(0);
+  expect(filtered).toBeLessThan(11_538);
+
+  // …while crossfilter self-exclusion keeps this histogram's bins intact.
+  const countsAfter = await bars.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('data-count')),
+  );
+  expect(countsAfter).toEqual(countsBefore);
+
+  // Clicking the selected bar again clears the clause.
+  await page.getByTestId('histogram-bin').nth(clickIndex).click();
+  await expect(page.getByTestId('kpi-athletes')).toHaveText(TOTAL);
+});
+
+test('one batched sparkline client feeds every table cell', async ({
+  page,
+}) => {
+  await gotoDashboard(page);
+
+  // Every rendered row gets a sparkline from the shared batched series.
+  await expect(
+    tableRows(page).first().locator('[data-testid="sparkline"]'),
+  ).toHaveCount(1, { timeout: 15_000 });
+  await expect(page.locator('[data-testid="sparkline"]')).toHaveCount(25);
+});
+
+test('a non-TanStack $page narrowing while paginated deep clamps the page index instead of stranding the table', async ({
+  page,
+}) => {
+  await gotoDashboard(page);
+
+  // Pick the sparsest sport from the facet's own cascading counts, so the
+  // narrowing is dataset-exact instead of pixel-dependent.
+  const facet = page.getByTestId('sport-facet');
+  const options = facet.locator('option');
+  await expect
+    .poll(async () => options.count(), { timeout: 15_000 })
+    .toBeGreaterThan(8);
+  const labels = await options.allInnerTexts();
+  const sports = labels
+    .map((label) => /^(.+) \(([\d,]+)\)$/.exec(label.trim()))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => ({
+      sport: match[1]!,
+      count: Number(match[2]!.replaceAll(',', '')),
+    }));
+  const smallest = sports.reduce((a, b) => (b.count < a.count ? b : a));
+  const lastPage = Math.max(1, Math.ceil(smallest.count / 25));
+  const startPage = lastPage + 2;
+
+  // Paginate past the narrowed set's last page first — facet selects (like
+  // vgplot brushes) publish straight into $page with no TanStack state
+  // handler to reset pagination.
+  for (let i = 1; i < startPage; i += 1) {
+    await page.getByTestId('page-next').click();
+  }
+  await expect(page.getByTestId('page-label')).toHaveText(
+    `Page ${startPage} of 462`,
+  );
+
+  await facet.selectOption(smallest.sport);
+  await expect(page.getByTestId('total-rows')).toHaveText(
+    `${smallest.count.toLocaleString('en-US')} athletes match`,
+  );
+
+  // The clamp lands on a populated page — never an empty one. With
+  // rowCount: 'window' the stranded offset returns zero rows (total reads
+  // 0), so the clamp resolves to page one.
+  await expect(page.getByTestId('page-label')).toHaveText(
+    `Page 1 of ${lastPage}`,
+  );
+  await expect.poll(async () => tableRows(page).count()).toBeGreaterThan(0);
+});
+
+test('the rollup view fetches the whole tree in one query and expands without re-querying', async ({
+  page,
+}) => {
+  await page.goto('/?view=rollup');
+
+  const rows = page.locator('[data-testid="rollup-row"]');
+  // Grand total first: level 0, all athletes.
+  await expect(rows.first()).toHaveAttribute('data-level', '0', {
+    timeout: 60_000,
+  });
+  await expect(rows.first()).toContainText('All athletes');
+  await expect(rows.first()).toContainText(TOTAL);
+
+  // Sport subtotals are visible; leaves are not until expanded.
+  const level1Before = await rows.count();
+  expect(level1Before).toBeGreaterThan(8);
+  await expect(
+    page.locator('[data-testid="rollup-row"][data-level="2"]'),
+  ).toHaveCount(0);
+
+  await page.locator('[data-testid="rollup-toggle"]').nth(1).click();
+  await expect
+    .poll(async () =>
+      page.locator('[data-testid="rollup-row"][data-level="2"]').count(),
+    )
+    .toBeGreaterThan(0);
+});
+
+test('the pivot view derives its columns from the data', async ({ page }) => {
+  await page.goto('/?view=pivot');
+
+  const columns = page.locator('[data-testid="pivot-column"]');
+  // One column per gender, discovered from the result schema.
+  await expect(columns).toHaveCount(2, { timeout: 60_000 });
+  await expect(columns.first()).toHaveText('female');
+  await expect(columns.nth(1)).toHaveText('male');
+
+  const body = page.locator('[data-testid="pivot-table-body"] tr');
+  expect(await body.count()).toBeGreaterThan(8);
+});

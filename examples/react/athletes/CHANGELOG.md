@@ -1,4 +1,4 @@
-# example-react-trimmed
+# example-react-athletes
 
 ## 0.0.13
 
