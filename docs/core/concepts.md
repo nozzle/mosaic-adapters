@@ -29,7 +29,7 @@ The factory is held by **latest-ref** (React-Query `queryFn` style): a new funct
 Exactly four things trigger a query:
 
 1. **Inputs change** — `setInputs(patch)` merge-patches and value-diffs; a value-equal patch is a no-op, a changed patch issues exactly one query.
-2. **Selection updates** — `filterBy` via the native coordinator wiring; `havingBy` via the client's own wiring.
+2. **Selection updates** — `filterBy` via the native coordinator wiring; `havingBy` via the client's own wiring. Passing the same Selection as both routes its predicate into both WHERE and HAVING on a single re-query per activation (rarely what you want; prefer a separate Selection for aggregate predicates).
 3. **Param change** — every Param in `params` re-queries the client on its `'value'` event (upstream never does this automatically).
 4. **`refetch()`** — force a query with current state.
 
@@ -57,5 +57,5 @@ Publishing (clause emission) is per-client, built on shared clause utilities (`c
 ## Lifecycle
 
 - `setEnabled(false)` defers queries (and the initial load) until re-enabled — for offscreen views.
-- `destroy()` removes the client's published clauses, unwires Params/Selections, and disconnects from the coordinator.
+- `destroy()` removes the client's published clauses, unwires Params/Selections, and disconnects from the coordinator. It is idempotent, and `client.destroyed` reports it (framework bindings use this for remount detection).
 - `mosaicClient` exposes the wrapped upstream `MosaicClient` for coordinator/vgplot interop; vgplot marks are Mosaic clients too and share the same Selection graph with no extra machinery.
