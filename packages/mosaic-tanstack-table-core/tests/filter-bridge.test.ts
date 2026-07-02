@@ -120,6 +120,29 @@ describe('clause kinds', () => {
     expect(predicateSql(clause)).toContain('full_name');
   });
 
+  test('dotted columns become struct access, not one quoted identifier', () => {
+    const clause = publish(
+      { paa_question: { column: 'related_phrase.phrase', clause: 'ilike' } },
+      'paa_question',
+      'how to',
+    );
+    const sql = predicateSql(clause);
+    expect(sql).toContain('"related_phrase"."phrase"');
+    expect(sql).not.toContain('"related_phrase.phrase"');
+  });
+
+  test('clause sources carry {id, column} descriptors for downstream labeling', () => {
+    const clause = publish(
+      { paa_question: { column: 'related_phrase.phrase', clause: 'ilike' } },
+      'paa_question',
+      'how to',
+    );
+    expect(clause?.source).toMatchObject({
+      id: 'paa_question',
+      column: 'related_phrase.phrase',
+    });
+  });
+
   const emptyCases: Array<{
     name: string;
     columns: FilterBridgeColumns;
@@ -319,6 +342,83 @@ describe('clause lifecycle', () => {
     // suppressed as unchanged and the clause would stay lost.
     bridge.setFilters([...filters]);
     expect(selection.clauses).toHaveLength(1);
+  });
+
+  test('with onExternalClear, a reset wins over TanStack state instead of republishing', async () => {
+    const selection = Selection.intersect();
+    const cleared: Array<Array<string>> = [];
+    const bridge = createFilterBridge({
+      selection,
+      columns,
+      onExternalClear: (columnIds) => {
+        cleared.push(columnIds);
+      },
+    });
+
+    const filters = [{ id: 'name', value: 'ada' }];
+    bridge.setFilters(filters);
+    expect(selection._resolved).toHaveLength(1);
+
+    selection.reset();
+    expect(selection._resolved).toHaveLength(0);
+
+    // Interim state syncs (re-renders) before the prune arrives must NOT
+    // restore the clause.
+    bridge.setFilters([...filters]);
+    expect(selection._resolved).toHaveLength(0);
+
+    // The listener reports the cleared column id (value events are async).
+    await waitFor(() => {
+      expect(cleared.flat()).toContain('name');
+    });
+
+    // The consumer prunes its state; the bridge publishes no redundant
+    // removal event for the already-absent clause.
+    const events = countValueEvents(selection);
+    bridge.setFilters([]);
+    expect(selection._resolved).toHaveLength(0);
+    await settle();
+    expect(events()).toBe(0);
+
+    // A fresh filter after the prune publishes normally again.
+    bridge.setFilters([{ id: 'name', value: 'bo' }]);
+    expect(selection._resolved).toHaveLength(1);
+
+    bridge.destroy();
+  });
+
+  test('with onExternalClear, a single externally-cleared clause is reported', async () => {
+    const selection = Selection.intersect();
+    const cleared: Array<string> = [];
+    const bridge = createFilterBridge({
+      selection,
+      columns,
+      onExternalClear: (columnIds) => {
+        cleared.push(...columnIds);
+      },
+    });
+
+    bridge.setFilters([
+      { id: 'name', value: 'ada' },
+      { id: 'sport', value: 'swim' },
+    ]);
+    expect(selection._resolved).toHaveLength(2);
+
+    // A chip bar clears exactly one clause by publishing a removal for its
+    // source (not a reset).
+    const nameClause = selection._resolved.find(
+      (clause) => (clause.source as { id?: string }).id === 'name',
+    );
+    selection.update({
+      source: nameClause!.source,
+      value: null,
+      predicate: null,
+    });
+
+    await waitFor(() => {
+      expect(cleared).toEqual(['name']);
+    });
+    expect(selection._resolved).toHaveLength(1);
   });
 });
 

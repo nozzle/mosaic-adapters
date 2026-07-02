@@ -6,7 +6,9 @@ import {
 } from '@uwdata/mosaic-core';
 import { gte, literal, lte } from '@uwdata/mosaic-sql';
 import {
+  SqlIdentifier,
   createClearClause,
+  createStructAccess,
   createValueClause,
   deepEqual,
 } from '@nozzleio/mosaic-core';
@@ -15,7 +17,7 @@ import type {
   Selection,
   SelectionClause,
 } from '@uwdata/mosaic-core';
-import type { ScaleDomain } from '@uwdata/mosaic-sql';
+import type { ExprNode, ScaleDomain } from '@uwdata/mosaic-sql';
 import type { ColumnFiltersState } from '@tanstack/table-core';
 import type {
   ColumnFilterClauseKind,
@@ -57,6 +59,7 @@ export function createFilterBridge(options: FilterBridgeOptions): FilterBridge {
  */
 class TanStackFilterBridge implements FilterBridge {
   readonly #selection: Selection;
+  readonly #onExternalClear: ((columnIds: Array<string>) => void) | undefined;
   #columns: FilterBridgeColumns;
   #filters: ColumnFiltersState = [];
   #destroyed = false;
@@ -68,12 +71,38 @@ class TanStackFilterBridge implements FilterBridge {
    * bookkeeping too — otherwise value-diff suppression would skip the
    * republish that restores the clause.
    */
-  readonly #sources = new Map<string, ClauseSource>();
+  readonly #sources = new Map<string, BridgeClauseSource>();
   readonly #published = new Map<string, PublishedClause>();
+
+  /**
+   * Detects clauses this bridge published that an external actor removed
+   * (chip removal, global reset) and reports their column ids. Bookkeeping
+   * is kept intact until the consumer's state prune arrives, so interim
+   * state syncs value-diff as unchanged instead of republishing.
+   */
+  #externalClearListener = () => {
+    if (this.#destroyed || this.#onExternalClear === undefined) {
+      return;
+    }
+    const clearedIds = [...this.#published.keys()].filter((id) => {
+      const source = this.#sources.get(id);
+      return (
+        source !== undefined &&
+        !this.#selection._resolved.some((clause) => clause.source === source)
+      );
+    });
+    if (clearedIds.length > 0) {
+      this.#onExternalClear(clearedIds);
+    }
+  };
 
   constructor(options: FilterBridgeOptions) {
     this.#selection = options.selection;
     this.#columns = options.columns ?? {};
+    this.#onExternalClear = options.onExternalClear;
+    if (this.#onExternalClear !== undefined) {
+      this.#selection.addEventListener('value', this.#externalClearListener);
+    }
   }
 
   get destroyed(): boolean {
@@ -101,6 +130,9 @@ class TanStackFilterBridge implements FilterBridge {
       return;
     }
     this.#destroyed = true;
+    if (this.#onExternalClear !== undefined) {
+      this.#selection.removeEventListener('value', this.#externalClearListener);
+    }
     for (const id of [...this.#published.keys()]) {
       this.#clear(id);
     }
@@ -145,7 +177,7 @@ class TanStackFilterBridge implements FilterBridge {
         config.clause,
         field,
         normalized.value,
-        this.#sourceFor(id),
+        this.#sourceFor(id, field),
       );
       this.#published.set(id, {
         kind: config.clause,
@@ -162,22 +194,51 @@ class TanStackFilterBridge implements FilterBridge {
     if (!source) {
       return;
     }
+    // An externally-cleared clause is already gone from the Selection;
+    // publishing another removal would only emit a redundant value event.
+    const stillActive = this.#selection._resolved.some(
+      (clause) => clause.source === source,
+    );
+    if (!stillActive) {
+      return;
+    }
     this.#selection.update(createClearClause(source));
   }
 
-  #sourceFor(id: string): ClauseSource {
+  /**
+   * Sources carry `{ id, column }` descriptors so downstream consumers (the
+   * filter registry's chip labeling) can identify which column a bridge
+   * clause filters without reaching back into TanStack state.
+   */
+  #sourceFor(id: string, field: string): ClauseSource {
     const existing = this.#sources.get(id);
     if (existing) {
+      existing.column = field;
       return existing;
     }
-    const source: ClauseSource = {
+    const source: BridgeClauseSource = {
+      id,
+      column: field,
       reset: () => {
-        this.#published.delete(id);
+        // Without an external-clear callback, TanStack state is
+        // authoritative: dropping the bookkeeping lets the next state sync
+        // republish the clause a reset removed. With the callback, the
+        // external clear wins — bookkeeping survives (suppressing interim
+        // republishes) until the consumer's state prune lands.
+        if (this.#onExternalClear === undefined) {
+          this.#published.delete(id);
+        }
       },
     };
     this.#sources.set(id, source);
     return source;
   }
+}
+
+interface BridgeClauseSource {
+  id: string;
+  column: string;
+  reset: () => void;
 }
 
 function normalizeFilterValue(
@@ -266,13 +327,18 @@ function toDateBound(value: unknown): Date | null {
  * a MosaicClient), so the upstream factories attach no `clients` set and
  * nothing is self-excluded — the table is filtered by its own column
  * filters, unlike brush/facet publishers.
+ *
+ * Dotted SQL columns (`related_phrase.phrase`) are struct-access paths and
+ * become `"related_phrase"."phrase"` — a single quoted identifier would name
+ * a non-existent column.
  */
 function buildClause(
   kind: ColumnFilterClauseKind,
-  field: string,
+  fieldPath: string,
   value: unknown,
   source: ClauseSource,
 ): SelectionClause {
+  const field: ExprNode = createStructAccess(SqlIdentifier.from(fieldPath));
   switch (kind) {
     case 'equals': {
       return clausePoint(field, value, { source });

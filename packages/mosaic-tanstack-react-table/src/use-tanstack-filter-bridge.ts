@@ -17,6 +17,14 @@ export interface UseTanStackFilterBridgeOptions {
    * value — inline literals are fine.
    */
   columns: FilterBridgeColumns;
+  /**
+   * Makes external clause removals (chip bar, global reset) win over
+   * TanStack state: the bridge reports the cleared column ids so the
+   * consumer can prune its `columnFilters` state (and with it, the filter
+   * inputs). Without it, the next state sync republishes the clause. Held
+   * by latest-ref — a new function identity never recreates the bridge.
+   */
+  onExternalClear?: (columnIds: Array<string>) => void;
 }
 
 /**
@@ -34,18 +42,33 @@ export interface UseTanStackFilterBridgeOptions {
 export function useTanStackFilterBridge(
   options: UseTanStackFilterBridgeOptions,
 ): void {
-  const { filters, selection, columns } = options;
+  const { filters, selection, columns, onExternalClear } = options;
 
   const bridgeRef = useRef<FilterBridge | null>(null);
+  const onExternalClearRef = useRef(onExternalClear);
+  const hasExternalClear = onExternalClear !== undefined;
+
+  // Latest-ref: the bridge invokes the callback from Selection value events
+  // (always post-commit), so syncing it in an effect is early enough.
+  useEffect(() => {
+    onExternalClearRef.current = onExternalClear;
+  });
 
   useEffect(() => {
-    const bridge = createFilterBridge({ selection });
+    const bridge = createFilterBridge({
+      selection,
+      onExternalClear: hasExternalClear
+        ? (columnIds) => {
+            onExternalClearRef.current?.(columnIds);
+          }
+        : undefined,
+    });
     bridgeRef.current = bridge;
     return () => {
       bridgeRef.current = null;
       bridge.destroy();
     };
-  }, [selection]);
+  }, [selection, hasExternalClear]);
 
   useEffect(() => {
     const bridge = bridgeRef.current;
