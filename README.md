@@ -1,8 +1,10 @@
 # Mosaic Adapters
 
-This repository contains adapters for integrating with [Mosaic](https://idl.uw.edu/mosaic/), a powerful data visualization and analysis tool.
+A headless [Mosaic](https://idl.uw.edu/mosaic/) client library: reactive data clients (SQL query factory + native Selections/Params in, typed reactive store out) with React bindings and optional TanStack Table glue.
 
-Documentation is a work in progress. See `docs/` for what is available.
+- **Get started:** [Build a dashboard](docs/build-a-dashboard.md) — walkthrough of the [athletes example](examples/react/athletes).
+- **Packages:** [`@nozzleio/react-mosaic`](packages/react-mosaic) (re-exports [`@nozzleio/mosaic-core`](packages/mosaic-core)) and [`@nozzleio/mosaic-tanstack-react-table`](packages/mosaic-tanstack-react-table) (re-exports [`@nozzleio/mosaic-tanstack-table-core`](packages/mosaic-tanstack-table-core)). Install the framework packages only.
+- **Docs:** [core concepts](docs/core/concepts.md), [React hooks](docs/react/hooks.md), [TanStack integration](docs/tanstack/integration.md).
 
 ## Want to contribute?
 
