@@ -73,6 +73,7 @@ catalogs:
 overrides:
   '@nozzleio/mosaic-tanstack-table-core': workspace:*
   '@nozzleio/mosaic-tanstack-react-table': workspace:*
+  '@nozzleio/mosaic-core': workspace:*
   '@nozzleio/react-mosaic': workspace:*
 
 importers:
@@ -242,6 +243,34 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.0.10(@types/node@25.0.9)(jiti@2.6.1)(yaml@2.8.0)
+
+  packages/mosaic-core:
+    dependencies:
+      '@tanstack/store':
+        specifier: 'catalog:'
+        version: 0.9.1
+    devDependencies:
+      '@duckdb/duckdb-wasm':
+        specifier: 1.33.1-dev45.0
+        version: 1.33.1-dev45.0
+      '@uwdata/flechette':
+        specifier: ^2.5.0
+        version: 2.5.0
+      '@uwdata/mosaic-core':
+        specifier: 'catalog:'
+        version: 0.27.0
+      '@uwdata/mosaic-sql':
+        specifier: 'catalog:'
+        version: 0.27.0
+      eslint:
+        specifier: 'catalog:'
+        version: 10.2.1(jiti@2.6.1)
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
 
   packages/mosaic-tanstack-react-table:
     dependencies:
