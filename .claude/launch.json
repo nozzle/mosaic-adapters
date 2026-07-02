@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "athletes-example",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "example-react-athletes", "dev"],
+      "port": 5173
+    }
+  ]
+}
