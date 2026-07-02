@@ -8,9 +8,9 @@
  * output selection) rather than clients-set based: clause `clients` sets are
  * bound to client *instances*, and the summary tables remount on
  * enlarge/collapse, which would leave stale exclusion sets behind. Static
- * contexts also keep the question table out of the SERP membership overlay
- * by construction (§2 of the spec: it applies the same restriction through
- * its own HAVING instead).
+ * contexts also keep each summary table out of its own metric-threshold
+ * membership overlay by construction (§2 of the spec: a table applies the
+ * same restriction through its own HAVING instead).
  */
 import { Selection } from '@uwdata/mosaic-core';
 import { createFilterRegistry } from '@nozzleio/react-mosaic';
@@ -19,6 +19,22 @@ import type { ClauseSource } from '@uwdata/mosaic-core';
 export const tableName = 'nozzle_paa';
 
 export type SummaryTableId = 'phrase' | 'question' | 'domain' | 'url';
+
+const SUMMARY_IDS: Array<SummaryTableId> = [
+  'phrase',
+  'question',
+  'domain',
+  'url',
+];
+
+function perSummary<T>(
+  build: (id: SummaryTableId) => T,
+): Record<SummaryTableId, T> {
+  return Object.fromEntries(SUMMARY_IDS.map((id) => [id, build(id)])) as Record<
+    SummaryTableId,
+    T
+  >;
+}
 
 // ── Atomic selections ────────────────────────────────────────────────────────
 
@@ -35,40 +51,49 @@ export const $inputs = {
 };
 
 /** Per-summary-table row-selection outputs, consumed by every sibling. */
-export const $summarySelections: Record<SummaryTableId, Selection> = {
-  phrase: Selection.intersect(),
-  question: Selection.intersect(),
-  domain: Selection.intersect(),
-  url: Selection.intersect(),
-};
+export const $summarySelections: Record<SummaryTableId, Selection> = perSummary(
+  () => Selection.intersect(),
+);
 
 /** Detail-table column filters (the TanStack filter bridge publishes here). */
 export const $detail = Selection.intersect();
 
 /**
- * The SERP-appearances widget filter: one logical (operator, value) input,
- * two predicates. `$serpHaving` routes `count(*) >/< N` into the question
- * table's grouped query via `havingBy`; `$serpMembers` carries the
- * membership subquery that narrows every *other* widget to the matching
- * question subset.
+ * Every summary card's metric-threshold filter: one logical
+ * (operator, value) input, two predicates. `$metricHaving[id]` routes
+ * `<metric agg> >/< N` into that card's own grouped query via `havingBy`;
+ * `$metricMembers[id]` carries the membership subquery
+ * (`<groupKey> IN (SELECT <groupKey> … GROUP BY 1 HAVING <agg cmp N>)`)
+ * that narrows every *other* widget to the matching group subset.
  */
-export const $serpHaving = Selection.intersect();
-export const $serpMembers = Selection.intersect();
+export const $metricHaving: Record<SummaryTableId, Selection> = perSummary(() =>
+  Selection.intersect(),
+);
+export const $metricMembers: Record<SummaryTableId, Selection> = perSummary(
+  () => Selection.intersect(),
+);
 
 // ── Composed contexts ────────────────────────────────────────────────────────
 
 const allInputs = Object.values($inputs);
 const allSummaries = Object.values($summarySelections);
+const allMembers = Object.values($metricMembers);
 
 function summariesExcept(self: SummaryTableId): Array<Selection> {
-  return Object.entries($summarySelections)
-    .filter(([id]) => id !== self)
-    .map(([, selection]) => selection);
+  return SUMMARY_IDS.filter((id) => id !== self).map(
+    (id) => $summarySelections[id],
+  );
+}
+
+function membersExcept(self: SummaryTableId): Array<Selection> {
+  return SUMMARY_IDS.filter((id) => id !== self).map(
+    (id) => $metricMembers[id],
+  );
 }
 
 /**
  * Facet-input contexts: every *other* input + the outside world (detail
- * filters, summary selections, SERP membership), never the facet's own
+ * filters, summary selections, membership overlays), never the facet's own
  * selection — options cascade without the ghost-option bug.
  */
 function facetContext(self: Selection): Selection {
@@ -77,7 +102,7 @@ function facetContext(self: Selection): Selection {
       ...allInputs.filter((input) => input !== self),
       $detail,
       ...allSummaries,
-      $serpMembers,
+      ...allMembers,
     ],
   });
 }
@@ -90,30 +115,26 @@ export const facetContexts = {
 
 /**
  * Summary-table contexts: all inputs + detail + every *other* summary
- * selection. The phrase/domain/url tables additionally see the SERP
- * membership subquery; the question table is deliberately excluded — it
- * applies the equivalent restriction via `havingBy` on its own grouped
- * query, so the membership predicate would be redundant there.
+ * selection + every *other* card's membership overlay. A card's own overlay
+ * is deliberately excluded — it applies the equivalent restriction via
+ * `havingBy` on its own grouped query, so the membership predicate would be
+ * redundant there.
  */
-function summaryContext(
-  self: SummaryTableId,
-  extra: Array<Selection> = [],
-): Selection {
-  return Selection.intersect({
-    include: [...allInputs, $detail, ...summariesExcept(self), ...extra],
-  });
-}
-
-export const summaryContexts: Record<SummaryTableId, Selection> = {
-  phrase: summaryContext('phrase', [$serpMembers]),
-  question: summaryContext('question'),
-  domain: summaryContext('domain', [$serpMembers]),
-  url: summaryContext('url', [$serpMembers]),
-};
+export const summaryContexts: Record<SummaryTableId, Selection> = perSummary(
+  (id) =>
+    Selection.intersect({
+      include: [
+        ...allInputs,
+        $detail,
+        ...summariesExcept(id),
+        ...membersExcept(id),
+      ],
+    }),
+);
 
 /**
  * The phrase table's sparklines see exactly what the phrase table sees —
- * including everything except the phrase table's own row selection.
+ * everything except the phrase table's own row selection and overlay.
  */
 export const sparklineContext = summaryContexts.phrase;
 
@@ -123,12 +144,12 @@ export const sparklineContext = summaryContexts.phrase;
  * deliberately have no self-exclusion.
  */
 export const detailContext = Selection.intersect({
-  include: [...allInputs, $detail, ...allSummaries, $serpMembers],
+  include: [...allInputs, $detail, ...allSummaries, ...allMembers],
 });
 
 /** KPI context: filtered by everything on the page (except HAVING routing). */
 export const kpiContext = Selection.intersect({
-  include: [...allInputs, $detail, ...allSummaries, $serpMembers],
+  include: [...allInputs, $detail, ...allSummaries, ...allMembers],
 });
 
 // ── Row-selection clause identities ──────────────────────────────────────────
@@ -139,12 +160,8 @@ export const kpiContext = Selection.intersect({
  * remount — the rows client retains the clause on destroy and the next
  * instance replaces it (see RowsPublishTarget.source).
  */
-export const summarySelectSources: Record<SummaryTableId, ClauseSource> = {
-  phrase: {},
-  question: {},
-  domain: {},
-  url: {},
-};
+export const summarySelectSources: Record<SummaryTableId, ClauseSource> =
+  perSummary(() => ({}));
 
 // ── The filter registry (chip bar + global reset) ───────────────────────────
 
@@ -176,7 +193,10 @@ filterRegistry.register($inputs.desc, {
   group: 'global',
   label: 'Answer Text',
 });
-filterRegistry.register($inputs.date, { group: 'global', label: 'Date Range' });
+filterRegistry.register($inputs.date, {
+  group: 'global',
+  label: 'Date Range',
+});
 filterRegistry.register($inputs.device, { group: 'global', label: 'Device' });
 filterRegistry.register($inputs.question, {
   group: 'global',
@@ -213,14 +233,24 @@ filterRegistry.register($summarySelections.url, {
   fields: ['url'],
 });
 
-// The membership chip's X clears the members clause; the SERP widget hook
-// notices and un-applies itself, dropping the HAVING clause too. The HAVING
-// selection renders no chip of its own but participates in global reset.
-filterRegistry.register($serpMembers, {
-  group: 'summary',
-  label: 'SERP Appears',
-});
-filterRegistry.registerForReset($serpHaving);
+// A membership chip's X clears the members clause; the owning card's
+// metric-threshold hook notices and un-applies itself, dropping the HAVING
+// clause too. The HAVING selections render no chips of their own but
+// participate in global reset.
+export const metricChipLabels: Record<SummaryTableId, string> = {
+  phrase: 'Search Vol',
+  question: 'SERP Appears',
+  domain: 'Domain Answers',
+  url: 'URL Answers',
+};
+
+for (const id of SUMMARY_IDS) {
+  filterRegistry.register($metricMembers[id], {
+    group: 'summary',
+    label: metricChipLabels[id],
+  });
+  filterRegistry.registerForReset($metricHaving[id]);
+}
 
 filterRegistry.register($detail, {
   group: 'detail',

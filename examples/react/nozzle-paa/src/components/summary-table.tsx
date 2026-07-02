@@ -20,6 +20,7 @@ import {
   useMosaicSparkline,
 } from '@nozzleio/react-mosaic';
 import {
+  $metricHaving,
   $summarySelections,
   sparklineContext,
   summaryContexts,
@@ -28,7 +29,6 @@ import {
 } from '../page-context';
 import { Sparkline } from './sparkline';
 import { WidgetSqlDetails } from './widget-sql-details';
-import type { Selection } from '@uwdata/mosaic-core';
 import type { SparklineX, SparklineY } from '@nozzleio/react-mosaic';
 import type { ExprNode, FilterExpr } from '@uwdata/mosaic-sql';
 import type { SummaryTableId } from '../page-context';
@@ -47,8 +47,6 @@ export interface SummaryTableConfig {
   where?: ExprNode;
   /** Phrase-table sparkline column config. */
   sparkline?: { x: SparklineX; y: SparklineY };
-  /** The question table routes the SERP HAVING selection here. */
-  havingBy?: Selection;
 }
 
 const EMPTY_TUPLES: SelectedTuples = [];
@@ -133,7 +131,9 @@ export function SummaryTable(props: {
       return query;
     },
     filterBy: summaryContexts[config.id],
-    havingBy: config.havingBy,
+    // The card's own metric-threshold filter routes HAVING here; siblings
+    // receive its membership subquery through their contexts instead.
+    havingBy: $metricHaving[config.id],
     // The factory GROUP BYs a key whose domain changes under filtering, so
     // Mosaic's pre-aggregation assumptions do not hold.
     filterStable: false,

@@ -209,13 +209,13 @@ test.describe('nozzle-paa dashboard', () => {
     ).toHaveCount(0);
   });
 
-  test('the SERP appearances filter routes HAVING to the question table and a membership subquery to its siblings', async ({
+  test('the question card metric filter routes HAVING to its own table and a membership subquery to its siblings', async ({
     page,
   }) => {
     await gotoDashboard(page);
 
-    await page.getByTestId('serp-appearances-value').fill('5000');
-    await page.getByTestId('serp-appearances-apply').check();
+    await page.getByTestId('metric-filter-question-value').fill('5000');
+    await page.getByTestId('metric-filter-question-apply').check();
 
     // Exactly 3 questions appear on more than 5,000 SERPs; the membership
     // subquery narrows the KPI (and every sibling) to the same subset.
@@ -230,8 +230,74 @@ test.describe('nozzle-paa dashboard', () => {
       .getByRole('button', { name: /Remove filter SERP Appears/ })
       .click();
     await expect(page.getByTestId('kpi-questions')).toHaveText(TOTAL_QUESTIONS);
-    await expect(page.getByTestId('serp-appearances-apply')).not.toBeChecked();
+    await expect(
+      page.getByTestId('metric-filter-question-apply'),
+    ).not.toBeChecked();
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+  });
+
+  test('every summary card has a metric-threshold filter on its computed column', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    for (const id of summaryTableIds) {
+      await expect(page.getByTestId(`metric-filter-${id}`)).toBeVisible();
+    }
+
+    // Phrase card thresholds its max(search_volume) metric: only the two
+    // 90,500-volume phrases survive, and the membership subquery narrows
+    // the phrase KPI to the same subset.
+    await page.getByTestId('metric-filter-phrase-value').fill('50000');
+    await page.getByTestId('metric-filter-phrase-apply').check();
+    await expect(summaryRows(page, 'phrase')).toHaveCount(2);
+    await expect(page.getByTestId('kpi-phrases')).toHaveText('2');
+    await expect(page.getByTestId('active-filter-bar')).toContainText(
+      'Search Vol:> 50000',
+    );
+    await page
+      .getByRole('button', { name: /Remove filter Search Vol/ })
+      .click();
+    await expect(page.getByTestId('kpi-phrases')).toHaveText('2,681');
+
+    // Domain card thresholds count(*): only reddit.com (17,902) and
+    // youtube.com (11,045) exceed 10,000 answers, and the detail table
+    // narrows to exactly their combined rows.
+    await page.getByTestId('metric-filter-domain-value').fill('10000');
+    await page.getByTestId('metric-filter-domain-apply').check();
+    await expect(summaryRows(page, 'domain')).toHaveCount(2);
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      '28,947 rows match',
+    );
+    await expect(page.getByTestId('active-filter-bar')).toContainText(
+      'Domain Answers:> 10000',
+    );
+
+    await page.getByTestId('clear-all-filters').click();
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+  });
+
+  test('the devices KPI is data-driven and participates in the filter context', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    await expect(page.getByTestId('kpi-devices')).toHaveText('2');
+
+    // Selecting one device from the facet drops the KPI to 1.
+    await page.getByTestId('filter-device').locator('button').first().click();
+    const firstDevice = page
+      .getByTestId('filter-device')
+      .getByRole('button', { name: /\(/ })
+      .first();
+    await expect(firstDevice).toBeVisible({ timeout: 15_000 });
+    await firstDevice.click();
+    await expect(page.getByTestId('kpi-devices')).toHaveText('1');
+
+    await page.getByTestId('clear-all-filters').click();
+    await expect(page.getByTestId('kpi-devices')).toHaveText('2');
   });
 
   test('the min-domains membership subquery filters the page and clears from the chip bar', async ({
