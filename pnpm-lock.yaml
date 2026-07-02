@@ -199,6 +199,61 @@ importers:
         specifier: 'catalog:'
         version: 8.0.10(@types/node@24.13.2)(jiti@2.6.1)(yaml@2.8.0)
 
+  examples/react/nozzle-paa:
+    dependencies:
+      '@nozzleio/mosaic-tanstack-react-table':
+        specifier: workspace:*
+        version: link:../../../packages/mosaic-tanstack-react-table
+      '@nozzleio/react-mosaic':
+        specifier: workspace:*
+        version: link:../../../packages/react-mosaic
+      '@tanstack/react-table':
+        specifier: 'catalog:'
+        version: 8.21.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@uwdata/mosaic-core':
+        specifier: 'catalog:'
+        version: 0.27.0
+      '@uwdata/mosaic-sql':
+        specifier: 'catalog:'
+        version: 0.27.0
+      react:
+        specifier: ^19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.2.4
+        version: 19.2.4(react@19.2.4)
+      tailwindcss:
+        specifier: ^4.1.17
+        version: 4.1.18
+    devDependencies:
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.59.1
+      '@tailwindcss/vite':
+        specifier: ^4.1.17
+        version: 4.1.18(vite@8.0.10(@types/node@24.13.2)(jiti@2.6.1)(yaml@2.8.0))
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.2
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.0.1(vite@8.0.10(@types/node@24.13.2)(jiti@2.6.1)(yaml@2.8.0))
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 8.0.10(@types/node@24.13.2)(jiti@2.6.1)(yaml@2.8.0)
+
   packages/mosaic-core:
     dependencies:
       '@tanstack/store':

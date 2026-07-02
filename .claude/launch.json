@@ -6,6 +6,18 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "example-react-athletes", "dev"],
       "port": 5173
+    },
+    {
+      "name": "nozzle-paa-example",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "example-react-nozzle-paa",
+        "dev",
+        "--port",
+        "5121"
+      ],
+      "port": 5121
     }
   ]
 }
