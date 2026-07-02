@@ -57,3 +57,37 @@ export type {
 
 export { useVgPlot } from './use-vg-plot';
 export type { VgPlotElement } from './use-vg-plot';
+
+export {
+  useCascadingContexts,
+  useComposedSelection,
+  useMosaicSelections,
+} from './use-topology-helpers';
+
+export { useMosaicFilters } from './filter-builder/use-mosaic-filters';
+export { useFilterBinding } from './filter-builder/use-filter-binding';
+export { useFilterBindingControllerState } from './filter-builder/use-filter-binding-controller';
+export { useFilterFacet } from './filter-builder/use-filter-facet';
+export type { FilterFacetResult } from './filter-builder/use-filter-facet';
+export {
+  createFilterBindingPersistenceContext,
+  createFilterScopePersistenceContext,
+  createSparseFilterScopeSnapshot,
+  getCommittedFilterSelectionState,
+  hasValidCommittedFilterSelectionState,
+  markNextCommittedFilterWriteReason,
+} from './filter-builder/persistence-helpers';
+export type {
+  FilterBinding,
+  FilterBindingPersistenceContext,
+  FilterBindingPersistenceWriteContext,
+  FilterBindingPersister,
+  FilterPersistenceWriteReason,
+  FilterScope,
+  FilterScopePersistenceContext,
+  FilterScopePersistenceWriteContext,
+  FilterScopePersister,
+  UseFilterBindingOptions,
+  UseFilterFacetOptions,
+  UseMosaicFiltersOptions,
+} from './filter-builder/types';
