@@ -252,10 +252,15 @@ export abstract class BaseDataClient<
    * Upstream coordinators only react to the `filterBy` selection; the
    * HAVING-routed selection is our extension, so its re-query wiring lives
    * here. Cross-mode self-skip mirrors `Coordinator.updateSelection`.
+   *
+   * When the same Selection is passed as both `filterBy` and `havingBy`,
+   * the coordinator's native wiring already re-queries on its activation and
+   * `#materialize` resolves the HAVING predicate fresh on every query, so
+   * wiring a second listener would double-query. Skip it.
    */
   #wireHavingBy(): void {
     const havingBy = this.options.havingBy;
-    if (!havingBy) {
+    if (!havingBy || havingBy === this.options.filterBy) {
       return;
     }
     const listener = () => {

@@ -47,7 +47,12 @@ export interface DataClientOptions<TInputs extends object> {
   coordinator: Coordinator;
   /** Native Selection routed to WHERE. */
   filterBy?: Selection;
-  /** Native Selection routed to HAVING. */
+  /**
+   * Native Selection routed to HAVING. Passing the Selection already used as
+   * `filterBy` routes its predicate into both WHERE and HAVING on a single
+   * re-query per activation — rarely what you want; prefer a separate
+   * Selection carrying only aggregate predicates.
+   */
   havingBy?: Selection;
   /**
    * Params the query factory reads. A 'value' event on any of them triggers

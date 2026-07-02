@@ -176,6 +176,43 @@ describe('havingBy routing', () => {
 
     client.destroy();
   });
+
+  test('the same Selection as filterBy and havingBy queries exactly once per activation', async () => {
+    const $sel = Selection.intersect();
+
+    const client = createRowsClient<{ sport: string; total: number }>({
+      coordinator: db.coordinator,
+      query: ({ where, having }) =>
+        Query.from('athletes')
+          .select('sport', { total: count() })
+          .groupby('sport')
+          .where(where)
+          .having(having),
+      filterBy: $sel,
+      havingBy: $sel,
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.rows).toHaveLength(2);
+    });
+    const queriesAfterInit = db.clientQueries.length;
+
+    // Grouped-column predicate: legal in both WHERE and HAVING, which is
+    // where a shared Selection routes it.
+    $sel.update({
+      source: {},
+      value: 'swim',
+      predicate: eq('sport', literal('swim')),
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.rows.map((r) => r.sport)).toEqual(['swim']);
+    });
+    expect(db.clientQueries.length).toBe(queriesAfterInit + 1);
+    expect(client.store.state.lastQuery).toMatch(/HAVING/i);
+
+    client.destroy();
+  });
 });
 
 describe('enabled + refetch', () => {
