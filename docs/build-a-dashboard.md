@@ -202,14 +202,41 @@ into `$picked` for downstream consumers:
 In practice, reset `pageIndex` inside your `onSortingChange`/
 `onColumnFiltersChange` handlers — manual mode disables TanStack's auto-reset.
 
+Those handlers only cover filters born in TanStack state. Any other `$page`
+publisher — a vgplot brush, a facet toggle, a histogram range — can shrink
+`totalRows` below the current offset with no handler involved, stranding the
+table on an empty page. Clamp against the client's `totalRows` (with
+`rowCount: 'window'` a stranded offset returns zero rows and the total reads
+0, so the clamp resolves to page one):
+
+```tsx
+useEffect(() => {
+  if (athletes.totalRows === undefined) {
+    return;
+  }
+  const pageCount = Math.ceil(athletes.totalRows / pagination.pageSize);
+  if (pagination.pageIndex > 0 && pagination.pageIndex >= pageCount) {
+    setPagination((prev) => ({
+      ...prev,
+      pageIndex: Math.max(0, pageCount - 1),
+    }));
+  }
+}, [athletes.totalRows, pagination.pageIndex, pagination.pageSize]);
+```
+
 ## What you get
 
 Running the example ([`examples/react/athletes`](../examples/react/athletes)):
 
 - sorting, pagination, and filtering execute in SQL — check `athletes.lastQuery`;
-- brushing the scatterplot filters the table and KPIs;
+- brushing the scatterplot, toggling the sport facet, or clicking a histogram
+  bar filters the table and KPIs — while each control's own data stays
+  unaffected by its own clause (crossfilter self-exclusion);
 - a column filter filters the scatterplot and KPIs;
-- switching the KPI metric re-queries only the values client.
+- switching the KPI metric re-queries only the values client;
+- one batched sparkline client feeds every table cell through
+  `table.options.meta`;
+- `?view=rollup` and `?view=pivot` show the SQL-first grouped clients.
 
 Its Playwright suite asserts each of those flows end-to-end.
 
@@ -217,8 +244,13 @@ Its Playwright suite asserts each of those flows end-to-end.
 
 - [Data client concepts](core/concepts.md) — the contract behind every client.
 - [Rows client](core/rows-client.md) / [values client](core/values-client.md) — full options.
+- [Facet](core/facet-client.md) / [histogram](core/histogram-client.md) /
+  [sparkline](core/sparkline-client.md) clients — filter UIs and batched
+  per-key series.
+- [Rollup](core/rollup-client.md) / [pivot](core/pivot-client.md) clients —
+  SQL-first grouping and crosstabs. [Schema client](core/schema-client.md) —
+  read-once field discovery.
+- [Filter builder](core/filter-builder.md) — declarative, persistable filter
+  definitions over Selections.
 - [React hooks](react/hooks.md) — controlled-binding rules (what recreates a client, what never re-queries).
 - [TanStack integration](tanstack/integration.md) — translators, clause kinds, bridge lifecycle, and when _not_ to use the bridge.
-
-More client specializations (facet, histogram, sparkline) are tracked in
-[#163](https://github.com/nozzle/mosaic-adapters/issues/163).

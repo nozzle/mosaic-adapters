@@ -40,5 +40,5 @@ Opt-in per channel; both publish native `clausePoints` with a stable clause sour
 
 ## Other
 
-- `coerce?: (raw) => TRow` — presentational per-row mapper (Arrow values → display types). Latest-ref'd; swap with `setCoerce`.
+- `coerce?` — presentational per-row mapper (Arrow values → display types): a closure `(raw) => TRow`, or the serializable per-column descriptor map `{ date_of_birth: 'date', score: 'number' }` (`'date' | 'number' | 'string' | 'boolean'`; unlisted columns pass through, null stays null). Latest-ref'd; swap with `setCoerce`.
 - `prefetch(inputsPatch)` — builds the query for the merged inputs and warms the coordinator cache (e.g. the next page while the user reads the current one).
