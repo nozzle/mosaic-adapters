@@ -1,17 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   flexRender,
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table';
 import { Query } from '@uwdata/mosaic-sql';
-import { useMosaicRows } from '@nozzleio/react-mosaic';
+import { useMosaicRows, useMosaicSparkline } from '@nozzleio/react-mosaic';
 import {
   paginationToWindow,
   sortingToOrderBy,
   useTanStackFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { $page, $picked, tableName } from '../page-context';
+import { Sparkline } from './sparkline';
 import type {
   Column,
   ColumnDef,
@@ -21,7 +22,17 @@ import type {
   SortingState,
 } from '@tanstack/react-table';
 import type { FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-react-table';
+import type { SparklinePoint } from '@nozzleio/react-mosaic';
 import type { AthleteRow } from '../page-context';
+
+declare module '@tanstack/react-table' {
+  // TanStack's own channel from client output to cell renderers.
+  interface TableMeta<TData> {
+    sparklines: Map<unknown, Array<SparklinePoint>>;
+  }
+}
+
+const SPARKLINE_STEP = 5;
 
 const columns: Array<ColumnDef<AthleteRow>> = [
   { accessorKey: 'name', header: 'Name' },
@@ -39,30 +50,32 @@ const columns: Array<ColumnDef<AthleteRow>> = [
     cell: (cell) => formatUnit(cell.getValue<number | null>(), 'kg'),
   },
   { accessorKey: 'gold', header: 'Gold' },
-  // TODO(#163): sparkline column — per-sport weight distribution from one
-  // batched sparkline client, reaching cells through `table.options.meta`.
+  {
+    // One batched sparkline client serves every cell in this column; its
+    // series reach the cells through TanStack's own `table.options.meta`.
+    id: 'weightDist',
+    header: 'Weight dist. (sport)',
+    cell: (cell) => (
+      <Sparkline
+        points={
+          cell.table.options.meta?.sparklines.get(cell.row.original.sport) ?? []
+        }
+        tooltip={(point) =>
+          `${point.x}–${Number(point.x) + SPARKLINE_STEP}kg: ${point.y} athletes`
+        }
+      />
+    ),
+  },
 ];
 
 // Bridge config: TanStack column id → clause kind. Every id here must match a
 // column above exactly — the bridge silently ignores unconfigured ids, so a
-// typo would no-op with no signal.
+// typo would no-op with no signal. (The sport filter lives outside the table
+// now — the facet client publishes it directly into $page.)
 const bridgeColumns: FilterBridgeColumns = {
   name: { clause: 'ilike' },
-  sport: { clause: 'equals' },
   weight: { clause: 'range' },
 };
-
-// TODO(#163): the facet client replaces this hardcoded list with data-driven
-// options + cascading counts (and moves the control out of the table header).
-const sportOptions = [
-  'aquatics',
-  'athletics',
-  'cycling',
-  'fencing',
-  'football',
-  'gymnastics',
-  'rowing',
-];
 
 /**
  * The user owns `useReactTable`, in fully manual mode: `getCoreRowModel` is
@@ -111,6 +124,37 @@ export function AthletesTable() {
     publish: { select: { as: $picked, columns: ['id'] } },
   });
 
+  // One batched query serves every sparkline cell on the page: per-sport
+  // weight distributions, cross-filtered by $page like everything else.
+  // `keys` derives from the rows client's visible page — dependent clients
+  // compose through serializable inputs (value-diffed: re-rendering with the
+  // same sports never re-queries; a page with new sports queries once).
+  const sparklines = useMosaicSparkline({
+    from: tableName,
+    key: 'sport',
+    x: { column: 'weight', step: SPARKLINE_STEP },
+    y: { agg: 'count' },
+    filterBy: $page,
+    inputs: { keys: [...new Set(athletes.rows.map((row) => row.sport))] },
+  });
+
+  // A non-TanStack $page change (vgplot brush, facet, histogram) can shrink
+  // totalRows below the current offset with no state handler involved; clamp
+  // back to the last populated page so the table never strands on an empty
+  // one.
+  useEffect(() => {
+    if (athletes.totalRows === undefined) {
+      return;
+    }
+    const pageCount = Math.ceil(athletes.totalRows / pagination.pageSize);
+    if (pagination.pageIndex > 0 && pagination.pageIndex >= pageCount) {
+      setPagination((prev) => ({
+        ...prev,
+        pageIndex: Math.max(0, pageCount - 1),
+      }));
+    }
+  }, [athletes.totalRows, pagination.pageIndex, pagination.pageSize]);
+
   const onSortingChange: OnChangeFn<SortingState> = (updater) => {
     setSorting(updater);
     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
@@ -125,6 +169,7 @@ export function AthletesTable() {
     data: athletes.rows, // …data out, verbatim
     rowCount: athletes.totalRows,
     columns,
+    meta: { sparklines: sparklines.series }, // client output → cells
     state: { sorting, pagination, columnFilters },
     onSortingChange,
     onPaginationChange: setPagination,
@@ -256,27 +301,6 @@ function ColumnFilter(props: { column: Column<AthleteRow, unknown> }) {
         value={value}
         onChange={(event) => column.setFilterValue(event.target.value)}
       />
-    );
-  }
-  if (column.id === 'sport') {
-    const value = (column.getFilterValue() as string | undefined) ?? '';
-    return (
-      <select
-        className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
-        data-testid="filter-sport"
-        value={value}
-        onChange={(event) => {
-          const next = event.target.value;
-          column.setFilterValue(next === '' ? undefined : next);
-        }}
-      >
-        <option value="">all</option>
-        {sportOptions.map((sport) => (
-          <option key={sport} value={sport}>
-            {sport}
-          </option>
-        ))}
-      </select>
     );
   }
   if (column.id === 'weight') {
