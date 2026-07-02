@@ -3,7 +3,11 @@ import { Query } from '@uwdata/mosaic-sql';
 import { Store } from '@tanstack/store';
 import { deepEqual } from './utils';
 import type { MosaicClient } from '@uwdata/mosaic-core';
-import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
+import type {
+  FilterExpr,
+  Query as MosaicQuery,
+  SelectQuery,
+} from '@uwdata/mosaic-sql';
 import type {
   DataClient,
   DataClientOptions,
@@ -39,6 +43,14 @@ export abstract class BaseDataClient<
     options: DataClientOptions<TInputs>,
     query: QuerySource<TInputs>,
     payload: Omit<TState, keyof DataClientState<TInputs>>,
+    hooks?: {
+      /**
+       * Runs once during client initialization, before the first query
+       * (upstream `MosaicClient.prepare`) — for one-time discovery queries
+       * such as bin extents. Deferred while the client is disabled.
+       */
+      prepare?: () => Promise<void>;
+    },
   ) {
     this.options = options;
     this.#querySource = query;
@@ -52,11 +64,19 @@ export abstract class BaseDataClient<
       ...payload,
     } as TState);
 
+    const prepare = hooks?.prepare;
     this.#client = makeClient({
       coordinator: options.coordinator,
       selection: options.filterBy,
       enabled: options.enabled ?? true,
       filterStable: options.filterStable ?? true,
+      // makeClient connects (and may initialize) synchronously inside this
+      // constructor; defer the hook one microtask so it runs against a fully
+      // constructed subclass. The coordinator awaits the returned promise
+      // before issuing the first query either way.
+      prepare: prepare
+        ? () => Promise.resolve().then(() => prepare())
+        : undefined,
       // Upstream types the filter as always-present, but `requestQuery()`
       // passes undefined when the active clause cross-filters this client.
       query: (filter: FilterExpr | undefined) =>
@@ -149,7 +169,7 @@ export abstract class BaseDataClient<
    */
   protected abstract buildQuery(
     ctx: QueryContext<TInputs>,
-  ): SelectQuery | string;
+  ): MosaicQuery | string;
 
   /** Map a query result to the specialization's store payload. */
   protected abstract onResult(data: unknown): Partial<TState>;
@@ -212,7 +232,7 @@ export abstract class BaseDataClient<
     return filterBy.predicate(this.#client, true) ?? [];
   }
 
-  #materialize(where: FilterExpr): SelectQuery | string {
+  #materialize(where: FilterExpr): MosaicQuery | string {
     const ctx = this.createContext(where);
     const query = this.buildQuery(ctx);
     this.patchState({

@@ -101,6 +101,26 @@ export interface DataClient<
   readonly mosaicClient: MosaicClient;
 }
 
+// ── Coercion ─────────────────────────────────────────────────────────────────
+
+/** Target type for a declaratively coerced column. */
+export type CoerceDescriptor = 'date' | 'number' | 'string' | 'boolean';
+
+/**
+ * Serializable per-column coercion (`{ date_of_birth: 'date' }`) — the
+ * declarative form of the `coerce` closure. Unlisted columns pass through;
+ * null/undefined values stay null.
+ */
+export type CoerceDescriptorMap = Record<string, CoerceDescriptor>;
+
+/**
+ * Per-row mapper (raw result values → TRow): a closure, or the serializable
+ * descriptor map. Presentational only; held by latest-ref either way.
+ */
+export type CoerceOption<TRow> =
+  | ((raw: Record<string, unknown>) => TRow)
+  | CoerceDescriptorMap;
+
 // ── Rows client ──────────────────────────────────────────────────────────────
 
 export interface OrderByItem {
@@ -144,10 +164,11 @@ export interface RowsClientOptions<TRow> extends DataClientOptions<RowsInputs> {
   /** @default 'none' */
   rowCount?: RowCountMode;
   /**
-   * Optional per-row mapper (raw result values → TRow). Presentational only.
-   * Held by latest-ref, like the query factory.
+   * Optional per-row mapper (raw result values → TRow): a closure or a
+   * serializable descriptor map. Presentational only. Held by latest-ref,
+   * like the query factory.
    */
-  coerce?: (raw: Record<string, unknown>) => TRow;
+  coerce?: CoerceOption<TRow>;
   /** Opt-in row-interaction publishing. */
   publish?: {
     /** selectRows() → clausePoints(columns, ...) into this Selection. */
@@ -171,11 +192,252 @@ export interface RowsClient<TRow> extends DataClient<
   /** Publish a transient hover clause; `null` clears it. */
   hoverRow: (row: TRow | null) => void;
   /** Swap the coerce mapper (latest-ref semantics; never re-queries). */
-  setCoerce: (
-    coerce: ((raw: Record<string, unknown>) => TRow) | undefined,
-  ) => void;
+  setCoerce: (coerce: CoerceOption<TRow> | undefined) => void;
   /** Warm the coordinator cache (e.g. the next page). */
   prefetch: (inputs: Partial<RowsInputs>) => void;
+}
+
+// ── Facet client ─────────────────────────────────────────────────────────────
+
+export interface FacetInputs {
+  /** Substring match applied to option values (case-insensitive). */
+  search?: string;
+  /** Maximum number of options fetched. */
+  limit?: number;
+}
+
+/** How options are ordered: by descending count, or alphabetically. */
+export type FacetSortMode = 'count' | 'alpha';
+
+export interface FacetClientOptions extends DataClientOptions<FacetInputs> {
+  /** Base relation the options are read from (typically shared with a rows client). */
+  from: QuerySource<FacetInputs>;
+  /** Column whose distinct values become the options. */
+  column: string;
+  /**
+   * The column is a DuckDB list/array (e.g. `VARCHAR[]`): options explode
+   * the values via `unnest()`, and published clauses match rows whose list
+   * contains any selected value (`list_has_any`).
+   */
+  arrayColumn?: boolean;
+  /** COUNT(*) per value. @default true */
+  counts?: boolean;
+  /**
+   * @default 'count' — falls back to 'alpha' when `counts` is false.
+   */
+  sort?: FacetSortMode;
+  /**
+   * 'single' (default): `toggle(value)` replaces the active value, toggling
+   * the active value clears. 'multi': `toggle(value)` adds/removes it from
+   * the selected set, published as one list clause.
+   */
+  select?: 'single' | 'multi';
+  /** toggle()/clear() publish into this Selection. */
+  publish?: { as: Selection };
+}
+
+export interface FacetOption {
+  value: unknown;
+  /** Present when `counts` is enabled. */
+  count?: number;
+}
+
+export interface FacetClientState extends DataClientState<FacetInputs> {
+  options: Array<FacetOption>;
+  /** Values active in this client's published clause. */
+  selected: Array<unknown>;
+}
+
+export interface FacetClient extends DataClient<FacetInputs, FacetClientState> {
+  /** Toggle a value in/out of the published clause; `null` clears. */
+  toggle: (value: unknown) => void;
+  clear: () => void;
+}
+
+// ── Histogram client ─────────────────────────────────────────────────────────
+
+export interface HistogramInputs {
+  /** Exact bin width. */
+  step?: number;
+  /** Desired number of bins (a hint — steps snap to nice numbers). */
+  bins?: number;
+}
+
+export interface HistogramClientOptions extends DataClientOptions<HistogramInputs> {
+  /** Base relation the bins are computed over. */
+  from: QuerySource<HistogramInputs>;
+  /** Numeric column to bin. */
+  column: string;
+  /**
+   * Fixed [min, max] domain for bin boundaries. When omitted, the client
+   * discovers it once from the unfiltered base relation during `prepare`,
+   * so bin boundaries stay stable while filters change the counts.
+   */
+  extent?: [number, number];
+  /** setRange() publishes an interval clause into this Selection. */
+  publish?: { as: Selection };
+}
+
+export interface HistogramBin {
+  x0: number;
+  x1: number;
+  count: number;
+}
+
+export interface HistogramClientState extends DataClientState<HistogramInputs> {
+  /** Contiguous bins across the extent; empty bins carry count 0. */
+  bins: Array<HistogramBin>;
+  maxCount: number;
+  /** Bin domain in effect (fixed or discovered). */
+  extent: [number, number] | null;
+  /** Currently published brush range. */
+  range: [number, number] | null;
+}
+
+export interface HistogramClient extends DataClient<
+  HistogramInputs,
+  HistogramClientState
+> {
+  /** Publish [lo, hi] as an interval clause; `null` clears. */
+  setRange: (range: [number, number] | null) => void;
+}
+
+// ── Sparkline client ─────────────────────────────────────────────────────────
+
+export interface SparklineInputs {
+  /**
+   * Series to fetch, typically derived from a rows client's visible page.
+   * One batched query serves every key: `WHERE key IN (…) GROUP BY key, x`.
+   */
+  keys?: Array<unknown>;
+}
+
+/** X dimension — declarative: raw column, numeric bin, or date bin. */
+export interface SparklineX {
+  column: string;
+  /** Numeric bin width: x collapses to `floor(x / step) * step`. */
+  step?: number;
+  /** Date bin unit (DuckDB `time_bucket`). Takes precedence over `step`. */
+  interval?: 'hour' | 'day' | 'week' | 'month' | 'year';
+}
+
+/** Y measure — declarative aggregate (serializability constraint). */
+export interface SparklineY {
+  agg: 'count' | 'sum' | 'avg' | 'min' | 'max';
+  /** Aggregated column; required for every agg except 'count'. */
+  column?: string;
+}
+
+export interface SparklineClientOptions extends DataClientOptions<SparklineInputs> {
+  from: QuerySource<SparklineInputs>;
+  /** Column whose values key each series. */
+  key: string;
+  x: SparklineX;
+  y: SparklineY;
+}
+
+export interface SparklinePoint {
+  x: number | Date;
+  y: number;
+}
+
+export interface SparklineClientState extends DataClientState<SparklineInputs> {
+  series: Map<unknown, Array<SparklinePoint>>;
+}
+
+export type SparklineClient = DataClient<SparklineInputs, SparklineClientState>;
+
+// ── Rollup client ────────────────────────────────────────────────────────────
+
+/** The rollup client fetches the whole tree; it carries no serializable inputs. */
+export type RollupInputs = Record<string, never>;
+
+export interface RollupClientOptions<
+  TRow,
+> extends DataClientOptions<RollupInputs> {
+  /**
+   * Aggregate select over the base relation — no groupby: the client owns
+   * `GROUP BY ROLLUP(...)`, the `GROUPING()` level tag, and the tree order.
+   */
+  query: QuerySource<RollupInputs>;
+  /** Hierarchy levels, outermost first. */
+  groupBy: Array<string>;
+  /** Optional per-row mapper (closure or descriptor map). Latest-ref. */
+  coerce?: CoerceOption<TRow>;
+}
+
+export interface RollupRow<TRow> {
+  data: TRow;
+  /** 0 = grand total; groupBy.length = leaf. */
+  level: number;
+  /** Group values down to this row's level — a stable expansion key. */
+  groupPath: Array<string>;
+  isLeaf: boolean;
+}
+
+export interface RollupClientState<TRow> extends DataClientState<RollupInputs> {
+  /** Flat, pre-ordered (parents before children); see `rollupRowsToTree`. */
+  rows: Array<RollupRow<TRow>>;
+}
+
+export interface RollupClient<TRow> extends DataClient<
+  RollupInputs,
+  RollupClientState<TRow>
+> {
+  /** Swap the coerce mapper (latest-ref semantics; never re-queries). */
+  setCoerce: (coerce: CoerceOption<TRow> | undefined) => void;
+}
+
+/** Pure tree view over the flat pre-ordered rollup rows. */
+export interface RollupTreeNode<TRow> {
+  row: RollupRow<TRow>;
+  children: Array<RollupTreeNode<TRow>>;
+}
+
+// ── Pivot client ─────────────────────────────────────────────────────────────
+
+/** Declarative aggregate populating pivot cells (serializability constraint). */
+export interface PivotAggregate {
+  agg: 'count' | 'sum' | 'avg' | 'min' | 'max';
+  /** Aggregated column; required for every agg except 'count'. */
+  column?: string;
+  /** Output alias — with multiple aggregates, DuckDB suffixes pivot columns with it. */
+  as?: string;
+}
+
+export interface PivotClientOptions<
+  TRow,
+> extends DataClientOptions<RowsInputs> {
+  /** Base relation to pivot (filtered via the query context). */
+  from: QuerySource<RowsInputs>;
+  /** Column whose distinct values become the pivot output columns. */
+  on: string;
+  /** Aggregates populating the cells. */
+  using: Array<PivotAggregate>;
+  /** Row-group columns. */
+  groupBy: Array<string>;
+  /**
+   * Fixed pivot values (`PIVOT ... IN (...)`). When omitted, DuckDB
+   * discovers the columns from the data and the client surfaces them as
+   * `pivotColumns` from the result schema.
+   */
+  in?: Array<unknown>;
+  /** Optional per-row mapper (closure or descriptor map). Latest-ref. */
+  coerce?: CoerceOption<TRow>;
+}
+
+export interface PivotClientState<TRow> extends DataClientState<RowsInputs> {
+  rows: Array<TRow>;
+  /** Result columns that are not `groupBy` columns — discovered per query. */
+  pivotColumns: Array<string>;
+}
+
+export interface PivotClient<TRow> extends DataClient<
+  RowsInputs,
+  PivotClientState<TRow>
+> {
+  /** Swap the coerce mapper (latest-ref semantics; never re-queries). */
+  setCoerce: (coerce: CoerceOption<TRow> | undefined) => void;
 }
 
 // ── Values client ─────────────────────────────────────────────────────────────

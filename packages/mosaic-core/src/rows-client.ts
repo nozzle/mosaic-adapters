@@ -1,10 +1,11 @@
 import { clausePoints } from '@uwdata/mosaic-core';
 import { Query, asc, count, desc, sql } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
-import { toResultRows, trailingThrottle } from './utils';
+import { resolveCoerce, toResultRows, trailingThrottle } from './utils';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
 import type {
+  CoerceOption,
   OrderByItem,
   QueryContext,
   RowsClient,
@@ -33,7 +34,7 @@ class RowsDataClient<TRow>
   readonly #options: RowsClientOptions<TRow>;
   readonly #rowCount: RowsClientOptions<TRow>['rowCount'];
   readonly #inputMode: 'append' | 'manual';
-  #coerce: RowsClientOptions<TRow>['coerce'];
+  #coerce: ((raw: Record<string, unknown>) => TRow) | undefined;
 
   /**
    * Stable clause identities: one per publish channel so select and hover
@@ -66,15 +67,13 @@ class RowsDataClient<TRow>
     this.#options = options;
     this.#rowCount = rowCount;
     this.#inputMode = inputMode;
-    this.#coerce = options.coerce;
+    this.#coerce = resolveCoerce(options.coerce);
 
     this.#wirePublishing();
   }
 
-  setCoerce(
-    coerce: ((raw: Record<string, unknown>) => TRow) | undefined,
-  ): void {
-    this.#coerce = coerce;
+  setCoerce(coerce: CoerceOption<TRow> | undefined): void {
+    this.#coerce = resolveCoerce(coerce);
   }
 
   selectRows(rows: Array<TRow>): void {

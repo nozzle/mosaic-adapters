@@ -1,3 +1,5 @@
+import type { CoerceDescriptor, CoerceOption } from './types';
+
 /**
  * Value equality for the plain-JSON shapes that client inputs are made of
  * (primitives, arrays, plain objects, Dates). Keys explicitly set to
@@ -62,6 +64,54 @@ export function toResultRows(data: unknown): Array<Record<string, unknown>> {
     ).toArray();
   }
   return [];
+}
+
+/**
+ * Resolve the `coerce` option to a row mapper: closures pass through
+ * (latest-ref semantics preserved by the caller), descriptor maps compile to
+ * a mapper applying per-column coercions. Null/undefined values stay null.
+ */
+export function resolveCoerce<TRow>(
+  coerce: CoerceOption<TRow> | undefined,
+): ((raw: Record<string, unknown>) => TRow) | undefined {
+  if (coerce === undefined || typeof coerce === 'function') {
+    return coerce;
+  }
+  const entries = Object.entries(coerce);
+  return (raw) => {
+    const row: Record<string, unknown> = { ...raw };
+    for (const [key, kind] of entries) {
+      row[key] = coerceValue(row[key], kind);
+    }
+    return row as TRow;
+  };
+}
+
+function coerceValue(value: unknown, kind: CoerceDescriptor): unknown {
+  if (value == null) {
+    return null;
+  }
+  switch (kind) {
+    case 'date': {
+      if (value instanceof Date) {
+        return value;
+      }
+      if (typeof value === 'bigint') {
+        return new Date(Number(value));
+      }
+      return new Date(value as string | number);
+    }
+    case 'number':
+      return Number(value);
+    case 'string':
+      return String(value);
+    case 'boolean':
+      return Boolean(value);
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
+  }
 }
 
 export interface TrailingThrottle<TArgs extends Array<unknown>> {
