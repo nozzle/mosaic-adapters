@@ -29,7 +29,11 @@ export type ColumnFilterClauseKind =
   | 'in';
 
 export interface FilterBridgeColumn {
-  /** SQL column the clause predicates test; defaults to the TanStack column id. */
+  /**
+   * SQL column the clause predicates test; defaults to the TanStack column
+   * id. Dotted paths are struct access (`related_phrase.phrase` →
+   * `"related_phrase"."phrase"`).
+   */
   column?: string;
   clause: ColumnFilterClauseKind;
 }
@@ -47,6 +51,15 @@ export interface FilterBridgeOptions {
   selection: Selection;
   /** Per-column clause config; defaults to none (supply later via `setColumns`). */
   columns?: FilterBridgeColumns;
+  /**
+   * How the bridge treats external clause removals (a chip bar's X, a
+   * global `selection.reset()`). Without this callback, TanStack state
+   * stays authoritative: the next state sync republishes the clause. With
+   * it, the external clear wins — the bridge reports the cleared TanStack
+   * column ids so the consumer can prune its `columnFilters` state, and
+   * suppresses republishing until that prune lands.
+   */
+  onExternalClear?: (columnIds: Array<string>) => void;
 }
 
 /**
