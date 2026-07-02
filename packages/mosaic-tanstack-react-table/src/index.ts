@@ -1,11 +1,6 @@
-export * from './hook';
-export * from './facet-hook';
-export * from './filter-hook';
-export * from './filter-conditions';
-export * from './filter-builder-types';
-export * from './filter-scope-hook';
-export * from './filter-binding-hook';
-export * from './filter-facet-hook';
-export * from './filter-registry';
-export * from './histogram-hook';
-export * from './sparkline-hook';
+/**
+ * @nozzleio/mosaic-tanstack-react-table is being re-cut as part of the
+ * data-first re-architecture (https://github.com/nozzle/mosaic-adapters/issues/131).
+ * Phase 3 (#161) rebuilds this package's contents; until then it exports nothing.
+ */
+export {};

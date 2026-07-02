@@ -9,6 +9,6 @@
     },
     "types": ["vite/client"]
   },
-  "include": ["src", "tests", "vite.config.ts"],
-  "exclude": ["proxy-server.js", "node_modules"]
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["node_modules"]
 }
