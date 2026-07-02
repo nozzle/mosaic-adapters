@@ -1,8 +1,8 @@
 /**
  * The Nozzle PAA dashboard on the data-client stack (issue #165): KPI
  * header, four cross-filtering group-by summary tables with row-select
- * publishing and in-widget selection chips, the SERP-appearances
- * HAVING + membership filter, the min-domains subquery filter, top-bar
+ * publishing, in-widget selection chips, and per-card metric-threshold
+ * (HAVING + membership) filters, the min-domains subquery filter, top-bar
  * facet/text/date inputs, an active-filter chip bar with global reset, a
  * sparkline column, and a detail table with bridged column filters — all on
  * a static Selection topology composed with native `include` lists
@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Query, column, count, isNotNull, sql } from '@uwdata/mosaic-sql';
 import { useMosaicValues } from '@nozzleio/react-mosaic';
 import { initPaaTable } from './mosaic-setup';
-import { $serpHaving, kpiContext, tableName } from './page-context';
+import { kpiContext, tableName } from './page-context';
 import { ActiveFilterBar } from './components/active-filter-bar';
 import { DetailTable } from './components/detail-table';
 import {
@@ -24,13 +24,14 @@ import {
   TextFilter,
 } from './components/paa-filters';
 import {
-  SerpAppearancesControls,
-  useSerpAppearancesFilter,
-} from './components/serp-appearances-filter';
+  MetricThresholdControls,
+  useMetricThresholdFilter,
+} from './components/metric-threshold-filter';
 import {
   SummaryTable,
   SummaryTablePlaceholder,
 } from './components/summary-table';
+import type { MetricThresholdFilterState } from './components/metric-threshold-filter';
 import type { SummaryTableConfig } from './components/summary-table';
 import type { SummaryTableId } from './page-context';
 
@@ -52,9 +53,6 @@ const summaryTables: Array<SummaryTableConfig> = [
     groupBy: 'related_phrase.phrase',
     metricLabel: 'SERP Appears',
     metric: { agg: 'count' },
-    // The SERP-appearances filter routes into this table's HAVING clause;
-    // siblings receive the membership subquery through their contexts.
-    havingBy: $serpHaving,
   },
   {
     id: 'domain',
@@ -81,9 +79,27 @@ function App() {
     null,
   );
 
-  // SERP Appearances widget filter state lives at page level so it survives
-  // the enlarge/return remounts of the question table.
-  const serpFilter = useSerpAppearancesFilter({ enabled: isReady });
+  // Metric-threshold filter state lives at page level so it survives the
+  // enlarge/return remounts of the summary tables — one per card, each
+  // routing HAVING into its own card and a membership subquery to siblings.
+  const metricFilters: Record<SummaryTableId, MetricThresholdFilterState> = {
+    phrase: useMetricThresholdFilter({
+      config: summaryTables[0]!,
+      enabled: isReady,
+    }),
+    question: useMetricThresholdFilter({
+      config: summaryTables[1]!,
+      enabled: isReady,
+    }),
+    domain: useMetricThresholdFilter({
+      config: summaryTables[2]!,
+      enabled: isReady,
+    }),
+    url: useMetricThresholdFilter({
+      config: summaryTables[3]!,
+      enabled: isReady,
+    }),
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -138,8 +154,8 @@ function App() {
       <ActiveFilterBar />
 
       <div className="relative z-10 -mt-8 px-6">
-        <div className="flex flex-wrap items-center gap-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mr-2 text-sm font-bold text-slate-700">
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mr-2 self-center text-sm font-bold text-slate-700">
             FILTER BY:
           </div>
           <DomainFilter enabled={isReady} />
@@ -180,9 +196,7 @@ function App() {
               enabled={isReady}
               heightClassName="h-[700px]"
               headerControls={
-                config.id === 'question' ? (
-                  <SerpAppearancesControls state={serpFilter} />
-                ) : undefined
+                <MetricThresholdControls state={metricFilters[config.id]} />
               }
               promotionButton={
                 <button
@@ -208,9 +222,9 @@ function App() {
             heightClassName="h-[820px]"
             promoted
             headerControls={
-              expandedTable.id === 'question' ? (
-                <SerpAppearancesControls state={serpFilter} />
-              ) : undefined
+              <MetricThresholdControls
+                state={metricFilters[expandedTable.id]}
+              />
             }
             promotionButton={
               <button
@@ -241,12 +255,13 @@ function App() {
 }
 
 function HeaderSection(props: { enabled: boolean }) {
-  // One values client, three KPIs per round trip, filtered by everything on
-  // the page ("# of Devices" is hardcoded, matching the legacy card).
+  // One values client, four KPIs per round trip, filtered by everything on
+  // the page.
   const kpis = useMosaicValues<{
     phrases: number;
     questions: number;
     days: number;
+    devices: number;
   }>({
     query: ({ where }) =>
       Query.from(tableName)
@@ -254,6 +269,7 @@ function HeaderSection(props: { enabled: boolean }) {
           phrases: count('phrase').distinct(),
           questions: count(sql`"related_phrase"."phrase"`).distinct(),
           days: count('requested').distinct(),
+          devices: count('device').distinct(),
         })
         .where(where),
     filterBy: kpiContext,
@@ -287,7 +303,11 @@ function HeaderSection(props: { enabled: boolean }) {
             testId="kpi-days"
             value={kpis.values?.days}
           />
-          <KpiCard label="# of Devices" testId="kpi-devices" value={2} />
+          <KpiCard
+            label="# of Devices"
+            testId="kpi-devices"
+            value={kpis.values?.devices}
+          />
         </div>
       </div>
     </div>

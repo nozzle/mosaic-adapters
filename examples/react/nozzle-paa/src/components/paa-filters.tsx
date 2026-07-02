@@ -25,7 +25,11 @@ function FilterShell(props: {
   children: React.ReactNode;
 }) {
   return (
-    <div className={`flex flex-col gap-1 ${props.width ?? 'w-[180px]'}`}>
+    // shrink-0: fixed-width flex items must wrap to the next row rather than
+    // shrink below their content and overlap their neighbors.
+    <div
+      className={`flex shrink-0 flex-col gap-1 ${props.width ?? 'w-[180px]'}`}
+    >
       <label className="text-xs font-semibold tracking-wider text-slate-500 uppercase">
         {props.label}
       </label>
@@ -344,22 +348,24 @@ export function DateRangeFilter() {
   };
 
   return (
-    <FilterShell label="Requested Date" width="w-[260px]">
+    // Native date inputs have a wide intrinsic minimum; give the shell room
+    // and let each input shrink (min-w-0) instead of overflowing the row.
+    <FilterShell label="Requested Date" width="w-[310px]">
       <div className="flex items-center gap-2">
         <input
           type="date"
           data-testid="filter-date-start"
-          className="h-9 w-full rounded border border-slate-200 bg-white px-2 text-sm outline-none focus:border-cyan-600"
+          className="h-9 w-full min-w-0 flex-1 rounded border border-slate-200 bg-white px-2 text-sm outline-none focus:border-cyan-600"
           value={typeof start === 'string' ? start : ''}
           onChange={(event) =>
             setRange(event.target.value, typeof end === 'string' ? end : '')
           }
         />
-        <span className="text-slate-400">–</span>
+        <span className="shrink-0 text-slate-400">–</span>
         <input
           type="date"
           data-testid="filter-date-end"
-          className="h-9 w-full rounded border border-slate-200 bg-white px-2 text-sm outline-none focus:border-cyan-600"
+          className="h-9 w-full min-w-0 flex-1 rounded border border-slate-200 bg-white px-2 text-sm outline-none focus:border-cyan-600"
           value={typeof end === 'string' ? end : ''}
           onChange={(event) =>
             setRange(typeof start === 'string' ? start : '', event.target.value)
