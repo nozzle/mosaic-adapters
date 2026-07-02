@@ -64,6 +64,11 @@ export {
   useMosaicSelections,
 } from './use-topology-helpers';
 
+export { useMosaicSelectionValue } from './use-mosaic-selection-value';
+export type { UseMosaicSelectionValueOptions } from './use-mosaic-selection-value';
+
+export { useFilterChips } from './use-filter-chips';
+
 export { useMosaicFilters } from './filter-builder/use-mosaic-filters';
 export { useFilterBinding } from './filter-builder/use-filter-binding';
 export { useFilterBindingControllerState } from './filter-builder/use-filter-binding-controller';

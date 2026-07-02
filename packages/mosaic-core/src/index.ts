@@ -16,8 +16,18 @@ export {
   createClearClause,
   createSubqueryClause,
   createValueClause,
+  updateClauseIfChanged,
 } from './clause-factory';
 export type { SubqueryClauseSpec, ValueClauseSpec } from './clause-factory';
+
+export { createFilterRegistry } from './filter-registry';
+export type {
+  FilterChip,
+  FilterRegistration,
+  FilterRegistry,
+  FilterRegistryGroup,
+  FilterRegistryState,
+} from './filter-registry';
 
 export { applyRoutedFilters, routeFilter } from './filter-routing';
 export type { RoutedFilterExpr, SqlFilterClauseTarget } from './filter-routing';

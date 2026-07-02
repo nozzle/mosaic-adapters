@@ -1,4 +1,5 @@
 import type {
+  ClauseSource,
   Coordinator,
   MosaicClient,
   Param,
@@ -147,8 +148,26 @@ export type RowCountMode = 'window' | 'query' | 'none';
 export interface RowsPublishTarget<TRow> {
   /** Selection that receives the published clause. */
   as: Selection;
-  /** Row fields (SQL columns) that identify a row inside the clause predicate. */
+  /** Row fields whose values populate the published points. */
   columns: Array<Extract<keyof TRow, string>>;
+  /**
+   * SQL fields the published predicate tests, aligned index-by-index with
+   * `columns`; defaults to `columns`. Dotted paths become struct access
+   * (`related_phrase.phrase` → `"related_phrase"."phrase"`). Use this when a
+   * row field aliases an expression — e.g. a grouped factory's `key` column
+   * standing in for the underlying group-by column.
+   */
+  fields?: Array<string>;
+  /**
+   * Stable clause identity that outlives this client instance. By default a
+   * client publishes under a private per-instance source and removes its
+   * clauses on `destroy()`; with a caller-provided source the clause is
+   * retained through `destroy()`, and the next client instance publishing
+   * under the same source replaces it. This is what lets row-selection state
+   * survive widget remounts (enlarge/collapse swaps, route changes) whose
+   * Selections live longer than the component.
+   */
+  source?: ClauseSource;
 }
 
 export interface RowsHoverPublishTarget<TRow> extends RowsPublishTarget<TRow> {

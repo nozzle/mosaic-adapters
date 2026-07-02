@@ -19,6 +19,7 @@ import type {
   ClauseMetadata,
   ClauseSource,
   MosaicClient,
+  Selection,
   SelectionClause,
 } from '@uwdata/mosaic-core';
 
@@ -89,4 +90,47 @@ export function createClearClause(
     value: null,
     predicate: null,
   };
+}
+
+/**
+ * `selection.update(clause)` with change suppression: the update is skipped
+ * when the source's existing clause already carries an equal predicate
+ * (compared by generated SQL), or when the clause clears a source that has
+ * no active clause. Every suppressed update avoids a Selection value event —
+ * and with it a re-query of every consumer.
+ *
+ * This is the convergence guard for rebuild-on-context-change publishers
+ * (e.g. membership subqueries embedding sibling filter context): the rebuild
+ * republishes only when the predicate actually changed, so a converged state
+ * publishes nothing. Note the comparison is predicate-only — a clause whose
+ * `value` changed but whose predicate is unchanged is also suppressed.
+ *
+ * The comparison reads the Selection's resolved clause list (`_resolved`),
+ * which upstream maintains synchronously across unemitted value events —
+ * `selection.clauses` reads the last *emitted* state, which is one tick
+ * stale once listeners are attached and would defeat the suppression.
+ *
+ * @returns true when the update was applied, false when suppressed.
+ */
+export function updateClauseIfChanged(
+  selection: Selection,
+  clause: SelectionClause,
+): boolean {
+  const current = selection._resolved.find(
+    (existing) => existing.source === clause.source,
+  );
+
+  if (current === undefined && clause.predicate == null) {
+    return false;
+  }
+  if (
+    current?.predicate != null &&
+    clause.predicate != null &&
+    String(current.predicate) === String(clause.predicate)
+  ) {
+    return false;
+  }
+
+  selection.update(clause);
+  return true;
 }
