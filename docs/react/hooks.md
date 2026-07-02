@@ -71,6 +71,13 @@ Clients are created once per mount and destroyed on unmount; StrictMode's double
 - `useComposedSelection(selections)` — one Selection that mirrors the AND of the given Selections (relay-linked, seeded, cleaned up on unmount).
 - `useCascadingContexts(inputs, externals?)` — peer-minus-self contexts for facet inputs: each input's context includes every _other_ input plus the externals, so a dropdown is filtered by everything except its own value.
 
+For a topology known up front, prefer composing statically at module scope with upstream-native `Selection.intersect({ include: [...] })` — the hooks above exist for graphs assembled inside React lifecycles.
+
+## Selection read-back and chips
+
+- `useMosaicSelectionValue<T>(selection, { source? })` — reactively read a Selection's clause value: the read-back half of clause publishing. Scope by `source` (e.g. a rows client's stable `publish.select.source`) on multi-publisher Selections; returns `null` when no matching clause is active. This is how a widget renders its own published selection (in-widget chips, checkmarks) from the same Selection its siblings consume.
+- `useFilterChips(registry)` — subscribe to a [filter registry](../core/filter-registry.md)'s chip list.
+
 ## Filter builder
 
 `useMosaicFilters` / `useFilterBinding` / `useFilterFacet` bind the [filter-builder subsystem](../core/filter-builder.md) to React, persistence included.

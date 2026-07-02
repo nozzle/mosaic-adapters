@@ -86,7 +86,7 @@ function AthletesTable() {
 
 `useTanStackFilterBridge({ filters, selection, columns })` publishes one Selection clause per actively filtered column, using the same clause factories every other Mosaic publisher (brush, facet, menu) uses. `column.setFilterValue()` and ecosystem filter components then work unmodified — the data layer only ever sees a Selection.
 
-Per-column config maps a TanStack column id to `{ column?, clause }`, where `column` defaults to the id and `clause` is one of:
+Per-column config maps a TanStack column id to `{ column?, clause }`, where `column` defaults to the id (dotted paths are struct access: `related_phrase.phrase` → `"related_phrase"."phrase"`) and `clause` is one of:
 
 | Kind           | Filter value                | Clause                                                                                     |
 | -------------- | --------------------------- | ------------------------------------------------------------------------------------------ |
@@ -107,8 +107,28 @@ The bridge owns its clauses precisely, because every Selection update re-queries
 - **Removal** — clearing a column filter removes exactly its clause; unmount (or a `selection` identity change) removes all of them.
 - **Echo suppression** — publishes are value-diffed. Re-renders with equal filter state (fresh array/object identities included) publish nothing, so store-update → re-render → bridge cycles cannot feed back into Selection activations.
 - **No self-exclusion** — unlike brush/facet publishers, bridge clauses carry no `clients` set, so the table _is_ filtered by its own column filters, even inside a `Selection.crossfilter()`. That is the point: column filters describe the table's contents.
+- **Source descriptors** — bridge clause sources carry `{ id, column }`, so downstream consumers (the filter registry's chips) can label a clause without reaching into TanStack state.
 
-Framework-agnostic consumers can use the core directly: `createFilterBridge({ selection, columns })` with `setFilters` / `setColumns` / `destroy`.
+### External clears: who wins?
+
+Someone other than the table can remove a bridge clause — an active-filter chip bar's X, a global `selection.reset()`. Two behaviors are available:
+
+- **Default (state-authoritative)** — TanStack `columnFilters` state is the source of truth: the next state sync republishes the clause a reset removed. Right when nothing else manages these clauses.
+- **`onExternalClear(columnIds)`** — the external clear wins: the bridge suppresses republishing and reports which TanStack column ids lost their clauses so you prune the state (and with it the filter inputs):
+
+```tsx
+useTanStackFilterBridge({
+  filters: columnFilters,
+  selection: $detail,
+  columns: bridgeColumns,
+  onExternalClear: (columnIds) =>
+    setColumnFilters((prev) => prev.filter((f) => !columnIds.includes(f.id))),
+});
+```
+
+Pass it whenever the Selection is registered with a filter registry / chip bar. Held by latest-ref — a new function identity never recreates the bridge.
+
+Framework-agnostic consumers can use the core directly: `createFilterBridge({ selection, columns, onExternalClear? })` with `setFilters` / `setColumns` / `destroy`.
 
 ## When not to use the bridge
 

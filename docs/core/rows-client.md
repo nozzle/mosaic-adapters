@@ -38,6 +38,15 @@ Opt-in per channel; both publish native `clausePoints` with a stable clause sour
 
 `destroy()` removes any published clauses before disconnecting.
 
+Two extras cover grouped/remounting widgets:
+
+- `fields?: Array<string>` — the SQL fields the published predicate tests, aligned with `columns` and defaulting to them. Use it when a row field aliases an expression: a grouped factory selecting `related_phrase.phrase AS key` publishes `columns: ['key'], fields: ['related_phrase.phrase']`. Dotted paths become struct access (`"related_phrase"."phrase"`), never one quoted identifier.
+- `source?: ClauseSource` — a caller-provided stable clause identity that outlives the client instance. With it, `destroy()` **retains** the published clause and the next client instance publishing under the same source replaces it — row-selection state survives widget remounts (enlarge/collapse swaps) whose Selections live longer than the component. Read the value back with `selection.valueFor(source)` (or `useMosaicSelectionValue` in React).
+
+## Grouped queries and `filterStable`
+
+`filterStable` (default `true`, upstream parity) tells Mosaic's optimizer the filtered domain is stable enough for pre-aggregation. A factory that `GROUP BY`s a key almost never qualifies — filtering changes which groups exist — and the wrong optimizer path can hang on pre-aggregated tables with no error. **Pass `filterStable: false` on grouped rows clients.** The client warns once at query time when it sees a GROUP BY under a defaulted `filterStable`. (The facet/rollup/pivot clients already default or force `false` for the same reason.)
+
 ## Other
 
 - `coerce?` — presentational per-row mapper (Arrow values → display types): a closure `(raw) => TRow`, or the serializable per-column descriptor map `{ date_of_birth: 'date', score: 'number' }` (`'date' | 'number' | 'string' | 'boolean'`; unlisted columns pass through, null stays null). Latest-ref'd; swap with `setCoerce`.
