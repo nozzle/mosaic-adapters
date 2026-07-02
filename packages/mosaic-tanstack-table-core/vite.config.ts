@@ -1,7 +1,18 @@
 import { defineConfig, mergeConfig } from 'vitest/config';
 import { tanstackViteConfig } from '@tanstack/vite-config';
 
-const packageConfig = defineConfig({});
+import packageJson from './package.json';
+
+const packageConfig = defineConfig({
+  test: {
+    name: packageJson.name,
+    dir: './tests',
+    watch: false,
+    environment: 'node',
+    testTimeout: 30_000,
+    typecheck: { enabled: true },
+  },
+});
 
 export default mergeConfig(
   packageConfig,
