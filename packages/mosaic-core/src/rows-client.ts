@@ -1,6 +1,7 @@
 import { clausePoints } from '@uwdata/mosaic-core';
 import { Query, asc, count, desc, sql } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
+import { SqlIdentifier, createStructAccess } from './filter-builder/sql-access';
 import { resolveCoerce, toResultRows, trailingThrottle } from './utils';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
@@ -38,15 +39,17 @@ class RowsDataClient<TRow>
 
   /**
    * Stable clause identities: one per publish channel so select and hover
-   * clauses never displace each other, even inside one Selection.
+   * clauses never displace each other, even inside one Selection. Callers
+   * may supply their own source so the identity survives client remounts.
    */
-  readonly #selectSource: ClauseSource = {};
-  readonly #hoverSource: ClauseSource = {};
+  readonly #selectSource: ClauseSource;
+  readonly #hoverSource: ClauseSource;
   #hasSelectClause = false;
   #hasHoverClause = false;
   #publishHover: TrailingThrottle<[TRow | null]> | null = null;
 
   #countGeneration = 0;
+  #warnedGroupedFilterStable = false;
 
   constructor(options: RowsClientOptions<TRow>) {
     const rowCount = options.rowCount ?? 'none';
@@ -58,6 +61,8 @@ class RowsDataClient<TRow>
           'instead.',
       );
     }
+    assertPublishFields(options.publish?.select);
+    assertPublishFields(options.publish?.hover);
 
     super(options, options.query, {
       rows: [],
@@ -68,6 +73,8 @@ class RowsDataClient<TRow>
     this.#rowCount = rowCount;
     this.#inputMode = inputMode;
     this.#coerce = resolveCoerce(options.coerce);
+    this.#selectSource = options.publish?.select?.source ?? {};
+    this.#hoverSource = options.publish?.hover?.source ?? {};
 
     this.#wirePublishing();
   }
@@ -109,6 +116,7 @@ class RowsDataClient<TRow>
 
   protected buildQuery(ctx: QueryContext<RowsInputs>): SelectQuery {
     const base = this.resolveBase(ctx);
+    this.#warnGroupedFilterStable(base);
     if (this.#inputMode === 'manual') {
       return base;
     }
@@ -216,12 +224,14 @@ class RowsDataClient<TRow>
 
     this.onDestroy(() => {
       this.#publishHover?.cancel();
+      // Caller-provided sources signal that the Selection outlives this
+      // client instance: leave the clause in place for the next instance.
       const select = publish.select;
-      if (select && this.#hasSelectClause) {
+      if (select && !select.source && this.#hasSelectClause) {
         this.#publishPoints(select, this.#selectSource, []);
         this.#hasSelectClause = false;
       }
-      if (hover && this.#hasHoverClause) {
+      if (hover && !hover.source && this.#hasHoverClause) {
         this.#publishPoints(hover, this.#hoverSource, []);
         this.#hasHoverClause = false;
       }
@@ -236,11 +246,55 @@ class RowsDataClient<TRow>
     const value = rows.map((row) =>
       target.columns.map((column) => (row as Record<string, unknown>)[column]),
     );
-    const clause = clausePoints(target.columns, value, {
+    const fields = (target.fields ?? target.columns).map((field) =>
+      createStructAccess(SqlIdentifier.from(field)),
+    );
+    const clause = clausePoints(fields, value, {
       source,
       clients: new Set<MosaicClient>([this.mosaicClient]),
     });
     target.as.update(clause);
+  }
+
+  /**
+   * A grouped main query whose group domain changes under filtering breaks
+   * Mosaic's pre-aggregation assumptions, and `filterStable` defaults to
+   * upstream's `true` — the resulting optimizer path can hang on wrong
+   * pre-aggregated tables with no error. Surface the hazard once instead of
+   * failing silently.
+   */
+  #warnGroupedFilterStable(base: SelectQuery): void {
+    if (this.#warnedGroupedFilterStable) {
+      return;
+    }
+    this.#warnedGroupedFilterStable = true;
+    if (this.#options.filterStable !== undefined) {
+      return;
+    }
+    if (base._groupby.length === 0) {
+      return;
+    }
+    console.warn(
+      '[mosaic-core] A rows client query uses GROUP BY while filterStable ' +
+        'was left at its default (true). Filtering usually changes a ' +
+        'grouped query’s group domain, which invalidates pre-aggregation ' +
+        '— pass filterStable: false (or an explicit true if the group ' +
+        'domain really is filter-stable).',
+    );
+  }
+}
+
+function assertPublishFields<TRow>(
+  target: RowsPublishTarget<TRow> | undefined,
+): void {
+  if (!target?.fields) {
+    return;
+  }
+  if (target.fields.length !== target.columns.length) {
+    throw new Error(
+      'publish fields must align with columns ' +
+        `(got ${target.fields.length} fields for ${target.columns.length} columns).`,
+    );
   }
 }
 

@@ -1,5 +1,5 @@
 import { Selection } from '@uwdata/mosaic-core';
-import { Query } from '@uwdata/mosaic-sql';
+import { Query, count } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
 import { createRowsClient } from '../src/index';
@@ -189,5 +189,121 @@ describe('row-selection publishing', () => {
     client.selectRows([{ id: 1, name: 'Ada', sport: 'swim', weight: 60 }]);
     await settle();
     expect($picked.clauses).toHaveLength(0);
+  });
+
+  test('publish fields map row values onto SQL fields, with struct access for dotted paths', async () => {
+    const $sel = Selection.intersect();
+    // A grouped factory aliasing the group key: rows carry `key`, but the
+    // published predicate must test the underlying column.
+    const client = createRowsClient<{ key: string; n: number }>({
+      coordinator: db.coordinator,
+      query: ({ where }) =>
+        Query.from('athletes')
+          .select({ key: 'sport', n: count() })
+          .groupby('sport')
+          .where(where),
+      inputMode: 'manual',
+      filterStable: false,
+      publish: {
+        select: { as: $sel, columns: ['key'], fields: ['sport'] },
+      },
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.status).toBe('success');
+    });
+
+    client.selectRows([{ key: 'swim', n: 4 }]);
+    expect($sel.clauses).toHaveLength(1);
+    expect($sel.clauses[0]!.value).toEqual([['swim']]);
+    expect(String($sel.clauses[0]!.predicate)).toContain('"sport"');
+
+    // A consumer of $sel over the base table sees only the selected group.
+    const consumer = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: ({ where }) => athleteQuery().where(where),
+      filterBy: $sel,
+    });
+    await waitFor(() => {
+      expect(consumer.store.state.rows).toHaveLength(4);
+    });
+
+    // Dotted field paths become struct access, not one quoted identifier.
+    const $structSel = Selection.intersect();
+    const structClient = createRowsClient<{ key: string }>({
+      coordinator: db.coordinator,
+      query: () => athleteQuery(),
+      publish: {
+        select: {
+          as: $structSel,
+          columns: ['key'],
+          fields: ['related_phrase.phrase'],
+        },
+      },
+    });
+    structClient.selectRows([{ key: 'q1' }]);
+    expect(String($structSel.clauses[0]!.predicate)).toContain(
+      '"related_phrase"."phrase"',
+    );
+
+    client.destroy();
+    consumer.destroy();
+    structClient.destroy();
+  });
+
+  test('mismatched publish fields throw at construction', () => {
+    const $sel = Selection.intersect();
+    expect(() =>
+      createRowsClient<AthleteRow>({
+        coordinator: db.coordinator,
+        query: () => athleteQuery(),
+        publish: {
+          select: { as: $sel, columns: ['id', 'name'], fields: ['id'] },
+        },
+      }),
+    ).toThrow(/fields must align with columns/);
+  });
+
+  test('a caller-provided source retains the clause through destroy, and the next instance replaces it', async () => {
+    const $sel = Selection.intersect();
+    const stableSource = {};
+    const create = () =>
+      createRowsClient<AthleteRow>({
+        coordinator: db.coordinator,
+        query: ({ where }) => athleteQuery().where(where),
+        inputs: { orderBy: [{ column: 'id' }] },
+        publish: {
+          select: { as: $sel, columns: ['id'], source: stableSource },
+        },
+      });
+
+    const first = create();
+    await waitFor(() => {
+      expect(first.store.state.status).toBe('success');
+    });
+    first.selectRows([first.store.state.rows[0]!, first.store.state.rows[1]!]);
+    expect($sel.clauses).toHaveLength(1);
+
+    // The widget remounts (enlarge/collapse): destroy leaves the clause.
+    first.destroy();
+    await settle();
+    expect($sel.clauses).toHaveLength(1);
+    expect($sel.clauses[0]!.value).toEqual([[1], [2]]);
+    expect($sel.valueFor(stableSource)).toEqual([[1], [2]]);
+
+    // The next instance publishes under the same identity: replace, never
+    // accumulate.
+    const second = create();
+    await waitFor(() => {
+      expect(second.store.state.status).toBe('success');
+    });
+    second.selectRows([second.store.state.rows[2]!]);
+    expect($sel.clauses).toHaveLength(1);
+    expect($sel.clauses[0]!.source).toBe(stableSource);
+    expect($sel.clauses[0]!.value).toEqual([[3]]);
+
+    second.destroy();
+    await settle();
+    expect($sel.clauses).toHaveLength(1);
   });
 });
