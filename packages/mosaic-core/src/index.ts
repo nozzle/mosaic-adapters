@@ -22,6 +22,8 @@ export type { SubqueryClauseSpec, ValueClauseSpec } from './clause-factory';
 export { applyRoutedFilters, routeFilter } from './filter-routing';
 export type { RoutedFilterExpr, SqlFilterClauseTarget } from './filter-routing';
 
+export * from './filter-builder/index';
+
 export { deepEqual, resolveCoerce } from './utils';
 
 export type {
