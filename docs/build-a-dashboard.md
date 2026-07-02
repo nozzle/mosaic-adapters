@@ -252,5 +252,14 @@ Its Playwright suite asserts each of those flows end-to-end.
   read-once field discovery.
 - [Filter builder](core/filter-builder.md) — declarative, persistable filter
   definitions over Selections.
+- [Membership subqueries](core/subquery-predicates.md) — `IN (SELECT …)`
+  predicates, context embedding, and change-suppressed republishing.
+- [Filter registry](core/filter-registry.md) — active-filter chips and global
+  reset over registered Selections.
 - [React hooks](react/hooks.md) — controlled-binding rules (what recreates a client, what never re-queries).
 - [TanStack integration](tanstack/integration.md) — translators, clause kinds, bridge lifecycle, and when _not_ to use the bridge.
+- The [`nozzle-paa` example](../examples/react/nozzle-paa) — a bigger page
+  (four cross-filtering summary tables, membership subqueries, chip bar) built
+  on a static per-widget Selection topology composed with native
+  `include` lists instead of one crossfilter — its README explains when each
+  shape fits.
