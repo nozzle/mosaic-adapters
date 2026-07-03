@@ -4,7 +4,7 @@ import {
   createStructAccess,
   createTypedAccess,
   escapeSqlLikePattern,
-} from './sql-access';
+} from '../sql-access';
 
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type {

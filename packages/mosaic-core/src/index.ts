@@ -20,6 +20,22 @@ export {
 } from './clause-factory';
 export type { SubqueryClauseSpec, ValueClauseSpec } from './clause-factory';
 
+export {
+  SqlIdentifier,
+  createStructAccess,
+  createTypedAccess,
+  escapeSqlLikePattern,
+} from './sql-access';
+
+export {
+  buildSubqueryPredicate,
+  normalizeSubqueryFilterQuery,
+} from './subquery-predicate';
+export type {
+  BuildSubqueryPredicateOptions,
+  SubqueryFilterQuery,
+} from './subquery-predicate';
+
 export { createFilterRegistry } from './filter-registry';
 export type {
   FilterChip,

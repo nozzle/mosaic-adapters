@@ -1,7 +1,7 @@
 import type { Selection } from '@uwdata/mosaic-core';
 import type { ExprNode } from '@uwdata/mosaic-sql';
 import type { FacetInputs, FacetSortMode, QuerySource } from '../types';
-import type { SubqueryFilterQuery } from './subquery-predicate';
+import type { SubqueryFilterQuery } from '../subquery-predicate';
 import type {
   ArrayMultiselectConditionOperatorId,
   DateConditionOperatorId,

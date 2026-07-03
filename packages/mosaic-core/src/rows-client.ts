@@ -1,7 +1,7 @@
 import { clausePoints } from '@uwdata/mosaic-core';
 import { Query, asc, count, desc, sql } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
-import { SqlIdentifier, createStructAccess } from './filter-builder/sql-access';
+import { SqlIdentifier, createStructAccess } from './sql-access';
 import { PersisterLifecycle } from './persistence';
 import { isFilterSetPublishTarget } from './types';
 import { resolveCoerce, toResultRows, trailingThrottle } from './utils';
@@ -590,9 +590,7 @@ function tuplesFromPointsValue(value: unknown): Array<Array<unknown>> {
 }
 
 function assertPublishFields(
-  target:
-    | { columns: Array<unknown>; fields?: Array<unknown> }
-    | undefined,
+  target: { columns: Array<unknown>; fields?: Array<unknown> } | undefined,
 ): void {
   if (!target?.fields) {
     return;

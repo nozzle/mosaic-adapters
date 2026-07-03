@@ -22,15 +22,15 @@ import {
   createStructAccess,
   createTypedAccess,
   escapeSqlLikePattern,
-} from '../filter-builder/sql-access';
+} from '../sql-access';
 import {
   buildSubqueryPredicate,
   normalizeSubqueryFilterQuery,
-} from '../filter-builder/subquery-predicate';
+} from '../subquery-predicate';
 import { formatRange } from './format';
 import type { ClauseMetadata, ClauseSource } from '@uwdata/mosaic-core';
 import type { ExprNode } from '@uwdata/mosaic-sql';
-import type { SubqueryFilterQuery } from '../filter-builder/subquery-predicate';
+import type { SubqueryFilterQuery } from '../subquery-predicate';
 import type { FilterKind, FilterKindArgs, FilterSpec } from './types';
 
 /** A throwaway source for the upstream clause factories we only read from. */
