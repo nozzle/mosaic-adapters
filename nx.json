@@ -37,11 +37,6 @@
       "inputs": ["default", "^production"],
       "outputs": ["{projectRoot}/coverage"]
     },
-    "test:build": {
-      "cache": true,
-      "dependsOn": ["build"],
-      "inputs": ["production"]
-    },
     "test:types": {
       "cache": true,
       "dependsOn": ["^build"],
