@@ -1,23 +1,17 @@
 /**
- * Top-bar filter inputs. Facet dropdowns ride the facet client
- * (`useMosaicFacet`, gated on the dropdown being open); text, date-range,
- * and the min-domains membership subquery ride the ported filter-builder
- * (`useFilterBinding`), whose committed state syncs back from the Selection
- * so chip removal and global reset clear the inputs automatically.
+ * Top-bar filter inputs, all publishing into the page {@link filterSet}.
+ *
+ * Facet dropdowns ride the facet client (`useMosaicFacet` with `publish.into`),
+ * gated on the dropdown being open. Text, date-range, and the min-domains
+ * membership subquery are config-defined specs: each input reads its committed
+ * value back from the set store (so chip removal / Clear All empties it) and
+ * writes a spec (debounced) or removes it when empty.
  */
 import { useEffect, useRef, useState } from 'react';
-import * as mSql from '@uwdata/mosaic-sql';
-import { useFilterBinding, useMosaicFacet } from '@nozzleio/react-mosaic';
-import { $inputs, facetContexts, tableName } from '../page-context';
-import type {
-  DateRangeFilterDefinition,
-  FilterRuntime,
-  NumberFilterDefinition,
-  TextFilterDefinition,
-} from '@nozzleio/react-mosaic';
+import { useFilterSetState, useMosaicFacet } from '@nozzleio/react-mosaic';
+import { $page, filterSet, tableName } from '../page-context';
+import type { FilterSpec } from '@nozzleio/react-mosaic';
 import type { Selection } from '@uwdata/mosaic-core';
-
-const SCOPE_ID = 'paa';
 
 function FilterShell(props: {
   label: string;
@@ -38,12 +32,36 @@ function FilterShell(props: {
   );
 }
 
+/** Reads one spec's committed value from the set store (undefined when absent). */
+function useSpecValue(id: string): unknown {
+  const { specs } = useFilterSetState(filterSet);
+  return specs.find((spec) => spec.id === id)?.value;
+}
+
+function useDebouncedRun(delayMs: number) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+      }
+    },
+    [],
+  );
+  return (run: () => void) => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+    }
+    timerRef.current = setTimeout(run, delayMs);
+  };
+}
+
 // ── Facet dropdowns ──────────────────────────────────────────────────────────
 
 function FacetDropdown(props: {
   label: string;
   column: string;
-  selection: Selection;
+  specId: string;
   filterBy: Selection;
   arrayColumn?: boolean;
   select: 'single' | 'multi';
@@ -63,7 +81,7 @@ function FacetDropdown(props: {
     select: props.select,
     sort: props.sort,
     filterBy: props.filterBy,
-    publish: { as: props.selection },
+    publish: { into: filterSet, id: props.specId, label: props.label },
     inputs: { search, limit: props.limit },
     // Suppress background option queries while the menu is closed.
     enabled: props.enabled && isOpen,
@@ -198,8 +216,8 @@ export function DomainFilter(props: { enabled: boolean }) {
     <FacetDropdown
       label="Domain"
       column="domain"
-      selection={$inputs.domain}
-      filterBy={facetContexts.domain}
+      specId="facet:domain"
+      filterBy={$page}
       select="single"
       sort="count"
       limit={50}
@@ -214,8 +232,8 @@ export function DeviceFilter(props: { enabled: boolean }) {
     <FacetDropdown
       label="Device"
       column="device"
-      selection={$inputs.device}
-      filterBy={facetContexts.device}
+      specId="facet:device"
+      filterBy={$page}
       select="single"
       sort="count"
       limit={50}
@@ -230,8 +248,8 @@ export function KeywordGroupFilter(props: { enabled: boolean }) {
     <FacetDropdown
       label="Keyword Group"
       column="keyword_groups"
-      selection={$inputs.keywordGroup}
-      filterBy={facetContexts.keywordGroup}
+      specId="facet:keyword-group"
+      filterBy={$page}
       arrayColumn
       select="multi"
       sort="alpha"
@@ -242,69 +260,38 @@ export function KeywordGroupFilter(props: { enabled: boolean }) {
   );
 }
 
-// ── Filter-builder inputs (text / date range / membership subquery) ─────────
+// ── Config-defined text filters ──────────────────────────────────────────────
 
-function textDefinition(
-  id: string,
-  label: string,
-  column: string,
-): TextFilterDefinition {
-  return {
-    id,
-    label,
-    column,
-    valueKind: 'text',
-    operators: ['contains'],
-  };
+interface TextFilterConfig {
+  id: string;
+  column: string;
+  label: string;
 }
 
-const TEXT_RUNTIMES: Record<'phrase' | 'desc' | 'question', FilterRuntime> = {
-  phrase: {
-    definition: textDefinition('phrase', 'Phrase', 'phrase'),
-    selection: $inputs.phrase,
-    scopeId: SCOPE_ID,
-  },
-  desc: {
-    definition: textDefinition('desc', 'Answer Contains', 'description'),
-    selection: $inputs.desc,
-    scopeId: SCOPE_ID,
-  },
+const TEXT_FILTERS: Record<'phrase' | 'desc' | 'question', TextFilterConfig> = {
+  phrase: { id: 'text:phrase', column: 'phrase', label: 'Keyword' },
+  desc: { id: 'text:desc', column: 'description', label: 'Answer Text' },
   question: {
-    definition: textDefinition(
-      'question',
-      'Question Contains',
-      'related_phrase.phrase',
-    ),
-    selection: $inputs.question,
-    scopeId: SCOPE_ID,
+    id: 'text:question',
+    column: 'related_phrase.phrase',
+    label: 'Question',
   },
 };
-
-function useDebouncedApply(apply: () => void, delayMs: number) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-      }
-    },
-    [],
-  );
-  return () => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-    }
-    timerRef.current = setTimeout(apply, delayMs);
-  };
-}
 
 export function TextFilter(props: {
   label: string;
   runtime: 'phrase' | 'desc' | 'question';
   testId: string;
 }) {
-  const binding = useFilterBinding(TEXT_RUNTIMES[props.runtime]);
-  const debouncedApply = useDebouncedApply(binding.apply, 300);
+  const config = TEXT_FILTERS[props.runtime];
+  const committed = useSpecValue(config.id);
+  const [draft, setDraft] = useState('');
+  const debounce = useDebouncedRun(300);
+
+  // Mirror external changes (chip removal, Clear All) into the input.
+  useEffect(() => {
+    setDraft(typeof committed === 'string' ? committed : '');
+  }, [committed]);
 
   return (
     <FilterShell label={props.label}>
@@ -312,39 +299,54 @@ export function TextFilter(props: {
         data-testid={props.testId}
         className="h-9 rounded border border-slate-200 bg-white px-3 text-sm"
         placeholder="Search…"
-        value={typeof binding.value === 'string' ? binding.value : ''}
+        value={draft}
         onChange={(event) => {
-          binding.setValue(event.target.value);
-          debouncedApply();
+          const next = event.target.value;
+          setDraft(next);
+          debounce(() => {
+            if (next === '') {
+              filterSet.remove(config.id);
+              return;
+            }
+            filterSet.set({
+              id: config.id,
+              column: config.column,
+              kind: 'match',
+              operator: 'contains',
+              value: next,
+              label: config.label,
+            });
+          });
         }}
       />
     </FilterShell>
   );
 }
 
-const DATE_DEFINITION: DateRangeFilterDefinition = {
-  id: 'requested',
-  label: 'Requested Date',
-  column: 'requested',
-  valueKind: 'date-range',
-  operators: ['between'],
-};
+// ── Date range ───────────────────────────────────────────────────────────────
 
-const DATE_RUNTIME: FilterRuntime = {
-  definition: DATE_DEFINITION,
-  selection: $inputs.date,
-  scopeId: SCOPE_ID,
-};
+const DATE_SPEC_ID = 'date:requested';
 
 export function DateRangeFilter() {
-  const binding = useFilterBinding(DATE_RUNTIME);
-  const [start, end] = Array.isArray(binding.value)
-    ? [binding.value[0] ?? '', binding.value[1] ?? '']
-    : ['', ''];
+  const committed = useSpecValue(DATE_SPEC_ID);
+  const bounds = Array.isArray(committed) ? committed : [null, null];
+  const start = typeof bounds[0] === 'string' ? bounds[0] : '';
+  const end = typeof bounds[1] === 'string' ? bounds[1] : '';
 
   const setRange = (nextStart: string, nextEnd: string) => {
-    binding.setValue([nextStart || null, nextEnd || null]);
-    binding.apply();
+    const lo = nextStart === '' ? null : nextStart;
+    const hi = nextEnd === '' ? null : nextEnd;
+    if (lo === null && hi === null) {
+      filterSet.remove(DATE_SPEC_ID);
+      return;
+    }
+    filterSet.set({
+      id: DATE_SPEC_ID,
+      column: 'requested',
+      kind: 'interval',
+      value: [lo, hi],
+      label: 'Date Range',
+    });
   };
 
   return (
@@ -356,67 +358,38 @@ export function DateRangeFilter() {
           type="date"
           data-testid="filter-date-start"
           className="h-9 w-full min-w-0 flex-1 rounded border border-slate-200 bg-white px-2 text-sm outline-none focus:border-cyan-600"
-          value={typeof start === 'string' ? start : ''}
-          onChange={(event) =>
-            setRange(event.target.value, typeof end === 'string' ? end : '')
-          }
+          value={start}
+          onChange={(event) => setRange(event.target.value, end)}
         />
         <span className="shrink-0 text-slate-400">–</span>
         <input
           type="date"
           data-testid="filter-date-end"
           className="h-9 w-full min-w-0 flex-1 rounded border border-slate-200 bg-white px-2 text-sm outline-none focus:border-cyan-600"
-          value={typeof end === 'string' ? end : ''}
-          onChange={(event) =>
-            setRange(typeof start === 'string' ? start : '', event.target.value)
-          }
+          value={end}
+          onChange={(event) => setRange(start, event.target.value)}
         />
       </div>
     </FilterShell>
   );
 }
 
-/**
- * Membership-subquery filter: keep rows whose PAA question appears on at
- * least N distinct domains. The filter-builder's `subquery` mode publishes
- *
- *   related_phrase.phrase IN (
- *     SELECT related_phrase.phrase FROM nozzle_paa
- *     GROUP BY 1 HAVING count(DISTINCT domain) >= N)
- */
-const MIN_DOMAINS_DEFINITION: NumberFilterDefinition = {
-  id: 'question-min-domains',
-  label: 'Question Domains',
-  column: 'related_phrase.phrase',
-  valueKind: 'number',
-  operators: ['gte'],
-  subquery: ({ state }) => {
-    const minDomains = Number(state.value);
-    if (!Number.isFinite(minDomains) || minDomains <= 0) {
-      return null;
-    }
-    const questionExpr = mSql.sql`"related_phrase"."phrase"`;
-    return mSql.Query.select({ question: questionExpr })
-      .from(tableName)
-      .groupby(questionExpr)
-      .having(mSql.gte(mSql.count('domain').distinct(), minDomains));
-  },
-};
+// ── Min-domains membership subquery ──────────────────────────────────────────
 
-const MIN_DOMAINS_RUNTIME: FilterRuntime = {
-  definition: MIN_DOMAINS_DEFINITION,
-  selection: $inputs.questionDomains,
-  scopeId: SCOPE_ID,
-};
+const MIN_DOMAINS_SPEC_ID = 'minDomains';
 
 export function QuestionMinDomainsFilter() {
-  const binding = useFilterBinding(MIN_DOMAINS_RUNTIME);
-  const debouncedApply = useDebouncedApply(binding.apply, 400);
+  const committed = useSpecValue(MIN_DOMAINS_SPEC_ID);
+  const [draft, setDraft] = useState('');
+  const debounce = useDebouncedRun(400);
 
-  const value =
-    typeof binding.value === 'number' || typeof binding.value === 'string'
-      ? binding.value
-      : '';
+  useEffect(() => {
+    setDraft(
+      typeof committed === 'number' || typeof committed === 'string'
+        ? String(committed)
+        : '',
+    );
+  }, [committed]);
 
   return (
     <FilterShell label="Question Domains" width="w-[150px]">
@@ -426,11 +399,25 @@ export function QuestionMinDomainsFilter() {
         min={1}
         placeholder="≥ N domains"
         className="h-9 rounded border border-slate-200 bg-white px-3 text-sm"
-        value={value}
+        value={draft}
         onChange={(event) => {
           const raw = event.target.value;
-          binding.setValue(raw === '' ? null : Number(raw));
-          debouncedApply();
+          setDraft(raw);
+          debounce(() => {
+            if (raw === '') {
+              filterSet.remove(MIN_DOMAINS_SPEC_ID);
+              return;
+            }
+            const spec: FilterSpec = {
+              id: MIN_DOMAINS_SPEC_ID,
+              column: 'related_phrase.phrase',
+              kind: 'min-domains',
+              operator: 'gte',
+              value: Number(raw),
+              label: 'Min Domains',
+            };
+            filterSet.set(spec);
+          });
         }}
       />
     </FilterShell>

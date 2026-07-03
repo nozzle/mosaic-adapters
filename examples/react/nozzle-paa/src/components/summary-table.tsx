@@ -1,36 +1,36 @@
 /**
  * A grouped summary table: one rows client whose factory owns the GROUP BY
  * (so `filterStable: false` — the group domain changes under filtering),
- * with row-select publishing into a page-level output Selection consumed by
- * every sibling widget.
+ * with row-select publishing into the page {@link filterSet} (a `select:<card>`
+ * points spec) consumed by every sibling widget.
  *
- * The Selection is the single source of truth for selection state: the
- * in-widget chips, the row checkmarks, and the highlight column all derive
- * from the published clause (read back with `useMosaicSelectionValue`), so
- * external removals — chip bar, global reset — and the enlarge/collapse
- * remount (stable publish `source` + retained clause) need no extra wiring.
+ * The set is the single source of truth for selection state: the in-widget
+ * chips, the row checkmarks, and the highlight column all derive from the
+ * `select:` spec value (read back from the store), so external removals — chip
+ * bar, global reset — and the enlarge/collapse remount (stable spec id +
+ * `#adoptFromSet`) need no extra wiring.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
+import { clausePoints } from '@uwdata/mosaic-core';
 import {
   SqlIdentifier,
   createStructAccess,
+  useFilterSetState,
   useMosaicRows,
-  useMosaicSelectionValue,
   useMosaicSparkline,
 } from '@nozzleio/react-mosaic';
 import {
-  $metricHaving,
-  $summarySelections,
+  $having,
+  filterSet,
   sparklineContext,
-  summaryContexts,
-  summarySelectSources,
+  summaryFilterBy,
   tableName,
 } from '../page-context';
 import { Sparkline } from './sparkline';
 import { WidgetSqlDetails } from './widget-sql-details';
 import type { SparklineX, SparklineY } from '@nozzleio/react-mosaic';
-import type { ExprNode, FilterExpr } from '@uwdata/mosaic-sql';
+import type { ExprNode } from '@uwdata/mosaic-sql';
 import type { SummaryTableId } from '../page-context';
 
 const PAGE_SIZE = 10;
@@ -49,9 +49,16 @@ export interface SummaryTableConfig {
   sparkline?: { x: SparklineX; y: SparklineY };
 }
 
-const EMPTY_TUPLES: SelectedTuples = [];
 const NO_SPARKLINE_X: SparklineX = { column: 'requested' };
 const NO_SPARKLINE_Y: SparklineY = { agg: 'count' };
+
+/** Chip labels for each card's row-selection spec (legacy registry parity). */
+const SELECT_LABELS: Record<SummaryTableId, string> = {
+  phrase: 'Selected Keyword',
+  question: 'Selected Question',
+  domain: 'Selected Domain',
+  url: 'Selected URL',
+};
 
 interface GroupRow {
   key: string | number | null;
@@ -59,22 +66,21 @@ interface GroupRow {
   __is_highlighted: number;
 }
 
-type SelectedTuples = Array<Array<string | number | null>>;
+/** The select spec id a summary card publishes into (page-context targets). */
+function selectSpecId(id: SummaryTableId): string {
+  return `select:${id}`;
+}
 
-function normalizePredicate(predicate: FilterExpr | unknown): ExprNode | null {
-  if (!predicate) {
-    return null;
-  }
-  if (!Array.isArray(predicate)) {
-    return predicate as ExprNode;
-  }
-  if (predicate.length === 0) {
-    return null;
-  }
-  if (predicate.length === 1) {
-    return (predicate[0] ?? null) as ExprNode | null;
-  }
-  return mSql.and(...(predicate as Array<ExprNode>));
+/** Reads a summary card's selected scalar values from its `select:` spec. */
+function useSelectedValues(id: SummaryTableId): Array<string | number | null> {
+  const { specs } = useFilterSetState(filterSet);
+  const value = specs.find((spec) => spec.id === selectSpecId(id))?.value;
+  return useMemo(() => {
+    if (Array.isArray(value)) {
+      return value.filter((v) => v != null) as Array<string | number | null>;
+    }
+    return [];
+  }, [value]);
 }
 
 export function SummaryTable(props: {
@@ -86,29 +92,27 @@ export function SummaryTable(props: {
   promotionButton?: React.ReactNode;
 }) {
   const { config, enabled } = props;
-  const selection = $summarySelections[config.id];
-  const selectSource = summarySelectSources[config.id];
   const [pageIndex, setPageIndex] = useState(0);
 
-  // The table's own published tuples ([[value], …]) — chips, checkmarks,
-  // and the highlight refetch all derive from this read-back.
-  const tuples =
-    useMosaicSelectionValue<SelectedTuples>(selection, {
-      source: selectSource,
-    }) ?? EMPTY_TUPLES;
-  const selectedValues = useMemo(
-    () => tuples.map((tuple) => tuple[0]).filter((value) => value != null),
-    [tuples],
-  );
+  // The card's own selected values, read back from its `select:` spec — chips,
+  // checkmarks, and the highlight column all derive from this.
+  const selectedValues = useSelectedValues(config.id);
 
   const rows = useMosaicRows<GroupRow>({
     query: ({ where, having }) => {
       const groupKey = createStructAccess(SqlIdentifier.from(config.groupBy));
 
-      // Highlight column: rows matching the table's own selection keep 1,
-      // everything else drops to 0 and dims. selection.predicate(null)
-      // resolves the full predicate regardless of clause client sets.
-      const highlightPredicate = normalizePredicate(selection.predicate(null));
+      // Highlight column: rows matching the card's own selected values keep 1,
+      // everything else drops to 0 and dims. Built from the selected values
+      // directly (the clause is self-excluded from this card's own context).
+      const highlightPredicate =
+        selectedValues.length > 0
+          ? clausePoints(
+              [groupKey],
+              selectedValues.map((value) => [value]),
+              { source: {} },
+            ).predicate
+          : null;
       const highlight = highlightPredicate
         ? mSql.max(mSql.sql`CASE WHEN ${highlightPredicate} THEN 1 ELSE 0 END`)
         : mSql.literal(1);
@@ -130,10 +134,10 @@ export function SummaryTable(props: {
       }
       return query;
     },
-    filterBy: summaryContexts[config.id],
+    filterBy: summaryFilterBy[config.id],
     // The card's own metric-threshold filter routes HAVING here; siblings
     // receive its membership subquery through their contexts instead.
-    havingBy: $metricHaving[config.id],
+    havingBy: $having[config.id],
     // The factory GROUP BYs a key whose domain changes under filtering, so
     // Mosaic's pre-aggregation assumptions do not hold.
     filterStable: false,
@@ -151,27 +155,28 @@ export function SummaryTable(props: {
     },
     publish: {
       select: {
-        as: selection,
+        into: filterSet,
+        id: selectSpecId(config.id),
+        label: SELECT_LABELS[config.id],
         columns: ['key'],
         fields: [config.groupBy],
-        source: selectSource,
       },
     },
     enabled,
   });
   const { client } = rows;
 
-  // The table's own selection is deliberately not in its filter context
-  // (peer-minus-self), so a publish never re-queries this client natively —
-  // refetch for the highlight column when the selection actually changes.
-  const lastTuplesRef = useRef(tuples);
+  // The card's own selection clause is self-excluded from its own context, so a
+  // publish never re-queries this client natively — refetch the highlight
+  // column when the selected values actually change.
+  const lastSelectedRef = useRef(selectedValues);
   useEffect(() => {
-    if (lastTuplesRef.current === tuples) {
+    if (lastSelectedRef.current === selectedValues) {
       return;
     }
-    lastTuplesRef.current = tuples;
+    lastSelectedRef.current = selectedValues;
     void client.refetch();
-  }, [tuples, client]);
+  }, [selectedValues, client]);
 
   // Clamp the page when a narrowed context shrinks the group count below
   // the current offset.

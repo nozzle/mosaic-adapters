@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Query, column, count, isNotNull, sql } from '@uwdata/mosaic-sql';
 import { useMosaicValues } from '@nozzleio/react-mosaic';
 import { initPaaTable } from './mosaic-setup';
-import { kpiContext, tableName } from './page-context';
+import { $page, tableName } from './page-context';
 import { ActiveFilterBar } from './components/active-filter-bar';
 import { DetailTable } from './components/detail-table';
 import {
@@ -272,7 +272,7 @@ function HeaderSection(props: { enabled: boolean }) {
           devices: count('device').distinct(),
         })
         .where(where),
-    filterBy: kpiContext,
+    filterBy: $page,
     enabled: props.enabled,
   });
 
