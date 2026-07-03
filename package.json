@@ -36,7 +36,7 @@
     "dev": "pnpm run watch"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "^0.6.0",
+    "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@playwright/test": "catalog:",
     "@tanstack/eslint-config": "catalog:",
@@ -48,8 +48,8 @@
     "eslint-plugin-react-hooks": "catalog:",
     "eslint-plugin-unused-imports": "catalog:",
     "jsdom": "catalog:",
-    "nx": "^22.7.1",
-    "prettier": "^3.8.3",
+    "nx": "^23.0.1",
+    "prettier": "^3.8.4",
     "rimraf": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
