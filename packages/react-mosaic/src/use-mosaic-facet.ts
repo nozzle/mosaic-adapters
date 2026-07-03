@@ -1,5 +1,8 @@
 import { useStore } from '@tanstack/react-store';
-import { createFacetClient } from '@nozzleio/mosaic-core';
+import {
+  createFacetClient,
+  isFilterSetPublishTarget,
+} from '@nozzleio/mosaic-core';
 import { deriveStatus, paramsKey, useBoundClient } from './use-data-client';
 import { useMosaicCoordinator } from './context';
 import type { Coordinator } from '@uwdata/mosaic-core';
@@ -37,6 +40,14 @@ export function useMosaicFacet(
   const coordinator = useMosaicCoordinator(options.coordinator);
   const enabled = options.enabled ?? true;
 
+  // publish is a union: `{ as: Selection }` (Selection identity) vs a
+  // FilterSetPublishTarget (`into`) — capture whichever arm is active so a
+  // change in target recreates the client (same rationale as `persist`).
+  const publish = options.publish;
+  const publishKey = isFilterSetPublishTarget(publish)
+    ? [publish.into, publish.id, publish.kind, publish.label]
+    : [publish?.as];
+
   const client = useBoundClient<FacetInputs, FacetClient>({
     create: () =>
       createFacetClient({ ...options, coordinator, enabled: false }),
@@ -51,7 +62,7 @@ export function useMosaicFacet(
       options.counts,
       options.sort,
       options.select,
-      options.publish?.as,
+      ...publishKey,
       options.persist,
       ...paramsKey(options.params),
     ],
