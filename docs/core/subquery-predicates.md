@@ -46,32 +46,31 @@ $sourceContext.addEventListener('value', republish);
 
 `updateClauseIfChanged` is the convergence guard for this rebuild-on-change loop: a rebuilt-but-identical predicate publishes nothing, so a converged state stops republishing. Avoid making two subquery publishers mutually context-dependent — each rebuild embeds the other's previous predicate and never converges.
 
-## Declarative form: the filter builder's `subquery` mode
+## Declarative form: a FilterSet `subqueryFilterKind`
 
-For input-driven membership filters, prefer a filter definition with a `subquery` factory over hand-rolled publishing — the binding controller owns the context listener, the reentrancy guard, and committed-state persistence:
+For input-driven membership filters, prefer a registered [FilterSet](./filter-set.md) kind built with `subqueryFilterKind` over hand-rolled publishing — the set owns the context listener, the change-suppression guard, and (optional) persistence. The factory receives `args.spec` and `args.contextPredicate`; return a `Query` (or `{ query, negate: true }`), or `null` to clear:
 
 ```ts
-const minDomains: NumberFilterDefinition = {
-  id: 'question-min-domains',
-  column: 'related_phrase.phrase',
-  valueKind: 'number',
-  operators: ['gte'],
-  subquery: ({ state, contextPredicate }) => {
-    const n = Number(state.value);
+const minDomainsKind: FilterKind = {
+  ...subqueryFilterKind((args) => {
+    const n = Number(args.spec.value);
     if (!Number.isFinite(n) || n <= 0) {
       return null; // no predicate — the filter clears
     }
     const question = sql`"related_phrase"."phrase"`;
-    const query = Query.select({ question })
+    return Query.select({ question })
       .from('nozzle_paa')
       .groupby(question)
       .having(gte(count('domain').distinct(), n));
-    if (contextPredicate) {
-      query.where(contextPredicate);
-    }
-    return query; // or { query, negate: true }
-  },
+  }),
+  formatValue: (spec) => `≥ ${String(spec.value)}`,
 };
+
+const filters = createFilterSet({
+  targets: { where: $where },
+  kinds: { 'min-domains': minDomainsKind },
+  context: $page,
+});
 ```
 
-`contextPredicate` is the AND of sibling filters from the runtime's `context` Selection (own clause excluded); it is `null` when no context is attached. See [Filter builder](./filter-builder.md).
+`args.contextPredicate` is the AND of sibling filters from the set's `context` Selection (own spec's clause excluded); embed it in the subquery `WHERE` when the membership set should react to the rest of the page. It is `null` when no context is attached. Reading it registers the context-rebuild dependency, so the set republishes the predicate whenever siblings change. See [Filter set](./filter-set.md).

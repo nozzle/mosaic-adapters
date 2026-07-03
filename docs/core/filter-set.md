@@ -51,7 +51,7 @@ A clause cleared elsewhere (chip bar, `selection.reset()`) removes the owning sp
 | `match`     | string; `operator`: `contains` (default) or `prefix`         | case-insensitive text match                                               |
 | `condition` | operator-driven scalar/range predicates                      | `eq neq gt gte lt lte between in not_in contains starts_with is_null …`   |
 
-`condition` accepts the filter-builder's operator aliases (`is`, `is_any_of`, `before`, `on_or_after`, …) and coerces column types per value (`TRY_CAST` for numbers/dates). For array columns or explicit typing, register a tuned variant:
+`condition` accepts operator aliases (`is`, `is_any_of`, `before`, `on_or_after`, …) and coerces column types per value (`TRY_CAST` for numbers/dates). For array columns or explicit typing, register a tuned variant:
 
 ```ts
 const filters = createFilterSet({

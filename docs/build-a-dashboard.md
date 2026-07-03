@@ -250,12 +250,10 @@ Its Playwright suite asserts each of those flows end-to-end.
 - [Rollup](core/rollup-client.md) / [pivot](core/pivot-client.md) clients —
   SQL-first grouping and crosstabs. [Schema client](core/schema-client.md) —
   read-once field discovery.
-- [Filter builder](core/filter-builder.md) — declarative, persistable filter
-  definitions over Selections.
+- [Filter set](core/filter-set.md) — declarative, persistable filter specs over
+  Selections, with active-filter chips and global reset.
 - [Membership subqueries](core/subquery-predicates.md) — `IN (SELECT …)`
   predicates, context embedding, and change-suppressed republishing.
-- [Filter registry](core/filter-registry.md) — active-filter chips and global
-  reset over registered Selections.
 - [React hooks](react/hooks.md) — controlled-binding rules (what recreates a client, what never re-queries).
 - [TanStack integration](tanstack/integration.md) — translators, clause kinds, bridge lifecycle, and when _not_ to use the bridge.
 - The [`nozzle-paa` example](../examples/react/nozzle-paa) — a bigger page
