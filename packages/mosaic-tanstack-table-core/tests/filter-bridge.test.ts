@@ -1,6 +1,6 @@
 import { Selection } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
-import { createRowsClient } from '@nozzleio/mosaic-core';
+import { createFilterSet, createRowsClient } from '@nozzleio/mosaic-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 
 import { createFilterBridge } from '../src/index';
@@ -9,12 +9,23 @@ import {
   settle,
   waitFor,
 } from '../../mosaic-core/tests/test-utils';
+import type { FilterSet, FilterSpec } from '@nozzleio/mosaic-core';
 import type { SelectionClause } from '@uwdata/mosaic-core';
+import type { ColumnFiltersState } from '@tanstack/table-core';
 import type { FilterBridgeColumns } from '../src/index';
 import type { TestDb } from '../../mosaic-core/tests/test-utils';
 
 function predicateSql(clause: SelectionClause | undefined): string {
   return String(clause?.predicate);
+}
+
+/**
+ * The set attaches a `value` listener to every target, after which
+ * `resolved(selection)` lags one emitted event behind; `_resolved` is upstream's
+ * always-current resolution state, so tests read that.
+ */
+function resolved(selection: Selection): Array<SelectionClause> {
+  return selection._resolved;
 }
 
 function countValueEvents(selection: Selection): () => number {
@@ -25,19 +36,24 @@ function countValueEvents(selection: Selection): () => number {
   return () => events;
 }
 
+function makeSet(target: Selection): FilterSet {
+  return createFilterSet({ targets: { where: target } });
+}
+
 describe('clause kinds', () => {
+  /** Publish one column-filter through the bridge and read the set's clause. */
   function publish(
     columns: FilterBridgeColumns,
     id: string,
     value: unknown,
   ): SelectionClause | undefined {
     const selection = Selection.intersect();
-    const bridge = createFilterBridge({ selection, columns });
+    const bridge = createFilterBridge({ set: makeSet(selection), columns });
     bridge.setFilters([{ id, value }]);
-    return selection.clauses[0];
+    return resolved(selection)[0];
   }
 
-  test('equals maps to a point clause without self-exclusion', () => {
+  test('equals maps to a point spec without self-exclusion', () => {
     const clause = publish({ sport: { clause: 'equals' } }, 'sport', 'swim');
     expect(clause?.meta).toEqual({ type: 'point' });
     expect(clause?.clients).toBeUndefined();
@@ -49,7 +65,7 @@ describe('clause kinds', () => {
     expect(predicateSql(clause)).toContain('IS NULL');
   });
 
-  test('ilike maps to a case-insensitive contains match clause', () => {
+  test('ilike maps to a case-insensitive contains match', () => {
     const clause = publish({ name: { clause: 'ilike' } }, 'name', 'AdA');
     expect(clause?.meta).toEqual({ type: 'match', method: 'contains' });
     // Case folding happens in SQL: contains(lower("name"), lower('AdA')).
@@ -58,12 +74,12 @@ describe('clause kinds', () => {
     expect(sql).toContain(`'AdA'`);
   });
 
-  test('prefix maps to a prefix match clause', () => {
+  test('prefix maps to a prefix match', () => {
     const clause = publish({ name: { clause: 'prefix' } }, 'name', 'Ad');
     expect(clause?.meta).toEqual({ type: 'match', method: 'prefix' });
   });
 
-  test('range with both bounds maps to an interval clause', () => {
+  test('range with both bounds maps to a BETWEEN interval', () => {
     const clause = publish({ weight: { clause: 'range' } }, 'weight', [60, 80]);
     expect(clause?.meta).toMatchObject({ type: 'interval' });
     expect(predicateSql(clause)).toContain('BETWEEN');
@@ -108,7 +124,8 @@ describe('clause kinds', () => {
     expect(predicateSql(list)).toContain('IN');
 
     const scalar = publish({ sport: { clause: 'in' } }, 'sport', 'swim');
-    expect(scalar?.value).toEqual([['swim']]);
+    // The bridge writes a plain-array spec value; the points kind explodes it.
+    expect(scalar?.value).toEqual(['swim']);
   });
 
   test('columns map TanStack ids onto different SQL columns', () => {
@@ -141,6 +158,38 @@ describe('clause kinds', () => {
       id: 'paa_question',
       column: 'related_phrase.phrase',
     });
+  });
+
+  test('label and target from the column config carry onto the spec', () => {
+    const $where = Selection.intersect();
+    const $other = Selection.intersect();
+    const set = createFilterSet({ targets: { where: $where, other: $other } });
+    const bridge = createFilterBridge({
+      set,
+      columns: {
+        domain: { clause: 'ilike', label: 'Domain', target: 'other' },
+      },
+    });
+    bridge.setFilters([{ id: 'domain', value: 'reddit' }]);
+
+    const spec = set.store.state.specs.find((s) => s.id === 'domain');
+    expect(spec?.label).toBe('Domain');
+    expect(spec?.target).toBe('other');
+    // The clause landed on the named target, not the default `where`.
+    expect(resolved($other)).toHaveLength(1);
+    expect(resolved($where)).toHaveLength(0);
+  });
+
+  test('idPrefix namespaces the managed spec ids', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    const bridge = createFilterBridge({
+      set,
+      idPrefix: 'detail:',
+      columns: { domain: { clause: 'ilike' } },
+    });
+    bridge.setFilters([{ id: 'domain', value: 'reddit' }]);
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['detail:domain']);
   });
 
   const emptyCases: Array<{
@@ -194,43 +243,49 @@ describe('clause kinds', () => {
   ];
 
   test.each(emptyCases)(
-    '$name publishes nothing',
+    '$name writes no spec and publishes nothing',
     async ({ columns, id, value }) => {
       const selection = Selection.intersect();
+      const set = makeSet(selection);
       const events = countValueEvents(selection);
-      const bridge = createFilterBridge({ selection, columns });
+      const bridge = createFilterBridge({ set, columns });
       bridge.setFilters([{ id, value }]);
       await settle();
-      expect(selection.clauses).toHaveLength(0);
+      expect(set.store.state.specs).toHaveLength(0);
+      expect(resolved(selection)).toHaveLength(0);
       expect(events()).toBe(0);
     },
   );
 });
 
-describe('clause lifecycle', () => {
+describe('spec lifecycle', () => {
   const columns: FilterBridgeColumns = {
     name: { clause: 'ilike' },
     sport: { clause: 'equals' },
   };
 
-  test('filter changes replace the clause (stable source), never accumulate', () => {
+  test('filter changes replace the spec (stable id), never accumulate', () => {
     const selection = Selection.intersect();
-    const bridge = createFilterBridge({ selection, columns });
+    const set = makeSet(selection);
+    const bridge = createFilterBridge({ set, columns });
 
     bridge.setFilters([{ id: 'name', value: 'ada' }]);
-    expect(selection.clauses).toHaveLength(1);
-    const firstSource = selection.clauses[0]?.source;
+    expect(set.store.state.specs).toHaveLength(1);
+    expect(resolved(selection)).toHaveLength(1);
+    const firstSource = resolved(selection)[0]?.source;
 
     bridge.setFilters([{ id: 'name', value: 'bo' }]);
-    expect(selection.clauses).toHaveLength(1);
-    expect(selection.clauses[0]?.source).toBe(firstSource);
-    expect(predicateSql(selection.clauses[0])).toContain(`'bo'`);
+    expect(set.store.state.specs).toHaveLength(1);
+    expect(resolved(selection)).toHaveLength(1);
+    expect(resolved(selection)[0]?.source).toBe(firstSource);
+    expect(predicateSql(resolved(selection)[0])).toContain(`'bo'`);
   });
 
-  test('value-equal filter state publishes nothing (echo suppression)', async () => {
+  test('value-equal filter state writes nothing to the set (echo suppression)', async () => {
     const selection = Selection.intersect();
+    const set = makeSet(selection);
     const events = countValueEvents(selection);
-    const bridge = createFilterBridge({ selection, columns });
+    const bridge = createFilterBridge({ set, columns });
 
     bridge.setFilters([
       { id: 'name', value: 'ada' },
@@ -239,7 +294,7 @@ describe('clause lifecycle', () => {
     await settle();
     const eventsAfterPublish = events();
     expect(eventsAfterPublish).toBeGreaterThan(0);
-    expect(selection.clauses).toHaveLength(2);
+    expect(resolved(selection)).toHaveLength(2);
 
     // Fresh identities, equal content — the render-loop echo shape.
     bridge.setFilters([
@@ -249,152 +304,109 @@ describe('clause lifecycle', () => {
     bridge.setColumns({ ...columns });
     await settle();
     expect(events()).toBe(eventsAfterPublish);
-    expect(selection.clauses).toHaveLength(2);
+    expect(resolved(selection)).toHaveLength(2);
   });
 
-  test('clearing one column removes exactly its clause', () => {
+  test('clearing one column removes exactly its spec and clause', () => {
     const selection = Selection.intersect();
-    const bridge = createFilterBridge({ selection, columns });
+    const set = makeSet(selection);
+    const bridge = createFilterBridge({ set, columns });
 
     bridge.setFilters([
       { id: 'name', value: 'ada' },
       { id: 'sport', value: 'swim' },
     ]);
-    expect(selection.clauses).toHaveLength(2);
+    expect(resolved(selection)).toHaveLength(2);
 
     bridge.setFilters([{ id: 'sport', value: 'swim' }]);
-    expect(selection.clauses).toHaveLength(1);
-    expect(predicateSql(selection.clauses[0])).toContain(`'swim'`);
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['sport']);
+    expect(resolved(selection)).toHaveLength(1);
+    expect(predicateSql(resolved(selection)[0])).toContain(`'swim'`);
   });
 
   test('unconfigured columns are ignored', async () => {
     const selection = Selection.intersect();
+    const set = makeSet(selection);
     const events = countValueEvents(selection);
-    const bridge = createFilterBridge({ selection, columns });
+    const bridge = createFilterBridge({ set, columns });
 
     bridge.setFilters([{ id: 'mystery', value: 'x' }]);
     await settle();
-    expect(selection.clauses).toHaveLength(0);
+    expect(set.store.state.specs).toHaveLength(0);
+    expect(resolved(selection)).toHaveLength(0);
     expect(events()).toBe(0);
   });
 
-  test('destroy removes every published clause and disables the bridge', () => {
+  test('destroy removes every managed spec and disables the bridge', () => {
     const selection = Selection.intersect();
-    const bridge = createFilterBridge({ selection, columns });
+    const set = makeSet(selection);
+    const bridge = createFilterBridge({ set, columns });
 
     bridge.setFilters([
       { id: 'name', value: 'ada' },
       { id: 'sport', value: 'swim' },
     ]);
-    expect(selection.clauses).toHaveLength(2);
+    expect(resolved(selection)).toHaveLength(2);
 
     bridge.destroy();
     expect(bridge.destroyed).toBe(true);
-    expect(selection.clauses).toHaveLength(0);
+    expect(set.store.state.specs).toHaveLength(0);
+    expect(resolved(selection)).toHaveLength(0);
 
     bridge.setFilters([{ id: 'name', value: 'ada' }]);
-    expect(selection.clauses).toHaveLength(0);
+    expect(resolved(selection)).toHaveLength(0);
   });
 
-  test('setColumns republishes an active filter under its new clause kind', () => {
+  test('setColumns rewrites an active filter under its new clause kind', () => {
     const selection = Selection.intersect();
+    const set = makeSet(selection);
     const bridge = createFilterBridge({
-      selection,
+      set,
       columns: { sport: { clause: 'equals' } },
     });
 
     bridge.setFilters([{ id: 'sport', value: 'swim' }]);
-    expect(selection.clauses[0]?.meta).toEqual({ type: 'point' });
-    const source = selection.clauses[0]?.source;
+    expect(resolved(selection)[0]?.meta).toEqual({ type: 'point' });
+    const source = resolved(selection)[0]?.source;
 
     bridge.setColumns({ sport: { clause: 'ilike' } });
-    expect(selection.clauses).toHaveLength(1);
-    expect(selection.clauses[0]?.source).toBe(source);
-    expect(selection.clauses[0]?.meta).toEqual({
+    expect(resolved(selection)).toHaveLength(1);
+    expect(resolved(selection)[0]?.source).toBe(source);
+    expect(resolved(selection)[0]?.meta).toEqual({
       type: 'match',
       method: 'contains',
     });
   });
 
-  test('removing a column config clears its clause', () => {
+  test('removing a column config clears its spec', () => {
     const selection = Selection.intersect();
-    const bridge = createFilterBridge({ selection, columns });
+    const set = makeSet(selection);
+    const bridge = createFilterBridge({ set, columns });
 
     bridge.setFilters([{ id: 'name', value: 'ada' }]);
-    expect(selection.clauses).toHaveLength(1);
+    expect(resolved(selection)).toHaveLength(1);
 
     bridge.setColumns({ sport: { clause: 'equals' } });
-    expect(selection.clauses).toHaveLength(0);
+    expect(set.store.state.specs).toHaveLength(0);
+    expect(resolved(selection)).toHaveLength(0);
   });
+});
 
-  test('an external selection.reset() drops suppression bookkeeping', () => {
+describe('external changes via the set store', () => {
+  const columns: FilterBridgeColumns = {
+    name: { clause: 'ilike' },
+    sport: { clause: 'equals' },
+  };
+
+  test('an external spec removal is reported through onExternalChange', () => {
     const selection = Selection.intersect();
-    const bridge = createFilterBridge({ selection, columns });
-
-    const filters = [{ id: 'name', value: 'ada' }];
-    bridge.setFilters(filters);
-    expect(selection.clauses).toHaveLength(1);
-
-    selection.reset();
-    expect(selection.clauses).toHaveLength(0);
-
-    // Same content again: without the source.reset hook this would be
-    // suppressed as unchanged and the clause would stay lost.
-    bridge.setFilters([...filters]);
-    expect(selection.clauses).toHaveLength(1);
-  });
-
-  test('with onExternalClear, a reset wins over TanStack state instead of republishing', async () => {
-    const selection = Selection.intersect();
-    const cleared: Array<Array<string>> = [];
+    const set = makeSet(selection);
+    const reported: Array<ColumnFiltersState> = [];
     const bridge = createFilterBridge({
-      selection,
+      set,
       columns,
-      onExternalClear: (columnIds) => {
-        cleared.push(columnIds);
-      },
-    });
-
-    const filters = [{ id: 'name', value: 'ada' }];
-    bridge.setFilters(filters);
-    expect(selection._resolved).toHaveLength(1);
-
-    selection.reset();
-    expect(selection._resolved).toHaveLength(0);
-
-    // Interim state syncs (re-renders) before the prune arrives must NOT
-    // restore the clause.
-    bridge.setFilters([...filters]);
-    expect(selection._resolved).toHaveLength(0);
-
-    // The listener reports the cleared column id (value events are async).
-    await waitFor(() => {
-      expect(cleared.flat()).toContain('name');
-    });
-
-    // The consumer prunes its state; the bridge publishes no redundant
-    // removal event for the already-absent clause.
-    const events = countValueEvents(selection);
-    bridge.setFilters([]);
-    expect(selection._resolved).toHaveLength(0);
-    await settle();
-    expect(events()).toBe(0);
-
-    // A fresh filter after the prune publishes normally again.
-    bridge.setFilters([{ id: 'name', value: 'bo' }]);
-    expect(selection._resolved).toHaveLength(1);
-
-    bridge.destroy();
-  });
-
-  test('with onExternalClear, a single externally-cleared clause is reported', async () => {
-    const selection = Selection.intersect();
-    const cleared: Array<string> = [];
-    const bridge = createFilterBridge({
-      selection,
-      columns,
-      onExternalClear: (columnIds) => {
-        cleared.push(...columnIds);
+      onExternalChange: (filters) => {
+        reported.push(filters);
       },
     });
 
@@ -402,23 +414,243 @@ describe('clause lifecycle', () => {
       { id: 'name', value: 'ada' },
       { id: 'sport', value: 'swim' },
     ]);
-    expect(selection._resolved).toHaveLength(2);
+    expect(resolved(selection)).toHaveLength(2);
 
-    // A chip bar clears exactly one clause by publishing a removal for its
-    // source (not a reset).
-    const nameClause = selection._resolved.find(
-      (clause) => (clause.source as { id?: string }).id === 'name',
-    );
-    selection.update({
-      source: nameClause!.source,
-      value: null,
-      predicate: null,
+    // A chip bar removes exactly one spec.
+    set.remove('name');
+
+    expect(reported.at(-1)).toEqual([{ id: 'sport', value: 'swim' }]);
+    expect(resolved(selection)).toHaveLength(1);
+  });
+
+  test('a global reset clears every managed spec and reports empty state', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    const reported: Array<ColumnFiltersState> = [];
+    const bridge = createFilterBridge({
+      set,
+      columns,
+      onExternalChange: (filters) => {
+        reported.push(filters);
+      },
     });
 
+    bridge.setFilters([
+      { id: 'name', value: 'ada' },
+      { id: 'sport', value: 'swim' },
+    ]);
+    set.reset();
+
+    expect(reported.at(-1)).toEqual([]);
+    expect(resolved(selection)).toHaveLength(0);
+
+    // The report hands ownership back to the consumer: whatever state it
+    // syncs next is authoritative, so re-submitting a filter republishes.
+    bridge.setFilters([{ id: 'name', value: 'ada' }]);
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['name']);
+  });
+
+  test('without onExternalChange, TanStack state stays authoritative', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    const bridge = createFilterBridge({ set, columns });
+
+    bridge.setFilters([{ id: 'name', value: 'ada' }]);
+    set.remove('name');
+    // No callback, no report; the bridge still drops its stale tracking...
+    expect(resolved(selection)).toHaveLength(0);
+    // ...so the next sync republishes even under an equal value (the old
+    // "state-authoritative" contract), not just under a changed one.
+    bridge.setFilters([{ id: 'name', value: 'ada' }]);
+    expect(resolved(selection)).toHaveLength(1);
+  });
+
+  test('an external clause drop on the target is mirrored back too', async () => {
+    // Reset a target Selection directly (not via the set): the set's own
+    // external-clear listener removes the spec (on the async value event),
+    // which the bridge mirrors through its store subscription.
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    const reported: Array<ColumnFiltersState> = [];
+    const bridge = createFilterBridge({
+      set,
+      columns,
+      onExternalChange: (filters) => {
+        reported.push(filters);
+      },
+    });
+
+    bridge.setFilters([{ id: 'name', value: 'ada' }]);
+    expect(resolved(selection)).toHaveLength(1);
+
+    selection.reset();
     await waitFor(() => {
-      expect(cleared).toEqual(['name']);
+      expect(reported.at(-1)).toEqual([]);
     });
-    expect(selection._resolved).toHaveLength(1);
+    bridge.destroy();
+  });
+});
+
+describe('hydration adoption', () => {
+  const columns: FilterBridgeColumns = {
+    name: { clause: 'ilike' },
+    weight: { clause: 'range' },
+  };
+
+  test('specs already in the set under managed ids are adopted, not cleared', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    // Persisted state hydrated before the bridge mounts.
+    set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
+    expect(resolved(selection)).toHaveLength(1);
+
+    const reported: Array<ColumnFiltersState> = [];
+    createFilterBridge({
+      set,
+      columns,
+      onExternalChange: (filters) => {
+        reported.push(filters);
+      },
+    });
+
+    // The bridge reports the inverted TanStack value; the clause survives.
+    expect(reported).toHaveLength(1);
+    expect(reported[0]).toEqual([{ id: 'name', value: 'ada' }]);
+    expect(resolved(selection)).toHaveLength(1);
+  });
+
+  test('without a callback, pre-existing specs are left untouched', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
+
+    const bridge = createFilterBridge({ set, columns });
+    // No callback: the bridge does not adopt or clear the spec.
+    expect(resolved(selection)).toHaveLength(1);
+
+    // It also does not track the spec, so its own reconcile leaves it alone.
+    bridge.setFilters([]);
+    expect(resolved(selection)).toHaveLength(1);
+  });
+
+  test('specs are adopted when setColumns first configures their column', () => {
+    // The hook path: the bridge is constructed before its column config
+    // arrives, so adoption must also run for newly-seen setColumns ids.
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
+
+    const reported: Array<ColumnFiltersState> = [];
+    const bridge = createFilterBridge({
+      set,
+      onExternalChange: (filters) => {
+        reported.push(filters);
+      },
+    });
+    // No columns yet: nothing to adopt.
+    expect(reported).toHaveLength(0);
+
+    bridge.setColumns(columns);
+    expect(reported).toHaveLength(1);
+    expect(reported[0]).toEqual([{ id: 'name', value: 'ada' }]);
+    expect(resolved(selection)).toHaveLength(1);
+  });
+
+  test('an adopted spec survives reconciles against stale consumer state', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
+
+    const bridge = createFilterBridge({
+      set,
+      columns,
+      onExternalChange: () => {},
+    });
+
+    // The same-commit sync effect pushes the consumer's pre-adoption (empty)
+    // state; the adopted spec must not be wiped by it.
+    bridge.setFilters([]);
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['name']);
+    expect(resolved(selection)).toHaveLength(1);
+  });
+
+  test('an adopted spec graduates once consumer state covers it, then is removable', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
+
+    const bridge = createFilterBridge({
+      set,
+      columns,
+      onExternalChange: () => {},
+    });
+
+    // Consumer state catches up (same value): the spec graduates to the
+    // normal lifecycle...
+    bridge.setFilters([{ id: 'name', value: 'ada' }]);
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['name']);
+
+    // ...and a later clear now removes it like any bridge-written spec.
+    bridge.setFilters([]);
+    expect(set.store.state.specs).toHaveLength(0);
+    expect(resolved(selection)).toHaveLength(0);
+  });
+
+  test('destroy leaves adopted specs the consumer never confirmed', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
+
+    const bridge = createFilterBridge({
+      set,
+      columns,
+      onExternalChange: () => {},
+    });
+    // Destroyed before any confirming setFilters (the StrictMode first-mount
+    // shape): the persisted spec must survive for the next bridge to adopt.
+    bridge.destroy();
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['name']);
+    expect(resolved(selection)).toHaveLength(1);
+  });
+
+  test('destroy removes an adopted spec after it graduated', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
+
+    const bridge = createFilterBridge({
+      set,
+      columns,
+      onExternalChange: () => {},
+    });
+    bridge.setFilters([{ id: 'name', value: 'ada' }]);
+
+    bridge.destroy();
+    expect(set.store.state.specs).toHaveLength(0);
+    expect(resolved(selection)).toHaveLength(0);
+  });
+
+  test('an external removal of an adopted spec drops its protection', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
+
+    const reported: Array<ColumnFiltersState> = [];
+    const bridge = createFilterBridge({
+      set,
+      columns,
+      onExternalChange: (filters) => {
+        reported.push(filters);
+      },
+    });
+
+    set.remove('name');
+    expect(reported.at(-1)).toEqual([]);
+
+    // Nothing left to protect: a republish + clear cycle behaves normally.
+    bridge.setFilters([{ id: 'name', value: 'bo' }]);
+    bridge.setFilters([]);
+    expect(set.store.state.specs).toHaveLength(0);
   });
 });
 
@@ -431,6 +663,7 @@ describe('end-to-end against DuckDB', () => {
 
   test('the consuming table is filtered by its own column filters (deliberately not self-excluded)', async () => {
     const $page = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $page } });
     const rows = createRowsClient({
       coordinator: db.coordinator,
       query: ({ where }) =>
@@ -442,7 +675,7 @@ describe('end-to-end against DuckDB', () => {
     });
 
     const bridge = createFilterBridge({
-      selection: $page,
+      set,
       columns: {
         sport: { clause: 'equals' },
         name: { clause: 'ilike' },
@@ -450,10 +683,10 @@ describe('end-to-end against DuckDB', () => {
       },
     });
 
-    // Even in a crossfilter Selection the bridge clause carries no clients
-    // set, so the table's own rows client re-queries with the filter.
+    // Even in a crossfilter Selection the spec carries no clients, so the
+    // table's own rows client re-queries with the filter.
     bridge.setFilters([{ id: 'sport', value: 'swim' }]);
-    expect($page.clauses[0]?.clients).toBeUndefined();
+    expect(resolved($page)[0]?.clients).toBeUndefined();
     await waitFor(() => {
       expect(rows.store.state.rows).toHaveLength(4);
     });
@@ -490,6 +723,7 @@ describe('end-to-end against DuckDB', () => {
 
   test('destroy restores unfiltered results for consumers', async () => {
     const $page = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $page } });
     const rows = createRowsClient({
       coordinator: db.coordinator,
       query: ({ where }) =>
@@ -497,7 +731,7 @@ describe('end-to-end against DuckDB', () => {
       filterBy: $page,
     });
     const bridge = createFilterBridge({
-      selection: $page,
+      set,
       columns: { sport: { clause: 'in' } },
     });
 

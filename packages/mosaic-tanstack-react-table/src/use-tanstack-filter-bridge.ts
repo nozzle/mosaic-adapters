@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createFilterBridge } from '@nozzleio/mosaic-tanstack-table-core';
-import type { Selection } from '@uwdata/mosaic-core';
+import type { FilterSet } from '@nozzleio/mosaic-core';
 import type { ColumnFiltersState } from '@tanstack/table-core';
 import type {
   FilterBridge,
@@ -10,56 +10,72 @@ import type {
 export interface UseTanStackFilterBridgeOptions {
   /** TanStack column-filter state (consumer-owned, controlled). */
   filters: ColumnFiltersState;
-  /** Selection that receives one clause per actively filtered column. */
-  selection: Selection;
+  /** FilterSet that receives one spec per actively filtered column. */
+  set: FilterSet;
   /**
    * Per-column clause config, keyed by TanStack column id. Compared by
    * value — inline literals are fine.
    */
   columns: FilterBridgeColumns;
   /**
-   * Makes external clause removals (chip bar, global reset) win over
-   * TanStack state: the bridge reports the cleared column ids so the
-   * consumer can prune its `columnFilters` state (and with it, the filter
-   * inputs). Without it, the next state sync republishes the clause. Held
-   * by latest-ref — a new function identity never recreates the bridge.
+   * Prefix for every managed spec id (`spec.id = `${idPrefix}${columnId}``).
+   * Defaults to `''`. Compared by value — a stable literal is fine.
    */
-  onExternalClear?: (columnIds: Array<string>) => void;
+  idPrefix?: string;
+  /**
+   * Reports the TanStack `columnFilters` state the consumer should adopt after
+   * an external spec change (a chip bar's X, a global `set.reset()`, or
+   * persisted state hydrated before mount): the bridge inverts the surviving
+   * specs back to filter values so the consumer can prune cleared columns or
+   * hydrate persisted ones. Held by latest-ref — a new function identity never
+   * recreates the bridge.
+   */
+  onExternalChange?: (filters: ColumnFiltersState) => void;
 }
 
 /**
- * Controlled wrapper over the filter-bridge core: publishes TanStack
- * `columnFilters` state as clauses on a Selection.
+ * Controlled wrapper over the filter-bridge core: translates TanStack
+ * `columnFilters` state into {@link FilterSpec}s on a FilterSet.
  *
  * The bridge owns no data client and renders nothing, so its lifecycle is
  * entirely effect-scoped: created post-commit, destroyed (removing every
- * published clause) on unmount or when `selection` changes identity. A new
- * bridge starts empty; the sync effect below runs in the same commit and
- * publishes the current state. `filters` and `columns` are synced every
- * render; the core value-diffs, so re-renders with equal state publish
- * nothing and cannot echo into a Selection-activation feedback loop.
+ * managed spec) on unmount or when `set` changes identity. A new bridge adopts
+ * any specs already in the set under its managed ids; the sync effect below
+ * runs in the same commit and reconciles the current state. `filters` and
+ * `columns` are synced every render; the core value-diffs, so re-renders with
+ * equal state publish nothing and cannot echo into a Selection-activation
+ * feedback loop.
  */
 export function useTanStackFilterBridge(
   options: UseTanStackFilterBridgeOptions,
 ): void {
-  const { filters, selection, columns, onExternalClear } = options;
+  const { filters, set, columns, idPrefix, onExternalChange } = options;
 
   const bridgeRef = useRef<FilterBridge | null>(null);
-  const onExternalClearRef = useRef(onExternalClear);
-  const hasExternalClear = onExternalClear !== undefined;
+  const onExternalChangeRef = useRef(onExternalChange);
+  const columnsRef = useRef(columns);
+  const hasExternalChange = onExternalChange !== undefined;
 
-  // Latest-ref: the bridge invokes the callback from Selection value events
-  // (always post-commit), so syncing it in an effect is early enough.
+  // Latest-refs: the bridge invokes the callback from set-store events (always
+  // post-commit), so syncing in an effect is early enough. `columns` rides
+  // along (this effect runs before the lifecycle effect below) so a bridge
+  // re-creation sees the current config without it joining the lifecycle deps.
   useEffect(() => {
-    onExternalClearRef.current = onExternalClear;
+    onExternalChangeRef.current = onExternalChange;
+    columnsRef.current = columns;
   });
 
   useEffect(() => {
+    // The initial columns must reach the constructor: hydration adoption
+    // scans the set for specs under the managed (column-derived) ids, so a
+    // column-less bridge would never adopt persisted state at mount.
     const bridge = createFilterBridge({
-      selection,
-      onExternalClear: hasExternalClear
-        ? (columnIds) => {
-            onExternalClearRef.current?.(columnIds);
+      set,
+      columns: columnsRef.current,
+      idPrefix,
+      onExternalChange: hasExternalChange
+        ? (nextFilters) => {
+            onExternalChangeRef.current?.(nextFilters);
           }
         : undefined,
     });
@@ -68,7 +84,7 @@ export function useTanStackFilterBridge(
       bridgeRef.current = null;
       bridge.destroy();
     };
-  }, [selection, hasExternalClear]);
+  }, [set, idPrefix, hasExternalChange]);
 
   useEffect(() => {
     const bridge = bridgeRef.current;

@@ -11,7 +11,7 @@ import {
   sortingToOrderBy,
   useTanStackFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { $page, $picked, tableName } from '../page-context';
+import { $page, $picked, filterSet, tableName } from '../page-context';
 import { Sparkline } from './sparkline';
 import type {
   Column,
@@ -97,7 +97,7 @@ export function AthletesTable() {
 
   useTanStackFilterBridge({
     filters: columnFilters,
-    selection: $page,
+    set: filterSet,
     columns: bridgeColumns,
   });
 

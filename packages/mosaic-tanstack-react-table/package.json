@@ -48,6 +48,7 @@
     "test:lint": "eslint ./src"
   },
   "dependencies": {
+    "@nozzleio/mosaic-core": "workspace:*",
     "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
     "@tanstack/table-core": "catalog:"
   },
@@ -59,7 +60,6 @@
   "devDependencies": {
     "@duckdb/duckdb-wasm": "1.33.1-dev45.0",
     "@eslint-react/eslint-plugin": "catalog:",
-    "@nozzleio/mosaic-core": "workspace:*",
     "@nozzleio/react-mosaic": "workspace:*",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

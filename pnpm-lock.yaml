@@ -284,6 +284,9 @@ importers:
 
   packages/mosaic-tanstack-react-table:
     dependencies:
+      '@nozzleio/mosaic-core':
+        specifier: workspace:*
+        version: link:../mosaic-core
       '@nozzleio/mosaic-tanstack-table-core':
         specifier: workspace:*
         version: link:../mosaic-tanstack-table-core
@@ -297,9 +300,6 @@ importers:
       '@eslint-react/eslint-plugin':
         specifier: 'catalog:'
         version: 3.0.0(eslint@10.2.1(jiti@2.6.1))(typescript@5.9.3)
-      '@nozzleio/mosaic-core':
-        specifier: workspace:*
-        version: link:../mosaic-core
       '@nozzleio/react-mosaic':
         specifier: workspace:*
         version: link:../react-mosaic
