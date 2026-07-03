@@ -912,202 +912,7 @@ describe('filter builder hooks', () => {
     await view.unmount();
   });
 
-  test('scope persister seeds multiple empty filters from a sparse snapshot', async () => {
-    const definitions: Array<FilterDefinition> = [
-      {
-        id: 'name',
-        label: 'Name',
-        column: 'name',
-        valueKind: 'text',
-        operators: [TEXT_CONDITIONS.CONTAINS],
-        defaultOperator: TEXT_CONDITIONS.CONTAINS,
-      },
-      {
-        id: 'sport',
-        label: 'Sport',
-        column: 'sport',
-        valueKind: 'facet-single',
-        operators: [SELECT_CONDITIONS.IS],
-        defaultOperator: SELECT_CONDITIONS.IS,
-      },
-    ];
-    const scopePersister = {
-      read: vi.fn(() => ({
-        name: {
-          operator: TEXT_CONDITIONS.CONTAINS,
-          value: 'persisted',
-          valueTo: null,
-        },
-        sport: {
-          operator: SELECT_CONDITIONS.IS,
-          value: 'Basketball',
-          valueTo: null,
-        },
-      })),
-      write: vi.fn(),
-    };
-    const probeState: {
-      scope?: ReturnType<typeof useMosaicFilters>;
-    } = {};
-
-    function Probe() {
-      const scope = useMosaicFilters({
-        scopeId: 'page',
-        definitions,
-        persister: scopePersister,
-      });
-
-      React.useEffect(() => {
-        probeState.scope = scope;
-      }, [scope]);
-
-      return null;
-    }
-
-    const view = await render(<Probe />);
-    await flushEffects();
-
-    expect(scopePersister.read).toHaveBeenCalledTimes(1);
-    expect(scopePersister.write).not.toHaveBeenCalled();
-    expect(probeState.scope?.getFilter('name')?.selection.value).toMatchObject({
-      operator: TEXT_CONDITIONS.CONTAINS,
-      value: 'persisted',
-    });
-    expect(probeState.scope?.getFilter('sport')?.selection.value).toMatchObject(
-      {
-        operator: SELECT_CONDITIONS.IS,
-        value: 'Basketball',
-      },
-    );
-
-    await view.unmount();
-  });
-
-  test('useFilterBinding reflects scope hydration on the initial mount', async () => {
-    const definitions: Array<FilterDefinition> = [
-      {
-        id: 'name',
-        label: 'Name',
-        column: 'name',
-        valueKind: 'text',
-        operators: [TEXT_CONDITIONS.CONTAINS],
-        defaultOperator: TEXT_CONDITIONS.CONTAINS,
-      },
-    ];
-    const scopePersister = {
-      read: vi.fn(() => ({
-        name: {
-          operator: TEXT_CONDITIONS.CONTAINS,
-          value: 'persisted',
-          valueTo: null,
-        },
-      })),
-      write: vi.fn(),
-    };
-    const probeState: {
-      binding?: FilterBinding;
-      runtime?: FilterRuntime;
-    } = {};
-
-    function Probe() {
-      const scope = useMosaicFilters({
-        scopeId: 'page',
-        definitions,
-        persister: scopePersister,
-      });
-      const runtime = scope.getFilter('name');
-      const binding = useFilterBinding(runtime!);
-
-      React.useEffect(() => {
-        probeState.binding = binding;
-        probeState.runtime = runtime;
-      }, [binding, runtime]);
-
-      return null;
-    }
-
-    const view = await render(<Probe />);
-    await flushEffects();
-
-    expect(scopePersister.read).toHaveBeenCalledTimes(1);
-    expect(scopePersister.write).not.toHaveBeenCalled();
-    expect(probeState.binding?.value).toBe('persisted');
-    expect(probeState.runtime?.selection.value).toMatchObject({
-      operator: TEXT_CONDITIONS.CONTAINS,
-      value: 'persisted',
-    });
-
-    await view.unmount();
-  });
-
-  test('binding persister overrides scope hydration for the same filter', async () => {
-    const definitions: Array<FilterDefinition> = [
-      {
-        id: 'name',
-        label: 'Name',
-        column: 'name',
-        valueKind: 'text',
-        operators: [TEXT_CONDITIONS.CONTAINS],
-        defaultOperator: TEXT_CONDITIONS.CONTAINS,
-      },
-    ];
-    const bindingPersister = {
-      read: vi.fn(() => ({
-        operator: TEXT_CONDITIONS.CONTAINS,
-        value: 'binding',
-        valueTo: null,
-      })),
-      write: vi.fn(),
-    };
-    const scopePersister = {
-      read: vi.fn(() => ({
-        name: {
-          operator: TEXT_CONDITIONS.CONTAINS,
-          value: 'scope',
-          valueTo: null,
-        },
-      })),
-      write: vi.fn(),
-    };
-    const probeState: {
-      binding?: FilterBinding;
-      runtime?: FilterRuntime;
-    } = {};
-
-    function Probe() {
-      const scope = useMosaicFilters({
-        scopeId: 'page',
-        definitions,
-        persister: scopePersister,
-      });
-      const runtime = scope.getFilter('name');
-      const binding = useFilterBinding(runtime!, {
-        persister: bindingPersister,
-      });
-
-      React.useEffect(() => {
-        probeState.binding = binding;
-        probeState.runtime = runtime;
-      }, [binding, runtime]);
-
-      return null;
-    }
-
-    const view = await render(<Probe />);
-    await flushEffects();
-
-    expect(probeState.binding?.value).toBe('binding');
-    expect(probeState.runtime?.selection.value).toMatchObject({
-      operator: TEXT_CONDITIONS.CONTAINS,
-      value: 'binding',
-    });
-    expect(bindingPersister.write).not.toHaveBeenCalled();
-    expect(scopePersister.write).not.toHaveBeenCalled();
-
-    await view.unmount();
-  });
-
-  test('persisters only write on committed changes and clear removes persisted state', async () => {
+  test('binding persister only writes on committed changes and clear removes persisted state', async () => {
     const definitions: Array<FilterDefinition> = [
       {
         id: 'name',
@@ -1122,10 +927,6 @@ describe('filter builder hooks', () => {
       read: vi.fn(() => null),
       write: vi.fn(),
     };
-    const scopePersister = {
-      read: vi.fn(() => null),
-      write: vi.fn(),
-    };
     const probeState: {
       binding?: FilterBinding;
       runtime?: FilterRuntime;
@@ -1135,7 +936,6 @@ describe('filter builder hooks', () => {
       const scope = useMosaicFilters({
         scopeId: 'page',
         definitions,
-        persister: scopePersister,
       });
       const runtime = scope.getFilter('name');
       const binding = useFilterBinding(runtime!, {
@@ -1159,7 +959,6 @@ describe('filter builder hooks', () => {
     await flushEffects();
 
     expect(bindingPersister.write).not.toHaveBeenCalled();
-    expect(scopePersister.write).not.toHaveBeenCalled();
 
     act(() => {
       probeState.binding?.apply();
@@ -1175,21 +974,7 @@ describe('filter builder hooks', () => {
       expect.objectContaining({
         filterId: 'name',
         scopeId: 'page',
-        reason: 'apply',
-      }),
-    );
-    expect(scopePersister.write).toHaveBeenLastCalledWith(
-      {
-        name: {
-          operator: TEXT_CONDITIONS.CONTAINS,
-          value: 'draft',
-          valueTo: null,
-        },
-      },
-      expect.objectContaining({
-        filterId: 'name',
-        scopeId: 'page',
-        reason: 'apply',
+        reason: 'update',
       }),
     );
 
@@ -1200,14 +985,6 @@ describe('filter builder hooks', () => {
 
     expect(bindingPersister.write).toHaveBeenLastCalledWith(
       null,
-      expect.objectContaining({
-        filterId: 'name',
-        scopeId: 'page',
-        reason: 'clear',
-      }),
-    );
-    expect(scopePersister.write).toHaveBeenLastCalledWith(
-      {},
       expect.objectContaining({
         filterId: 'name',
         scopeId: 'page',
@@ -1229,20 +1006,6 @@ describe('filter builder hooks', () => {
         operator: TEXT_CONDITIONS.CONTAINS,
         value: 'external',
         valueTo: null,
-      },
-      expect.objectContaining({
-        filterId: 'name',
-        scopeId: 'page',
-        reason: 'external',
-      }),
-    );
-    expect(scopePersister.write).toHaveBeenLastCalledWith(
-      {
-        name: {
-          operator: TEXT_CONDITIONS.CONTAINS,
-          value: 'external',
-          valueTo: null,
-        },
       },
       expect.objectContaining({
         filterId: 'name',
@@ -1273,16 +1036,6 @@ describe('filter builder hooks', () => {
       })),
       write: vi.fn(),
     };
-    const scopePersister = {
-      read: vi.fn(() => ({
-        name: {
-          operator: TEXT_CONDITIONS.CONTAINS,
-          value: 'scope',
-          valueTo: null,
-        },
-      })),
-      write: vi.fn(),
-    };
     const probeState: {
       binding?: FilterBinding;
     } = {};
@@ -1291,7 +1044,6 @@ describe('filter builder hooks', () => {
       const scope = useMosaicFilters({
         scopeId: 'page',
         definitions,
-        persister: scopePersister,
       });
       const runtime = scope.getFilter('name');
       const binding = useFilterBinding(runtime!, {
@@ -1309,7 +1061,6 @@ describe('filter builder hooks', () => {
     await flushEffects();
 
     expect(bindingPersister.write).not.toHaveBeenCalled();
-    expect(scopePersister.write).not.toHaveBeenCalled();
 
     act(() => {
       probeState.binding?.setValue('applied');
@@ -1322,7 +1073,6 @@ describe('filter builder hooks', () => {
     await flushEffects();
 
     expect(bindingPersister.write).toHaveBeenCalledTimes(1);
-    expect(scopePersister.write).toHaveBeenCalledTimes(1);
 
     await view.unmount();
   });

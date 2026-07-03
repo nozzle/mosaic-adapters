@@ -1,21 +1,10 @@
 import * as React from 'react';
 import { Selection } from '@uwdata/mosaic-core';
-import {
-  applyFilterSelection,
-  reapplyCommittedFilterSelection,
-} from '@nozzleio/mosaic-core';
+import { reapplyCommittedFilterSelection } from '@nozzleio/mosaic-core';
 
 import { useComposedSelection } from '../use-topology-helpers';
-import {
-  createFilterScopePersistenceContext,
-  createSparseFilterScopeSnapshot,
-  getCommittedFilterSelectionState,
-  markRecentPersistedHydration,
-  readCommittedFilterWriteReason,
-  readRecentPersistedHydrationSource,
-} from './persistence-helpers';
 
-import type { FilterBindingState, FilterRuntime } from '@nozzleio/mosaic-core';
+import type { FilterRuntime } from '@nozzleio/mosaic-core';
 import type { FilterScope, UseMosaicFiltersOptions } from './types';
 
 function createSelectionRecord(
@@ -64,7 +53,6 @@ export function useMosaicFilters(
 ): FilterScope & {
   getFilter: (id: string) => FilterRuntime | undefined;
 } {
-  const scopePersister = options.persister;
   const [selectionRecord, setSelectionRecord] = React.useState(() =>
     createSelectionRecord(options.definitions),
   );
@@ -128,123 +116,11 @@ export function useMosaicFilters(
   const runtimeMap = React.useMemo(() => {
     return new Map(runtimes.map((runtime) => [runtime.definition.id, runtime]));
   }, [runtimes]);
-  const runtimeRecord = React.useMemo(
-    () =>
-      runtimes.reduce<Record<string, FilterRuntime>>((record, runtime) => {
-        record[runtime.definition.id] = runtime;
-        return record;
-      }, {}),
-    [runtimes],
-  );
-  const scopePersistenceContext = React.useMemo(
-    () => createFilterScopePersistenceContext(runtimeRecord, options.scopeId),
-    [options.scopeId, runtimeRecord],
-  );
-  const scopePersistenceContextRef = React.useRef(scopePersistenceContext);
-  const persistedScopeSnapshotRef = React.useRef<Partial<
-    Record<string, FilterBindingState>
-  > | null>(null);
-  const initializedScopeFiltersRef = React.useRef<Set<string>>(new Set());
 
   const getFilter = React.useCallback(
     (id: string) => runtimeMap.get(id),
     [runtimeMap],
   );
-
-  React.useEffect(() => {
-    scopePersistenceContextRef.current = scopePersistenceContext;
-  }, [scopePersistenceContext]);
-
-  React.useEffect(() => {
-    initializedScopeFiltersRef.current = new Set();
-
-    if (!scopePersister) {
-      persistedScopeSnapshotRef.current = null;
-      return;
-    }
-
-    persistedScopeSnapshotRef.current =
-      scopePersister.read(scopePersistenceContextRef.current) ?? null;
-  }, [options.scopeId, scopePersister]);
-
-  React.useEffect(() => {
-    if (!scopePersister) {
-      return;
-    }
-
-    const persistedScopeSnapshot = persistedScopeSnapshotRef.current;
-
-    if (!persistedScopeSnapshot) {
-      return;
-    }
-
-    runtimes.forEach((runtime) => {
-      const filterId = runtime.definition.id;
-
-      if (initializedScopeFiltersRef.current.has(filterId)) {
-        return;
-      }
-
-      initializedScopeFiltersRef.current.add(filterId);
-
-      const persistedState = persistedScopeSnapshot[filterId];
-
-      if (!persistedState || getCommittedFilterSelectionState(runtime)) {
-        return;
-      }
-
-      markRecentPersistedHydration(runtime.selection, 'scope', persistedState);
-      applyFilterSelection(runtime, persistedState);
-    });
-  }, [runtimes, scopePersister]);
-
-  React.useEffect(() => {
-    if (!scopePersister) {
-      return;
-    }
-
-    const removeListeners = Object.values(runtimeRecord).map((runtime) => {
-      const handleCommittedSelectionChange = () => {
-        const committedState = getCommittedFilterSelectionState(runtime);
-
-        if (
-          committedState &&
-          readRecentPersistedHydrationSource(
-            runtime.selection,
-            committedState,
-          ) !== null
-        ) {
-          return;
-        }
-
-        scopePersister.write(createSparseFilterScopeSnapshot(runtimeRecord), {
-          ...scopePersistenceContext,
-          filterId: runtime.definition.id,
-          definition: runtime.definition,
-          runtime,
-          reason: readCommittedFilterWriteReason(runtime.selection),
-        });
-      };
-
-      runtime.selection.addEventListener(
-        'value',
-        handleCommittedSelectionChange,
-      );
-
-      return () => {
-        runtime.selection.removeEventListener(
-          'value',
-          handleCommittedSelectionChange,
-        );
-      };
-    });
-
-    return () => {
-      removeListeners.forEach((removeListener) => {
-        removeListener();
-      });
-    };
-  }, [runtimeRecord, scopePersistenceContext, scopePersister]);
 
   return {
     id: options.scopeId,

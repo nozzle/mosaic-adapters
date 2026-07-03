@@ -76,8 +76,6 @@ export { useFilterFacet } from './filter-builder/use-filter-facet';
 export type { FilterFacetResult } from './filter-builder/use-filter-facet';
 export {
   createFilterBindingPersistenceContext,
-  createFilterScopePersistenceContext,
-  createSparseFilterScopeSnapshot,
   getCommittedFilterSelectionState,
   hasValidCommittedFilterSelectionState,
   markNextCommittedFilterWriteReason,
@@ -89,9 +87,6 @@ export type {
   FilterBindingPersister,
   FilterPersistenceWriteReason,
   FilterScope,
-  FilterScopePersistenceContext,
-  FilterScopePersistenceWriteContext,
-  FilterScopePersister,
   UseFilterBindingOptions,
   UseFilterFacetOptions,
   UseMosaicFiltersOptions,

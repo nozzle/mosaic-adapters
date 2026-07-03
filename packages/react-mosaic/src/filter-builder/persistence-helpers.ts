@@ -8,12 +8,10 @@ import type { FilterBindingState, FilterRuntime } from '@nozzleio/mosaic-core';
 import type {
   FilterBindingPersistenceContext,
   FilterPersistenceWriteReason,
-  FilterScopePersistenceContext,
 } from './types';
 import type { Selection } from '@uwdata/mosaic-core';
 
-type ScopeHydrationMarker = {
-  source: 'binding' | 'scope';
+type BindingHydrationMarker = {
   key: string;
   token: symbol;
 };
@@ -28,7 +26,7 @@ const WRITE_REASON_BY_SELECTION = new WeakMap<
 
 const RECENT_PERSISTED_HYDRATION_BY_SELECTION = new WeakMap<
   Selection,
-  ScopeHydrationMarker
+  BindingHydrationMarker
 >();
 
 function getStateKey(state: FilterBindingState): string {
@@ -56,16 +54,6 @@ export function createFilterBindingPersistenceContext(
     filterId: filter.definition.id,
     definition: filter.definition,
     runtime: filter,
-  };
-}
-
-export function createFilterScopePersistenceContext(
-  filters: Record<string, FilterRuntime>,
-  scopeId: string,
-): FilterScopePersistenceContext {
-  return {
-    scopeId,
-    filters,
   };
 }
 
@@ -107,22 +95,6 @@ export function getCommittedFilterSelectionState(
   return readFilterSelectionState(filter);
 }
 
-export function createSparseFilterScopeSnapshot(
-  filters: Record<string, FilterRuntime>,
-): Partial<Record<string, FilterBindingState>> {
-  return Object.values(filters).reduce<
-    Partial<Record<string, FilterBindingState>>
-  >((snapshot, runtime) => {
-    const state = getCommittedFilterSelectionState(runtime);
-
-    if (state) {
-      snapshot[runtime.definition.id] = state;
-    }
-
-    return snapshot;
-  }, {});
-}
-
 export function markNextCommittedFilterWriteReason(
   selection: Selection,
   reason: FilterPersistenceWriteReason,
@@ -154,12 +126,10 @@ export function getFilterBindingStateKey(state: FilterBindingState): string {
 
 export function markRecentPersistedHydration(
   selection: Selection,
-  source: 'binding' | 'scope',
   state: FilterBindingState,
 ): void {
-  const token = Symbol(`${source}-hydration`);
+  const token = Symbol('binding-hydration');
   RECENT_PERSISTED_HYDRATION_BY_SELECTION.set(selection, {
-    source,
     key: getStateKey(state),
     token,
   });
@@ -173,15 +143,15 @@ export function markRecentPersistedHydration(
   }, 0);
 }
 
-export function readRecentPersistedHydrationSource(
+export function isRecentPersistedHydration(
   selection: Selection,
   state: FilterBindingState,
-): 'binding' | 'scope' | null {
+): boolean {
   const hydration = RECENT_PERSISTED_HYDRATION_BY_SELECTION.get(selection);
 
   if (!hydration) {
-    return null;
+    return false;
   }
 
-  return hydration.key === getStateKey(state) ? hydration.source : null;
+  return hydration.key === getStateKey(state);
 }
