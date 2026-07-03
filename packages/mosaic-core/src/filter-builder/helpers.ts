@@ -5,14 +5,14 @@ import {
   createValueClause,
 } from '../clause-factory';
 import {
+  buildSubqueryPredicate,
+  normalizeSubqueryFilterQuery,
+} from '../subquery-predicate';
+import {
   buildCollectionPredicate,
   buildConditionPredicate,
   buildEmptyValuePredicate,
 } from './condition-predicate';
-import {
-  buildSubqueryPredicate,
-  normalizeSubqueryFilterQuery,
-} from './subquery-predicate';
 
 import type { SqlFilterClauseTarget } from '../filter-routing';
 import type { Selection, SelectionClause } from '@uwdata/mosaic-core';

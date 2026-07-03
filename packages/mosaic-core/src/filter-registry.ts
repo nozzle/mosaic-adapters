@@ -13,7 +13,7 @@
 import { clausePoints } from '@uwdata/mosaic-core';
 import { Store } from '@tanstack/store';
 import { createClearClause } from './clause-factory';
-import { SqlIdentifier, createStructAccess } from './filter-builder/sql-access';
+import { SqlIdentifier, createStructAccess } from './sql-access';
 import type {
   ClauseSource,
   Selection,

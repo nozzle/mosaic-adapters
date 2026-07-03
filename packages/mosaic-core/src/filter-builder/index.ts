@@ -24,17 +24,3 @@ export type {
   BuildEmptyValuePredicateOptions,
   ConditionDataType,
 } from './condition-predicate';
-export {
-  buildSubqueryPredicate,
-  normalizeSubqueryFilterQuery,
-} from './subquery-predicate';
-export type {
-  BuildSubqueryPredicateOptions,
-  SubqueryFilterQuery,
-} from './subquery-predicate';
-export {
-  SqlIdentifier,
-  createStructAccess,
-  createTypedAccess,
-  escapeSqlLikePattern,
-} from './sql-access';

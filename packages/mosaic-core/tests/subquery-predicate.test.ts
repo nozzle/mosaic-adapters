@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest';
 import {
   buildSubqueryPredicate,
   normalizeSubqueryFilterQuery,
-} from '../src/filter-builder/subquery-predicate';
+} from '../src/subquery-predicate';
 
 function popularQuestions(threshold: number) {
   return mSql.Query.select('question')

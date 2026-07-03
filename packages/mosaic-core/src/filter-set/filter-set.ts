@@ -35,7 +35,7 @@ import {
   updateClauseIfChanged,
 } from '../clause-factory';
 import { PersisterLifecycle } from '../persistence';
-import { SqlIdentifier, createStructAccess } from '../filter-builder/sql-access';
+import { SqlIdentifier, createStructAccess } from '../sql-access';
 import { formatFilterValue } from './format';
 import { builtinFilterKinds } from './kinds';
 import type {
@@ -383,8 +383,7 @@ class FilterSetImpl implements FilterSet {
     }
 
     const clients = this.#clients.get(spec.id);
-    const clientsChanged =
-      this.#publishedClients.get(spec.id) !== clients;
+    const clientsChanged = this.#publishedClients.get(spec.id) !== clients;
     const active = this.#active.get(spec.id) ?? new Set<string>();
 
     this.#publishing = true;
@@ -411,18 +410,18 @@ class FilterSetImpl implements FilterSet {
         const clause: SelectionClause =
           resolved.meta !== undefined
             ? createValueClause({
-              source,
-              clients,
-              value: resolved.value,
-              predicate: resolved.predicate,
-              meta: resolved.meta,
-            })
-          : createSubqueryClause({
-              source,
-              clients,
-              value: resolved.value,
-              predicate: resolved.predicate,
-            });
+                source,
+                clients,
+                value: resolved.value,
+                predicate: resolved.predicate,
+                meta: resolved.meta,
+              })
+            : createSubqueryClause({
+                source,
+                clients,
+                value: resolved.value,
+                predicate: resolved.predicate,
+              });
 
         // Mark active BEFORE the update so the external-clear listener never
         // reads this as an external drop.
@@ -631,9 +630,7 @@ class FilterSetImpl implements FilterSet {
       });
     };
     context.addEventListener('value', listener);
-    this.#detachers.push(() =>
-      context.removeEventListener('value', listener),
-    );
+    this.#detachers.push(() => context.removeEventListener('value', listener));
   }
 
   #rebuildContextDependent(): void {
