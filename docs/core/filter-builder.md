@@ -26,14 +26,21 @@ const nameFilter: FilterDefinition = {
 
 ## Applying
 
-Operator aliases (`is`, `is_any_of`, `between`, `does_not_contain`, …) resolve to canonical predicates (`eq`, `IN` collections, `BETWEEN`, `ILIKE` with escaped patterns via `TRY_CAST`-typed column access). The clause's `value` is a `StoredFilterValue` envelope — `{ mode, operator, value, valueTo, dataType, filterId, scopeId }` — which is what persisters serialize and what hydration replays.
+Operator aliases (`is`, `is_any_of`, `between`, `does_not_contain`, …) resolve to canonical predicates (`eq`, `IN` collections, `BETWEEN`, `ILIKE` with escaped patterns via `TRY_CAST`-typed column access).
+
+There are two layers, and persistence touches only the first:
+
+- **Intent** — `FilterBindingState` (`{ operator, value, valueTo }`). This is what persisters read and write, and what hydration replays.
+- **Clause envelope** — `StoredFilterValue` (`{ mode, operator, value, valueTo, dataType, filterId, scopeId }`). This is what actually lands on the Selection as the clause `value` (`selection.valueFor(source)`); it carries the extra provenance a clause needs.
+
+Conversion happens at the clause boundary, not the persister boundary: `createStoredFilterValue` builds the envelope when applying intent, and `normalizeFilterBindingState` reads intent back out of the Selection. A persister never sees a `StoredFilterValue`.
 
 Core helpers: `applyFilterSelection(runtime, state, target?)` (target `'where' | 'having'` — HAVING routing for aggregate filters), `clearFilterSelection`, `readFilterSelectionState`, `reapplyCommittedFilterSelection` (context-driven subquery rebuild, convergence-guarded), `normalizeFilterBindingState`, `getFacetSelectedValues`. `FilterBindingController` wraps a runtime with a `@tanstack/store` of uncommitted UI state (`setOperator`/`setValue`/`setValueTo`/`apply`/`clear`) that syncs back from external Selection changes.
 
 ## React
 
-- `useMosaicFilters({ scopeId, definitions, persister? })` — one Selection per definition plus a composed `context` Selection (the AND of the scope); `getFilter(id)` returns each `FilterRuntime`. Scope persisters hydrate/write sparse `{ filterId → FilterBindingState }` snapshots.
-- `useFilterBinding(runtime, { persister?, filterClauseTarget? })` — controlled binding for one filter editor.
+- `useMosaicFilters({ scopeId, definitions })` — one Selection per definition plus a composed `context` Selection (the AND of the scope); `getFilter(id)` returns each `FilterRuntime`.
+- `useFilterBinding(runtime, { persister?, filterClauseTarget? })` — controlled binding for one filter editor. Per-binding persisters are the persistence surface: `FilterBindingPersister` is `Persister<FilterBindingState, FilterBindingPersistenceContext>` (the generic core contract), with write reasons `'update' | 'clear' | 'external'`.
 - `useFilterFacet({ filter, filterBy?, additionalContext?, enabled? })` — facet options via the facet data client (search, count/alpha sort, limit + `loadMore`), with `select`/`toggle`/`clear` publishing through the filter-builder clause path; committed selections merge into the options even when the cascade filters them away.
 - Topology helpers: `useMosaicSelections(keys, type)`, `useCascadingContexts(inputs, externals)` (peer-minus-self contexts against the ghost-option bug), `useComposedSelection(selections)`.
 

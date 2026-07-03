@@ -27,6 +27,11 @@ export type UseMosaicHistogramResult = HistogramClientState & {
  * `useMosaicRows`: everything without a core setter is structural (including
  * the fixed `extent`, which pins the bin domain), `from` is latest-ref,
  * `inputs` (step/bins) value-diffed.
+ *
+ * `persist` is structural (no core setter): a new persister identity is a
+ * new storage location, so the client is recreated and re-hydrated. Keep the
+ * persister identity stable (module scope or `useMemo`) or the client
+ * recreates every render.
  */
 export function useMosaicHistogram(
   options: UseMosaicHistogramOptions,
@@ -47,6 +52,7 @@ export function useMosaicHistogram(
       options.extent?.[0],
       options.extent?.[1],
       options.publish?.as,
+      options.persist,
       ...paramsKey(options.params),
     ],
     inputs: options.inputs,

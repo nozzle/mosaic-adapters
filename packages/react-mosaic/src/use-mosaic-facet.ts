@@ -25,6 +25,11 @@ export type UseMosaicFacetResult = FacetClientState & {
  * is latest-ref, `inputs` (search/limit) value-diffed, `enabled` via
  * `setEnabled` — so `enabled: open` gates option queries to while a
  * dropdown is actually open.
+ *
+ * `persist` is structural (no core setter): a new persister identity is a
+ * new storage location, so the client is recreated and re-hydrated. Keep the
+ * persister identity stable (module scope or `useMemo`) or the client
+ * recreates every render.
  */
 export function useMosaicFacet(
   options: UseMosaicFacetOptions,
@@ -47,6 +52,7 @@ export function useMosaicFacet(
       options.sort,
       options.select,
       options.publish?.as,
+      options.persist,
       ...paramsKey(options.params),
     ],
     inputs: options.inputs,

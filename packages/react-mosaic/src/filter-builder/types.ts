@@ -3,10 +3,13 @@ import type {
   FilterBindingState,
   FilterDefinition,
   FilterRuntime,
+  Persister,
+  PersisterWriteContext,
+  PersisterWriteReason,
   SqlFilterClauseTarget,
 } from '@nozzleio/mosaic-core';
 
-export type FilterPersistenceWriteReason = 'apply' | 'clear' | 'external';
+export type FilterPersistenceWriteReason = PersisterWriteReason;
 
 export interface FilterBindingPersistenceContext {
   scopeId: string;
@@ -15,41 +18,19 @@ export interface FilterBindingPersistenceContext {
   runtime: FilterRuntime;
 }
 
-export interface FilterBindingPersistenceWriteContext extends FilterBindingPersistenceContext {
-  reason: FilterPersistenceWriteReason;
-}
+export type FilterBindingPersistenceWriteContext =
+  FilterBindingPersistenceContext & PersisterWriteContext;
 
-export interface FilterScopePersistenceContext {
-  scopeId: string;
-  filters: Record<string, FilterRuntime>;
-}
-
-export interface FilterScopePersistenceWriteContext extends FilterScopePersistenceContext {
-  filterId: string;
-  definition: FilterDefinition;
-  runtime: FilterRuntime;
-  reason: FilterPersistenceWriteReason;
-}
-
-export interface FilterBindingPersister {
-  read: (
-    context: FilterBindingPersistenceContext,
-  ) => FilterBindingState | null | undefined;
-  write: (
-    state: FilterBindingState | null,
-    context: FilterBindingPersistenceWriteContext,
-  ) => void;
-}
-
-export interface FilterScopePersister {
-  read: (
-    context: FilterScopePersistenceContext,
-  ) => Partial<Record<string, FilterBindingState>> | null | undefined;
-  write: (
-    snapshot: Partial<Record<string, FilterBindingState>>,
-    context: FilterScopePersistenceWriteContext,
-  ) => void;
-}
+/**
+ * Per-binding persister for one filter editor: the generic core `Persister`
+ * contract specialised to filter *intent* (`FilterBindingState` — the
+ * `{ operator, value, valueTo }` triple), keyed by a binding context. Reasons
+ * unify to `'update' | 'clear' | 'external'`.
+ */
+export type FilterBindingPersister = Persister<
+  FilterBindingState,
+  FilterBindingPersistenceContext
+>;
 
 export interface UseFilterBindingOptions {
   persister?: FilterBindingPersister;
@@ -59,7 +40,6 @@ export interface UseFilterBindingOptions {
 export interface UseMosaicFiltersOptions {
   definitions: Array<FilterDefinition>;
   scopeId: string;
-  persister?: FilterScopePersister;
 }
 
 export interface FilterScope {

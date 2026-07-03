@@ -11,9 +11,9 @@ import {
   createFilterBindingPersistenceContext,
   getCommittedFilterSelectionState,
   getFilterBindingStateKey,
+  isRecentPersistedHydration,
   markRecentPersistedHydration,
   readCommittedFilterWriteReason,
-  readRecentPersistedHydrationSource,
 } from './persistence-helpers';
 
 import type { FilterBindingState, FilterRuntime } from '@nozzleio/mosaic-core';
@@ -51,34 +51,21 @@ export function useFilterBindingControllerState(
       return;
     }
 
-    const currentSelectionState = getCommittedFilterSelectionState(filter);
-    const recentHydrationSource =
-      currentSelectionState !== null &&
-      readRecentPersistedHydrationSource(
-        filter.selection,
-        currentSelectionState,
-      );
-
-    if (currentSelectionState && recentHydrationSource !== 'scope') {
+    if (getCommittedFilterSelectionState(filter)) {
       return;
     }
 
     const persistedState = persister.read(bindingContext);
 
-    if (!persistedState) {
-      return;
-    }
-
-    if (
-      currentSelectionState &&
-      areFilterBindingStatesEqual(currentSelectionState, persistedState)
-    ) {
+    // The binding controller hydrates synchronously only; a thenable read is
+    // ignored here (async binding hydration is a later-phase concern).
+    if (!persistedState || isThenable(persistedState)) {
       return;
     }
 
     suppressedHydrationWriteKeyRef.current =
       getFilterBindingStateKey(persistedState);
-    markRecentPersistedHydration(filter.selection, 'binding', persistedState);
+    markRecentPersistedHydration(filter.selection, persistedState);
     applyFilterSelection(filter, persistedState, filterClauseTarget);
   }, [bindingContext, filter, filterClauseTarget, persister]);
 
@@ -98,12 +85,7 @@ export function useFilterBindingControllerState(
           return;
         }
 
-        if (
-          readRecentPersistedHydrationSource(
-            filter.selection,
-            committedState,
-          ) !== null
-        ) {
+        if (isRecentPersistedHydration(filter.selection, committedState)) {
           return;
         }
 
@@ -146,4 +128,12 @@ export function useFilterBindingControllerState(
   }, [controller, filter]);
 
   return { controller, state };
+}
+
+function isThenable(value: unknown): value is Promise<unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
 }

@@ -14,7 +14,7 @@ export function useFilterBinding(
     options,
   );
   const apply = React.useCallback(() => {
-    markNextCommittedFilterWriteReason(filter.selection, 'apply');
+    markNextCommittedFilterWriteReason(filter.selection, 'update');
     controller.apply();
   }, [controller, filter.selection]);
   const clear = React.useCallback(() => {
