@@ -12,10 +12,13 @@ import {
 } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
 import { PersisterLifecycle } from './persistence';
+import { isFilterSetPublishTarget } from './types';
 import { toResultRows } from './utils';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
+import type { FilterSpec } from './filter-set/types';
 import type {
+  FilterSetPublishTarget,
   HistogramBin,
   HistogramClient,
   HistogramClientOptions,
@@ -51,6 +54,8 @@ class HistogramDataClient
   #spec: { min: number; max: number; steps: number } | null = null;
   #range: [number, number] | null = null;
   #persist: PersisterLifecycle<[number, number]> | null = null;
+  /** Set when writing to `publish.into`, to suppress our own store-mirror. */
+  #writingToSet = false;
 
   constructor(options: HistogramClientOptions) {
     super(
@@ -68,13 +73,28 @@ class HistogramDataClient
     this.#extent = options.extent ?? null;
     this.#persist = this.#resolvePersist();
     this.#wireExternalClear();
+    this.#wireSetMirror();
     this.onDestroy(() => {
+      // With a `publish.into` target the intent outlives the widget: the set
+      // owns the spec/clauses, so destroy must NOT clear anything.
+      if (this.#setTarget() !== null) {
+        return;
+      }
       if (this.#range !== null) {
         this.#range = null;
         // Destroy-time clause cleanup: publish, but never persist.
         this.#publishRange(null);
       }
     });
+  }
+
+  /** The `publish.into` target when configured, else null. */
+  #setTarget(): FilterSetPublishTarget | null {
+    const publish = this.#options.publish;
+    if (isFilterSetPublishTarget(publish)) {
+      return publish;
+    }
+    return null;
   }
 
   setRange(range: [number, number] | null): void {
@@ -157,9 +177,37 @@ class HistogramDataClient
    */
   async #prepareAndHydrate(): Promise<void> {
     await this.#prepare();
+    const setTarget = this.#setTarget();
+    if (setTarget !== null) {
+      this.#adoptFromSet(setTarget);
+      return;
+    }
     this.#persist?.hydrate((range) => {
       this.#publishRange([range[0], range[1]]);
     });
+  }
+
+  /**
+   * Adopt any pre-existing spec (e.g. set-level persistence) into local state
+   * and re-associate this client for self-exclusion (the set republishes on a
+   * clients-set change).
+   */
+  #adoptFromSet(target: FilterSetPublishTarget): void {
+    const spec = target.into.store.state.specs.find(
+      (candidate) => candidate.id === target.id,
+    );
+    if (spec === undefined) {
+      return;
+    }
+    this.#adoptSpecValue(spec);
+    this.#writingToSet = true;
+    try {
+      target.into.set(spec, {
+        clients: new Set<MosaicClient>([this.mosaicClient]),
+      });
+    } finally {
+      this.#writingToSet = false;
+    }
   }
 
   /**
@@ -194,11 +242,19 @@ class HistogramDataClient
   #publishRange(range: [number, number] | null): void {
     this.#range = range;
     this.patchState({ range });
-    const target = this.#options.publish;
-    if (!target) {
+    const publish = this.#options.publish;
+    if (!publish) {
       return;
     }
-    target.as.update(
+    const setTarget = this.#setTarget();
+    if (setTarget !== null) {
+      this.#publishToSet(setTarget, range);
+      return;
+    }
+    if (isFilterSetPublishTarget(publish)) {
+      return;
+    }
+    publish.as.update(
       clauseInterval(column(this.#options.column), range, {
         source: this.#source,
         clients: new Set<MosaicClient>([this.mosaicClient]),
@@ -206,12 +262,44 @@ class HistogramDataClient
     );
   }
 
+  /**
+   * Route the brush into a page-level FilterSet: upsert an `interval` spec
+   * (non-null range) or remove it (null). Fenced by `#writingToSet` so the
+   * store mirror ignores this self-inflicted change.
+   */
+  #publishToSet(
+    target: FilterSetPublishTarget,
+    range: [number, number] | null,
+  ): void {
+    this.#writingToSet = true;
+    try {
+      if (range === null) {
+        target.into.remove(target.id);
+        return;
+      }
+      target.into.set(
+        {
+          id: target.id,
+          column: this.#options.column,
+          kind: target.kind ?? 'interval',
+          value: [range[0], range[1]],
+          label: target.label,
+        },
+        { clients: new Set<MosaicClient>([this.mosaicClient]) },
+      );
+    } finally {
+      this.#writingToSet = false;
+    }
+  }
+
   /** Mirror an external clause removal (chip bar, global reset) into `range`. */
   #wireExternalClear(): void {
-    const target = this.#options.publish;
-    if (!target) {
+    const publish = this.#options.publish;
+    if (!publish || isFilterSetPublishTarget(publish)) {
+      // The FilterSet form mirrors external removals through its store.
       return;
     }
+    const target = publish;
     const listener = () => {
       if (this.destroyed || this.#range === null) {
         return;
@@ -230,12 +318,79 @@ class HistogramDataClient
   }
 
   /**
-   * Resolve the persister, but only when there is a publish target to persist
-   * *for*; without one, warn and ignore (mirrors the `filterStable` posture).
+   * Mirror the page-level FilterSet back into local state for a `publish.into`
+   * target: an external removal clears the range, and a changed interval value
+   * is adopted without republishing. Fenced by `#writingToSet`.
+   */
+  #wireSetMirror(): void {
+    const target = this.#setTarget();
+    if (target === null) {
+      return;
+    }
+    const unsubscribe = target.into.store.subscribe(() => {
+      if (this.destroyed || this.#writingToSet) {
+        return;
+      }
+      const spec = target.into.store.state.specs.find(
+        (candidate) => candidate.id === target.id,
+      );
+      if (spec === undefined) {
+        if (this.#range !== null) {
+          this.#range = null;
+          this.patchState({ range: null });
+        }
+        return;
+      }
+      this.#adoptSpecValue(spec);
+    });
+    this.onDestroy(() => unsubscribe.unsubscribe());
+  }
+
+  /** Adopt a spec's interval value into local `range` without republishing. */
+  #adoptSpecValue(spec: FilterSpec): void {
+    const next = this.#readIntervalRange(spec.value);
+    if (
+      (next === null && this.#range === null) ||
+      (next !== null &&
+        this.#range !== null &&
+        next[0] === this.#range[0] &&
+        next[1] === this.#range[1])
+    ) {
+      return;
+    }
+    this.#range = next;
+    this.patchState({ range: next });
+  }
+
+  /** Reads a `[lo, hi]` numeric range from a spec value, else null. */
+  #readIntervalRange(value: unknown): [number, number] | null {
+    if (!Array.isArray(value) || value.length < 2) {
+      return null;
+    }
+    const lo = Number(value[0]);
+    const hi = Number(value[1]);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
+      return null;
+    }
+    return [lo, hi];
+  }
+
+  /**
+   * Resolve the persister, but only for the raw-Selection publish form. Without
+   * a publish target, or with a `publish.into` target (the set owns
+   * persistence), warn and ignore (mirrors the `filterStable` posture).
    */
   #resolvePersist(): PersisterLifecycle<[number, number]> | null {
     const persist = this.#options.persist;
     if (!persist) {
+      return null;
+    }
+    if (this.#setTarget() !== null) {
+      console.warn(
+        '[mosaic-core] A histogram client was given both `persist` and a ' +
+          '`publish.into` FilterSet target; the set owns persistence, so the ' +
+          'client-level persister is ignored.',
+      );
       return null;
     }
     if (!this.#options.publish) {

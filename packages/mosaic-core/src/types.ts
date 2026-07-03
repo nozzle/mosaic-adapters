@@ -8,6 +8,39 @@ import type {
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { Store } from '@tanstack/store';
 import type { Persister } from './persistence';
+import type { FilterSet } from './filter-set/types';
+
+/**
+ * A publish target that routes a widget's interaction into a page-level
+ * {@link FilterSet} as a {@link FilterSpec}, rather than directly onto a raw
+ * {@link Selection}. The set owns clause publication (including self-exclusion
+ * clients and persistence), so a client publishing `into` a set delegates all
+ * of that: it upserts/removes one spec keyed by `id` and mirrors external
+ * removals back into its local widget state.
+ *
+ * A client discriminates this from the `{ as: Selection }` form with an
+ * `'into' in publish` check (see `isFilterSetPublishTarget`).
+ */
+export interface FilterSetPublishTarget {
+  /** The page-level set that owns the published spec + its clauses. */
+  into: FilterSet;
+  /** Stable spec id owned by this widget (persistence, chips, replacement). */
+  id: string;
+  /** Override the default kind the client would otherwise choose. */
+  kind?: string;
+  /** Spec label pass-through (chip label). */
+  label?: string;
+}
+
+/**
+ * Discriminates a {@link FilterSetPublishTarget} from the raw-Selection
+ * (`{ as: Selection }`) publish form by the presence of `into`.
+ */
+export function isFilterSetPublishTarget(
+  publish: { as: Selection } | FilterSetPublishTarget | undefined,
+): publish is FilterSetPublishTarget {
+  return publish !== undefined && 'into' in publish;
+}
 
 /**
  * Where a client's data comes from: a table name, or a query factory that
@@ -171,6 +204,24 @@ export interface RowsPublishTarget<TRow> {
   source?: ClauseSource;
 }
 
+/**
+ * The `publish.select` target routed into a page-level {@link FilterSet}. Row
+ * fields (`columns`) supply the selected tuple values; `fields` (defaulting to
+ * `columns`) name the SQL columns the published `points` predicate tests —
+ * matching the `RowsPublishTarget` `columns`/`fields` semantics. A single
+ * field publishes a flat scalar-array value; multiple fields publish a
+ * `{ columns, tuples }` envelope.
+ */
+export type RowsFilterSetPublishTarget<TRow> = FilterSetPublishTarget & {
+  /** Row fields whose values populate the published tuples. */
+  columns: Array<Extract<keyof TRow, string>>;
+  /**
+   * SQL fields the predicate tests, aligned index-by-index with `columns`;
+   * defaults to `columns`. Dotted paths become struct access.
+   */
+  fields?: Array<string>;
+};
+
 export interface RowsHoverPublishTarget<TRow> extends RowsPublishTarget<TRow> {
   /**
    * Trailing throttle for hover clause churn at mouse speed, in
@@ -191,16 +242,26 @@ export interface RowsClientOptions<TRow> extends DataClientOptions<RowsInputs> {
   coerce?: CoerceOption<TRow>;
   /** Opt-in row-interaction publishing. */
   publish?: {
-    /** selectRows() → clausePoints(columns, ...) into this Selection. */
-    select?: RowsPublishTarget<TRow>;
-    /** hoverRow() → transient single-point clause (throttled by default). */
+    /**
+     * selectRows() publishes either directly onto a Selection
+     * (`RowsPublishTarget`, `clausePoints(columns, ...)`) or into a page-level
+     * {@link FilterSet} (`RowsFilterSetPublishTarget`, as a `points` spec).
+     */
+    select?: RowsPublishTarget<TRow> | RowsFilterSetPublishTarget<TRow>;
+    /**
+     * hoverRow() → transient single-point clause (throttled by default).
+     * Selection-only: hover is transient by definition, so it is never routed
+     * into a FilterSet (nothing to persist, no chip to derive).
+     */
     hover?: RowsHoverPublishTarget<TRow>;
   };
   /**
    * Consumer-owned storage for the selected tuples (value arrays aligned to
    * `publish.select.columns`). Hydrated before the first query (sync reads) or
    * on resolve (async reads) via `setSelectedValues`; written on every select
-   * publish. Requires `publish.select`. Hover is never persisted.
+   * publish. Requires the `RowsPublishTarget` (`as`) select form — with
+   * `publish.select.into` the set owns persistence, so a client-level
+   * persister is warned about and ignored. Hover is never persisted.
    */
   persist?: Persister<Array<Array<unknown>>>;
 }
@@ -266,12 +327,18 @@ export interface FacetClientOptions extends DataClientOptions<FacetInputs> {
    * the selected set, published as one list clause.
    */
   select?: 'single' | 'multi';
-  /** toggle()/clear() publish into this Selection. */
-  publish?: { as: Selection };
+  /**
+   * toggle()/clear() publish either directly onto a Selection (`{ as }`) or
+   * into a page-level {@link FilterSet} (`FilterSetPublishTarget`). The set
+   * form defaults to `point` (single) / `points` (multi) / `condition` with
+   * `list_has_any` (array column); `publish.kind` overrides the choice.
+   */
+  publish?: { as: Selection } | FilterSetPublishTarget;
   /**
    * Consumer-owned storage for the selected values. Hydrated before the first
    * query (sync reads) or on resolve (async reads); written on every publish.
-   * Requires `publish` — persistence is a no-op without a publish target.
+   * Requires the `{ as }` publish form — with `publish.into` the set owns
+   * persistence, so a client-level persister is warned about and ignored.
    */
   persist?: Persister<Array<unknown>>;
 }
@@ -320,12 +387,18 @@ export interface HistogramClientOptions extends DataClientOptions<HistogramInput
    * so bin boundaries stay stable while filters change the counts.
    */
   extent?: [number, number];
-  /** setRange() publishes an interval clause into this Selection. */
-  publish?: { as: Selection };
+  /**
+   * setRange() publishes either directly onto a Selection (`{ as }`) or into a
+   * page-level {@link FilterSet} (`FilterSetPublishTarget`, as an `interval`
+   * spec by default; `publish.kind` overrides the choice).
+   */
+  publish?: { as: Selection } | FilterSetPublishTarget;
   /**
    * Consumer-owned storage for the brush range. Hydrated after extent
    * discovery but before the first main query (sync reads) or on resolve
-   * (async reads); written on every publish. Requires `publish`.
+   * (async reads); written on every publish. Requires the `{ as }` publish
+   * form — with `publish.into` the set owns persistence, so a client-level
+   * persister is warned about and ignored.
    */
   persist?: Persister<[number, number]>;
 }

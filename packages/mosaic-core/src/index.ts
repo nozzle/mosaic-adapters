@@ -34,6 +34,10 @@ export type { RoutedFilterExpr, SqlFilterClauseTarget } from './filter-routing';
 
 export * from './filter-builder/index';
 
+export * from './filter-set/index';
+
+export { isFilterSetPublishTarget } from './types';
+
 export { deepEqual, resolveCoerce } from './utils';
 
 export type {
@@ -56,6 +60,7 @@ export type {
   FacetInputs,
   FacetOption,
   FacetSortMode,
+  FilterSetPublishTarget,
   HistogramBin,
   HistogramClient,
   HistogramClientOptions,
@@ -78,6 +83,7 @@ export type {
   RowsClient,
   RowsClientOptions,
   RowsClientState,
+  RowsFilterSetPublishTarget,
   RowsHoverPublishTarget,
   RowsInputs,
   RowsPublishTarget,

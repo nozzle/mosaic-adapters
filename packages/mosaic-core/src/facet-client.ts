@@ -14,15 +14,18 @@ import {
 import { BaseDataClient } from './base-client';
 import { createValueClause } from './clause-factory';
 import { PersisterLifecycle } from './persistence';
+import { isFilterSetPublishTarget } from './types';
 import { deepEqual, toResultRows } from './utils';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import type { ExprValue, SelectQuery } from '@uwdata/mosaic-sql';
+import type { FilterSpec } from './filter-set/types';
 import type {
   FacetClient,
   FacetClientOptions,
   FacetClientState,
   FacetInputs,
   FacetOption,
+  FilterSetPublishTarget,
   QueryContext,
 } from './types';
 
@@ -46,6 +49,8 @@ class FacetDataClient
   readonly #source: ClauseSource = {};
   #selected: Array<unknown> = [];
   #persist: PersisterLifecycle<Array<unknown>> | null = null;
+  /** Set when writing to `publish.into`, to suppress our own store-mirror. */
+  #writingToSet = false;
 
   constructor(options: FacetClientOptions) {
     // Filtering changes which option groups exist, so pre-aggregation is
@@ -62,7 +67,14 @@ class FacetDataClient
     this.#options = options;
     this.#persist = this.#resolvePersist();
     this.#wireExternalClear();
+    this.#wireSetMirror();
     this.onDestroy(() => {
+      // With a `publish.into` target the intent outlives the widget: the set
+      // owns the spec/clauses, so destroy must NOT clear anything — the store
+      // mirror is unsubscribed via its own onDestroy.
+      if (this.#setTarget() !== null) {
+        return;
+      }
       if (this.#selected.length > 0) {
         this.#selected = [];
         // Destroy-time clause cleanup: publish, but never persist — a
@@ -70,6 +82,15 @@ class FacetDataClient
         this.#publish();
       }
     });
+  }
+
+  /** The `publish.into` target when configured, else null. */
+  #setTarget(): FilterSetPublishTarget | null {
+    const publish = this.#options.publish;
+    if (isFilterSetPublishTarget(publish)) {
+      return publish;
+    }
+    return null;
   }
 
   toggle(value: unknown): void {
@@ -175,11 +196,71 @@ class FacetDataClient
 
   #publish(): void {
     this.patchState({ selected: this.#selected });
-    const target = this.#options.publish;
-    if (!target) {
+    const publish = this.#options.publish;
+    if (!publish) {
       return;
     }
-    target.as.update(this.#buildClause());
+    const setTarget = this.#setTarget();
+    if (setTarget !== null) {
+      this.#publishToSet(setTarget);
+      return;
+    }
+    if (isFilterSetPublishTarget(publish)) {
+      return;
+    }
+    publish.as.update(this.#buildClause());
+  }
+
+  /**
+   * Route the selection into a page-level FilterSet: upsert one spec keyed by
+   * `id` (non-empty selection) or remove it (empty). The set owns clause
+   * publication, self-exclusion clients, and persistence. Guarded by
+   * `#writingToSet` so the store mirror ignores this self-inflicted change.
+   */
+  #publishToSet(target: FilterSetPublishTarget): void {
+    this.#writingToSet = true;
+    try {
+      if (this.#selected.length === 0) {
+        target.into.remove(target.id);
+        return;
+      }
+      target.into.set(this.#buildSetSpec(target), {
+        clients: new Set<MosaicClient>([this.mosaicClient]),
+      });
+    } finally {
+      this.#writingToSet = false;
+    }
+  }
+
+  /**
+   * Builds the {@link FilterSpec} for a `publish.into` write. The default kind
+   * mirrors the raw-clause shapes: array columns use `condition` +
+   * `list_has_any` (which routes to the array collection path regardless of
+   * columnType), multi-select uses `points`, single-select `point`.
+   * `publish.kind` overrides the kind name while keeping the same value shape.
+   */
+  #buildSetSpec(target: FilterSetPublishTarget): FilterSpec {
+    const base = {
+      id: target.id,
+      column: this.#options.column,
+      label: target.label,
+    };
+    if (this.#options.arrayColumn) {
+      return {
+        ...base,
+        kind: target.kind ?? 'condition',
+        operator: 'list_has_any',
+        value: [...this.#selected],
+      };
+    }
+    if ((this.#options.select ?? 'single') === 'multi') {
+      return {
+        ...base,
+        kind: target.kind ?? 'points',
+        value: [...this.#selected],
+      };
+    }
+    return { ...base, kind: target.kind ?? 'point', value: this.#selected[0] };
   }
 
   #buildClause() {
@@ -220,10 +301,13 @@ class FacetDataClient
    * not present a stale choice.
    */
   #wireExternalClear(): void {
-    const target = this.#options.publish;
-    if (!target) {
+    const publish = this.#options.publish;
+    if (!publish || isFilterSetPublishTarget(publish)) {
+      // The FilterSet form mirrors external removals through its store, not
+      // through a raw-Selection `value` listener (see #wireSetMirror).
       return;
     }
+    const target = publish;
     const listener = () => {
       if (this.destroyed || this.#selected.length === 0) {
         return;
@@ -241,21 +325,110 @@ class FacetDataClient
     this.onDestroy(() => target.as.removeEventListener('value', listener));
   }
 
-  /** Hydrate persisted intent before the first query (sync reads apply now). */
+  /**
+   * Mirror the page-level FilterSet back into local state for a `publish.into`
+   * target: an external removal (chip bar, `set.remove`, global reset) clears
+   * the selection, and a narrowed spec value (chip removal on a multi-value
+   * spec) is adopted without republishing. Our own writes are fenced by
+   * `#writingToSet`, so this only reacts to changes made by others.
+   */
+  #wireSetMirror(): void {
+    const target = this.#setTarget();
+    if (target === null) {
+      return;
+    }
+    const unsubscribe = target.into.store.subscribe(() => {
+      if (this.destroyed || this.#writingToSet) {
+        return;
+      }
+      const spec = target.into.store.state.specs.find(
+        (candidate) => candidate.id === target.id,
+      );
+      if (spec === undefined) {
+        if (this.#selected.length > 0) {
+          this.#selected = [];
+          this.patchState({ selected: [] });
+        }
+        return;
+      }
+      this.#adoptSpecValue(spec);
+    });
+    this.onDestroy(() => unsubscribe.unsubscribe());
+  }
+
+  /**
+   * Adopt a spec's value into local `selected` state without republishing.
+   * Reuses the same value normalization the publish path produces, so the
+   * store mirror and initial-adopt paths share one code path.
+   */
+  #adoptSpecValue(spec: FilterSpec): void {
+    const next = Array.isArray(spec.value)
+      ? [...spec.value]
+      : spec.value === undefined || spec.value === null
+        ? []
+        : [spec.value];
+    if (deepEqual(next, this.#selected)) {
+      return;
+    }
+    this.#selected = next;
+    this.patchState({ selected: next });
+  }
+
+  /**
+   * Hydrate persisted intent before the first query (sync reads apply now).
+   * For a `publish.into` target, adopt any pre-existing spec (e.g. set-level
+   * persistence) into local state and re-associate this client for
+   * self-exclusion (the set republishes on a clients-set change).
+   */
   #prepare(): Promise<void> {
+    const setTarget = this.#setTarget();
+    if (setTarget !== null) {
+      this.#adoptFromSet(setTarget);
+      return Promise.resolve();
+    }
     this.#persist?.hydrate((values) => {
       this.setSelected(values);
     });
     return Promise.resolve();
   }
 
+  #adoptFromSet(target: FilterSetPublishTarget): void {
+    const spec = target.into.store.state.specs.find(
+      (candidate) => candidate.id === target.id,
+    );
+    if (spec === undefined) {
+      return;
+    }
+    this.#adoptSpecValue(spec);
+    // Re-publish the existing spec with this client attached so its clause
+    // excludes this facet (crossfilter self-exclusion). The set bypasses
+    // publish suppression when the clients association changes.
+    this.#writingToSet = true;
+    try {
+      target.into.set(spec, {
+        clients: new Set<MosaicClient>([this.mosaicClient]),
+      });
+    } finally {
+      this.#writingToSet = false;
+    }
+  }
+
   /**
-   * Resolve the persister, but only when there is a publish target to persist
-   * *for*; without one, warn and ignore (mirrors the `filterStable` posture).
+   * Resolve the persister, but only for the raw-Selection publish form. Without
+   * a publish target, or with a `publish.into` target (the set owns
+   * persistence), warn and ignore (mirrors the `filterStable` posture).
    */
   #resolvePersist(): PersisterLifecycle<Array<unknown>> | null {
     const persist = this.#options.persist;
     if (!persist) {
+      return null;
+    }
+    if (this.#setTarget() !== null) {
+      console.warn(
+        '[mosaic-core] A facet client was given both `persist` and a ' +
+          '`publish.into` FilterSet target; the set owns persistence, so the ' +
+          'client-level persister is ignored.',
+      );
       return null;
     }
     if (!this.#options.publish) {
