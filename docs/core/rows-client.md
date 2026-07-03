@@ -36,12 +36,18 @@ Opt-in per channel; both publish native `clausePoints` with a stable clause sour
 - `publish.select: { as, columns }` — `selectRows(rows)` publishes the rows' column values as a point clause; `selectRows([])` clears it.
 - `publish.hover: { as, columns, throttleMs? }` — `hoverRow(row)` publishes a transient single-point clause; `hoverRow(null)` clears. Throttled by default (50ms trailing) against mouse-speed clause churn; `throttleMs: 0` disables.
 
+`setSelectedValues(tuples)` is the tuple-level equivalent of `selectRows` — value arrays aligned to `publish.select.columns` (arity-checked), not row objects. Use it to replay stored intent after a reload, where the original row objects no longer exist (`selectRows` needs them). `[]` clears. An external clause removal (chip bar, `selection.reset()`) resets the tracked selection.
+
 `destroy()` removes any published clauses before disconnecting.
 
 Two extras cover grouped/remounting widgets:
 
 - `fields?: Array<string>` — the SQL fields the published predicate tests, aligned with `columns` and defaulting to them. Use it when a row field aliases an expression: a grouped factory selecting `related_phrase.phrase AS key` publishes `columns: ['key'], fields: ['related_phrase.phrase']`. Dotted paths become struct access (`"related_phrase"."phrase"`), never one quoted identifier.
 - `source?: ClauseSource` — a caller-provided stable clause identity that outlives the client instance. With it, `destroy()` **retains** the published clause and the next client instance publishing under the same source replaces it — row-selection state survives widget remounts (enlarge/collapse swaps) whose Selections live longer than the component. Read the value back with `selection.valueFor(source)` (or `useMosaicSelectionValue` in React).
+
+## Persistence
+
+`persist?: Persister<Array<Array<unknown>>>` stores the selected tuples — value arrays aligned to `publish.select.columns` (see [concepts](./concepts.md#persistence)). A synchronous `read` hydrates via `setSelectedValues` before the first query; requires a `publish.select` target (a warning fires and persistence is ignored without one). Hover is never persisted.
 
 ## Grouped queries and `filterStable`
 

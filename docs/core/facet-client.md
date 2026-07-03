@@ -36,6 +36,12 @@ The base relation (`from`: table name or query factory) is wrapped as `SELECT va
 
 `selected` on the store always mirrors the published clause — including when an external actor (chip bar, `selection.reset()`) removes it. `destroy()` clears any published clause.
 
+`setSelected(values)` replaces the selection wholesale and publishes (single-select keeps at most the first value; `[]` clears). Use it to replay stored intent — router search params, or the `persist` adapter below.
+
+## Persistence
+
+`persist?: Persister<Array<unknown>>` stores the selected values (see [concepts](./concepts.md#persistence)). A synchronous `read` hydrates before the first query; requires a `publish` target (a warning fires and persistence is ignored without one).
+
 ## Pre-aggregation
 
 Filtering changes which option groups exist, so `filterStable` defaults to `false` for this client (overridable).

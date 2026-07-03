@@ -26,3 +26,7 @@ Binning rides on mosaic-sql's `binHistogram` over a **fixed extent**, so filters
 ## Publishing
 
 `setRange([lo, hi])` publishes a native `clauseInterval` (BETWEEN, `meta: {type: 'interval'}`) with the client in the clause `clients` set: under a crossfilter Selection, the brush filters everything else on the page while this histogram's own bins stay put. `setRange(null)` clears; `range` on the store mirrors the published clause, including external removals; `destroy()` clears.
+
+## Persistence
+
+`persist?: Persister<[number, number]>` stores the brush range (see [concepts](./concepts.md#persistence)). A synchronous `read` hydrates after extent discovery but before the first main query; requires a `publish` target (a warning fires and persistence is ignored without one).

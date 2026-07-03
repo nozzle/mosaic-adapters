@@ -54,6 +54,26 @@ A whole page typically runs on **one** `Selection.crossfilter()`. Every filter U
 
 Publishing (clause emission) is per-client, built on shared clause utilities (`createValueClause`, `createSubqueryClause`, `createClearClause`). The rows client publishes row selection and hover; there is no generic publish slot in the base contract. External publishers (like the [TanStack filter bridge](../tanstack/integration.md)) build on the same utilities; `deepEqual` — the value-equality the core diffs inputs with — is exported for them to diff with the same semantics.
 
+## Persistence
+
+The publishing clients (facet, histogram, rows) accept a `persist` option — a consumer-owned storage adapter for filter **intent**, so a selection survives a reload:
+
+```ts
+interface Persister<TState> {
+  read: (ctx) => TState | null | undefined | Promise<…>;
+  write: (state: TState | null, ctx: { reason }) => void;
+}
+```
+
+- **Intent, not clauses.** `TState` is the publish-side client state (facet selection, histogram range, rows tuples), never SQL clauses — clauses are derived. There is no key in the contract: the consumer's `read`/`write` closures already know where they point.
+- **Lifecycle, no blocking.** A **synchronous** `read` is applied inside `prepare`, before the first query — the first query is already filtered (no flash, no extra query). A **thenable** `read` never blocks: the first query issues unfiltered, and the state applies on resolve (a re-query is accepted). A late async result is discarded if the user has interacted in the meantime, or the client was destroyed.
+- **Reasons.** `write` receives `{ reason }`: `'update'` (local action, state non-empty), `'clear'` (local action emptied it — `state` is `null`), `'external'` (someone else removed the clause — chip bar, `selection.reset()`; `state` is `null`).
+- **Echo suppression.** Hydration is replayed through the same publish path as user interaction but is never written back. **`destroy()` produces zero writes** — a StrictMode unmount must not wipe storage.
+
+Two lanes drive the same setters: the passive **persister** (above), and reactive stores. A reactive source of truth (router search params, a global store) should drive the setters directly (`facet.setSelected`, `rows.setSelectedValues`, `hist.setRange`); the persister is for passive storage only. Do not wire both to the same state.
+
+`resetAll` across N filters produces N per-entry `write` calls — coalesce/debounce consumer-side if a single storage commit is wanted.
+
 ## Lifecycle
 
 - `setEnabled(false)` defers queries (and the initial load) until re-enabled — for offscreen views.

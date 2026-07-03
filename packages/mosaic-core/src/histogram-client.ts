@@ -11,6 +11,7 @@ import {
   min,
 } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
+import { PersisterLifecycle } from './persistence';
 import { toResultRows } from './utils';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
@@ -49,6 +50,7 @@ class HistogramDataClient
   /** Bin spec of the last built query — pairs result rows with boundaries. */
   #spec: { min: number; max: number; steps: number } | null = null;
   #range: [number, number] | null = null;
+  #persist: PersisterLifecycle<[number, number]> | null = null;
 
   constructor(options: HistogramClientOptions) {
     super(
@@ -60,13 +62,16 @@ class HistogramDataClient
         extent: options.extent ?? null,
         range: null,
       },
-      { prepare: () => this.#prepare() },
+      { prepare: () => this.#prepareAndHydrate() },
     );
     this.#options = options;
     this.#extent = options.extent ?? null;
+    this.#persist = this.#resolvePersist();
     this.#wireExternalClear();
     this.onDestroy(() => {
       if (this.#range !== null) {
+        this.#range = null;
+        // Destroy-time clause cleanup: publish, but never persist.
         this.#publishRange(null);
       }
     });
@@ -77,6 +82,10 @@ class HistogramDataClient
       return;
     }
     this.#publishRange(range);
+    this.#persist?.write(
+      range === null ? null : [range[0], range[1]],
+      range === null ? 'clear' : 'update',
+    );
   }
 
   protected buildQuery(ctx: QueryContext<HistogramInputs>): SelectQuery {
@@ -139,6 +148,21 @@ class HistogramDataClient
   }
 
   /**
+   * Extent discovery, then hydration — in that order, inside one prepare hook
+   * and before the first main query. Extent discovery queries the *unfiltered*
+   * base relation (`where: []`), so a hydrated brush clause cannot corrupt it;
+   * ordering them anyway keeps the sequencing obvious and safe if that ever
+   * changes. Sync reads apply here (first query already filtered); async reads
+   * apply on resolve and re-query.
+   */
+  async #prepareAndHydrate(): Promise<void> {
+    await this.#prepare();
+    this.#persist?.hydrate((range) => {
+      this.#publishRange([range[0], range[1]]);
+    });
+  }
+
+  /**
    * One-time extent discovery over the unfiltered base relation, so bin
    * boundaries are independent of the page's filter state.
    */
@@ -198,9 +222,30 @@ class HistogramDataClient
       if (!present) {
         this.#range = null;
         this.patchState({ range: null });
+        this.#persist?.write(null, 'external');
       }
     };
     target.as.addEventListener('value', listener);
     this.onDestroy(() => target.as.removeEventListener('value', listener));
+  }
+
+  /**
+   * Resolve the persister, but only when there is a publish target to persist
+   * *for*; without one, warn and ignore (mirrors the `filterStable` posture).
+   */
+  #resolvePersist(): PersisterLifecycle<[number, number]> | null {
+    const persist = this.#options.persist;
+    if (!persist) {
+      return null;
+    }
+    if (!this.#options.publish) {
+      console.warn(
+        '[mosaic-core] A histogram client was given `persist` without a ' +
+          '`publish` target; persistence has nothing to persist and is ' +
+          'ignored.',
+      );
+      return null;
+    }
+    return new PersisterLifecycle(persist, () => this.destroyed);
   }
 }
