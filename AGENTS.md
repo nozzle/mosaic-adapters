@@ -16,7 +16,7 @@
 
 - Add or update tests for code changes.
 - Always run `pnpm test:types` for relevant changes before handoff.
-- Run `pnpm test:lint` and `pnpm test:build` before commit or final handoff.
+- Run `pnpm test:lint` and `pnpm build` before commit or final handoff.
 - Run `pnpm test:lib` for package logic changes.
 - Run `pnpm test:e2e` for user-visible behavior changes in example apps.
 

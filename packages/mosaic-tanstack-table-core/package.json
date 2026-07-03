@@ -43,7 +43,6 @@
     "clear-build": "rimraf dist",
     "build": "vite build",
     "test:types": "tsc --noEmit",
-    "test:build": "vite build",
     "test:lib": "vitest",
     "test:lint": "eslint ./src"
   },

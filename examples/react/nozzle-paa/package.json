@@ -9,7 +9,6 @@
     "lint": "eslint ./src ./tests",
     "build": "pnpm run typecheck && vite build",
     "preview": "vite preview",
-    "test:build": "pnpm run build",
     "test:lint": "pnpm run lint",
     "test:e2e": "playwright test",
     "test:types": "pnpm run typecheck"
