@@ -97,6 +97,12 @@ function coerceValue(value: unknown, kind: CoerceDescriptor): unknown {
         return value;
       }
       if (typeof value === 'bigint') {
+        // Parquet/DuckDB TIMESTAMP columns surface as epoch bigints. Anything
+        // past ~year 2286 in ms is almost certainly microseconds (or finer),
+        // so scale it down before constructing the Date.
+        if (value > 10_000_000_000_000n) {
+          return new Date(Number(value / 1000n));
+        }
         return new Date(Number(value));
       }
       return new Date(value as string | number);

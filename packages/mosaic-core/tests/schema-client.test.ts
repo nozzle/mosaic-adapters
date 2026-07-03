@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import { createRowsClient, createSchemaClient } from '../src/index';
+import {
+  createRowsClient,
+  createSchemaClient,
+  resolveCoerce,
+} from '../src/index';
 import { createAthletesDb, waitFor } from './test-utils';
 import type { TestDb } from './test-utils';
 
@@ -102,5 +106,48 @@ describe('coerce descriptors', () => {
     expect(second!.score).toBeNull();
 
     rows.destroy();
+  });
+
+  // The descriptor 'date' path (resolveCoerce → coerceValue). Driven directly
+  // rather than through DuckDB: an in-range BIGINT surfaces as a JS number and
+  // an over-range one as an actual bigint, so a query can't reliably hand the
+  // bigint branch the value it needs to see.
+  describe("the 'date' descriptor", () => {
+    const toDate = resolveCoerce<{ at: Date | null }>({ at: 'date' })!;
+
+    test('millisecond-scale bigint is used verbatim', () => {
+      // 2021-05-03T00:00:00Z in epoch ms.
+      const { at } = toDate({ at: 1620000000000n });
+      expect(at).toBeInstanceOf(Date);
+      expect(at!.getUTCFullYear()).toBe(2021);
+    });
+
+    test('microsecond-scale bigint is scaled to ms', () => {
+      // Same instant in epoch µs; without the /1000 it decodes to ~year 53000.
+      const { at } = toDate({ at: 1620000000000000n });
+      expect(at).toBeInstanceOf(Date);
+      expect(at!.getUTCFullYear()).toBe(2021);
+    });
+
+    test('the threshold boundary stays in the millisecond branch', () => {
+      // Exactly 10^13 ms (≈ year 2286) is not scaled — only strictly greater.
+      const { at } = toDate({ at: 10_000_000_000_000n });
+      expect(at!.getTime()).toBe(10_000_000_000_000);
+    });
+
+    test('a Date passes through untouched', () => {
+      const source = new Date('2021-05-03T00:00:00Z');
+      expect(toDate({ at: source }).at).toBe(source);
+    });
+
+    test('an ISO string parses through the string path', () => {
+      const { at } = toDate({ at: '2021-05-03T00:00:00Z' });
+      expect(at).toBeInstanceOf(Date);
+      expect(at!.getUTCFullYear()).toBe(2021);
+    });
+
+    test('null stays null', () => {
+      expect(toDate({ at: null }).at).toBeNull();
+    });
   });
 });
