@@ -8,16 +8,9 @@ import {
   createRowsClient,
   subqueryFilterKind,
 } from '../src/index';
-import type { FilterKind, FilterSpec, Persister } from '../src/index';
 import { createAthletesDb, settle, waitFor } from './test-utils';
+import type { FilterKind, FilterSpec, Persister } from '../src/index';
 import type { TestDb } from './test-utils';
-
-interface AthleteRow {
-  id: number;
-  name: string;
-  sport: string;
-  weight: number;
-}
 
 let db: TestDb;
 

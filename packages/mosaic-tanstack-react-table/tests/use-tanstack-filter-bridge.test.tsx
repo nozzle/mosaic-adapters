@@ -189,7 +189,7 @@ describe('bridge lifecycle without a client', () => {
           columns: { sport: { clause: props.kind } },
         });
       },
-      { initialProps: { kind: 'equals' as 'equals' | 'ilike' } },
+      { initialProps: { kind: 'equals' } },
     );
 
     await settle();

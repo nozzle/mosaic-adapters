@@ -44,7 +44,7 @@
     "build": "vite build",
     "test:types": "tsc --noEmit",
     "test:lib": "vitest",
-    "test:lint": "eslint ./src"
+    "test:lint": "eslint ./src ./tests"
   },
   "dependencies": {
     "@tanstack/store": "catalog:"

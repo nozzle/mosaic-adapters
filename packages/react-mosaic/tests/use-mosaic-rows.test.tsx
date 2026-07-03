@@ -135,6 +135,8 @@ describe('value-diffed inputs', () => {
         }),
       {
         initialProps: {
+          // Widen to RowsInputs so later rerenders with a subset of keys type-check.
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
           inputs: {
             orderBy: [{ column: 'weight', desc: true }],
             limit: 3,
