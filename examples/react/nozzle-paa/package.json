@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@playwright/test": "catalog:",
-    "@tailwindcss/vite": "^4.1.17",
+    "@tailwindcss/vite": "^4.3.1",
     "@types/node": "catalog:",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
