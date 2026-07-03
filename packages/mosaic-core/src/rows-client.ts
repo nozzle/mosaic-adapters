@@ -3,9 +3,11 @@ import { Query, asc, count, desc, sql } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
 import { SqlIdentifier, createStructAccess } from './filter-builder/sql-access';
 import { PersisterLifecycle } from './persistence';
+import { isFilterSetPublishTarget } from './types';
 import { resolveCoerce, toResultRows, trailingThrottle } from './utils';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
+import type { FilterSpec } from './filter-set/types';
 import type {
   CoerceOption,
   OrderByItem,
@@ -13,6 +15,7 @@ import type {
   RowsClient,
   RowsClientOptions,
   RowsClientState,
+  RowsFilterSetPublishTarget,
   RowsInputs,
   RowsPublishTarget,
 } from './types';
@@ -55,6 +58,8 @@ class RowsDataClient<TRow>
   #selectedTuples: Array<Array<unknown>> = [];
   #publishHover: TrailingThrottle<[TRow | null]> | null = null;
   #persist: PersisterLifecycle<Array<Array<unknown>>> | null = null;
+  /** Set when writing to `publish.select.into`, to suppress our store-mirror. */
+  #writingToSet = false;
 
   #countGeneration = 0;
   #warnedGroupedFilterStable = false;
@@ -86,12 +91,35 @@ class RowsDataClient<TRow>
     this.#rowCount = rowCount;
     this.#inputMode = inputMode;
     this.#coerce = resolveCoerce(options.coerce);
-    this.#selectSource = options.publish?.select?.source ?? {};
+    const select = options.publish?.select;
+    this.#selectSource =
+      select !== undefined && !isFilterSetPublishTarget(select)
+        ? (select.source ?? {})
+        : {};
     this.#hoverSource = options.publish?.hover?.source ?? {};
     this.#persist = this.#resolvePersist();
 
     this.#wirePublishing();
     this.#wireExternalClear();
+    this.#wireSetMirror();
+  }
+
+  /** The `publish.select.into` target when configured, else null. */
+  #setTarget(): RowsFilterSetPublishTarget<TRow> | null {
+    const select = this.#options.publish?.select;
+    if (select !== undefined && isFilterSetPublishTarget(select)) {
+      return select;
+    }
+    return null;
+  }
+
+  /** The raw-Selection `publish.select` target when configured, else null. */
+  #selectionTarget(): RowsPublishTarget<TRow> | null {
+    const select = this.#options.publish?.select;
+    if (select !== undefined && !isFilterSetPublishTarget(select)) {
+      return select;
+    }
+    return null;
   }
 
   setCoerce(coerce: CoerceOption<TRow> | undefined): void {
@@ -102,29 +130,35 @@ class RowsDataClient<TRow>
     if (this.destroyed) {
       return;
     }
-    const target = this.#options.publish?.select;
-    if (!target) {
+    const columns = this.#selectColumns();
+    if (columns === null) {
       return;
     }
     const tuples = rows.map((row) =>
-      target.columns.map((column) => (row as Record<string, unknown>)[column]),
+      columns.map((column) => (row as Record<string, unknown>)[column]),
     );
-    this.#publishSelectTuples(target, tuples);
+    this.#publishSelectTuples(tuples);
   }
 
   setSelectedValues(tuples: Array<Array<unknown>>): void {
     if (this.destroyed) {
       return;
     }
-    const target = this.#options.publish?.select;
-    if (!target) {
+    const columns = this.#selectColumns();
+    if (columns === null) {
       return;
     }
-    assertTupleArity(tuples, target.columns.length);
-    this.#publishSelectTuples(
-      target,
-      tuples.map((tuple) => [...tuple]),
-    );
+    assertTupleArity(tuples, columns.length);
+    this.#publishSelectTuples(tuples.map((tuple) => [...tuple]));
+  }
+
+  /** Row-field names of the configured select target (either form), else null. */
+  #selectColumns(): Array<string> | null {
+    const select = this.#options.publish?.select;
+    if (select === undefined) {
+      return null;
+    }
+    return select.columns;
   }
 
   hoverRow(row: TRow | null): void {
@@ -263,8 +297,10 @@ class RowsDataClient<TRow>
       // Caller-provided sources signal that the Selection outlives this
       // client instance: leave the clause in place for the next instance.
       // Destroy-time clause cleanup never persists — a StrictMode unmount must
-      // not wipe the consumer's storage.
-      const select = publish.select;
+      // not wipe the consumer's storage. With a `publish.select.into` target
+      // the set owns the spec (intent outlives the widget), so nothing is
+      // cleared here.
+      const select = this.#selectionTarget();
       if (select && !select.source && this.#hasSelectClause) {
         this.#publishPoints(select, this.#selectSource, []);
         this.#hasSelectClause = false;
@@ -279,19 +315,64 @@ class RowsDataClient<TRow>
 
   /**
    * The value-level select publish core shared by `selectRows` and
-   * `setSelectedValues`: track the tuples, publish the clause, persist intent.
+   * `setSelectedValues`: track the tuples, publish the clause (raw Selection or
+   * page-level FilterSet), persist intent (Selection form only — the set owns
+   * its own persistence).
    */
-  #publishSelectTuples(
-    target: RowsPublishTarget<TRow>,
-    tuples: Array<Array<unknown>>,
-  ): void {
+  #publishSelectTuples(tuples: Array<Array<unknown>>): void {
     this.#selectedTuples = tuples;
     this.#hasSelectClause = tuples.length > 0;
-    this.#publishPoints(target, this.#selectSource, tuples);
+
+    const setTarget = this.#setTarget();
+    if (setTarget !== null) {
+      this.#publishToSet(setTarget, tuples);
+      return;
+    }
+    const selectionTarget = this.#selectionTarget();
+    if (selectionTarget !== null) {
+      this.#publishPoints(selectionTarget, this.#selectSource, tuples);
+    }
     this.#persist?.write(
       tuples.length > 0 ? tuples.map((tuple) => [...tuple]) : null,
       tuples.length > 0 ? 'update' : 'clear',
     );
+  }
+
+  /**
+   * Route the selected tuples into a page-level FilterSet as a `points` spec:
+   * a single field publishes a flat scalar array, multiple fields a
+   * `{ columns, tuples }` envelope. Empty selection removes the spec. Fenced by
+   * `#writingToSet` so the store mirror ignores this self-inflicted change.
+   */
+  #publishToSet(
+    target: RowsFilterSetPublishTarget<TRow>,
+    tuples: Array<Array<unknown>>,
+  ): void {
+    const fields = target.fields ?? target.columns;
+    this.#writingToSet = true;
+    try {
+      if (tuples.length === 0) {
+        target.into.remove(target.id);
+        return;
+      }
+      const firstField = fields[0] ?? target.columns[0] ?? '';
+      const value =
+        fields.length === 1
+          ? tuples.map((tuple) => tuple[0])
+          : { columns: [...fields], tuples: tuples.map((tuple) => [...tuple]) };
+      target.into.set(
+        {
+          id: target.id,
+          column: firstField,
+          kind: 'points',
+          value,
+          label: target.label,
+        },
+        { clients: new Set<MosaicClient>([this.mosaicClient]) },
+      );
+    } finally {
+      this.#writingToSet = false;
+    }
   }
 
   #publishPoints(
@@ -342,10 +423,38 @@ class RowsDataClient<TRow>
    * and re-query).
    */
   #hydrate(): Promise<void> {
+    const setTarget = this.#setTarget();
+    if (setTarget !== null) {
+      this.#adoptFromSet(setTarget);
+      return Promise.resolve();
+    }
     this.#persist?.hydrate((tuples) => {
       this.setSelectedValues(tuples);
     });
     return Promise.resolve();
+  }
+
+  /**
+   * Adopt any pre-existing spec (e.g. set-level persistence) into the tracked
+   * tuples and re-associate this client for self-exclusion (the set
+   * republishes on a clients-set change).
+   */
+  #adoptFromSet(target: RowsFilterSetPublishTarget<TRow>): void {
+    const spec = target.into.store.state.specs.find(
+      (candidate) => candidate.id === target.id,
+    );
+    if (spec === undefined) {
+      return;
+    }
+    this.#adoptSpecValue(spec);
+    this.#writingToSet = true;
+    try {
+      target.into.set(spec, {
+        clients: new Set<MosaicClient>([this.mosaicClient]),
+      });
+    } finally {
+      this.#writingToSet = false;
+    }
   }
 
   /**
@@ -354,11 +463,11 @@ class RowsDataClient<TRow>
    * and persist the removal. Select only — hover is transient. The select
    * source may be caller-provided and shared, so detection is by source
    * identity: a legitimately surviving clause under a stable source is left
-   * alone.
+   * alone. Skipped for the `publish.select.into` form (see #wireSetMirror).
    */
   #wireExternalClear(): void {
-    const target = this.#options.publish?.select;
-    if (!target) {
+    const target = this.#selectionTarget();
+    if (target === null) {
       return;
     }
     const listener = () => {
@@ -379,13 +488,61 @@ class RowsDataClient<TRow>
   }
 
   /**
-   * Resolve the persister, but only when there is a select publish target to
-   * persist *for*; without one, warn and ignore (mirrors the `filterStable`
-   * posture).
+   * Mirror the page-level FilterSet back into the tracked tuples for a
+   * `publish.select.into` target: an external removal clears the selection and
+   * a changed points value is adopted, both without republishing. Fenced by
+   * `#writingToSet` so only others' changes are reflected.
+   */
+  #wireSetMirror(): void {
+    const target = this.#setTarget();
+    if (target === null) {
+      return;
+    }
+    const unsubscribe = target.into.store.subscribe(() => {
+      if (this.destroyed || this.#writingToSet) {
+        return;
+      }
+      const spec = target.into.store.state.specs.find(
+        (candidate) => candidate.id === target.id,
+      );
+      if (spec === undefined) {
+        if (this.#selectedTuples.length > 0) {
+          this.#selectedTuples = [];
+          this.#hasSelectClause = false;
+        }
+        return;
+      }
+      this.#adoptSpecValue(spec);
+    });
+    this.onDestroy(() => unsubscribe.unsubscribe());
+  }
+
+  /**
+   * Adopt a `points` spec's value into the tracked tuples without
+   * republishing. Handles both the flat scalar-array (single-field) and the
+   * `{ columns, tuples }` envelope (multi-field) shapes the publish path emits.
+   */
+  #adoptSpecValue(spec: FilterSpec): void {
+    this.#selectedTuples = tuplesFromPointsValue(spec.value);
+    this.#hasSelectClause = this.#selectedTuples.length > 0;
+  }
+
+  /**
+   * Resolve the persister, but only for the raw-Selection select form. Without
+   * a select target, or with a `publish.select.into` target (the set owns
+   * persistence), warn and ignore (mirrors the `filterStable` posture).
    */
   #resolvePersist(): PersisterLifecycle<Array<Array<unknown>>> | null {
     const persist = this.#options.persist;
     if (!persist) {
+      return null;
+    }
+    if (this.#setTarget() !== null) {
+      console.warn(
+        '[mosaic-core] A rows client was given both `persist` and a ' +
+          '`publish.select.into` FilterSet target; the set owns persistence, ' +
+          'so the client-level persister is ignored.',
+      );
       return null;
     }
     if (!this.#options.publish?.select) {
@@ -402,8 +559,40 @@ class RowsDataClient<TRow>
   }
 }
 
-function assertPublishFields<TRow>(
-  target: RowsPublishTarget<TRow> | undefined,
+/** A multi-column points envelope: parallel `columns` and `tuples`. */
+interface PointsTupleEnvelope {
+  columns: Array<string>;
+  tuples: Array<Array<unknown>>;
+}
+
+function isPointsTupleEnvelope(value: unknown): value is PointsTupleEnvelope {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray((value as PointsTupleEnvelope).columns) &&
+    Array.isArray((value as PointsTupleEnvelope).tuples)
+  );
+}
+
+/**
+ * Converts a `points` spec value back into tracked tuples: the multi-field
+ * `{ columns, tuples }` envelope round-trips as-is; a flat scalar array becomes
+ * one single-value tuple per element.
+ */
+function tuplesFromPointsValue(value: unknown): Array<Array<unknown>> {
+  if (isPointsTupleEnvelope(value)) {
+    return value.tuples.map((tuple) => [...tuple]);
+  }
+  if (Array.isArray(value)) {
+    return value.map((scalar) => [scalar]);
+  }
+  return [];
+}
+
+function assertPublishFields(
+  target:
+    | { columns: Array<unknown>; fields?: Array<unknown> }
+    | undefined,
 ): void {
   if (!target?.fields) {
     return;
