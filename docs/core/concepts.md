@@ -74,6 +74,8 @@ Two lanes drive the same setters: the passive **persister** (above), and reactiv
 
 `resetAll` across N filters produces N per-entry `write` calls — coalesce/debounce consumer-side if a single storage commit is wanted.
 
+For wiring either lane behind a router — `navigate({ search })` in `write`, `reason` → push/replace, driving the setters from reactive search params, and coalescing the per-client fan-out — see the [router persistence recipe](../react/router-persistence.md).
+
 ## Lifecycle
 
 - `setEnabled(false)` defers queries (and the initial load) until re-enabled — for offscreen views.
