@@ -69,6 +69,8 @@ export type { UseMosaicSelectionValueOptions } from './use-mosaic-selection-valu
 
 export { useFilterChips } from './use-filter-chips';
 
+export { useFilterSetChips, useFilterSetState } from './use-filter-set';
+
 export { useMosaicFilters } from './filter-builder/use-mosaic-filters';
 export { useFilterBinding } from './filter-builder/use-filter-binding';
 export { useFilterBindingControllerState } from './filter-builder/use-filter-binding-controller';
