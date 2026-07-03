@@ -29,6 +29,48 @@ The base relation (`from`: table name or query factory) is wrapped as `SELECT va
 
 `FacetInputs` is plain JSON: `{ search?: string, limit?: number }`. `search` is a case-insensitive substring match on the (stringified) option value; `limit` caps the option list. Both are value-diffed — a change re-queries exactly once.
 
+## Infinite scroll and search
+
+The client fetches a single window (`search` + `limit`); the page-state around it — a growing limit, a debounced search box, keeping selected values visible when they scroll out of the window — is consumer-owned. Wire it over `search`/`limit` and `state.options`/`state.selected`:
+
+```tsx
+const PAGE = 50;
+
+function useSportFacet(searchInput: string) {
+  // debounce with whatever you already use; only the debounced term hits inputs
+  const search = useDebouncedValue(searchInput, 200);
+  const [limit, setLimit] = React.useState(PAGE);
+
+  const facet = useMosaicFacet({
+    from: 'athletes',
+    column: 'sport',
+    publish: { as: $page },
+    inputs: { search: search || undefined, limit },
+  });
+
+  // selected values outside the fetched window (or filtered out by the
+  // cascading context) stay renderable — union them back in.
+  const options = React.useMemo(() => {
+    const merged = [...facet.options];
+    for (const value of facet.selected) {
+      if (!merged.some((o) => Object.is(o.value, value))) {
+        merged.push({ value });
+      }
+    }
+    return merged;
+  }, [facet.options, facet.selected]);
+
+  return {
+    options,
+    toggle: facet.client.toggle,
+    hasMore: facet.options.length >= limit, // a full page ⇒ there may be more
+    loadMore: () => setLimit((n) => n + PAGE),
+  };
+}
+```
+
+`loadMore` bumps `limit` (each change re-queries once); `hasMore` is `true` while the last page came back full. The debounce is yours — the client re-queries on every distinct `search` value, so debounce before it reaches `inputs`.
+
 ## Selection modes
 
 - `select: 'single'` (default) — `toggle(value)` replaces the active value; toggling the active value (or `toggle(null)`) clears.
