@@ -12,7 +12,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 import { useFilterSetChips, useFilterSetState } from '../src/index';
 import { actWaitFor, renderHook } from './test-utils';
-import type { FilterSet, Persister, FilterSpec } from '../src/index';
+import type { FilterSet, FilterSpec, Persister } from '../src/index';
 
 /** In-memory persister with a write spy, standing in for consumer storage. */
 function memoryPersister(initial: Array<FilterSpec> | null = null): {
@@ -70,7 +70,9 @@ describe('useFilterSetState / useFilterSetChips', () => {
 
     // removeChip on an exploded element narrows the spec value (spec survives).
     const first = exploded[0];
-    if (!first) throw new Error('expected an exploded chip');
+    if (!first) {
+      throw new Error('expected an exploded chip');
+    }
     set.removeChip(first);
     await actWaitFor(() => {
       expect(hook.result.current.chips).toHaveLength(2);

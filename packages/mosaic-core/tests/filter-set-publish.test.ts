@@ -7,8 +7,8 @@ import {
   createHistogramClient,
   createRowsClient,
 } from '../src/index';
-import type { FilterSpec, Persister } from '../src/index';
 import { createAthletesDb, settle, waitFor } from './test-utils';
+import type { FilterSpec, Persister } from '../src/index';
 import type { TestDb } from './test-utils';
 
 interface AthleteRow {

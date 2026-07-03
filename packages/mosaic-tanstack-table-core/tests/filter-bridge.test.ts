@@ -9,7 +9,7 @@ import {
   settle,
   waitFor,
 } from '../../mosaic-core/tests/test-utils';
-import type { FilterSet, FilterSpec } from '@nozzleio/mosaic-core';
+import type { FilterSet } from '@nozzleio/mosaic-core';
 import type { SelectionClause } from '@uwdata/mosaic-core';
 import type { ColumnFiltersState } from '@tanstack/table-core';
 import type { FilterBridgeColumns } from '../src/index';
