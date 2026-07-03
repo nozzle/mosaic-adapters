@@ -9,8 +9,8 @@
  * Note that Mosaic's `filterPushdown` does not rewrite table references
  * inside scalar subqueries: a subquery predicate is NOT constrained by other
  * Selection clauses. Callers that need the subquery to react to sibling
- * filters must rebuild the predicate when those change (the filter-builder
- * does this via the runtime `context` Selection).
+ * filters must rebuild the predicate when those change (a FilterSet subquery
+ * kind does this by embedding `args.contextPredicate` in the subquery WHERE).
  */
 import * as mSql from '@uwdata/mosaic-sql';
 import { SqlIdentifier, createStructAccess } from './sql-access';

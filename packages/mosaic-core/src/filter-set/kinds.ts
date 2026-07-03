@@ -6,11 +6,9 @@
  * a throwaway source and copy the resulting `{ predicate, meta }` — this keeps
  * the emitted SQL and optimizer `meta` byte-identical to native Mosaic clauses.
  *
- * `condition` is a port of the filter-builder's condition/collection/empty
- * predicate builders (condition-predicate.ts) plus operator-alias resolution
- * (helpers.ts `resolveOperatorAlias`), adapted to `(operator, value, valueTo)`
- * with no `valueKind`. Condition emissions carry NO `meta` (they are not
- * point/interval-shaped).
+ * `condition` builds condition/collection/empty predicates with operator-alias
+ * resolution, keyed on `(operator, value, valueTo)`. Condition emissions carry
+ * NO `meta` (they are not point/interval-shaped).
  *
  * `subqueryFilterKind` builds `column [NOT] IN (SELECT ...)` predicates via the
  * shared subquery builders; its emissions likewise carry NO `meta`.
@@ -582,9 +580,9 @@ function buildConditionPredicate(
 
 /**
  * `condition` kind factory. The bare `'condition'` registration is
- * `conditionFilterKind()`. Ports the filter-builder's condition/collection/
- * empty predicate builders and operator-alias resolution, adapted to
- * `(operator, value, valueTo)`. Emissions carry NO `meta`.
+ * `conditionFilterKind()`. Builds condition/collection/empty predicates with
+ * operator-alias resolution, keyed on `(operator, value, valueTo)`. Emissions
+ * carry NO `meta`.
  */
 export function conditionFilterKind(
   options?: ConditionKindOptions,

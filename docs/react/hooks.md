@@ -76,9 +76,4 @@ For a topology known up front, prefer composing statically at module scope with 
 ## Selection read-back and chips
 
 - `useMosaicSelectionValue<T>(selection, { source? })` — reactively read a Selection's clause value: the read-back half of clause publishing. Scope by `source` (e.g. a rows client's stable `publish.select.source`) on multi-publisher Selections; returns `null` when no matching clause is active. This is how a widget renders its own published selection (in-widget chips, checkmarks) from the same Selection its siblings consume.
-- `useFilterChips(registry)` — subscribe to a [filter registry](../core/filter-registry.md)'s chip list.
 - `useFilterSetState(filterSet)` / `useFilterSetChips(filterSet)` — subscribe to a [filter set](../core/filter-set.md)'s specs/chips. The set itself is a long-lived page-scope object created next to the Selections; components only subscribe and call its setters (`set`, `remove`, `removeChip`, `reset`).
-
-## Filter builder
-
-`useMosaicFilters` / `useFilterBinding` / `useFilterFacet` bind the [filter-builder subsystem](../core/filter-builder.md) to React, persistence included.

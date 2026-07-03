@@ -36,19 +36,8 @@ export type {
   SubqueryFilterQuery,
 } from './subquery-predicate';
 
-export { createFilterRegistry } from './filter-registry';
-export type {
-  FilterChip,
-  FilterRegistration,
-  FilterRegistry,
-  FilterRegistryGroup,
-  FilterRegistryState,
-} from './filter-registry';
-
 export { applyRoutedFilters, routeFilter } from './filter-routing';
 export type { RoutedFilterExpr, SqlFilterClauseTarget } from './filter-routing';
-
-export * from './filter-builder/index';
 
 export * from './filter-set/index';
 

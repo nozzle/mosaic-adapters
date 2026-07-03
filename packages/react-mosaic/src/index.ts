@@ -67,29 +67,4 @@ export {
 export { useMosaicSelectionValue } from './use-mosaic-selection-value';
 export type { UseMosaicSelectionValueOptions } from './use-mosaic-selection-value';
 
-export { useFilterChips } from './use-filter-chips';
-
 export { useFilterSetChips, useFilterSetState } from './use-filter-set';
-
-export { useMosaicFilters } from './filter-builder/use-mosaic-filters';
-export { useFilterBinding } from './filter-builder/use-filter-binding';
-export { useFilterBindingControllerState } from './filter-builder/use-filter-binding-controller';
-export { useFilterFacet } from './filter-builder/use-filter-facet';
-export type { FilterFacetResult } from './filter-builder/use-filter-facet';
-export {
-  createFilterBindingPersistenceContext,
-  getCommittedFilterSelectionState,
-  hasValidCommittedFilterSelectionState,
-  markNextCommittedFilterWriteReason,
-} from './filter-builder/persistence-helpers';
-export type {
-  FilterBinding,
-  FilterBindingPersistenceContext,
-  FilterBindingPersistenceWriteContext,
-  FilterBindingPersister,
-  FilterPersistenceWriteReason,
-  FilterScope,
-  UseFilterBindingOptions,
-  UseFilterFacetOptions,
-  UseMosaicFiltersOptions,
-} from './filter-builder/types';
