@@ -1,7 +1,6 @@
 {
   "name": "example-react-athletes",
   "private": true,
-  "version": "0.0.13",
   "type": "module",
   "scripts": {
     "clear-build": "rimraf dist",
@@ -16,8 +15,8 @@
     "test:types": "pnpm run typecheck"
   },
   "dependencies": {
-    "@nozzleio/mosaic-tanstack-react-table": "workspace:*",
-    "@nozzleio/react-mosaic": "workspace:*",
+    "@nozzleio/mosaic-tanstack-react-table": "^0.8.0",
+    "@nozzleio/react-mosaic": "^0.3.2",
     "@tanstack/react-table": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
