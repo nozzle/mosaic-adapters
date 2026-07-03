@@ -61,7 +61,7 @@
     "@duckdb/duckdb-wasm": "1.33.1-dev45.0",
     "@eslint-react/eslint-plugin": "catalog:",
     "@nozzleio/react-mosaic": "workspace:*",
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@uwdata/flechette": "^2.5.0",
     "@uwdata/mosaic-core": "catalog:",
@@ -69,8 +69,8 @@
     "@vitejs/plugin-react": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "rimraf": "catalog:",
     "typescript": "catalog:"
   }
