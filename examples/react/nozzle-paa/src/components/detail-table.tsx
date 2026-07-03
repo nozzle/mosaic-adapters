@@ -18,7 +18,7 @@ import {
   paginationToWindow,
   useTanStackFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { detailContext, detailFilterSet, tableName } from '../page-context';
+import { $page, filterSet, tableName } from '../page-context';
 import { WidgetSqlDetails } from './widget-sql-details';
 import type {
   Column,
@@ -44,12 +44,17 @@ const columns: Array<ColumnDef<DetailRow>> = [
 ];
 
 // Every column filters as a partial (case-insensitive contains) match; the
-// paa_question TanStack id maps onto the struct path.
+// paa_question TanStack id maps onto the struct path. Spec ids are prefixed
+// `detail:` (idPrefix below); labels drive the chip bar's Detail Filters group.
 const bridgeColumns: FilterBridgeColumns = {
-  domain: { clause: 'ilike' },
-  paa_question: { column: 'related_phrase.phrase', clause: 'ilike' },
-  title: { clause: 'ilike' },
-  description: { clause: 'ilike' },
+  domain: { clause: 'ilike', label: 'Domain' },
+  paa_question: {
+    column: 'related_phrase.phrase',
+    clause: 'ilike',
+    label: 'PAA Question',
+  },
+  title: { clause: 'ilike', label: 'Answer Title' },
+  description: { clause: 'ilike', label: 'Answer Description' },
 };
 
 const PAGE_SIZE = 20;
@@ -63,8 +68,9 @@ export function DetailTable(props: { enabled: boolean }) {
 
   useTanStackFilterBridge({
     filters: columnFilters,
-    set: detailFilterSet,
+    set: filterSet,
     columns: bridgeColumns,
+    idPrefix: 'detail:',
     // Chip removal and global reset win over TanStack state: the bridge reports
     // the surviving filter state after an external spec removal, so we adopt it
     // and the cleared columns' inputs empty instead of republishing.
@@ -83,7 +89,7 @@ export function DetailTable(props: { enabled: boolean }) {
           description: 'description',
         })
         .where(where),
-    filterBy: detailContext,
+    filterBy: $page,
     inputs: paginationToWindow(pagination),
     rowCount: 'window',
     enabled: props.enabled,
