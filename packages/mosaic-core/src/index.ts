@@ -37,6 +37,12 @@ export * from './filter-builder/index';
 export { deepEqual, resolveCoerce } from './utils';
 
 export type {
+  Persister,
+  PersisterWriteContext,
+  PersisterWriteReason,
+} from './persistence';
+
+export type {
   CoerceDescriptor,
   CoerceDescriptorMap,
   CoerceOption,

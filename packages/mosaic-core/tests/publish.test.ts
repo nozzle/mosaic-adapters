@@ -48,23 +48,25 @@ describe('row-selection publishing', () => {
     const [ada, bo] = client.store.state.rows;
 
     client.selectRows([ada!, bo!]);
-    expect($picked.clauses).toHaveLength(1);
-    const firstSource = $picked.clauses[0]!.source;
-    expect($picked.clauses[0]!.value).toEqual([[1], [2]]);
+    // The select Selection now carries the external-clear listener, so
+    // `.clauses` is one tick stale; read the synchronous `_resolved` view.
+    expect($picked._resolved).toHaveLength(1);
+    const firstSource = $picked._resolved[0]!.source;
+    expect($picked._resolved[0]!.value).toEqual([[1], [2]]);
     // clausePoints meta drives pre-aggregation; clients drives self-exclusion.
-    expect($picked.clauses[0]!.meta).toEqual({ type: 'point' });
-    expect($picked.clauses[0]!.clients?.has(client.mosaicClient)).toBe(true);
+    expect($picked._resolved[0]!.meta).toEqual({ type: 'point' });
+    expect($picked._resolved[0]!.clients?.has(client.mosaicClient)).toBe(true);
 
     // Re-publishing keeps the same source identity: the Selection replaces
     // the clause instead of accumulating one per call.
     client.selectRows([ada!]);
-    expect($picked.clauses).toHaveLength(1);
-    expect($picked.clauses[0]!.source).toBe(firstSource);
-    expect($picked.clauses[0]!.value).toEqual([[1]]);
+    expect($picked._resolved).toHaveLength(1);
+    expect($picked._resolved[0]!.source).toBe(firstSource);
+    expect($picked._resolved[0]!.value).toEqual([[1]]);
 
     // Empty selection clears the clause entirely.
     client.selectRows([]);
-    expect($picked.clauses).toHaveLength(0);
+    expect($picked._resolved).toHaveLength(0);
 
     client.destroy();
   });
@@ -180,8 +182,12 @@ describe('row-selection publishing', () => {
 
     client.destroy();
 
-    expect($picked.clauses).toHaveLength(0);
+    // The select Selection carries a listener (external-clear wiring), so its
+    // destroy-time clear emits on the next tick; hover clears synchronously.
     expect($hovered.clauses).toHaveLength(0);
+    await waitFor(() => {
+      expect($picked._resolved).toHaveLength(0);
+    });
     expect(db.coordinator.clients.has(client.mosaicClient)).toBe(false);
 
     // Destroyed clients ignore further interaction instead of resurrecting

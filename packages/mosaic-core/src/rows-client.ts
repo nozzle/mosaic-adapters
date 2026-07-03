@@ -2,6 +2,7 @@ import { clausePoints } from '@uwdata/mosaic-core';
 import { Query, asc, count, desc, sql } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
 import { SqlIdentifier, createStructAccess } from './filter-builder/sql-access';
+import { PersisterLifecycle } from './persistence';
 import { resolveCoerce, toResultRows, trailingThrottle } from './utils';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
@@ -46,7 +47,14 @@ class RowsDataClient<TRow>
   readonly #hoverSource: ClauseSource;
   #hasSelectClause = false;
   #hasHoverClause = false;
+  /**
+   * The currently selected tuples (value arrays aligned to
+   * `publish.select.columns`). Tracked here — not on the public state — for
+   * persistence writes and external-clear detection.
+   */
+  #selectedTuples: Array<Array<unknown>> = [];
   #publishHover: TrailingThrottle<[TRow | null]> | null = null;
+  #persist: PersisterLifecycle<Array<Array<unknown>>> | null = null;
 
   #countGeneration = 0;
   #warnedGroupedFilterStable = false;
@@ -64,10 +72,15 @@ class RowsDataClient<TRow>
     assertPublishFields(options.publish?.select);
     assertPublishFields(options.publish?.hover);
 
-    super(options, options.query, {
-      rows: [],
-      totalRows: undefined,
-    });
+    super(
+      options,
+      options.query,
+      {
+        rows: [],
+        totalRows: undefined,
+      },
+      { prepare: () => this.#hydrate() },
+    );
 
     this.#options = options;
     this.#rowCount = rowCount;
@@ -75,8 +88,10 @@ class RowsDataClient<TRow>
     this.#coerce = resolveCoerce(options.coerce);
     this.#selectSource = options.publish?.select?.source ?? {};
     this.#hoverSource = options.publish?.hover?.source ?? {};
+    this.#persist = this.#resolvePersist();
 
     this.#wirePublishing();
+    this.#wireExternalClear();
   }
 
   setCoerce(coerce: CoerceOption<TRow> | undefined): void {
@@ -91,8 +106,25 @@ class RowsDataClient<TRow>
     if (!target) {
       return;
     }
-    this.#publishPoints(target, this.#selectSource, rows);
-    this.#hasSelectClause = rows.length > 0;
+    const tuples = rows.map((row) =>
+      target.columns.map((column) => (row as Record<string, unknown>)[column]),
+    );
+    this.#publishSelectTuples(target, tuples);
+  }
+
+  setSelectedValues(tuples: Array<Array<unknown>>): void {
+    if (this.destroyed) {
+      return;
+    }
+    const target = this.#options.publish?.select;
+    if (!target) {
+      return;
+    }
+    assertTupleArity(tuples, target.columns.length);
+    this.#publishSelectTuples(
+      target,
+      tuples.map((tuple) => [...tuple]),
+    );
   }
 
   hoverRow(row: TRow | null): void {
@@ -213,11 +245,15 @@ class RowsDataClient<TRow>
         if (this.destroyed) {
           return;
         }
-        this.#publishPoints(
-          hover,
-          this.#hoverSource,
-          row === null ? [] : [row],
-        );
+        const tuples =
+          row === null
+            ? []
+            : [
+                hover.columns.map(
+                  (column) => (row as Record<string, unknown>)[column],
+                ),
+              ];
+        this.#publishPoints(hover, this.#hoverSource, tuples);
         this.#hasHoverClause = row !== null;
       }, hover.throttleMs ?? DEFAULT_HOVER_THROTTLE_MS);
     }
@@ -226,10 +262,13 @@ class RowsDataClient<TRow>
       this.#publishHover?.cancel();
       // Caller-provided sources signal that the Selection outlives this
       // client instance: leave the clause in place for the next instance.
+      // Destroy-time clause cleanup never persists — a StrictMode unmount must
+      // not wipe the consumer's storage.
       const select = publish.select;
       if (select && !select.source && this.#hasSelectClause) {
         this.#publishPoints(select, this.#selectSource, []);
         this.#hasSelectClause = false;
+        this.#selectedTuples = [];
       }
       if (hover && !hover.source && this.#hasHoverClause) {
         this.#publishPoints(hover, this.#hoverSource, []);
@@ -238,18 +277,32 @@ class RowsDataClient<TRow>
     });
   }
 
+  /**
+   * The value-level select publish core shared by `selectRows` and
+   * `setSelectedValues`: track the tuples, publish the clause, persist intent.
+   */
+  #publishSelectTuples(
+    target: RowsPublishTarget<TRow>,
+    tuples: Array<Array<unknown>>,
+  ): void {
+    this.#selectedTuples = tuples;
+    this.#hasSelectClause = tuples.length > 0;
+    this.#publishPoints(target, this.#selectSource, tuples);
+    this.#persist?.write(
+      tuples.length > 0 ? tuples.map((tuple) => [...tuple]) : null,
+      tuples.length > 0 ? 'update' : 'clear',
+    );
+  }
+
   #publishPoints(
     target: RowsPublishTarget<TRow>,
     source: ClauseSource,
-    rows: Array<TRow>,
+    tuples: Array<Array<unknown>>,
   ): void {
-    const value = rows.map((row) =>
-      target.columns.map((column) => (row as Record<string, unknown>)[column]),
-    );
     const fields = (target.fields ?? target.columns).map((field) =>
       createStructAccess(SqlIdentifier.from(field)),
     );
-    const clause = clausePoints(fields, value, {
+    const clause = clausePoints(fields, tuples, {
       source,
       clients: new Set<MosaicClient>([this.mosaicClient]),
     });
@@ -282,6 +335,71 @@ class RowsDataClient<TRow>
         'domain really is filter-stable).',
     );
   }
+
+  /**
+   * Hydrate persisted select tuples before the first query (sync reads apply
+   * now, so the first query is already filtered; async reads apply on resolve
+   * and re-query).
+   */
+  #hydrate(): Promise<void> {
+    this.#persist?.hydrate((tuples) => {
+      this.setSelectedValues(tuples);
+    });
+    return Promise.resolve();
+  }
+
+  /**
+   * An external actor (chip bar, global reset) can drop this client's select
+   * clause from the published Selection; mirror that into the tracked tuples
+   * and persist the removal. Select only — hover is transient. The select
+   * source may be caller-provided and shared, so detection is by source
+   * identity: a legitimately surviving clause under a stable source is left
+   * alone.
+   */
+  #wireExternalClear(): void {
+    const target = this.#options.publish?.select;
+    if (!target) {
+      return;
+    }
+    const listener = () => {
+      if (this.destroyed || this.#selectedTuples.length === 0) {
+        return;
+      }
+      const present = target.as.clauses.some(
+        (clause) => clause.source === this.#selectSource,
+      );
+      if (!present) {
+        this.#selectedTuples = [];
+        this.#hasSelectClause = false;
+        this.#persist?.write(null, 'external');
+      }
+    };
+    target.as.addEventListener('value', listener);
+    this.onDestroy(() => target.as.removeEventListener('value', listener));
+  }
+
+  /**
+   * Resolve the persister, but only when there is a select publish target to
+   * persist *for*; without one, warn and ignore (mirrors the `filterStable`
+   * posture).
+   */
+  #resolvePersist(): PersisterLifecycle<Array<Array<unknown>>> | null {
+    const persist = this.#options.persist;
+    if (!persist) {
+      return null;
+    }
+    if (!this.#options.publish?.select) {
+      console.warn(
+        '[mosaic-core] A rows client was given `persist` without a ' +
+          '`publish.select` target; persistence has nothing to persist and ' +
+          'is ignored.',
+      );
+      return null;
+    }
+    return new PersisterLifecycle(persist, () => this.destroyed, {
+      isEmpty: (tuples) => tuples.length === 0,
+    });
+  }
 }
 
 function assertPublishFields<TRow>(
@@ -295,6 +413,17 @@ function assertPublishFields<TRow>(
       'publish fields must align with columns ' +
         `(got ${target.fields.length} fields for ${target.columns.length} columns).`,
     );
+  }
+}
+
+function assertTupleArity(tuples: Array<Array<unknown>>, arity: number): void {
+  for (const tuple of tuples) {
+    if (tuple.length !== arity) {
+      throw new Error(
+        'setSelectedValues tuples must align with publish.select.columns ' +
+          `(got a tuple of ${tuple.length} values for ${arity} columns).`,
+      );
+    }
   }
 }
 

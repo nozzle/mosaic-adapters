@@ -7,6 +7,7 @@ import type {
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import type { Store } from '@tanstack/store';
+import type { Persister } from './persistence';
 
 /**
  * Where a client's data comes from: a table name, or a query factory that
@@ -195,6 +196,13 @@ export interface RowsClientOptions<TRow> extends DataClientOptions<RowsInputs> {
     /** hoverRow() → transient single-point clause (throttled by default). */
     hover?: RowsHoverPublishTarget<TRow>;
   };
+  /**
+   * Consumer-owned storage for the selected tuples (value arrays aligned to
+   * `publish.select.columns`). Hydrated before the first query (sync reads) or
+   * on resolve (async reads) via `setSelectedValues`; written on every select
+   * publish. Requires `publish.select`. Hover is never persisted.
+   */
+  persist?: Persister<Array<Array<unknown>>>;
 }
 
 export interface RowsClientState<TRow> extends DataClientState<RowsInputs> {
@@ -208,6 +216,13 @@ export interface RowsClient<TRow> extends DataClient<
 > {
   /** Publish the given rows as a point clause; `[]` clears the clause. */
   selectRows: (rows: Array<TRow>) => void;
+  /**
+   * Publish the given tuples (value arrays aligned to `publish.select.columns`)
+   * as a point clause; `[]` clears. The tuple-level equivalent of
+   * `selectRows` — use it to replay stored intent, where the original row
+   * objects no longer exist (e.g. after a reload).
+   */
+  setSelectedValues: (tuples: Array<Array<unknown>>) => void;
   /** Publish a transient hover clause; `null` clears it. */
   hoverRow: (row: TRow | null) => void;
   /** Swap the coerce mapper (latest-ref semantics; never re-queries). */
@@ -253,6 +268,12 @@ export interface FacetClientOptions extends DataClientOptions<FacetInputs> {
   select?: 'single' | 'multi';
   /** toggle()/clear() publish into this Selection. */
   publish?: { as: Selection };
+  /**
+   * Consumer-owned storage for the selected values. Hydrated before the first
+   * query (sync reads) or on resolve (async reads); written on every publish.
+   * Requires `publish` — persistence is a no-op without a publish target.
+   */
+  persist?: Persister<Array<unknown>>;
 }
 
 export interface FacetOption {
@@ -270,6 +291,12 @@ export interface FacetClientState extends DataClientState<FacetInputs> {
 export interface FacetClient extends DataClient<FacetInputs, FacetClientState> {
   /** Toggle a value in/out of the published clause; `null` clears. */
   toggle: (value: unknown) => void;
+  /**
+   * Replace the selection wholesale and publish. In `select: 'single'` mode
+   * keeps at most the first value. `[]` clears. Use this to replay stored
+   * intent (persistence, router search params).
+   */
+  setSelected: (values: Array<unknown>) => void;
   clear: () => void;
 }
 
@@ -295,6 +322,12 @@ export interface HistogramClientOptions extends DataClientOptions<HistogramInput
   extent?: [number, number];
   /** setRange() publishes an interval clause into this Selection. */
   publish?: { as: Selection };
+  /**
+   * Consumer-owned storage for the brush range. Hydrated after extent
+   * discovery but before the first main query (sync reads) or on resolve
+   * (async reads); written on every publish. Requires `publish`.
+   */
+  persist?: Persister<[number, number]>;
 }
 
 export interface HistogramBin {
