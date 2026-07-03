@@ -7,5 +7,7 @@
 **/dist
 pnpm-lock.yaml
 **/snapshots
+**/test-results
+**/playwright-report
 **/node_modules
 node_modules
