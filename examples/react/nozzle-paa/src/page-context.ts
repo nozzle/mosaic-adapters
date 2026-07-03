@@ -38,6 +38,7 @@ import {
   createStructAccess,
   subqueryFilterKind,
 } from '@nozzleio/react-mosaic';
+import { urlPersister } from './filter-url';
 import type { FilterKind, FilterKindArgs } from '@nozzleio/react-mosaic';
 import type { ExprNode } from '@uwdata/mosaic-sql';
 
@@ -256,4 +257,10 @@ export const filterSet = createFilterSet({
     'min-domains': minDomainsKind,
   },
   context: $page,
+  // Consumer-owned URL persistence: every spec round-trips through
+  // `location.search` (one `f.` param each), so any filtered view is a
+  // shareable link. Module-scope set creation means this read runs
+  // synchronously before the first query — the dashboard hydrates with zero
+  // flash. See `src/filter-url.ts`.
+  persist: urlPersister,
 });
