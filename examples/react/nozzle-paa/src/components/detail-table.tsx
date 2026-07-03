@@ -18,7 +18,7 @@ import {
   paginationToWindow,
   useTanStackFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { $detail, detailContext, tableName } from '../page-context';
+import { detailContext, detailFilterSet, tableName } from '../page-context';
 import { WidgetSqlDetails } from './widget-sql-details';
 import type {
   Column,
@@ -63,14 +63,13 @@ export function DetailTable(props: { enabled: boolean }) {
 
   useTanStackFilterBridge({
     filters: columnFilters,
-    selection: $detail,
+    set: detailFilterSet,
     columns: bridgeColumns,
-    // Chip removal and global reset win over TanStack state: prune the
-    // cleared columns so the filter inputs empty instead of republishing.
-    onExternalClear: (columnIds) => {
-      setColumnFilters((prev) =>
-        prev.filter((filter) => !columnIds.includes(filter.id)),
-      );
+    // Chip removal and global reset win over TanStack state: the bridge reports
+    // the surviving filter state after an external spec removal, so we adopt it
+    // and the cleared columns' inputs empty instead of republishing.
+    onExternalChange: (filters) => {
+      setColumnFilters(filters);
     },
   });
 

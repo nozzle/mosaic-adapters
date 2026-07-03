@@ -1,4 +1,5 @@
 import { Param, Selection } from '@uwdata/mosaic-core';
+import { createFilterSet } from '@nozzleio/react-mosaic';
 
 export const tableName = 'athletes';
 
@@ -11,6 +12,15 @@ export const tableName = 'athletes';
  * SelectionManager, no tableFilterSelection, no adapter topology concepts.
  */
 export const $page = Selection.crossfilter();
+
+/**
+ * The table's column filters flow through the TanStack bridge as
+ * {@link FilterSpec}s on this module-scope set, which publishes them as clauses
+ * on `$page` (target `where`). The specs carry no `clients`, so — exactly like
+ * the old direct-Selection bridge — the table is filtered by its own column
+ * filters while every sibling widget sees them too.
+ */
+export const filterSet = createFilterSet({ targets: { where: $page } });
 
 /**
  * Rows picked in the table fan out to whatever wants them (detail panes,

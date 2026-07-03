@@ -13,7 +13,7 @@
  * same restriction through its own HAVING instead).
  */
 import { Selection } from '@uwdata/mosaic-core';
-import { createFilterRegistry } from '@nozzleio/react-mosaic';
+import { createFilterRegistry, createFilterSet } from '@nozzleio/react-mosaic';
 import type { ClauseSource } from '@uwdata/mosaic-core';
 
 export const tableName = 'nozzle_paa';
@@ -57,6 +57,18 @@ export const $summarySelections: Record<SummaryTableId, Selection> = perSummary(
 
 /** Detail-table column filters (the TanStack filter bridge publishes here). */
 export const $detail = Selection.intersect();
+
+/**
+ * Interim FilterSet for the detail table's TanStack bridge (commit 1 of the
+ * unification sweep). Its specs target `$detail` with ids equal to the
+ * TanStack column ids (default `idPrefix: ''`), so the clauses it publishes
+ * carry a source whose `{ id, column }` still matches the `$detail`
+ * filter-registry `labelMap` below — chips, labels, and Clear-All keep working
+ * through the registry unchanged for this one commit.
+ */
+export const detailFilterSet = createFilterSet({
+  targets: { where: $detail },
+});
 
 /**
  * Every summary card's metric-threshold filter: one logical
