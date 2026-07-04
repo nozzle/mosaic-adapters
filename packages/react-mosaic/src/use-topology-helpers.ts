@@ -138,6 +138,44 @@ function createCascadingContextMap<TKey extends string>(
 }
 
 /**
+ * Hook to instantiate a single stable Mosaic Selection.
+ *
+ * This is the first hook most consumers reach for: use it to wire a chart's or
+ * input's `filterBy`, and as a lightweight pub/sub channel between widgets that
+ * share the same Selection instance. The returned Selection keeps a stable
+ * identity across renders (memoized on `type` only), so it is safe to pass into
+ * effects, `filterBy`, or other hook dependency arrays.
+ *
+ * @param type - The resolution type for the selection (default: 'intersect').
+ * @returns A stable Selection instance.
+ *
+ * @example
+ * ```tsx
+ * function Dashboard() {
+ *   const selection = useMosaicSelection();
+ *   return (
+ *     <>
+ *       <FilterInput target={selection} />
+ *       <Chart filterBy={selection} />
+ *     </>
+ *   );
+ * }
+ * ```
+ *
+ * @remarks
+ * If you want full control over construction, the escape hatch is to create the
+ * Selection yourself and hold it in state:
+ * `const [selection] = useState(() => Selection.single())`. Prefer this hook
+ * where possible — it guarantees a stable identity and a consistent surface
+ * across all Selection types.
+ */
+export function useMosaicSelection(
+  type: SelectionType = 'intersect',
+): Selection {
+  return useMemo(() => createSelection(type), [type]);
+}
+
+/**
  * Hook to batch instantiate stable Mosaic Selections.
  * Useful for dashboards with many inputs where calling useMosaicSelection N times is verbose.
  *

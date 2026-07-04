@@ -37,6 +37,7 @@ Wrap your app in `<MosaicProvider coordinator={...}>` (or pass `coordinator` per
 
 - `MosaicProvider` / `useMosaicCoordinator` — coordinator context.
 - `useMosaicRows`, `useMosaicValues` — controlled-binding hooks over the rows/values clients.
+- `useMosaicSelection(type?)` — one stable `Selection` (companion to `useMosaicSelections`) for `filterBy`/`havingBy` wiring and sibling-widget pub/sub.
 - `useVgPlot` — mount a vgplot element and disconnect its clients on unmount.
 - Everything from `@nozzleio/mosaic-core`, re-exported.
 
