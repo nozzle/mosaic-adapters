@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest';
 
-import { paginationToWindow, sortingToOrderBy } from '../src/index';
+import {
+  clampPagination,
+  paginationToWindow,
+  sortingToOrderBy,
+} from '../src/index';
 import type { PaginationState, SortingState } from '@tanstack/table-core';
 import type { OrderByItem } from '@nozzleio/mosaic-core';
 
@@ -76,5 +80,72 @@ describe('paginationToWindow', () => {
 
   test.each(cases)('$name', ({ pagination, expected }) => {
     expect(paginationToWindow(pagination)).toEqual(expected);
+  });
+});
+
+describe('clampPagination', () => {
+  const cases: Array<{
+    name: string;
+    pagination: PaginationState;
+    totalRows: number | undefined;
+    expected: PaginationState;
+  }> = [
+    {
+      name: 'in-range pageIndex is left unchanged',
+      pagination: { pageIndex: 1, pageSize: 10 },
+      totalRows: 25,
+      expected: { pageIndex: 1, pageSize: 10 },
+    },
+    {
+      name: 'past-the-end clamps to the last page for a known total',
+      pagination: { pageIndex: 9, pageSize: 10 },
+      totalRows: 25,
+      expected: { pageIndex: 2, pageSize: 10 },
+    },
+    {
+      name: 'totalRows of 0 clamps to page 0',
+      pagination: { pageIndex: 4, pageSize: 10 },
+      totalRows: 0,
+      expected: { pageIndex: 0, pageSize: 10 },
+    },
+    {
+      name: 'totalRows of undefined clamps to page 0',
+      pagination: { pageIndex: 4, pageSize: 10 },
+      totalRows: undefined,
+      expected: { pageIndex: 0, pageSize: 10 },
+    },
+    {
+      name: 'negative pageIndex clamps to 0',
+      pagination: { pageIndex: -3, pageSize: 10 },
+      totalRows: 25,
+      expected: { pageIndex: 0, pageSize: 10 },
+    },
+    {
+      name: 'pageSize is preserved when clamping',
+      pagination: { pageIndex: 8, pageSize: 15 },
+      totalRows: 40,
+      expected: { pageIndex: 2, pageSize: 15 },
+    },
+    {
+      name: 'defensive pageSize of 0 clamps to page 0 without dividing by zero',
+      pagination: { pageIndex: 3, pageSize: 0 },
+      totalRows: 25,
+      expected: { pageIndex: 0, pageSize: 0 },
+    },
+  ];
+
+  test.each(cases)('$name', ({ pagination, totalRows, expected }) => {
+    expect(clampPagination(pagination, totalRows)).toEqual(expected);
+  });
+
+  test('returns the same object reference when nothing changes', () => {
+    const pagination: PaginationState = { pageIndex: 1, pageSize: 10 };
+    expect(clampPagination(pagination, 25)).toBe(pagination);
+  });
+
+  test('does not mutate the input when clamping', () => {
+    const pagination: PaginationState = { pageIndex: 9, pageSize: 10 };
+    clampPagination(pagination, 25);
+    expect(pagination).toEqual({ pageIndex: 9, pageSize: 10 });
   });
 });
