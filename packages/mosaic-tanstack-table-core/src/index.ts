@@ -1,4 +1,8 @@
-export { paginationToWindow, sortingToOrderBy } from './translators';
+export {
+  clampPagination,
+  paginationToWindow,
+  sortingToOrderBy,
+} from './translators';
 
 export { createFilterBridge } from './filter-bridge';
 

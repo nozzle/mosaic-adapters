@@ -10,6 +10,18 @@ You own `useReactTable` and its state, exactly where TanStack manual mode wants 
 
 - `sortingToOrderBy(sorting, columnMap?)` → `Array<OrderByItem>` — TanStack column ids are used as SQL column names unless remapped via `columnMap`.
 - `paginationToWindow(pagination)` → `{ limit, offset }`.
+- `clampPagination(pagination, totalRows)` → `PaginationState` — clamp a stale `pageIndex` into `[0, lastPage]` when a filter shrinks the result under the current page. This is the sharp edge of the manual-pagination model: an unclamped `pageIndex` renders an empty table with a broken pager and no error. `totalRows` of `0`/`undefined` → page 0; a `pageIndex` already in range is returned unchanged. **Caveat:** under `rowCount: 'window'`, `totalRows: 0` is ambiguous between "empty result" and "past the end", so past-the-end recovers only to page 0, not the true last page — use `rowCount: 'query'` when exact last-page recovery matters.
+
+  ```tsx
+  // Clamp against the rows client's totals before deriving the window.
+  const safePagination = clampPagination(pagination, athletes.totalRows);
+  const athletes = useMosaicRows<AthleteRow>({
+    query: ({ where }) => Query.from('athletes').select('*').where(where),
+    filterBy: $page,
+    inputs: { ...paginationToWindow(safePagination) },
+    rowCount: 'query', // exact last-page recovery
+  });
+  ```
 
 ```tsx
 import { useState } from 'react';
