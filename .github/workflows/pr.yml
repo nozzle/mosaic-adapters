@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Tools
-        uses: TanStack/config/.github/setup@b313637fa7d314532b98638f6b57b7b9c169d390 # main
+        uses: TanStack/config/.github/setup@695e782edc39b6907f79e51f4d56dc15af97df60 # main
 
       - name: Check GitHub Action pins
         run: pnpm run actions:pin-check
