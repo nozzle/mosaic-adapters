@@ -61,6 +61,7 @@ export type { VgPlotElement } from './use-vg-plot';
 export {
   useCascadingContexts,
   useComposedSelection,
+  useMosaicSelection,
   useMosaicSelections,
 } from './use-topology-helpers';
 
