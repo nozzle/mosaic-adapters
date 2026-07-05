@@ -74,6 +74,8 @@ Clients are created once per mount and destroyed on unmount; StrictMode's double
 
 For a topology known up front, prefer composing statically at module scope with upstream-native `Selection.intersect({ include: [...] })` — the hooks above exist for graphs assembled inside React lifecycles.
 
+When widgets need to reference selections **by name** (spec-driven pages, hand-editable dashboard configs), declare the whole graph as data with [`useTopology`](./topology.md) instead of passing instances around — the hooks above stay first-class and share the same composition logic. See [Selection topology](../core/selection-topology.md).
+
 ## Selection read-back and chips
 
 - `useMosaicSelectionValue<T>(selection, { source? })` — reactively read a Selection's clause value: the read-back half of clause publishing. Scope by `source` (e.g. a rows client's stable `publish.select.source`) on multi-publisher Selections; returns `null` when no matching clause is active. This is how a widget renders its own published selection (in-widget chips, checkmarks) from the same Selection its siblings consume.
