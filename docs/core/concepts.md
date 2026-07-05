@@ -52,6 +52,8 @@ Specializations add their payload (`rows`/`totalRows`, `values`). Read `store.st
 
 A whole page typically runs on **one** `Selection.crossfilter()`. Every filter UI publishes clauses into it; every client consumes it via `filterBy`. Native cross-mode resolution excludes each publisher from its own clause (the clause `clients` set), so views cascade correctly with no adapter-level selection manager. Note that self-exclusion is cross-mode only: use `Selection.crossfilter()`, not plain `intersect()`, for a shared page context.
 
+To name a page's whole Selection graph as data — so widgets reference selections by name and a dashboard spec is serializable — see [Selection topology](./selection-topology.md); it resolves a declarative config to these same Selection instances at mount.
+
 Publishing (clause emission) is per-client, built on shared clause utilities (`createValueClause`, `createSubqueryClause`, `createClearClause`). The rows client publishes row selection and hover; there is no generic publish slot in the base contract. External publishers (like the [TanStack filter bridge](../tanstack/integration.md)) build on the same utilities; `deepEqual` — the value-equality the core diffs inputs with — is exported for them to diff with the same semantics.
 
 ## Persistence
