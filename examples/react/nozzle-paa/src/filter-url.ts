@@ -13,14 +13,42 @@
  * not prefixed `f.`) are preserved across writes. The value half is
  * human-readable where it is cheap to be:
  *
- * - `f.text:phrase=coleman`              — a `match`/contains string
+ * - `f.text:phrase=coleman`              — a `condition`/contains string
  * - `f.date:requested=2024-01-01..2024-01-31` — an `interval`, ISO `lo..hi`
  * - `f.minDomains=4`                     — the `min-domains` threshold (N)
- * - `f.facet:domain=reddit.com`          — a single-select `point`
+ * - `f.facet:domain=reddit.com`          — a `condition`/`in` list (comma-joined)
  * - `f.facet:keyword-group=a,b`          — a multi-value list (comma-joined)
  * - `f.metric:question=gt:5000`          — a metric threshold (`op:value`)
+ * - `f.built:search-volume=gt:5000`      — a per-row `condition` (`op:value`,
+ *   or `op:lo:hi` for `between`) on the search_volume column
  * - `f.select:phrase=gaz stove,gasoline stove` — a row-selection points spec
  * - `f.detail:paa_question=coleman`      — a bridged detail column filter
+ *
+ * ## The non-default-operator envelope (`op~`)
+ *
+ * A `condition` field's DEFAULT operator (the value-bearing `in`/`list_has_any`
+ * for facets, `contains` for text) encodes as the bare value(s) above, so the
+ * common case stays pretty and existing shared links keep working. A NON-default
+ * operator (e.g. `not_in`, `list_has_all`, `starts_with`, or the valueless
+ * `is_empty`/`is_not_empty`) is carried in an unambiguous envelope:
+ *
+ * - `f.facet:domain=op~not_in~reddit.com,foo.com` — an operator marker, then the
+ *   normal value serialization (the values are always %-encoded, so a real value
+ *   can never begin the `op~<operator>~` sentinel).
+ * - `f.facet:domain=op~is_empty~`                 — a valueless spec: the marker
+ *   with an empty value tail.
+ *
+ * On read the operator is validated against the kind's allowed set; garbage (or
+ * an unknown operator) falls back to the config default, exactly as the "the set
+ * validates again and drops anything malformed" posture below. A legacy bare
+ * value always decodes to the default operator.
+ *
+ * ## Legacy read-side aliases
+ *
+ * `f.text:desc=<q>` (a dropped legacy Answer-Text control) decodes to the
+ * canonical `detail:description` spec, so old shared links keep filtering; the
+ * write side then re-emits the value under the canonical `detail:description`
+ * param.
  *
  * ## The codec is declarative
  *
@@ -40,10 +68,54 @@
  * still — drive the filter setters *from* the router's reactive search params
  * so browser back/forward works. See `docs/react/router-persistence.md`.
  */
+import {
+  FACET_ARRAY_OPERATORS,
+  FACET_SCALAR_OPERATORS,
+  FILTER_CATALOG,
+} from './filter-catalog';
 import type { FilterSpec, Persister } from '@nozzleio/react-mosaic';
 
 /** The `f.` namespace keeps our params from colliding with foreign ones. */
 const PARAM_PREFIX = 'f.';
+
+/**
+ * The sentinel that marks a non-default operator in a `condition` param value.
+ * `op~<operator>~<value-tail>`. The value tail is the same serialization the
+ * default case uses; because every list element and scalar value is %-encoded,
+ * a real value can never legitimately begin `op~<operator>~`.
+ */
+const OPERATOR_ENVELOPE = /^op~([a-z_]+)~/;
+
+/**
+ * Wraps a serialized value tail in the operator envelope. `valueTail` may be
+ * empty for a valueless (arity `none`) operator like `is_empty`.
+ */
+function encodeOperatorEnvelope(operator: string, valueTail: string): string {
+  return `op~${operator}~${valueTail}`;
+}
+
+/**
+ * Splits a `condition` param value into its operator (or `null` for the bare,
+ * default-operator form) and the remaining value tail.
+ */
+function parseOperatorEnvelope(raw: string): {
+  operator: string | null;
+  valueTail: string;
+} {
+  const match = OPERATOR_ENVELOPE.exec(raw);
+  if (match === null) {
+    return { operator: null, valueTail: raw };
+  }
+  return { operator: match[1] ?? null, valueTail: raw.slice(match[0].length) };
+}
+
+/** Text operators that carry no value tail (arity `none`). */
+const VALUELESS_TEXT_OPERATORS = new Set([
+  'is_empty',
+  'is_not_empty',
+  'is_null',
+  'not_null',
+]);
 
 /**
  * The static parts of a spec, plus a per-family value codec. The URL param
@@ -75,28 +147,100 @@ interface SpecCodec {
 
 // ── Per-family value codecs ──────────────────────────────────────────────────
 
-/** A `match`/contains text spec: the param is the raw string. */
-function matchCodec(column: string, label: string): SpecCodec {
+/**
+ * The `condition` text operators the Builder text fields can author (mirrors the
+ * core `conditionFilterKind` vocabulary, unary/valueless entries only — a text
+ * input has no `set`/`range` control). `contains` is the default (bare form).
+ */
+const TEXT_OPERATORS = new Set([
+  'contains',
+  'not_contains',
+  'starts_with',
+  'not_starts_with',
+  'ends_with',
+  'not_ends_with',
+  'eq',
+  'neq',
+  'is_empty',
+  'is_not_empty',
+  'is_null',
+  'not_null',
+]);
+
+/**
+ * A `condition` text spec. The classic Phrase/Question controls and the Builder
+ * text fields both author `condition` (not `match`), so the two views converge
+ * on one spec shape. The default `contains` operator encodes as the bare raw
+ * string (back-compat, pretty URLs); any other Builder operator round-trips
+ * through the {@link OPERATOR_ENVELOPE} (`op~starts_with~coleman`), including the
+ * valueless `is_empty`/`is_not_empty` (`op~is_empty~`). A legacy bare value
+ * always decodes to `contains`.
+ */
+function conditionTextCodec(column: string, label: string): SpecCodec {
   return {
     column,
-    kind: 'match',
+    kind: 'condition',
     operator: 'contains',
     label,
-    encode: (spec) =>
-      typeof spec.value === 'string' && spec.value.length > 0
-        ? spec.value
-        : null,
-    decode: (id, raw) =>
-      raw.length === 0
+    encode: (spec) => {
+      const operator =
+        typeof spec.operator === 'string' ? spec.operator : 'contains';
+      if (!TEXT_OPERATORS.has(operator)) {
+        return null;
+      }
+      if (VALUELESS_TEXT_OPERATORS.has(operator)) {
+        return encodeOperatorEnvelope(operator, '');
+      }
+      if (typeof spec.value !== 'string' || spec.value.length === 0) {
+        return null;
+      }
+      if (operator === 'contains') {
+        return spec.value;
+      }
+      return encodeOperatorEnvelope(operator, spec.value);
+    },
+    decode: (id, raw) => {
+      const { operator, valueTail } = parseOperatorEnvelope(raw);
+      // Bare form (legacy + default): a non-empty contains value.
+      if (operator === null) {
+        return valueTail.length === 0
+          ? null
+          : {
+              id,
+              column,
+              kind: 'condition',
+              operator: 'contains',
+              value: valueTail,
+              label,
+            };
+      }
+      // Enveloped operator: validate, else fall back to the bare interpretation.
+      if (!TEXT_OPERATORS.has(operator)) {
+        return raw.length === 0
+          ? null
+          : {
+              id,
+              column,
+              kind: 'condition',
+              operator: 'contains',
+              value: raw,
+              label,
+            };
+      }
+      if (VALUELESS_TEXT_OPERATORS.has(operator)) {
+        return { id, column, kind: 'condition', operator, label };
+      }
+      return valueTail.length === 0
         ? null
         : {
             id,
             column,
-            kind: 'match',
-            operator: 'contains',
-            value: raw,
+            kind: 'condition',
+            operator,
+            value: valueTail,
             label,
-          },
+          };
+    },
   };
 }
 
@@ -160,62 +304,107 @@ const minDomainsCodec: SpecCodec = {
   },
 };
 
-/** A single-select facet `point`: the param is the scalar value. */
-function pointCodec(column: string, label: string): SpecCodec {
-  return {
-    column,
-    kind: 'point',
-    label,
-    encode: (spec) =>
-      typeof spec.value === 'string' || typeof spec.value === 'number'
-        ? String(spec.value)
-        : null,
-    decode: (id, raw) =>
-      raw.length === 0
-        ? null
-        : { id, column, kind: 'point', value: raw, label },
-  };
-}
-
 /**
- * A multi-value list spec (`points`/`condition`): the param is the values,
- * each URL-encoded, comma-joined. `kind`/`operator` come from the config.
+ * A multi-value list spec (`points`/`condition`): the param is the values, each
+ * URL-encoded, comma-joined. `kind`/`operator` come from the config.
+ *
+ * For a `condition` facet the Builder can author a non-default operator
+ * (`not_in`, `list_has_all`, `excludes_all`, or the valueless
+ * `is_empty`/`is_not_empty`). `allowedOperators` names the vocabulary that
+ * placement offers, with `config.operator` the default. The default operator
+ * encodes as the bare comma-joined list (back-compat, pretty URLs); any other
+ * goes through the {@link OPERATOR_ENVELOPE}. On read an operator failing
+ * validation falls back to `config.operator`.
  */
 function listCodec(config: {
   column: string;
   kind: string;
   operator?: string;
   label: string;
+  allowedOperators?: ReadonlyArray<string>;
+  valuelessOperators?: ReadonlyArray<string>;
 }): SpecCodec {
+  const allowed = new Set(config.allowedOperators ?? []);
+  const valueless = new Set(config.valuelessOperators ?? []);
+
+  const buildSpec = (
+    id: string,
+    operator: string | undefined,
+    values: Array<string>,
+  ): FilterSpec => {
+    const spec: FilterSpec = {
+      id,
+      column: config.column,
+      kind: config.kind,
+      value: values,
+      label: config.label,
+    };
+    if (operator !== undefined) {
+      spec.operator = operator;
+    }
+    return spec;
+  };
+
+  const buildValueless = (id: string, operator: string): FilterSpec => ({
+    id,
+    column: config.column,
+    kind: config.kind,
+    operator,
+    label: config.label,
+  });
+
+  const encodeList = (spec: FilterSpec): string =>
+    Array.isArray(spec.value)
+      ? spec.value.map((value) => encodeURIComponent(String(value))).join(',')
+      : '';
+
   return {
     column: config.column,
     kind: config.kind,
     operator: config.operator,
     label: config.label,
     encode: (spec) => {
+      const operator =
+        typeof spec.operator === 'string' ? spec.operator : config.operator;
+      // A valueless operator carries no list; encode as an empty envelope.
+      if (operator !== undefined && valueless.has(operator)) {
+        return encodeOperatorEnvelope(operator, '');
+      }
       if (!Array.isArray(spec.value) || spec.value.length === 0) {
         return null;
       }
-      return spec.value
-        .map((value) => encodeURIComponent(String(value)))
-        .join(',');
-    },
-    decode: (id, raw) => {
-      const values = decodeList(raw);
-      if (values.length === 0) {
+      const list = encodeList(spec);
+      // The config default stays bare; every other allowed operator is wrapped.
+      if (operator === undefined || operator === config.operator) {
+        return list;
+      }
+      if (!allowed.has(operator)) {
         return null;
       }
-      const spec: FilterSpec = {
-        id,
-        column: config.column,
-        kind: config.kind,
-        value: values,
-        label: config.label,
-      };
-      if (config.operator !== undefined) {
-        spec.operator = config.operator;
+      return encodeOperatorEnvelope(operator, list);
+    },
+    decode: (id, raw) => {
+      const { operator, valueTail } = parseOperatorEnvelope(raw);
+      // Bare form (legacy + default operator): a non-empty value list.
+      if (operator === null) {
+        const values = decodeList(valueTail);
+        return values.length === 0
+          ? null
+          : buildSpec(id, config.operator, values);
       }
-      return spec;
+      // Unknown/garbage operator: fall back to the default, treating the whole
+      // raw param as a bare value list (consistent with the drop-malformed rule).
+      if (!allowed.has(operator)) {
+        const values = decodeList(raw);
+        return values.length === 0
+          ? null
+          : buildSpec(id, config.operator, values);
+      }
+      if (valueless.has(operator)) {
+        return buildValueless(id, operator);
+      }
+      const values = decodeList(valueTail);
+      return values.length === 0 ? null : buildSpec(id, operator, values);
     },
   };
 }
@@ -306,26 +495,163 @@ function isEnvelope(value: unknown): value is Envelope {
 
 // ── The declarative spec table ────────────────────────────────────────────────
 
+/** The facet scalar operators that carry no value list (arity `none`). */
+const FACET_VALUELESS_OPERATORS = ['is_empty', 'is_not_empty'] as const;
+
 /**
  * Static config for every known spec id or id family (`<prefix>:*`). Ids with a
  * `:` are matched by their prefix (metric/select/detail/facet); the rest match
  * exactly. Facet ids are enumerated because their kinds differ per column.
  */
 const EXACT_CODECS: Record<string, SpecCodec> = {
-  'text:phrase': matchCodec('phrase', 'Keyword'),
-  'text:desc': matchCodec('description', 'Answer Text'),
-  'text:question': matchCodec('related_phrase.phrase', 'Question'),
+  // The classic Phrase/Question controls and the Builder text fields author
+  // `condition`/contains (shared spec ids), so these persist as condition specs.
+  'text:phrase': conditionTextCodec('phrase', 'Phrase'),
+  'text:question': conditionTextCodec('related_phrase.phrase', 'Question'),
   'date:requested': dateCodec,
   minDomains: minDomainsCodec,
-  'facet:domain': pointCodec('domain', 'Domain'),
-  'facet:device': pointCodec('device', 'Device'),
+  // Domain/Device are now multi-select `condition`/`in` list specs (shared with
+  // the Builder facet fields), so a single-value URL like `facet:domain=x`
+  // hydrates to a one-element `in` list — the governing "Classic never limits
+  // Builder" refactor.
+  'facet:domain': listCodec({
+    column: 'domain',
+    kind: 'condition',
+    operator: 'in',
+    label: 'Domain',
+    allowedOperators: FACET_SCALAR_OPERATORS,
+    valuelessOperators: FACET_VALUELESS_OPERATORS,
+  }),
+  'facet:device': listCodec({
+    column: 'device',
+    kind: 'condition',
+    operator: 'in',
+    label: 'Device',
+    allowedOperators: FACET_SCALAR_OPERATORS,
+    valuelessOperators: FACET_VALUELESS_OPERATORS,
+  }),
   'facet:keyword-group': listCodec({
     column: 'keyword_groups',
     kind: 'condition',
     operator: 'list_has_any',
     label: 'Keyword Group',
+    allowedOperators: FACET_ARRAY_OPERATORS,
   }),
+  // The Builder's Search Volume "per row (WHERE)" placement (filter-catalog.ts)
+  // writes a numeric `condition` spec on the search_volume column. Data-driven
+  // from the catalog so its id/column/label stay in one place.
+  'built:search-volume': builtSearchVolumeCodec(),
 };
+
+/**
+ * Static config for the `built:search-volume` codec, resolved from the catalog's
+ * Search Volume field + its WHERE placement (so column/label never drift).
+ */
+function searchVolumeWhereConfig(): { column: string; label: string } {
+  const field = FILTER_CATALOG.find((entry) => entry.id === 'search-volume');
+  const placement = field?.placements.find(
+    (entry) => entry.specId === 'built:search-volume',
+  );
+  return {
+    column: placement?.specColumn ?? field?.column ?? 'search_volume',
+    label: field?.label ?? 'Search Volume',
+  };
+}
+
+/**
+ * The Builder's per-row Search Volume filter: a numeric `condition` spec. The
+ * param is `op:value` (e.g. `gt:5000`), `op:lo:hi` for the `between` range, or a
+ * bare `op:` tail for the valueless emptiness operators. Unknown operators or
+ * unparseable numbers are dropped defensively.
+ */
+function builtSearchVolumeCodec(): SpecCodec {
+  const { column, label } = searchVolumeWhereConfig();
+  const kind = 'condition';
+  const toNumber = (raw: string): number | null => {
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      return null;
+    }
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    column,
+    kind,
+    label,
+    encode: (spec) => {
+      const operator = typeof spec.operator === 'string' ? spec.operator : '';
+      if (!SEARCH_VOLUME_OPERATORS.has(operator)) {
+        return null;
+      }
+      if (SEARCH_VOLUME_VALUELESS.has(operator)) {
+        return `${operator}:`;
+      }
+      const value = Number(spec.value);
+      if (!Number.isFinite(value)) {
+        return null;
+      }
+      if (operator === 'between') {
+        const valueTo = Number(spec.valueTo);
+        if (!Number.isFinite(valueTo)) {
+          return null;
+        }
+        return `${operator}:${value}:${valueTo}`;
+      }
+      return `${operator}:${value}`;
+    },
+    decode: (id, raw) => {
+      const parsed = parseOperatorValue(raw);
+      if (parsed === null || !SEARCH_VOLUME_OPERATORS.has(parsed.operator)) {
+        return null;
+      }
+      const operator = parsed.operator;
+      if (SEARCH_VOLUME_VALUELESS.has(operator)) {
+        return { id, column, kind, operator, label };
+      }
+      if (operator === 'between') {
+        const separator = parsed.value.indexOf(':');
+        if (separator < 0) {
+          return null;
+        }
+        const lo = toNumber(parsed.value.slice(0, separator));
+        const hi = toNumber(parsed.value.slice(separator + 1));
+        if (lo === null || hi === null) {
+          return null;
+        }
+        return { id, column, kind, operator, value: lo, valueTo: hi, label };
+      }
+      const value = toNumber(parsed.value);
+      if (value === null) {
+        return null;
+      }
+      return { id, column, kind, operator, value, label };
+    },
+  };
+}
+
+/** The numeric `condition` operators the Search Volume WHERE placement offers. */
+const SEARCH_VOLUME_OPERATORS = new Set([
+  'eq',
+  'neq',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'between',
+  'is_null',
+  'not_null',
+  'is_empty',
+  'is_not_empty',
+]);
+
+/** Search Volume operators that carry no value (arity `none`). */
+const SEARCH_VOLUME_VALUELESS = new Set([
+  'is_null',
+  'not_null',
+  'is_empty',
+  'is_not_empty',
+]);
 
 /** Per-summary-card metric group-by columns and chip labels. */
 const METRIC_CARDS: Record<string, { column: string; label: string }> = {
@@ -359,11 +685,64 @@ const DETAIL_COLUMNS: Record<string, string> = {
   description: 'description',
 };
 
+/**
+ * A detail column filter: a `match`/contains spec keyed `detail:<column-id>`.
+ * `emitId`, when given, overrides the spec id the codec decodes to (so a legacy
+ * alias can hydrate the canonical detail spec regardless of the param key it was
+ * read under).
+ */
+function detailCodec(
+  column: string,
+  label: string,
+  emitId?: string,
+): SpecCodec {
+  return {
+    column,
+    kind: 'match',
+    operator: 'contains',
+    label,
+    encode: (spec) =>
+      typeof spec.value === 'string' && spec.value.length > 0
+        ? spec.value
+        : null,
+    decode: (specId, raw) =>
+      raw.length === 0
+        ? null
+        : {
+            id: emitId ?? specId,
+            column,
+            kind: 'match',
+            operator: 'contains',
+            value: raw,
+            label,
+          },
+  };
+}
+
+/**
+ * Read-side legacy aliases: an old param key → the codec that hydrates its
+ * modern equivalent. `text:desc` was the dropped Answer-Text control; it now
+ * lives as the detail table's `detail:description` column filter, so an old
+ * shared link (`?f.text:desc=coleman`) decodes to that canonical spec, which the
+ * write side then re-emits under `f.detail:description`.
+ */
+const LEGACY_ALIASES: Record<string, SpecCodec> = {
+  'text:desc': detailCodec(
+    DETAIL_COLUMNS.description ?? 'description',
+    DETAIL_LABELS.description ?? 'Answer Description',
+    'detail:description',
+  ),
+};
+
 /** Resolves the codec for a spec id, or `null` when the id is unknown. */
 function codecFor(id: string): SpecCodec | null {
   const exact = EXACT_CODECS[id];
   if (exact !== undefined) {
     return exact;
+  }
+  const alias = LEGACY_ALIASES[id];
+  if (alias !== undefined) {
+    return alias;
   }
   const colon = id.indexOf(':');
   if (colon < 0) {
@@ -385,28 +764,7 @@ function codecFor(id: string): SpecCodec | null {
     if (label === undefined || column === undefined) {
       return null;
     }
-    // Detail specs are `match`/contains, keyed `detail:<tanstack-column-id>`.
-    return {
-      column,
-      kind: 'match',
-      operator: 'contains',
-      label,
-      encode: (spec) =>
-        typeof spec.value === 'string' && spec.value.length > 0
-          ? spec.value
-          : null,
-      decode: (specId, raw) =>
-        raw.length === 0
-          ? null
-          : {
-              id: specId,
-              column,
-              kind: 'match',
-              operator: 'contains',
-              value: raw,
-              label,
-            },
-    };
+    return detailCodec(column, label);
   }
   return null;
 }

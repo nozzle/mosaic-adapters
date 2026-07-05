@@ -384,6 +384,638 @@ test.describe('nozzle-paa dashboard', () => {
     );
   });
 
+  // ── Builder view (issue #180 / #181) ─────────────────────────────────────────
+  // The Builder is the full-power authoring surface; the Classic view is a
+  // curated subset that never limits it. Every catalog field shares its
+  // canonical spec id + kind with a Classic control, so setting a filter in
+  // either view reflects losslessly in the other. The toggle defaults to
+  // Classic so every test above sees the hardcoded bar.
+
+  async function openBuilder(page: Page): Promise<void> {
+    await page.getByTestId('filter-view-builder').click();
+    await expect(page.getByTestId('filter-builder-add-field')).toBeVisible();
+  }
+
+  test('builder: the catalog exposes all eight fields', async ({ page }) => {
+    await gotoDashboard(page);
+    await openBuilder(page);
+
+    const options = await page
+      .getByTestId('filter-builder-add-field')
+      .locator('option')
+      .allInnerTexts();
+    // 8 fields + the leading "Add field…" placeholder.
+    for (const label of [
+      'Phrase',
+      'Domain',
+      'Device',
+      'Keyword Group',
+      'Question',
+      'Requested Date',
+      'Search Volume',
+      'Min Domains',
+    ]) {
+      expect(options).toContain(label);
+    }
+  });
+
+  test('builder: (a) a Domain facet set in the Builder hydrates the Classic multi-select and back', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+
+    // Builder → set Domain (condition `in`) to reddit.com.
+    await openBuilder(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('domain');
+    const block = page.getByTestId('filter-block-domain');
+    const reddit = block
+      .getByTestId('filter-block-domain-option')
+      .filter({ hasText: /^reddit\.com \(/ });
+    await expect(reddit).toBeVisible({ timeout: 15_000 });
+    await reddit.click();
+
+    const bar = page.getByTestId('active-filter-bar');
+    await expect(bar).toContainText('reddit.com');
+    await expect
+      .poll(async () => {
+        const text =
+          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        return Number(text.replaceAll(/[^\d]/g, ''));
+      })
+      .toBeLessThan(203_556);
+
+    // Switch to Classic: the Domain control DERIVES its selection from the
+    // shared spec, so its trigger shows reddit.com immediately (not a stale
+    // "All") — the stale-label fix.
+    await page.getByTestId('filter-view-classic').click();
+    await expect(
+      page.getByTestId('filter-domain').locator('button').first(),
+    ).toContainText('reddit.com');
+
+    // The reverse direction: back in the Builder, the shared spec re-hydrates
+    // the block — the reddit.com option shows as selected (aria-pressed).
+    await page.getByTestId('filter-view-builder').click();
+    const rebuilt = page.getByTestId('filter-block-domain');
+    await expect(
+      rebuilt
+        .getByTestId('filter-block-domain-option')
+        .filter({ hasText: /reddit\.com \(/ }),
+    ).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
+  });
+
+  test('builder: (a2) selecting one facet value keeps the rest of its own list pickable (self-exclusion)', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await openBuilder(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('domain');
+    const block = page.getByTestId('filter-block-domain');
+    const option = (re: RegExp) =>
+      block.getByTestId('filter-block-domain-option').filter({ hasText: re });
+
+    await expect(option(/^reddit\.com \(/)).toBeVisible({ timeout: 15_000 });
+
+    // Pick reddit.com. Each PAA row has one domain, so a list that filtered by
+    // its OWN selection would collapse to just reddit.com — self-exclusion must
+    // keep every other domain (e.g. youtube.com) pickable so a second value can
+    // be added.
+    await option(/^reddit\.com \(/).click();
+    await expect(page.getByTestId('active-filter-bar')).toContainText(
+      'reddit.com',
+    );
+    await expect(option(/^youtube\.com \(/)).toBeVisible({ timeout: 15_000 });
+
+    // And a second value can actually be selected.
+    await option(/^youtube\.com \(/).click();
+    await expect(page.getByTestId('active-filter-bar')).toContainText(
+      'youtube.com',
+    );
+  });
+
+  test('builder: (b) a Phrase text filter hydrates the Classic Phrase input', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await openBuilder(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
+
+    const block = page.getByTestId('filter-block-phrase');
+    // Phrase defaults to `contains`; type a value.
+    await block.getByTestId('filter-block-phrase-value').fill('stove');
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Phrase');
+
+    // Classic Phrase input reflects the same shared `text:phrase` spec.
+    await page.getByTestId('filter-view-classic').click();
+    await expect(page.getByTestId('filter-phrase')).toHaveValue('stove');
+  });
+
+  test('builder: (c) a HAVING metric shares state with the classic metric control', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await openBuilder(page);
+    await page
+      .getByTestId('filter-builder-add-field')
+      .selectOption('search-volume');
+
+    // Build the per-keyword (HAVING) threshold in the Builder — it authors the
+    // same `metric:phrase` spec the classic phrase-card metric control owns.
+    const block = page.getByTestId('filter-block-search-volume');
+    await block
+      .getByTestId('filter-block-search-volume-placement')
+      .selectOption({ label: 'per keyword (HAVING)' });
+    await block
+      .getByTestId('filter-block-search-volume-operator')
+      .selectOption('gt');
+    await block.getByTestId('filter-block-search-volume-value').fill('50000');
+    await expect(page.getByTestId('kpi-phrases')).toHaveText('2');
+    const bar = page.getByTestId('active-filter-bar');
+    await expect(bar.getByTestId('chip-target').first()).toHaveText('HAVING');
+
+    // Switch to Classic: the phrase card's metric control hydrates from the same
+    // spec — checkbox applied, comparison and threshold reflected.
+    await page.getByTestId('filter-view-classic').click();
+    await expect(page.getByTestId('metric-filter-phrase-apply')).toBeChecked();
+    await expect(page.getByTestId('metric-filter-phrase-op')).toHaveValue('gt');
+    await expect(page.getByTestId('metric-filter-phrase-value')).toHaveValue(
+      '50000',
+    );
+  });
+
+  test('builder: (d) the Domain list operator is changeable — not_in differs from in', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+
+    await openBuilder(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('domain');
+    const block = page.getByTestId('filter-block-domain');
+
+    // `in reddit.com` → the reddit.com answer subset (its own count).
+    const reddit = block
+      .getByTestId('filter-block-domain-option')
+      .filter({ hasText: /^reddit\.com \(/ });
+    await expect(reddit).toBeVisible({ timeout: 15_000 });
+    const label = (await reddit.textContent()) ?? '';
+    const inCount = /\(([\d,]+)\)/.exec(label)?.[1];
+    if (inCount === undefined) {
+      throw new Error(`facet option label has no count: ${label}`);
+    }
+    await reddit.click();
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${inCount} rows match`,
+    );
+
+    // Flip the operator to `not_in`: the complement (all rows NOT on reddit.com)
+    // — a strictly different (larger) result than `in`.
+    await block
+      .getByTestId('filter-block-domain-operator')
+      .selectOption('not_in');
+    await expect(page.getByTestId('active-filter-bar')).toContainText(
+      'reddit.com',
+    );
+    await expect(
+      page.getByTestId('active-filter-bar').getByTestId('chip-operator'),
+    ).toHaveText('not_in');
+    // `not_in reddit.com` is the complement: a strictly larger, and different,
+    // result than `in reddit.com` (and still a narrowing of the full dataset).
+    const inRows = Number(inCount.replaceAll(',', ''));
+    await expect
+      .poll(async () => {
+        const text =
+          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        return Number(text.replaceAll(/[^\d]/g, ''));
+      })
+      .toBeGreaterThan(inRows);
+    const notInText =
+      (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+    expect(Number(notInText.replaceAll(/[^\d]/g, ''))).toBeLessThan(203_556);
+  });
+
+  test('builder: (e) always-shown controls — Requested Date renders disabled placement + a disabled "in range" operator', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await openBuilder(page);
+    await page
+      .getByTestId('filter-builder-add-field')
+      .selectOption('requested-date');
+
+    const block = page.getByTestId('filter-block-requested-date');
+    // A single-placement field still renders a placement control (disabled).
+    await expect(
+      block.getByTestId('filter-block-requested-date-placement'),
+    ).toBeDisabled();
+    // The interval kind has no operator axis → a disabled static "in range".
+    const operator = block.getByTestId('filter-block-requested-date-operator');
+    await expect(operator).toBeDisabled();
+    await expect(operator).toContainText('in range');
+  });
+
+  test('builder: (f) an is_empty Phrase surfaces a "set in builder" hint on the classic control', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await openBuilder(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
+
+    const block = page.getByTestId('filter-block-phrase');
+    // is_empty is arity 'none' → no value input, spec commits on operator pick.
+    await block
+      .getByTestId('filter-block-phrase-operator')
+      .selectOption('is_empty');
+    await expect(block.getByTestId('filter-block-phrase-value')).toHaveCount(0);
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Phrase');
+
+    // Switch to Classic: the contains-only Phrase control can't represent an
+    // is_empty filter, so it shows the divergence hint instead of looking empty.
+    await page.getByTestId('filter-view-classic').click();
+    await expect(page.getByTestId('filter-phrase-builder-hint')).toBeVisible();
+  });
+
+  test('builder: (g) a chip shows the operator and the WHERE/HAVING badge', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await openBuilder(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('domain');
+
+    const block = page.getByTestId('filter-block-domain');
+    const reddit = block
+      .getByTestId('filter-block-domain-option')
+      .filter({ hasText: /^reddit\.com \(/ });
+    await expect(reddit).toBeVisible({ timeout: 15_000 });
+    await reddit.click();
+
+    const bar = page.getByTestId('active-filter-bar');
+    // The chip carries both a placement badge (WHERE) and the operator (in).
+    await expect(bar.getByTestId('chip-target').first()).toHaveText('WHERE');
+    await expect(bar.getByTestId('chip-operator').first()).toHaveText('in');
+  });
+
+  test('builder: (h) a Builder-chosen Domain not_in survives a Classic dropdown open', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+
+    // Builder → Domain = not_in [reddit.com].
+    await openBuilder(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('domain');
+    const block = page.getByTestId('filter-block-domain');
+    const reddit = block
+      .getByTestId('filter-block-domain-option')
+      .filter({ hasText: /^reddit\.com \(/ });
+    await expect(reddit).toBeVisible({ timeout: 15_000 });
+    // The reddit.com option label carries its own row count (the `in` subset);
+    // capture it so we can wait for the not_in complement, which is strictly
+    // larger, rather than racing the query that replaces the `in` count.
+    const redditLabel = (await reddit.textContent()) ?? '';
+    const inRows = Number(
+      (/\(([\d,]+)\)/.exec(redditLabel)?.[1] ?? '').replaceAll(',', ''),
+    );
+    await reddit.click();
+    await block
+      .getByTestId('filter-block-domain-operator')
+      .selectOption('not_in');
+
+    const bar = page.getByTestId('active-filter-bar');
+    await expect(bar.getByTestId('chip-operator')).toHaveText('not_in');
+    // Capture the not_in (complement) result so we can prove it is untouched.
+    // Poll until the detail count has settled to the complement (the not_in
+    // query resolves ~a frame after the chip flips, so a bare read here would
+    // race and capture the prior `in` count): the complement is strictly larger
+    // than the `in` subset and still below the unfiltered total.
+    await expect
+      .poll(async () => {
+        const text =
+          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        return Number(text.replaceAll(/[^\d]/g, ''));
+      })
+      .toBeGreaterThan(inRows);
+    const complementText =
+      (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+    const complementRows = Number(complementText.replaceAll(/[^\d]/g, ''));
+    expect(complementRows).toBeLessThan(203_556);
+
+    // Classic → merely OPEN the Domain dropdown. The re-attach effect must NOT
+    // rewrite the spec with the control's hardcoded `in`; the operator (and so
+    // the result) must stay not_in.
+    await page.getByTestId('filter-view-classic').click();
+    await page.getByTestId('filter-domain').locator('button').first().click();
+    await expect(
+      page
+        .getByTestId('filter-domain')
+        .getByTestId('filter-domain-option')
+        .filter({ hasText: /^reddit\.com \(/ }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Operator is still not_in and the result count is unchanged.
+    await expect(bar.getByTestId('chip-operator')).toHaveText('not_in');
+    await expect
+      .poll(async () => {
+        const text =
+          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        return Number(text.replaceAll(/[^\d]/g, ''));
+      })
+      .toBe(complementRows);
+  });
+
+  test('builder: (i) switching placement mid-type does not resurrect the WHERE spec', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await openBuilder(page);
+    await page
+      .getByTestId('filter-builder-add-field')
+      .selectOption('search-volume');
+
+    const block = page.getByTestId('filter-block-search-volume');
+    // Type a WHERE value (arms a 300ms debounce), then IMMEDIATELY switch the
+    // placement to HAVING — the pending publish for the removed WHERE spec must
+    // be cancelled, never producing a phantom `built:search-volume` chip.
+    await block.getByTestId('filter-block-search-volume-value').fill('50000');
+    await block
+      .getByTestId('filter-block-search-volume-placement')
+      .selectOption({ label: 'per keyword (HAVING)' });
+
+    // Give the (cancelled) debounce well past its 300ms window to prove no
+    // republish lands: no WHERE chip appears, only the deliberate HAVING one
+    // once the user re-enters a value.
+    const bar = page.getByTestId('active-filter-bar');
+    await block
+      .getByTestId('filter-block-search-volume-operator')
+      .selectOption('gt');
+    await block.getByTestId('filter-block-search-volume-value').fill('50000');
+    await expect(page.getByTestId('kpi-phrases')).toHaveText('2');
+    // Exactly one Search-Volume chip, and it is the HAVING one.
+    await expect(bar.getByTestId('chip-target')).toHaveCount(1);
+    await expect(bar.getByTestId('chip-target')).toHaveText('HAVING');
+  });
+
+  test('builder: (j) removing a Phrase chip clears the input so an operator change cannot resurrect it', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await openBuilder(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
+
+    const block = page.getByTestId('filter-block-phrase');
+    await block.getByTestId('filter-block-phrase-value').fill('stove');
+    const bar = page.getByTestId('active-filter-bar');
+    await expect(bar).toContainText('Phrase');
+
+    // Remove the spec externally via its chip ✕.
+    await page.getByRole('button', { name: /Remove filter Phrase/ }).click();
+    await expect(bar).toHaveCount(0);
+
+    // The Builder input must have cleared (stale-state fix). Changing the
+    // operator must NOT republish the deleted filter from stale text.
+    await expect(block.getByTestId('filter-block-phrase-value')).toHaveValue(
+      '',
+    );
+    await block
+      .getByTestId('filter-block-phrase-operator')
+      .selectOption('starts_with');
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+  });
+
+  // ── URL share-loop round-trips (filter-url.ts codec fixes) ───────────────────
+  // The consumer-owned URL persister must round-trip every Builder-authored
+  // filter: non-default operators, valueless emptiness specs, the per-row Search
+  // Volume WHERE spec, and legacy param aliases. Each test drives the real
+  // hydration path (a fresh navigation reads location.search on set creation).
+
+  test('builder: (k) a Domain not_in survives the URL share-loop', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+
+    // Author Domain = not_in [reddit.com] in the Builder.
+    await openBuilder(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('domain');
+    const block = page.getByTestId('filter-block-domain');
+    const reddit = block
+      .getByTestId('filter-block-domain-option')
+      .filter({ hasText: /^reddit\.com \(/ });
+    await expect(reddit).toBeVisible({ timeout: 15_000 });
+    // Capture reddit.com's own row count (the `in` subset) so we can wait for
+    // the strictly-larger not_in complement rather than racing the query that
+    // replaces the `in` count.
+    const redditLabel = (await reddit.textContent()) ?? '';
+    const inRows = Number(
+      (/\(([\d,]+)\)/.exec(redditLabel)?.[1] ?? '').replaceAll(',', ''),
+    );
+    await reddit.click();
+    await block
+      .getByTestId('filter-block-domain-operator')
+      .selectOption('not_in');
+
+    const bar = page.getByTestId('active-filter-bar');
+    await expect(bar.getByTestId('chip-operator')).toHaveText('not_in');
+    // Poll the detail count to the settled complement (strictly larger than the
+    // `in` subset, still below the unfiltered total) so both the KPI and the row
+    // count are read once results have settled — not the loading placeholder,
+    // the pre-filter total, or the transient `in` count. The KPI is the
+    // COMPLEMENT (fewer than the unfiltered total); the shared link must
+    // reproduce exactly this, not the raw total.
+    await expect
+      .poll(async () => {
+        const text =
+          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        return Number(text.replaceAll(/[^\d]/g, ''));
+      })
+      .toBeGreaterThan(inRows);
+    const questionsText =
+      (await page.getByTestId('kpi-questions').textContent()) ?? '';
+    // The complement result the shared link must reproduce exactly.
+    const complementText =
+      (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+    const complementRows = Number(complementText.replaceAll(/[^\d]/g, ''));
+
+    // The URL must carry the non-default operator (the `op~` envelope), not a
+    // bare list that would silently decode back to `in`.
+    // `~` percent-encodes to `%7E` when URLSearchParams serializes the value.
+    const url = page.url();
+    expect(url).toContain('op%7Enot_in%7E');
+
+    // Reload the shared link from scratch: the persister hydrates the set before
+    // first paint, so the chip operator and the (complement) result stay not_in.
+    await page.goto(url);
+    await expect(page.getByTestId('kpi-questions')).toHaveText(questionsText, {
+      timeout: 90_000,
+    });
+    await expect(
+      page.getByTestId('active-filter-bar').getByTestId('chip-operator'),
+    ).toHaveText('not_in');
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      complementText,
+    );
+    // Prove the filter is genuinely active: the complement KPI is not the
+    // unfiltered total, and the row count is below the full dataset.
+    expect(questionsText).not.toBe(TOTAL_QUESTIONS);
+    expect(complementRows).toBeLessThan(203_556);
+  });
+
+  test('builder: (l) a valueless is_empty Domain spec survives the URL share-loop', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // Author Domain is_empty (arity none → no value list; commits on operator).
+    await openBuilder(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('domain');
+    const block = page.getByTestId('filter-block-domain');
+    await expect(block.getByTestId('filter-block-domain-operator')).toBeVisible(
+      { timeout: 15_000 },
+    );
+    await block
+      .getByTestId('filter-block-domain-operator')
+      .selectOption('is_empty');
+    await expect(
+      page.getByTestId('active-filter-bar').getByTestId('chip-operator'),
+    ).toHaveText('is_empty');
+    // The is_empty filter selects the subset of PAA rows whose domain is empty,
+    // so the questions KPI is a proper subset of the total, not zero. Poll for
+    // the settled value (below the total), then capture it; the shared link must
+    // reproduce exactly this.
+    await expect.poll(() => readQuestionsKpi(page)).toBeLessThan(4_779);
+    const questionsText =
+      (await page.getByTestId('kpi-questions').textContent()) ?? '';
+    expect(questionsText).not.toBe(TOTAL_QUESTIONS);
+
+    // The URL carries the valueless envelope (marker, empty value tail); `~`
+    // percent-encodes to `%7E`.
+    const url = page.url();
+    expect(url).toContain('op%7Eis_empty%7E');
+
+    // The emptiness filter's result must survive the reload rather than the
+    // spec vanishing from the link.
+    await page.goto(url);
+    await expect(page.getByTestId('kpi-questions')).toHaveText(questionsText, {
+      timeout: 90_000,
+    });
+    await expect(
+      page.getByTestId('active-filter-bar').getByTestId('chip-operator'),
+    ).toHaveText('is_empty');
+  });
+
+  test('builder: (m) a per-row Search Volume WHERE filter survives the URL share-loop', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // Author Search Volume "per row (WHERE)" gt 50000 — a `built:search-volume`
+    // condition spec (distinct from the phrase card's HAVING metric).
+    await openBuilder(page);
+    await page
+      .getByTestId('filter-builder-add-field')
+      .selectOption('search-volume');
+    const block = page.getByTestId('filter-block-search-volume');
+    await block
+      .getByTestId('filter-block-search-volume-placement')
+      .selectOption({ label: 'per row (WHERE)' });
+    await block
+      .getByTestId('filter-block-search-volume-operator')
+      .selectOption('gt');
+    await block.getByTestId('filter-block-search-volume-value').fill('50000');
+
+    const bar = page.getByTestId('active-filter-bar');
+    await expect(bar.getByTestId('chip-target').first()).toHaveText('WHERE');
+    // The detail query settles asynchronously after the debounced write; wait
+    // for the filtered count before capturing the share-loop baseline, or the
+    // capture races the query and grabs the unfiltered total.
+    const totalRows = Number(TOTAL_ROWS.replaceAll(/[^\d]/g, ''));
+    await expect
+      .poll(async () => {
+        const text =
+          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        const rows = Number(text.replaceAll(/[^\d]/g, ''));
+        return rows > 0 && rows < totalRows;
+      })
+      .toBe(true);
+    const filteredText =
+      (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+
+    // The URL must carry the built:search-volume param (write() previously
+    // skipped this unknown id, dropping the filter on reload).
+    const url = page.url();
+    expect(url).toContain('built%3Asearch-volume=gt%3A50000');
+
+    await page.goto(url);
+    await expect(page.getByTestId('kpi-questions')).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(bar.getByTestId('chip-target').first()).toHaveText('WHERE');
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      filteredText,
+    );
+  });
+
+  test('builder: (n) a legacy ?f.text:desc= link hydrates the description detail filter', async ({
+    page,
+  }) => {
+    // Land directly on an OLD shared link: the dropped Answer-Text control's
+    // param must decode to the canonical detail:description filter.
+    await page.goto('/?f.text:desc=coleman');
+    await expect(page.getByTestId('kpi-questions')).toBeVisible({
+      timeout: 90_000,
+    });
+
+    // A description filter is active (chip present) and narrows the result.
+    await expect(page.getByTestId('active-filter-bar')).toContainText(
+      'Answer Description:coleman',
+    );
+    await expect
+      .poll(async () => {
+        const text =
+          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        return Number(text.replaceAll(/[^\d]/g, ''));
+      })
+      .toBeLessThan(203_556);
+
+    // The write side re-emits it under the canonical param, dropping the legacy
+    // key — the detail input reflects the hydrated value.
+    await expect(page.getByTestId('detail-filter-description')).toHaveValue(
+      'coleman',
+    );
+  });
+
+  test('builder: (o) a metric HAVING chip still reads HAVING after a URL reload', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // Apply the classic phrase-card metric threshold (writes metric:phrase with
+    // no decorative target now that the resolved-target fix landed).
+    await page.getByTestId('metric-filter-phrase-value').fill('50000');
+    await page.getByTestId('metric-filter-phrase-apply').check();
+    await expect(page.getByTestId('kpi-phrases')).toHaveText('2');
+    const bar = page.getByTestId('active-filter-bar');
+    await expect(bar.getByTestId('chip-target').first()).toHaveText('HAVING');
+
+    // Reload the shared link: the spec carries no `target`, so the HAVING badge
+    // must come from the kind's published emission targets (the resolved-target
+    // fix), not a decorative spec field.
+    const url = page.url();
+    await page.goto(url);
+    await expect(page.getByTestId('kpi-phrases')).toHaveText('2', {
+      timeout: 90_000,
+    });
+    await expect(bar.getByTestId('chip-target').first()).toHaveText('HAVING');
+  });
+
   test('every widget exposes the SQL it last executed', async ({ page }) => {
     await gotoDashboard(page);
 

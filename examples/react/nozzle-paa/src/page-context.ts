@@ -34,12 +34,17 @@ import * as mSql from '@uwdata/mosaic-sql';
 import {
   SqlIdentifier,
   buildSubqueryPredicate,
+  builtinFilterKinds,
   createFilterSet,
   createStructAccess,
   subqueryFilterKind,
 } from '@nozzleio/react-mosaic';
 import { urlPersister } from './filter-url';
-import type { FilterKind, FilterKindArgs } from '@nozzleio/react-mosaic';
+import type {
+  FilterKind,
+  FilterKindArgs,
+  OperatorDescriptor,
+} from '@nozzleio/react-mosaic';
 import type { ExprNode } from '@uwdata/mosaic-sql';
 
 export const tableName = 'nozzle_paa';
@@ -151,7 +156,19 @@ function metricCardId(specId: string): SummaryTableId | null {
  *    narrows to the matching group subset. Reading `contextPredicate` registers
  *    the spec as context-dependent, so the set rebuilds this on page changes.
  */
+/**
+ * The operator vocabulary the `metric-threshold` kind interprets — a custom
+ * kind self-describing its operators exactly like the built-ins (issue #180),
+ * so a UI (e.g. the filter builder) can enumerate them. Descriptive only; the
+ * `emit` below remains the source of truth for behavior.
+ */
+const METRIC_THRESHOLD_OPERATORS: ReadonlyArray<OperatorDescriptor> = [
+  { id: 'gt', label: 'greater than', arity: 'unary' },
+  { id: 'lt', label: 'less than', arity: 'unary' },
+];
+
 export const metricThresholdKind: FilterKind = {
+  operators: METRIC_THRESHOLD_OPERATORS,
   emit: (args: FilterKindArgs) => {
     const cardId = metricCardId(args.spec.id);
     if (cardId === null) {
@@ -213,7 +230,19 @@ export const metricThresholdKind: FilterKind = {
  *     SELECT related_phrase.phrase FROM nozzle_paa
  *     GROUP BY 1 HAVING count(DISTINCT domain) >= N)
  */
+/**
+ * The `min-domains` operator vocabulary — a single `gte` ("at least N")
+ * operator, self-described so the filter builder can enumerate it exactly like
+ * the built-in kinds (issue #180). The subquery `emit` below is the source of
+ * truth for behavior; this is descriptive only. A single operator means the
+ * builder renders a disabled operator control showing its static label.
+ */
+const MIN_DOMAINS_OPERATORS: ReadonlyArray<OperatorDescriptor> = [
+  { id: 'gte', label: 'at least', arity: 'unary' },
+];
+
 export const minDomainsKind: FilterKind = {
+  operators: MIN_DOMAINS_OPERATORS,
   ...subqueryFilterKind((args) => {
     const minDomains = Number(args.spec.value);
     if (!Number.isFinite(minDomains) || minDomains <= 0) {
@@ -241,6 +270,19 @@ function membersTargets(): Record<string, Selection> {
     SUMMARY_IDS.map((id) => [`members:${id}`, $members[id]]),
   );
 }
+
+/**
+ * The kind registry the page {@link filterSet} resolves through: the built-ins
+ * merged with this app's custom kinds. Exported so the filter builder can
+ * enumerate a kind's self-describing `operators` metadata for its operator
+ * dropdown (`kindRegistry[kind]?.operators`) — the SAME merged map the set
+ * uses, so what the builder offers is exactly what the set can resolve.
+ */
+export const kindRegistry: Record<string, FilterKind> = {
+  ...builtinFilterKinds,
+  'metric-threshold': metricThresholdKind,
+  'min-domains': minDomainsKind,
+};
 
 /**
  * The single page-level filter set. Every widget publishes/reads specs here;

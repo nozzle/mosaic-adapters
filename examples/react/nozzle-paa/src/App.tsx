@@ -15,6 +15,7 @@ import { initPaaTable } from './mosaic-setup';
 import { $page, tableName } from './page-context';
 import { ActiveFilterBar } from './components/active-filter-bar';
 import { DetailTable } from './components/detail-table';
+import { FilterBuilder } from './components/filter-builder';
 import {
   DateRangeFilter,
   DeviceFilter,
@@ -78,6 +79,10 @@ function App() {
   const [expandedTableId, setExpandedTableId] = useState<SummaryTableId | null>(
     null,
   );
+  // Which authoring view is active. Default 'classic' so the existing e2e
+  // (dashboard + share-loop) sees the hardcoded controls unchanged. Both views
+  // author the SAME page filterSet, so switching only re-renders the editor.
+  const [filterView, setFilterView] = useState<FilterView>('classic');
 
   // Metric-threshold filter state lives at page level so it survives the
   // enlarge/return remounts of the summary tables — one per card, each
@@ -154,26 +159,35 @@ function App() {
       <ActiveFilterBar />
 
       <div className="relative z-10 -mt-8 px-6">
-        <div className="flex flex-wrap items-start gap-x-6 gap-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mr-2 self-center text-sm font-bold text-slate-700">
-            FILTER BY:
-          </div>
-          <DomainFilter enabled={isReady} />
-          <TextFilter label="Phrase" runtime="phrase" testId="filter-phrase" />
-          <KeywordGroupFilter enabled={isReady} />
-          <TextFilter
-            label="Answer Contains"
-            runtime="desc"
-            testId="filter-answer"
-          />
-          <DateRangeFilter />
-          <DeviceFilter enabled={isReady} />
-          <TextFilter
-            label="Question Contains"
-            runtime="question"
-            testId="filter-question"
-          />
-          <QuestionMinDomainsFilter />
+        <div className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <FilterViewToggle view={filterView} onChange={setFilterView} />
+
+          {filterView === 'classic' ? (
+            // Classic view: the app's hardcoded top-bar controls, as-is.
+            <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
+              <div className="mr-2 self-center text-sm font-bold text-slate-700">
+                FILTER BY:
+              </div>
+              <DomainFilter enabled={isReady} />
+              <TextFilter
+                label="Phrase"
+                runtime="phrase"
+                testId="filter-phrase"
+              />
+              <KeywordGroupFilter enabled={isReady} />
+              <DateRangeFilter />
+              <DeviceFilter enabled={isReady} />
+              <TextFilter
+                label="Question Contains"
+                runtime="question"
+                testId="filter-question"
+              />
+              <QuestionMinDomainsFilter />
+            </div>
+          ) : (
+            // Builder view: the dynamic builder over the same page filterSet.
+            <FilterBuilder />
+          )}
         </div>
       </div>
 
@@ -249,6 +263,51 @@ function App() {
             <DetailTable enabled={isReady} />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+type FilterView = 'classic' | 'builder';
+
+function FilterViewToggle(props: {
+  view: FilterView;
+  onChange: (next: FilterView) => void;
+}) {
+  const { view, onChange } = props;
+  const buttonClass = (target: FilterView) =>
+    `h-8 rounded px-3 text-xs font-semibold tracking-wide transition-colors ${
+      view === target
+        ? 'bg-white text-cyan-800 shadow-sm'
+        : 'text-slate-500 hover:text-slate-700'
+    }`;
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-xs font-semibold tracking-wider text-slate-500 uppercase">
+        Filters
+      </span>
+      <div
+        data-testid="filter-view-toggle"
+        className="inline-flex rounded-md border border-slate-200 bg-slate-100 p-0.5"
+      >
+        <button
+          type="button"
+          data-testid="filter-view-classic"
+          aria-pressed={view === 'classic'}
+          className={buttonClass('classic')}
+          onClick={() => onChange('classic')}
+        >
+          Classic
+        </button>
+        <button
+          type="button"
+          data-testid="filter-view-builder"
+          aria-pressed={view === 'builder'}
+          className={buttonClass('builder')}
+          onClick={() => onChange('builder')}
+        >
+          Builder
+        </button>
       </div>
     </div>
   );
