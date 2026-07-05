@@ -119,6 +119,14 @@ class FilterSetImpl implements FilterSet {
   readonly #sources = new Map<string, FilterSetSource>();
   /** Spec id → target names with a currently-published (non-clear) clause. */
   readonly #active = new Map<string, Set<string>>();
+  /**
+   * Spec id → resolved routing target(s) of its last publish, in
+   * kind-declaration (emission) order. Drives the chip's resolved `target`
+   * (its first entry is the deterministic primary). A spec may emit to
+   * multiple targets (e.g. metric-threshold → `having` + `members`); a spec
+   * that emitted nothing has no entry and falls back to `spec.target`.
+   */
+  readonly #publishedTargets = new Map<string, ReadonlyArray<string>>();
   /** Clients set identity last published per spec id (clients-change detection). */
   readonly #publishedClients = new Map<string, Set<MosaicClient> | undefined>();
   /** Spec ids whose kind read `contextPredicate` on its last emit. */
@@ -192,6 +200,7 @@ class FilterSetImpl implements FilterSet {
     this.#clients.delete(id);
     this.#contextDependent.delete(id);
     this.#publishedClients.delete(id);
+    this.#publishedTargets.delete(id);
     this.#syncStore();
     if (this.#specs.size === 0) {
       this.#persistWrite('clear');
@@ -237,6 +246,7 @@ class FilterSetImpl implements FilterSet {
     this.#clients.clear();
     this.#contextDependent.clear();
     this.#publishedClients.clear();
+    this.#publishedTargets.clear();
     this.#syncStore();
     this.#persistWrite('clear');
   }
@@ -380,6 +390,22 @@ class FilterSetImpl implements FilterSet {
         value: emission.clause.value ?? spec.value ?? null,
         meta: emission.clause.meta,
       });
+    }
+
+    // Record the resolved routing targets this spec publishes to (active
+    // emissions only), in emission order, so chips report where the clause
+    // actually lands rather than the declared `spec.target`. A spec with no
+    // active emission drops its entry and falls back to `spec.target`.
+    const resolvedTargets: Array<string> = [];
+    for (const [target, resolved] of byTarget) {
+      if (resolved.predicate !== null) {
+        resolvedTargets.push(target);
+      }
+    }
+    if (resolvedTargets.length > 0) {
+      this.#publishedTargets.set(spec.id, resolvedTargets);
+    } else {
+      this.#publishedTargets.delete(spec.id);
     }
 
     const clients = this.#clients.get(spec.id);
@@ -604,6 +630,7 @@ class FilterSetImpl implements FilterSet {
       this.#clients.delete(id);
       this.#contextDependent.delete(id);
       this.#publishedClients.delete(id);
+      this.#publishedTargets.delete(id);
     }
     this.#syncStore();
     this.#persistWrite('external');
@@ -711,9 +738,26 @@ class FilterSetImpl implements FilterSet {
     this.store.setState(() => ({ specs, chips }));
   }
 
+  /**
+   * The resolved routing target a chip reports: the primary (first, in
+   * kind-declaration order) target of the spec's last publish, falling back to
+   * the declared `spec.target ?? 'where'` when the spec has not published an
+   * active clause yet (validation-only / inactive paths).
+   */
+  #resolvedChipTarget(spec: FilterSpec): string {
+    const published = this.#publishedTargets.get(spec.id);
+    const primary = published?.[0];
+    if (primary !== undefined) {
+      return primary;
+    }
+    return spec.target ?? 'where';
+  }
+
   #collectChips(chips: Array<FilterSetChip>, spec: FilterSpec): void {
     const kind = this.#kinds[spec.kind];
     const label = spec.label ?? spec.column;
+    const target = this.#resolvedChipTarget(spec);
+    const operator = spec.operator;
     const format = (value: unknown): string => {
       if (kind?.formatValue !== undefined) {
         return kind.formatValue(spec);
@@ -730,6 +774,8 @@ class FilterSetImpl implements FilterSet {
           value: tuple,
           formattedValue: tuple.map((v) => formatFilterValue(v)).join(', '),
           exploded: true,
+          target,
+          operator,
         });
       });
       return;
@@ -744,6 +790,8 @@ class FilterSetImpl implements FilterSet {
           value: element,
           formattedValue: formatFilterValue(element),
           exploded: true,
+          target,
+          operator,
         });
       });
       return;
@@ -757,6 +805,8 @@ class FilterSetImpl implements FilterSet {
       value,
       formattedValue: value === null ? '' : format(value),
       exploded: false,
+      target,
+      operator,
     });
   }
 }

@@ -84,6 +84,33 @@ export interface FilterKindEmission {
 }
 
 /**
+ * Value shape an operator consumes — descriptive UI-introspection metadata,
+ * never runtime-enforced.
+ *
+ * - `'none'`: takes no value (e.g. `is_empty` / `is_not_empty`).
+ * - `'unary'`: a single value, read from `spec.value` (e.g. `contains`, `eq`).
+ * - `'range'`: two bounds, read from `spec.value` + `spec.valueTo` (e.g.
+ *   `between`).
+ * - `'set'`: an array value, read from `spec.value` (e.g. `is_any_of` /
+ *   `is_not_any_of`).
+ */
+export type OperatorArity = 'none' | 'unary' | 'range' | 'set';
+
+/**
+ * A self-describing operator entry a {@link FilterKind} advertises for UI
+ * introspection (operator pickers, value-input shape). Descriptive only — the
+ * kind's `emit` remains the source of truth for behavior.
+ */
+export interface OperatorDescriptor {
+  /** Operator id, as placed on {@link FilterSpec.operator}. */
+  id: string;
+  /** Human-readable label (e.g. `starts_with` → "starts with"). */
+  label?: string;
+  /** Value shape this operator consumes. */
+  arity?: OperatorArity;
+}
+
+/**
  * A kind translates a {@link FilterSpec} into zero or more Selection-clause
  * emissions. Registered by key in {@link FilterSetOptions.kinds}, merged over
  * the {@link builtinFilterKinds} defaults.
@@ -102,6 +129,12 @@ export interface FilterKind {
    * chip removal narrows the value rather than clearing the whole spec.
    */
   explodeValues?: boolean;
+  /**
+   * Operators this kind interprets, for UI introspection. Descriptive only —
+   * not validated by {@link FilterSet.set}. Kinds that ignore `spec.operator`
+   * omit this field.
+   */
+  operators?: ReadonlyArray<OperatorDescriptor>;
 }
 
 /**
@@ -121,6 +154,23 @@ export interface FilterSetChip {
   formattedValue: string;
   /** True when this chip is one exploded element of a multi-value spec. */
   exploded: boolean;
+  /**
+   * Resolved routing target this chip's clause is actually published to — the
+   * target the kind's emission resolved to (`emission.target ?? spec.target ??
+   * 'where'`), NOT the declared `spec.target`. For a self-routing kind whose
+   * emissions override the target, this reports where the clause landed (e.g.
+   * `having:foo`), not the spec's decorative `target`.
+   *
+   * A spec may emit to multiple targets (e.g. a metric-threshold kind emitting
+   * to both `having:<card>` and `members:<card>`); this single string is the
+   * deterministic PRIMARY: the first emission's resolved target in
+   * kind-declaration order. Exploded chips report the same resolved target as
+   * their parent spec. Falls back to `spec.target ?? 'where'` before the spec
+   * has published an active clause.
+   */
+  target: string;
+  /** The spec's operator, when it declares one (e.g. `in`, `not_in`, `starts_with`). */
+  operator?: string;
 }
 
 /**
