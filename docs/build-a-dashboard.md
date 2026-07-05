@@ -252,6 +252,10 @@ Its Playwright suite asserts each of those flows end-to-end.
   read-once field discovery.
 - [Filter set](core/filter-set.md) — declarative, persistable filter specs over
   Selections, with active-filter chips and global reset.
+- [Selection topology](core/selection-topology.md) — declare a page's named
+  Selection graph as data so widgets reference selections by name (spec-driven
+  dashboards); its [React bindings](react/topology.md) and
+  [recipes](react/topology-recipes.md) (page-wide reset, active-filter chips).
 - [Membership subqueries](core/subquery-predicates.md) — `IN (SELECT …)`
   predicates, context embedding, and change-suppressed republishing.
 - [React hooks](react/hooks.md) — controlled-binding rules (what recreates a client, what never re-queries).

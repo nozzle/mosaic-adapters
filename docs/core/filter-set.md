@@ -273,6 +273,8 @@ const facet = createFacetClient({
 
 In React, subscribe with `useFilterSetState(filters)` / `useFilterSetChips(filters)` from `@nozzleio/react-mosaic`.
 
+Foreign clauses (transient vgplot brushes, direct-to-Selection `publish.as`) are chip-invisible here by design, but a [selection topology](./selection-topology.md) enumerates them on `topology.activeClauses`. To render one bar that unions FilterSet chips with those foreign clauses — the shape apps own — see the [active-filters recipe](../react/topology-recipes.md#active-filters--chips).
+
 ## Persistence
 
 `persist` takes a [`Persister<Array<FilterSpec>>`](../core/concepts.md): the whole set persists as one entry, since the set is a dynamic collection — per-spec storage stays achievable consumer-side by splitting inside the persister closures. Same lifecycle as the data clients: a sync `read` hydrates before the first publish (zero flash, zero echo writes — including under StrictMode double-mounting), async reads apply on resolve unless the user already interacted, writes carry reasons `'update' | 'clear' | 'external'`, and `destroy()` never writes. Reactive stores (router search params) skip the persister and drive `set()`/`remove()` directly — the setters are the re-hydration API. For wiring a persister over a router (`navigate({ search })`) or driving the setters from reactive search params, see the [router persistence recipe](../react/router-persistence.md).
