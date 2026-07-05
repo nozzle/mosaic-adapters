@@ -12,6 +12,8 @@ catalog:
   '@tanstack/store': ^0.11.0
   '@tanstack/table-core': ^8.21.3
   '@tanstack/vite-config': ^0.5.2
+  '@testing-library/dom': '^10.4.0'
+  '@testing-library/react': '^16.3.0'
   '@types/node': ^26.0.1
   '@uwdata/flechette': ^2.5.0
   '@uwdata/mosaic-core': ^0.28.1
@@ -49,6 +51,7 @@ overrides:
   '@nozzleio/mosaic-tanstack-react-table': 'workspace:*'
   '@nozzleio/mosaic-core': 'workspace:*'
   '@nozzleio/react-mosaic': 'workspace:*'
+  '@nozzleio/test-support': 'workspace:*'
 
 allowBuilds:
   esbuild: true
