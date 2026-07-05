@@ -19,7 +19,7 @@ import {
   useTanStackFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { tableName } from '../page-context';
-import { usePaaContexts, usePaaFilterSet } from '../topology';
+import { usePageContexts, usePageFilterSet } from '../topology';
 import { WidgetSqlDetails } from './widget-sql-details';
 import type {
   Column,
@@ -32,24 +32,24 @@ import type { FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-react-table'
 
 interface DetailRow {
   domain: string | null;
-  paa_question: string | null;
+  question: string | null;
   title: string | null;
   description: string | null;
 }
 
 const columns: Array<ColumnDef<DetailRow>> = [
   { accessorKey: 'domain', header: 'Domain', size: 150 },
-  { accessorKey: 'paa_question', header: 'PAA Question', size: 350 },
+  { accessorKey: 'question', header: 'PAA Question', size: 350 },
   { accessorKey: 'title', header: 'Answer Title', size: 300 },
   { accessorKey: 'description', header: 'Answer Description', size: 400 },
 ];
 
 // Every column filters as a partial (case-insensitive contains) match; the
-// paa_question TanStack id maps onto the struct path. Spec ids are prefixed
+// question TanStack id maps onto the struct path. Spec ids are prefixed
 // `detail:` (idPrefix below); labels drive the chip bar's Detail Filters group.
 const bridgeColumns: FilterBridgeColumns = {
   domain: { clause: 'ilike', label: 'Domain' },
-  paa_question: {
+  question: {
     column: 'related_phrase.phrase',
     clause: 'ilike',
     label: 'PAA Question',
@@ -61,8 +61,8 @@ const bridgeColumns: FilterBridgeColumns = {
 const PAGE_SIZE = 20;
 
 export function DetailTable(props: { enabled: boolean }) {
-  const filterSet = usePaaFilterSet();
-  const { page } = usePaaContexts();
+  const filterSet = usePageFilterSet();
+  const { page } = usePageContexts();
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -87,7 +87,7 @@ export function DetailTable(props: { enabled: boolean }) {
       Query.from(tableName)
         .select({
           domain: 'domain',
-          paa_question: sql`"related_phrase"."phrase"`,
+          question: sql`"related_phrase"."phrase"`,
           title: 'title',
           description: 'description',
         })

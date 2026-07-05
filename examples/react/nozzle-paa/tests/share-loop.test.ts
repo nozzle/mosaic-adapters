@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-// Same pinned dataset as nozzle-paa.test.ts (203,556 PAA rows). These are the
+// Same pinned dataset as questions.test.ts (203,556 PAA rows). These are the
 // exact SQL-computed values the share-loop hydrates back to, reused verbatim.
 const TOTAL_QUESTIONS = '4,779';
 
@@ -32,7 +32,7 @@ async function filterParams(page: Page): Promise<Record<string, string>> {
   });
 }
 
-test.describe('nozzle-paa share loop', () => {
+test.describe('people-also-ask share loop', () => {
   test('filtering via the UI writes exactly the touched per-entry params', async ({
     page,
   }) => {
@@ -119,7 +119,7 @@ test.describe('nozzle-paa share loop', () => {
   test('a detail-column URL hydrates the query and the TanStack input', async ({
     page,
   }) => {
-    await page.goto('/?f.detail:paa_question=coleman');
+    await page.goto('/?f.detail:question=coleman');
     // Pre-filtered on load: assert the narrowed detail total directly (the
     // struct-path ilike, test 11's pinned value) with a cold-start timeout.
     await expect(page.getByTestId('detail-total-rows')).toHaveText(
@@ -127,7 +127,7 @@ test.describe('nozzle-paa share loop', () => {
       { timeout: 90_000 },
     );
     // …and the bridge's adoption path drives the TanStack column input.
-    await expect(page.getByTestId('detail-filter-paa_question')).toHaveValue(
+    await expect(page.getByTestId('detail-filter-question')).toHaveValue(
       'coleman',
     );
     await expect(page.getByTestId('active-filter-bar')).toContainText(

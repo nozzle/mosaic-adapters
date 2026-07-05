@@ -9,9 +9,10 @@ subquery, top-bar facet/text/date inputs, an active-filter chip bar with
 global reset, a sparkline column, a detail table with bridged column
 filters, per-widget SQL debug footers, and shareable-URL filter persistence.
 
-Data: the `nozzle_paa` table loads from
+Data: the `questions` table loads from
 `https://fastopendata.org/nozzle_test.parquet` through a Vite proxy
-(`/data-proxy`, CORS strip) into DuckDB-WASM.
+(`/data-proxy`, CORS strip) into DuckDB-WASM. (The remote file name is external
+and not ours to rename.)
 
 ## One FilterSet owns every filter (`src/page-context.ts`)
 
@@ -89,7 +90,7 @@ by the spec id. Untouched filters have no param; foreign params (anything not
 | `f.facet:keyword-group=a,b`                    | a multi-value list              |
 | `f.metric:question=gt:5000`                    | a metric threshold (`op:value`) |
 | `f.select:phrase=gaz%20stove,gasoline%20stove` | a row-selection points spec     |
-| `f.detail:paa_question=coleman`                | a bridged detail column filter  |
+| `f.detail:question=coleman`                    | a bridged detail column filter  |
 
 A declarative table maps each known spec id (or `<prefix>:*` family) to its
 static parts (column, kind, fixed operator, label, target); the URL carries only
@@ -143,7 +144,7 @@ pnpm --filter example-react-nozzle-paa dev
 pnpm --filter example-react-nozzle-paa test:e2e
 ```
 
-`tests/nozzle-paa.test.ts` ports the legacy assertions (selection cascade with
+`tests/questions.test.ts` ports the legacy assertions (selection cascade with
 dataset literals, enlarge/return state survival, chip clearing, KPI reactions,
 highlight dimming) plus the metric/min-domains membership filters, the bridge
 external-clear behavior, facet count cascading, and the SQL footers.

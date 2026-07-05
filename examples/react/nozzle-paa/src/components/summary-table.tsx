@@ -22,7 +22,7 @@ import {
   useMosaicSparkline,
 } from '@nozzleio/react-mosaic';
 import { FILTERS_ENTRY, havingTarget, tableName } from '../page-context';
-import { usePaaContexts, usePaaFilterSet } from '../topology';
+import { usePageContexts, usePageFilterSet } from '../topology';
 import { Sparkline } from './sparkline';
 import { WidgetSqlDetails } from './widget-sql-details';
 import type { SparklineX, SparklineY } from '@nozzleio/react-mosaic';
@@ -69,7 +69,7 @@ function selectSpecId(id: SummaryTableId): string {
 
 /** Reads a summary card's selected scalar values from its `select:` spec. */
 function useSelectedValues(id: SummaryTableId): Array<string | number | null> {
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const { specs } = useFilterSetState(filterSet);
   const value = specs.find((spec) => spec.id === selectSpecId(id))?.value;
   return useMemo(() => {
@@ -90,8 +90,8 @@ export function SummaryTable(props: {
 }) {
   const { config, enabled } = props;
   const [pageIndex, setPageIndex] = useState(0);
-  const filterSet = usePaaFilterSet();
-  const { summaryFilterBy, sparklineContext } = usePaaContexts();
+  const filterSet = usePageFilterSet();
+  const { summaryFilterBy, sparklineContext } = usePageContexts();
   // The card's own metric-threshold HAVING target Selection (resolved by ref).
   const havingSelection = useMosaicSelectionRef(
     `${FILTERS_ENTRY}.${havingTarget(config.id)}`,

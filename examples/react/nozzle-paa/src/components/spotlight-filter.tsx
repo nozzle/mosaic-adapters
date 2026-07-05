@@ -9,7 +9,7 @@
  *
  * Because the clause is not FilterSet-sourced, it surfaces on
  * `topology.activeClauses` (the annotated foreign-clause store) and drives the
- * FOREIGN half of the {@link useActiveFilters} recipe: its chip renders in the
+ * FOREIGN half of the active-filter bar's chip recipe: its chip renders in the
  * active-filter bar and is removable there (clearing the whole clause), and
  * `topology.reset()` clears it alongside the FilterSet specs. This is the
  * escape-hatch showcase: a direct-to-Selection publish the FilterSet never sees.

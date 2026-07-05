@@ -4,7 +4,8 @@ import { tableName } from './page-context';
 /**
  * The parquet is fetched through the Vite proxy (`/data-proxy` →
  * fastopendata.org) because the origin sends no CORS headers and DuckDB-WASM
- * fetches from the browser.
+ * fetches from the browser. The remote file name is external and not ours to
+ * rename, so the proxy path is kept verbatim.
  */
 const PROXY_PATH = '/data-proxy/nozzle_test.parquet';
 
@@ -12,10 +13,10 @@ let initPromise: Promise<void> | null = null;
 
 /**
  * Point the global Mosaic coordinator at an in-browser DuckDB (WASM) and
- * load the PAA table. Idempotent — StrictMode's doubled effect and HMR
+ * load the questions table. Idempotent — StrictMode's doubled effect and HMR
  * re-runs share one promise.
  */
-export function initPaaTable(): Promise<void> {
+export function initQuestionsTable(): Promise<void> {
   if (initPromise === null) {
     initPromise = (async () => {
       coordinator().databaseConnector(wasmConnector());

@@ -22,9 +22,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFilterSetState } from '@nozzleio/react-mosaic';
 import { kindRegistry } from '../page-context';
-import { usePaaFilterSet } from '../topology';
+import { usePageFilterSet } from '../topology';
 import { FILTER_CATALOG, facetOperatorIds } from '../filter-catalog';
-import { useDebouncedRun } from '../hooks';
+import { useDebouncedRun } from '../filter-controls';
 import { FacetMultiSelect } from './facet-multi-select';
 import type {
   FilterSet,
@@ -108,7 +108,7 @@ export function FilterBuilder() {
   // the current specs keeps the builder in sync after a view switch: any field
   // that already holds a spec (set by the classic view, a chip, or a shared
   // link) opens as a block automatically.
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const { specs } = useFilterSetState(filterSet);
   const [openFieldIds, setOpenFieldIds] = useState<Array<string>>(() =>
     hydrateOpenFields(filterSet, []),
@@ -220,7 +220,7 @@ function hydrateOpenFields(
 
 function FilterBlock(props: { field: CatalogField; onRemove: () => void }) {
   const { field } = props;
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const testId = `filter-block-${field.id}`;
 
   // Which placement is active. Hydrate from whichever placement currently holds
@@ -379,7 +379,7 @@ function ScalarValue(props: {
   testId: string;
 }) {
   const { field, placement, specColumn, operators, testId } = props;
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
 
   // The committed spec for this placement (read back so external edits, chip
   // removal, and hydration reflect into the controls).
@@ -610,7 +610,7 @@ function FacetValue(props: {
   testId: string;
 }) {
   const { field, placement, specColumn, operators, testId } = props;
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const { specs } = useFilterSetState(filterSet);
   const committed = specs.find((spec) => spec.id === placement.specId);
 
@@ -733,7 +733,7 @@ function DateRangeValue(props: {
   testId: string;
 }) {
   const { field, placement, testId } = props;
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const { specs } = useFilterSetState(filterSet);
   const committed = specs.find((spec) => spec.id === placement.specId);
   const bounds = Array.isArray(committed?.value)
