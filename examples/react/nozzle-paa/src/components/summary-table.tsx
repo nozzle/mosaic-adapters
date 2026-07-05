@@ -18,15 +18,11 @@ import {
   createStructAccess,
   useFilterSetState,
   useMosaicRows,
+  useMosaicSelectionRef,
   useMosaicSparkline,
 } from '@nozzleio/react-mosaic';
-import {
-  $having,
-  filterSet,
-  sparklineContext,
-  summaryFilterBy,
-  tableName,
-} from '../page-context';
+import { FILTERS_ENTRY, havingTarget, tableName } from '../page-context';
+import { usePaaContexts, usePaaFilterSet } from '../topology';
 import { Sparkline } from './sparkline';
 import { WidgetSqlDetails } from './widget-sql-details';
 import type { SparklineX, SparklineY } from '@nozzleio/react-mosaic';
@@ -73,6 +69,7 @@ function selectSpecId(id: SummaryTableId): string {
 
 /** Reads a summary card's selected scalar values from its `select:` spec. */
 function useSelectedValues(id: SummaryTableId): Array<string | number | null> {
+  const filterSet = usePaaFilterSet();
   const { specs } = useFilterSetState(filterSet);
   const value = specs.find((spec) => spec.id === selectSpecId(id))?.value;
   return useMemo(() => {
@@ -93,6 +90,12 @@ export function SummaryTable(props: {
 }) {
   const { config, enabled } = props;
   const [pageIndex, setPageIndex] = useState(0);
+  const filterSet = usePaaFilterSet();
+  const { summaryFilterBy, sparklineContext } = usePaaContexts();
+  // The card's own metric-threshold HAVING target Selection (resolved by ref).
+  const havingSelection = useMosaicSelectionRef(
+    `${FILTERS_ENTRY}.${havingTarget(config.id)}`,
+  );
 
   // The card's own selected values, read back from its `select:` spec — chips,
   // checkmarks, and the highlight column all derive from this.
@@ -137,7 +140,7 @@ export function SummaryTable(props: {
     filterBy: summaryFilterBy[config.id],
     // The card's own metric-threshold filter routes HAVING here; siblings
     // receive its membership subquery through their contexts instead.
-    havingBy: $having[config.id],
+    havingBy: havingSelection,
     // The factory GROUP BYs a key whose domain changes under filtering, so
     // Mosaic's pre-aggregation assumptions do not hold.
     filterStable: false,

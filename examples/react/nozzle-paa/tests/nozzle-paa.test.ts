@@ -367,6 +367,77 @@ test.describe('nozzle-paa dashboard', () => {
     );
   });
 
+  // ── Foreign clauses + topology reset (issue #181 §6) ─────────────────────────
+  // The "Domain spotlight" control publishes a point clause DIRECTLY to the
+  // topology's `spotlight` Selection — never through the FilterSet. It surfaces
+  // as a FOREIGN chip (the app-side useActiveFilters recipe unions FilterSet
+  // chips with topology.activeClauses), narrows the page, is removable from the
+  // bar (clearing the whole clause), and is cleared by topology.reset().
+
+  test('the domain spotlight publishes a foreign clause that narrows the page and renders a removable foreign chip', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+
+    // Spotlight reddit.com: a direct-to-Selection point clause narrows the
+    // detail table to reddit.com's answer rows (17,902 — the share-loop value).
+    await page.getByTestId('spotlight-domain-input').fill('reddit.com');
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      '17,902 rows match',
+      { timeout: 15_000 },
+    );
+
+    // A FOREIGN chip renders in the active-filter bar, badged SPOTLIGHT.
+    const foreignChip = page.getByTestId('foreign-chip');
+    await expect(foreignChip).toBeVisible();
+    await expect(foreignChip).toContainText('Domain Spotlight:reddit.com');
+    await expect(foreignChip.getByTestId('chip-target')).toHaveText(
+      'SPOTLIGHT',
+    );
+
+    // Removing the foreign chip clears the WHOLE clause (publish null) — the
+    // page returns to the unfiltered total and the bar disappears.
+    await foreignChip
+      .getByRole('button', { name: /Remove filter Domain Spotlight/ })
+      .click();
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+  });
+
+  test('topology reset (Clear All) clears both a FilterSet spec and the foreign spotlight clause', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // A FilterSet spec (min-domains → 418 questions)…
+    await page.getByTestId('question-min-domains-input').fill('4');
+    await expect(page.getByTestId('kpi-questions')).toHaveText('418', {
+      timeout: 15_000,
+    });
+
+    // …AND a foreign clause (spotlight reddit.com) active together.
+    await page.getByTestId('spotlight-domain-input').fill('reddit.com');
+    await expect(page.getByTestId('foreign-chip')).toBeVisible();
+    const bar = page.getByTestId('active-filter-bar');
+    await expect(bar).toContainText('Min Domains:≥ 4');
+    await expect(bar).toContainText('Domain Spotlight:reddit.com');
+
+    // Clear All is `topology.reset()`: it clears the FilterSet specs (chips +
+    // URL params) AND the non-FilterSet spotlight clause in one call.
+    await page.getByTestId('clear-all-filters').click();
+    await expect(page.getByTestId('kpi-questions')).toHaveText(TOTAL_QUESTIONS);
+    await expect(page.getByTestId('question-min-domains-input')).toHaveValue(
+      '',
+    );
+    await expect(page.getByTestId('spotlight-domain-input')).toHaveValue('');
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+  });
+
   test('detail column filters bridge into the page selection, and Clear All wins over TanStack state', async ({
     page,
   }) => {

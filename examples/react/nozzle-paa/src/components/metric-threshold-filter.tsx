@@ -12,7 +12,8 @@
  */
 import { useEffect, useState } from 'react';
 import { useFilterSetState } from '@nozzleio/react-mosaic';
-import { filterSet, metricChipLabels } from '../page-context';
+import { metricChipLabels } from '../page-context';
+import { usePaaFilterSet } from '../topology';
 import type { FilterSpec } from '@nozzleio/react-mosaic';
 import type { SummaryTableId } from '../page-context';
 
@@ -40,6 +41,7 @@ function specId(id: SummaryTableId): string {
 
 /** Reads the committed metric spec for a card from the set store. */
 function useMetricSpec(id: SummaryTableId): FilterSpec | undefined {
+  const filterSet = usePaaFilterSet();
   const { specs } = useFilterSetState(filterSet);
   return specs.find((spec) => spec.id === specId(id));
 }
@@ -49,6 +51,7 @@ export function useMetricThresholdFilter(options: {
   enabled: boolean;
 }): MetricThresholdFilterState {
   const { config } = options;
+  const filterSet = usePaaFilterSet();
   const spec = useMetricSpec(config.id);
   const applied = spec !== undefined;
 

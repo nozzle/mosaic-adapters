@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useRef } from 'react';
 import { useFilterSetState } from '@nozzleio/react-mosaic';
-import { filterSet } from './page-context';
+import { usePaaFilterSet } from './topology';
 
 /**
  * A debounced runner with an explicit cancel handle. `run(fn)` (re)arms the
@@ -57,6 +57,7 @@ export function useDebouncedRun(delayMs: number): DebouncedRun {
  * facet control's derived selection is referentially stable across renders.
  */
 export function useSelectedValues(specId: string): Array<string> {
+  const filterSet = usePaaFilterSet();
   const { specs } = useFilterSetState(filterSet);
   const spec = specs.find((entry) => entry.id === specId);
   return useMemo(() => {
