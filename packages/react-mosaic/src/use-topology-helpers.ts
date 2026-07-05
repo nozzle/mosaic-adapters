@@ -1,8 +1,58 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useReducer, useRef } from 'react';
 import { Selection } from '@uwdata/mosaic-core';
+import {
+  createCascadingContexts,
+  createComposedSelection,
+} from '@nozzleio/mosaic-core';
 
 type SelectionType = 'intersect' | 'union' | 'single' | 'crossfilter';
-type LinkedSelection = Selection & { _relay: Set<Selection> };
+
+/** Any composition handle: wires listeners on creation, tears them down on destroy. */
+interface CompositionHandle {
+  destroy: () => void;
+  readonly destroyed: boolean;
+}
+
+/**
+ * Own the lifecycle of a core composition handle (composed selection / cascading
+ * contexts) inside React. Mirrors {@link useBoundClient}'s StrictMode-safe
+ * strategy: the handle is created lazily during render (relay wiring is a side
+ * effect, so it must run once per mount, StrictMode included), a commit-time
+ * cleanup destroys it, and a simulated StrictMode remount is detected via the
+ * handle's `destroyed` flag and recreated.
+ *
+ * `key` is a scalar that fully captures the handle's inputs; a change recreates
+ * the handle (the previous one is torn down by the cleanup effect first).
+ */
+function useCompositionHandle<THandle extends CompositionHandle>(
+  create: () => THandle,
+  key: string,
+): THandle {
+  const handleRef = useRef<THandle | null>(null);
+  const keyRef = useRef<string | null>(null);
+  const [, revive] = useReducer((n: number) => n + 1, 0);
+
+  if (handleRef.current === null || keyRef.current !== key) {
+    handleRef.current = create();
+    keyRef.current = key;
+  }
+  const handle = handleRef.current;
+
+  useEffect(() => {
+    if (handle.destroyed) {
+      // StrictMode simulated remount: the cleanup below already destroyed the
+      // committed handle; drop it so the next render recreates a live one.
+      handleRef.current = null;
+      revive();
+      return undefined;
+    }
+    return () => {
+      handle.destroy();
+    };
+  }, [handle]);
+
+  return handle;
+}
 
 const SELECTION_IDS = new WeakMap<Selection, number>();
 let nextSelectionId = 1;
@@ -34,107 +84,6 @@ function getSelectionId(selection: Selection) {
 
 function getSelectionListKey(selections: Array<Selection>) {
   return selections.map((selection) => getSelectionId(selection)).join('\0');
-}
-
-function detachIncludedSelection(source: Selection, derived: Selection) {
-  const relay = (source as LinkedSelection)._relay;
-  relay.delete(derived);
-}
-
-function attachIncludedSelection(source: Selection, derived: Selection) {
-  const relay = (source as LinkedSelection)._relay;
-  relay.add(derived);
-}
-
-function seedContext(includedSelections: Array<Selection>, context: Selection) {
-  includedSelections.forEach((selection) => {
-    selection.clauses.forEach((clause) => {
-      context.update(clause);
-    });
-  });
-}
-
-function clearSeededClauses(
-  includedSelections: Array<Selection>,
-  context: Selection,
-) {
-  includedSelections.forEach((selection) => {
-    selection.clauses.forEach((clause) => {
-      context.update({
-        source: clause.source,
-        value: null,
-        predicate: null,
-      });
-    });
-  });
-}
-
-function getContextSources(
-  inputs: Record<string, Selection>,
-  externals: Array<Selection>,
-  key: string,
-) {
-  const self = inputs[key];
-  const others = Object.values(inputs).filter(
-    (selection) => selection !== self,
-  );
-  return [...others, ...externals];
-}
-
-function attachContexts(
-  inputs: Record<string, Selection>,
-  externals: Array<Selection>,
-  contexts: Record<string, Selection>,
-) {
-  for (const key of Object.keys(inputs)) {
-    const context = contexts[key];
-    if (!context) {
-      continue;
-    }
-
-    const sources = getContextSources(inputs, externals, key);
-    sources.forEach((source) => {
-      attachIncludedSelection(source, context);
-    });
-    seedContext(sources, context);
-  }
-}
-
-function detachContexts(
-  inputs: Record<string, Selection>,
-  externals: Array<Selection>,
-  contexts: Record<string, Selection>,
-) {
-  for (const key of Object.keys(inputs)) {
-    const self = inputs[key];
-    const context = contexts[key];
-    if (!context) {
-      continue;
-    }
-
-    for (const other of Object.values(inputs)) {
-      if (other !== self) {
-        detachIncludedSelection(other, context);
-      }
-    }
-
-    for (const external of externals) {
-      detachIncludedSelection(external, context);
-    }
-  }
-}
-
-function createCascadingContextMap<TKey extends string>(
-  inputs: Record<TKey, Selection>,
-) {
-  const map = {} as Record<TKey, Selection>;
-  const keys = Object.keys(inputs) as Array<TKey>;
-
-  keys.forEach((key) => {
-    map[key] = Selection.intersect();
-  });
-
-  return map;
 }
 
 /**
@@ -226,24 +175,21 @@ export function useCascadingContexts<TKey extends string>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [externalsKey],
   );
-  const contexts = useMemo(() => createCascadingContextMap(inputs), [inputs]);
 
-  useEffect(() => {
-    attachContexts(inputs, stableExternals, contexts);
+  // Key on the input keys + their Selection identities and the externals list: a
+  // change in any of them recreates the handle (the core factory mints the
+  // per-key contexts and wires their relays), and the previous handle is torn
+  // down by the cleanup effect.
+  const inputKeys = Object.keys(inputs);
+  const inputsKey = inputKeys
+    .map((key) => `${key}:${getSelectionId(inputs[key as TKey])}`)
+    .join('\0');
+  const handle = useCompositionHandle(
+    () => createCascadingContexts(inputs, stableExternals),
+    `${inputsKey}::${externalsKey}`,
+  );
 
-    return () => {
-      detachContexts(inputs, stableExternals, contexts);
-
-      for (const key of Object.keys(inputs)) {
-        clearSeededClauses(
-          getContextSources(inputs, stableExternals, key),
-          contexts[key as TKey],
-        );
-      }
-    };
-  }, [contexts, inputs, stableExternals]);
-
-  return contexts;
+  return handle.contexts;
 }
 
 export function useComposedSelection(
@@ -256,25 +202,14 @@ export function useComposedSelection(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [includedSelectionsKey],
   );
-  const context = useMemo(() => Selection.intersect(), []);
 
-  useEffect(() => {
-    if (stableIncludedSelections.length === 0) {
-      return;
-    }
+  // The core factory owns the composed Selection and its relay wiring; the hook
+  // recreates the handle when the included list changes and destroys it on
+  // unmount (and on the change).
+  const handle = useCompositionHandle(
+    () => createComposedSelection(stableIncludedSelections),
+    includedSelectionsKey,
+  );
 
-    stableIncludedSelections.forEach((selection) => {
-      attachIncludedSelection(selection, context);
-    });
-    seedContext(stableIncludedSelections, context);
-
-    return () => {
-      stableIncludedSelections.forEach((selection) => {
-        detachIncludedSelection(selection, context);
-      });
-      clearSeededClauses(stableIncludedSelections, context);
-    };
-  }, [context, stableIncludedSelections]);
-
-  return context;
+  return handle.selection;
 }
