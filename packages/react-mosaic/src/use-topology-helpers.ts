@@ -8,7 +8,7 @@ import {
 type SelectionType = 'intersect' | 'union' | 'single' | 'crossfilter';
 
 /** Any composition handle: wires listeners on creation, tears them down on destroy. */
-interface CompositionHandle {
+export interface CompositionHandle {
   destroy: () => void;
   readonly destroyed: boolean;
 }
@@ -24,7 +24,7 @@ interface CompositionHandle {
  * `key` is a scalar that fully captures the handle's inputs; a change recreates
  * the handle (the previous one is torn down by the cleanup effect first).
  */
-function useCompositionHandle<THandle extends CompositionHandle>(
+export function useCompositionHandle<THandle extends CompositionHandle>(
   create: () => THandle,
   key: string,
 ): THandle {

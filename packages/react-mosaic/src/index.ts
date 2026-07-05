@@ -65,6 +65,20 @@ export {
   useMosaicSelections,
 } from './use-topology-helpers';
 
+export { useTopology } from './use-topology';
+
+export {
+  MosaicTopologyProvider,
+  useMosaicSelectionRef,
+  useMosaicTopology,
+} from './topology-context';
+export type { MosaicTopologyProviderProps } from './topology-context';
+
+export {
+  useMosaicActiveClauses,
+  useTopologyActiveClauses,
+} from './use-topology-active-clauses';
+
 export { useMosaicSelectionValue } from './use-mosaic-selection-value';
 export type { UseMosaicSelectionValueOptions } from './use-mosaic-selection-value';
 
