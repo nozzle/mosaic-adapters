@@ -2,10 +2,16 @@ import { Selection } from '@uwdata/mosaic-core';
 import { Query, eq, literal } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
+import {
+  createAthletesDb,
+  interact,
+  renderHook,
+  settle,
+  waitFor,
+} from '@nozzleio/test-support/react';
 import { useMosaicRows } from '../src/index';
-import { actWaitFor, createAthletesDb, renderHook, settle } from './test-utils';
 import type { QuerySource, RowsInputs } from '../src/index';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/react';
 
 interface AthleteRow {
   id: number;
@@ -49,7 +55,7 @@ describe('status semantics', () => {
     expect(db.clientQueries.length).toBe(0);
 
     await hook.rerender({ enabled: true });
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.status).toBe('success');
       expect(hook.result.current.rows).toHaveLength(6);
     });
@@ -89,7 +95,7 @@ describe('latest-ref query and coerce', () => {
       { initialProps: { swimOnly: false, upper: false, inputs: {} } },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.status).toBe('success');
       expect(hook.result.current.rows).toHaveLength(6);
     });
@@ -113,7 +119,7 @@ describe('latest-ref query and coerce', () => {
       upper: true,
       inputs: { orderBy: [{ column: 'id' }] },
     });
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows).toHaveLength(4);
     });
     expect(db.clientQueries.length).toBe(queriesAfterInit + 1);
@@ -145,7 +151,7 @@ describe('value-diffed inputs', () => {
       },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows.map((r) => r.id)).toEqual([4, 3, 2]);
     });
     const queriesAfterInit = db.clientQueries.length;
@@ -160,7 +166,7 @@ describe('value-diffed inputs', () => {
     // Dropping the orderBy key clears it (the option owns the inputs), so
     // this is one query with natural order and the new limit.
     await hook.rerender({ inputs: { limit: 2 } });
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows.map((r) => r.id)).toEqual([1, 2]);
     });
     expect(db.clientQueries.length).toBe(queriesAfterInit + 1);
@@ -184,7 +190,7 @@ describe('structural identity', () => {
       { initialProps: { filterBy: selA } },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.status).toBe('success');
     });
     const clientA = hook.result.current.client;
@@ -192,14 +198,16 @@ describe('structural identity', () => {
 
     // The new Selection filters to one sport; the recreated client must be
     // wired to it for real.
-    selB.update({
-      source: {},
-      value: 'run',
-      predicate: eq('sport', literal('run')),
+    await interact(() => {
+      selB.update({
+        source: {},
+        value: 'run',
+        predicate: eq('sport', literal('run')),
+      });
     });
     await hook.rerender({ filterBy: selB });
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.client).not.toBe(clientA);
       expect(hook.result.current.rows.map((r) => r.sport)).toEqual([
         'run',
@@ -228,17 +236,19 @@ describe('structural identity', () => {
       { initialProps: {} },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows).toHaveLength(6);
     });
 
-    $page.update({
-      source: {},
-      value: 'swim',
-      predicate: eq('sport', literal('swim')),
+    await interact(() => {
+      $page.update({
+        source: {},
+        value: 'swim',
+        predicate: eq('sport', literal('swim')),
+      });
     });
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows).toHaveLength(4);
     });
 
@@ -255,10 +265,10 @@ describe('StrictMode', () => {
           query: allAthletes,
           inputs: { orderBy: [{ column: 'id' }] },
         }),
-      { initialProps: {}, strict: true },
+      { initialProps: {}, reactStrictMode: true },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.status).toBe('success');
       expect(hook.result.current.rows).toHaveLength(6);
     });

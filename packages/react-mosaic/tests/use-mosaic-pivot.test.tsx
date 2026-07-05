@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 
+import {
+  createAthletesDb,
+  renderHook,
+  waitFor,
+} from '@nozzleio/test-support/react';
 import { useMosaicPivot, useMosaicSchema } from '../src/index';
-import { actWaitFor, createAthletesDb, renderHook } from './test-utils';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/react';
 
 let db: TestDb;
 
@@ -22,10 +26,10 @@ describe('useMosaicPivot', () => {
           groupBy: ['name'],
           inputs: { orderBy: [{ column: 'name' }] },
         }),
-      { initialProps: {}, strict: true },
+      { initialProps: {}, reactStrictMode: true },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows).toHaveLength(6);
     });
     expect(hook.result.current.pivotColumns).toEqual(['run', 'swim']);
@@ -44,10 +48,10 @@ describe('useMosaicSchema', () => {
           coordinator: db.coordinator,
           table: 'athletes',
         }),
-      { initialProps: {}, strict: true },
+      { initialProps: {}, reactStrictMode: true },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.status).toBe('success');
     });
     expect(hook.result.current.fields.map((f) => f.column)).toEqual([

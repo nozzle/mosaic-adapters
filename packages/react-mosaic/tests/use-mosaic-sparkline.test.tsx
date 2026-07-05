@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 
+import {
+  createAthletesDb,
+  renderHook,
+  settle,
+  waitFor,
+} from '@nozzleio/test-support/react';
 import { useMosaicSparkline } from '../src/index';
-import { actWaitFor, createAthletesDb, renderHook, settle } from './test-utils';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/react';
 
 let db: TestDb;
 
@@ -25,7 +30,7 @@ describe('useMosaicSparkline', () => {
       { initialProps: { keys: ['swim'] } },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.series.size).toBe(1);
     });
     const queriesAfterInit = db.clientQueries.length;
@@ -37,7 +42,7 @@ describe('useMosaicSparkline', () => {
     expect(db.clientQueries.length).toBe(queriesAfterInit);
 
     await hook.rerender({ keys: ['swim', 'run'] });
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.series.size).toBe(2);
     });
     expect(db.clientQueries.length).toBe(queriesAfterInit + 1);
