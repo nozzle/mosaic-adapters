@@ -22,7 +22,7 @@
  * - `f.built:search-volume=gt:5000`      — a per-row `condition` (`op:value`,
  *   or `op:lo:hi` for `between`) on the search_volume column
  * - `f.select:phrase=gaz stove,gasoline stove` — a row-selection points spec
- * - `f.detail:paa_question=coleman`      — a bridged detail column filter
+ * - `f.detail:question=coleman`          — a bridged detail column filter
  *
  * ## The non-default-operator envelope (`op~`)
  *
@@ -444,7 +444,7 @@ function metricCodec(label: string, column: string): SpecCodec {
 
 /**
  * A summary row-selection `points` spec. The rows client's single-field
- * `publish.select` (all four PAA cards select on one field) publishes a FLAT
+ * `publish.select` (all four summary cards select on one field) publishes a FLAT
  * scalar array as the spec value, with `column` set to the real group-by
  * field — the `{ columns, tuples }` envelope shape only appears for
  * multi-field selects. The param is the scalars, URL-encoded and comma-joined.
@@ -672,15 +672,15 @@ const SELECT_CARDS: Record<string, { column: string; label: string }> = {
 /** Detail column chip labels (parity with the bridge column config). */
 const DETAIL_LABELS: Record<string, string> = {
   domain: 'Domain',
-  paa_question: 'PAA Question',
+  question: 'PAA Question',
   title: 'Answer Title',
   description: 'Answer Description',
 };
 
-/** Detail spec column → SQL column (paa_question maps onto the struct path). */
+/** Detail spec column → SQL column (`question` maps onto the struct path). */
 const DETAIL_COLUMNS: Record<string, string> = {
   domain: 'domain',
-  paa_question: 'related_phrase.phrase',
+  question: 'related_phrase.phrase',
   title: 'title',
   description: 'description',
 };

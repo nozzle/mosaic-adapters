@@ -1,6 +1,6 @@
 /**
- * Shared hooks + helpers for the two authoring views (Classic {@link paa-filters}
- * and the {@link filter-builder} Builder) and the facet control they share.
+ * Shared helpers for the two authoring views (Classic `question-filters.tsx`
+ * and the `filter-builder.tsx` Builder) and the facet control they share.
  *
  * Both views ran verbatim copies of a debounce hook, a committed-spec array
  * reader, and the facet trigger-label logic; consolidating them here keeps the
@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useRef } from 'react';
 import { useFilterSetState } from '@nozzleio/react-mosaic';
-import { usePaaFilterSet } from './topology';
+import { usePageFilterSet } from './topology';
 
 /**
  * A debounced runner with an explicit cancel handle. `run(fn)` (re)arms the
@@ -57,7 +57,7 @@ export function useDebouncedRun(delayMs: number): DebouncedRun {
  * facet control's derived selection is referentially stable across renders.
  */
 export function useSelectedValues(specId: string): Array<string> {
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const { specs } = useFilterSetState(filterSet);
   const spec = specs.find((entry) => entry.id === specId);
   return useMemo(() => {
@@ -80,23 +80,4 @@ export function facetTriggerLabel(selected: Array<string>): string {
     return String(selected[0]);
   }
   return `${selected.length} selected`;
-}
-
-/**
- * The multi-value `condition` operators the Classic facet control can preserve
- * when toggling a value over a Builder-authored spec. Emptiness operators
- * (`is_empty`/`is_not_empty`, arity `none`) carry no value list, so toggling a
- * value under them makes no sense — the caller falls back to its prop default.
- */
-const MULTI_VALUE_OPERATORS = new Set([
-  'in',
-  'not_in',
-  'list_has_any',
-  'list_has_all',
-  'excludes_all',
-]);
-
-/** True when `operator` is a value-bearing multi-value membership operator. */
-export function isMultiValueOperator(operator: unknown): operator is string {
-  return typeof operator === 'string' && MULTI_VALUE_OPERATORS.has(operator);
 }

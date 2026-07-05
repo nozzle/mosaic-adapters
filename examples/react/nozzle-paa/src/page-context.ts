@@ -3,7 +3,7 @@
  *
  * The whole page is driven by a single hoisted {@link TopologyConfig} — a pure
  * JSON document naming every Selection on the page — resolved to live instances
- * by `useTopology` (see {@link usePaaTopology}) under a `MosaicTopologyProvider`.
+ * by `useTopology` (see {@link usePageTopology}) under a `MosaicTopologyProvider`.
  * Widgets resolve their `filterBy` / target selections by *ref* through the
  * provider (`useMosaicSelectionRef`, or the app-derived contexts below), never
  * by importing Selection instances.
@@ -15,13 +15,13 @@
  *   an addressable target Selection resolvable as `filters.<target>`. The
  *   code-only parts of the set — the custom `metric-threshold` / `min-domains`
  *   kinds and the URL `persist`er — travel in the options bag
- *   ({@link paaTopologyOptions}), keyed by the entry name. Every dashboard
+ *   ({@link topologyOptions}), keyed by the entry name. Every dashboard
  *   filter is a {@link FilterSpec} on this set.
  * - **`spotlight` (`single`)** — a standalone, topology-owned Selection the
  *   "Domain spotlight" quick-filter publishes a point clause into *directly*
  *   (bypassing the FilterSet). It is the page's one genuinely FOREIGN clause
  *   source: it surfaces on `topology.activeClauses` and drives the foreign half
- *   of the {@link useActiveFilters} recipe.
+ *   of the active-filter-bar's chip recipe (see `active-filter-bar.tsx`).
  *
  * ## The crossfilter read-contexts are `external` (escape hatch)
  *
@@ -41,7 +41,7 @@
  * declarations. They are declared `external` — so the config stays the complete
  * namespace document — with empty `Selection.crossfilter()` instances supplied
  * at construction and wired to the topology's resolved targets immediately after
- * ({@link wirePaaContexts}). This is the sanctioned escape hatch: exotic,
+ * ({@link wirePageContexts}). This is the sanctioned escape hatch: exotic,
  * hand-wired composites the library does not model, still named in the config so
  * `validNames` is total. `page` doubles as the FilterSet's subquery `context`.
  */
@@ -65,7 +65,7 @@ import type {
 } from '@nozzleio/react-mosaic';
 import type { ExprNode } from '@uwdata/mosaic-sql';
 
-export const tableName = 'nozzle_paa';
+export const tableName = 'questions';
 
 export type SummaryTableId = 'phrase' | 'question' | 'domain' | 'url';
 
@@ -146,7 +146,7 @@ const METRIC_THRESHOLD_OPERATORS: ReadonlyArray<OperatorDescriptor> = [
  * (`gt`/`lt`) and a numeric value emits two clauses:
  *
  * 1. `having:<card>` — `<agg> >/< N` for the card's own grouped query.
- * 2. `members:<card>` — `<groupKey> IN (SELECT <groupKey> FROM nozzle_paa
+ * 2. `members:<card>` — `<groupKey> IN (SELECT <groupKey> FROM questions
  *    WHERE <page predicate> GROUP BY 1 HAVING <agg cmp N>)`, so every sibling
  *    narrows to the matching group subset. Reading `contextPredicate` registers
  *    the spec as context-dependent, so the set rebuilds this on page changes.
@@ -217,11 +217,11 @@ const MIN_DOMAINS_OPERATORS: ReadonlyArray<OperatorDescriptor> = [
 ];
 
 /**
- * `min-domains` — keep rows whose PAA question appears on at least N distinct
+ * `min-domains` — keep rows whose question appears on at least N distinct
  * domains:
  *
  *   related_phrase.phrase IN (
- *     SELECT related_phrase.phrase FROM nozzle_paa
+ *     SELECT related_phrase.phrase FROM questions
  *     GROUP BY 1 HAVING count(DISTINCT domain) >= N)
  */
 export const minDomainsKind: FilterKind = {
@@ -267,18 +267,6 @@ export const PAGE_ENTRY = 'page';
 /** The per-card summary read-context entry name (external). */
 export function summaryContextEntry(id: SummaryTableId): string {
   return `summaryFilterBy:${id}`;
-}
-
-/**
- * True when a topology ref names one of the derived crossfilter read-contexts
- * (`page`, `summaryFilterBy:<card>`). These external composites only RELAY the
- * base selections' clauses, so the topology's active-clause store reports a
- * foreign clause once per context it reached — the {@link useActiveFilters}
- * recipe skips them so a foreign clause surfaces once, on its base source.
- */
-export function isDerivedContextRef(ref: string): boolean {
-  const entry = ref.includes('.') ? ref.slice(0, ref.indexOf('.')) : ref;
-  return entry === PAGE_ENTRY || entry.startsWith('summaryFilterBy:');
 }
 
 /**
@@ -330,7 +318,7 @@ export const topologyConfig: TopologyConfig = {
   },
   // The crossfilter read-contexts (escape hatch — see the module doc). Declared
   // so the config is a complete namespace document; empty instances are supplied
-  // in `paaTopologyOptions.selections` and wired by `wirePaaContexts`.
+  // in `topologyOptions.selections` and wired by `wirePageContexts`.
   // `reset: false`: derived, holds no own clauses.
   [PAGE_ENTRY]: { type: 'external', reset: false },
   ...externalSummaryContexts(),
@@ -351,9 +339,9 @@ function externalCompositeInstances(): Record<string, Selection> {
   return selections;
 }
 
-export const paaTopologyOptions: TopologyOptions = {
+export const topologyOptions: TopologyOptions = {
   // Empty crossfilter composites for every `external` read-context, wired to the
-  // topology's resolved targets by `wirePaaContexts` right after construction.
+  // topology's resolved targets by `wirePageContexts` right after construction.
   selections: externalCompositeInstances(),
   filterSets: {
     [FILTERS_ENTRY]: {
@@ -378,7 +366,7 @@ export const paaTopologyOptions: TopologyOptions = {
  * context); each `summaryFilterBy[card]` is the page minus that card's own
  * membership overlay.
  */
-export interface PaaContexts {
+export interface PageContexts {
   /** Everything on the page: WHERE + every card's membership + spotlight. */
   page: Selection;
   /** Per-card context: the page minus that card's own membership overlay. */
@@ -396,17 +384,17 @@ function includeInto(source: Selection, derived: Selection): void {
 }
 
 const WIRED = new WeakSet<Topology>();
-const CONTEXTS_CACHE = new WeakMap<Topology, PaaContexts>();
+const CONTEXTS_CACHE = new WeakMap<Topology, PageContexts>();
 
 /**
  * Wire the topology's `external` crossfilter composites to its resolved
  * FilterSet targets and foreign `spotlight` source, and return them as
- * {@link PaaContexts}. Idempotent per topology instance: the relay wiring runs
+ * {@link PageContexts}. Idempotent per topology instance: the relay wiring runs
  * once (a second call returns the cached contexts), so it is safe to call during
  * render (it must run synchronously, before the first query paints, so the
  * FilterSet's `context` reflects hydrated clauses with zero flash).
  */
-export function wirePaaContexts(topology: Topology): PaaContexts {
+export function wirePageContexts(topology: Topology): PageContexts {
   const cached = CONTEXTS_CACHE.get(topology);
   if (cached !== undefined) {
     return cached;
@@ -442,7 +430,7 @@ export function wirePaaContexts(topology: Topology): PaaContexts {
     }
   }
 
-  const contexts: PaaContexts = {
+  const contexts: PageContexts = {
     page,
     summaryFilterBy,
     sparklineContext: summaryFilterBy.phrase,

@@ -1,5 +1,5 @@
 /**
- * The Nozzle PAA dashboard on the data-client stack (issue #165): KPI
+ * The People Also Ask dashboard on the data-client stack (issue #165): KPI
  * header, four cross-filtering group-by summary tables with row-select
  * publishing, in-widget selection chips, and per-card metric-threshold
  * (HAVING + membership) filters, the min-domains subquery filter, top-bar
@@ -16,9 +16,9 @@ import {
   MosaicTopologyProvider,
   useMosaicValues,
 } from '@nozzleio/react-mosaic';
-import { initPaaTable } from './mosaic-setup';
+import { initQuestionsTable } from './mosaic-setup';
 import { tableName } from './page-context';
-import { usePaaContexts, usePaaTopology } from './topology';
+import { usePageContexts, usePageTopology } from './topology';
 import { ActiveFilterBar } from './components/active-filter-bar';
 import { SpotlightFilter } from './components/spotlight-filter';
 import { DetailTable } from './components/detail-table';
@@ -30,7 +30,7 @@ import {
   KeywordGroupFilter,
   QuestionMinDomainsFilter,
   TextFilter,
-} from './components/paa-filters';
+} from './components/question-filters';
 import {
   MetricThresholdControls,
   useMetricThresholdFilter,
@@ -84,7 +84,7 @@ function App() {
   // Build the ONE page topology from the hoisted config + options (identity is
   // stable, so this is one topology for the page's lifetime), and distribute it
   // so every widget resolves its selections by ref without prop-drilling.
-  const topology = usePaaTopology();
+  const topology = usePageTopology();
   return (
     <MosaicTopologyProvider topology={topology}>
       <Dashboard />
@@ -127,7 +127,7 @@ function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    initPaaTable()
+    initQuestionsTable()
       .then(() => {
         if (!cancelled) {
           setIsReady(true);
@@ -334,7 +334,7 @@ function FilterViewToggle(props: {
 }
 
 function HeaderSection(props: { enabled: boolean }) {
-  const { page } = usePaaContexts();
+  const { page } = usePageContexts();
   // One values client, four KPIs per round trip, filtered by everything on
   // the page.
   const kpis = useMosaicValues<{
@@ -361,7 +361,7 @@ function HeaderSection(props: { enabled: boolean }) {
       <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
         <div>
           <h1 className="text-3xl font-light tracking-wide">
-            Nozzle PAA Report
+            People Also Ask Report
           </h1>
           <p className="mt-1 text-sm text-cyan-100">
             SEO Intelligence Dashboard — Mosaic data clients

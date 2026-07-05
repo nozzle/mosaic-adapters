@@ -19,12 +19,12 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useFilterSetState } from '@nozzleio/react-mosaic';
-import { usePaaFilterSet } from '../topology';
+import { usePageFilterSet } from '../topology';
 import {
   facetTriggerLabel,
   useDebouncedRun,
   useSelectedValues,
-} from '../hooks';
+} from '../filter-controls';
 import { FacetMultiSelect } from './facet-multi-select';
 import type { FilterSpec } from '@nozzleio/react-mosaic';
 
@@ -49,14 +49,14 @@ function FilterShell(props: {
 
 /** Reads one spec's committed value from the set store (undefined when absent). */
 function useSpecValue(id: string): unknown {
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const { specs } = useFilterSetState(filterSet);
   return specs.find((spec) => spec.id === id)?.value;
 }
 
 /** Reads one spec's committed operator from the set store (undefined when absent). */
 function useSpecOperator(id: string): string | undefined {
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const { specs } = useFilterSetState(filterSet);
   return specs.find((spec) => spec.id === id)?.operator;
 }
@@ -198,7 +198,7 @@ export function TextFilter(props: {
   runtime: 'phrase' | 'question';
   testId: string;
 }) {
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const config = TEXT_FILTERS[props.runtime];
   const committed = useSpecValue(config.id);
   const committedOperator = useSpecOperator(config.id);
@@ -267,7 +267,7 @@ export function TextFilter(props: {
 const DATE_SPEC_ID = 'date:requested';
 
 export function DateRangeFilter() {
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const committed = useSpecValue(DATE_SPEC_ID);
   const bounds = Array.isArray(committed) ? committed : [null, null];
   const start = typeof bounds[0] === 'string' ? bounds[0] : '';
@@ -319,7 +319,7 @@ export function DateRangeFilter() {
 const MIN_DOMAINS_SPEC_ID = 'minDomains';
 
 export function QuestionMinDomainsFilter() {
-  const filterSet = usePaaFilterSet();
+  const filterSet = usePageFilterSet();
   const committed = useSpecValue(MIN_DOMAINS_SPEC_ID);
   const [draft, setDraft] = useState('');
   const debounce = useDebouncedRun(400);

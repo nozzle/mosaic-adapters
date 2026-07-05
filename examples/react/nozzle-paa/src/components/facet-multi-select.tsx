@@ -26,12 +26,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useFilterSetState, useMosaicFacet } from '@nozzleio/react-mosaic';
 import { tableName } from '../page-context';
-import { usePaaContexts, usePaaFilterSet } from '../topology';
-import {
-  facetTriggerLabel,
-  isMultiValueOperator,
-  useSelectedValues,
-} from '../hooks';
+import { usePageContexts, usePageFilterSet } from '../topology';
+import { facetTriggerLabel, useSelectedValues } from '../filter-controls';
 import type { FilterSpec } from '@nozzleio/react-mosaic';
 
 /**
@@ -42,6 +38,25 @@ import type { FilterSpec } from '@nozzleio/react-mosaic';
  * unchecked, in its own self-excluded option list).
  */
 const EXCLUSION_OPERATORS = new Set<string>(['not_in', 'excludes_all']);
+
+/**
+ * The multi-value `condition` operators the Classic facet control can preserve
+ * when toggling a value over a Builder-authored spec. Emptiness operators
+ * (`is_empty`/`is_not_empty`, arity `none`) carry no value list, so toggling a
+ * value under them makes no sense — the caller falls back to its prop default.
+ */
+const MULTI_VALUE_OPERATORS = new Set([
+  'in',
+  'not_in',
+  'list_has_any',
+  'list_has_all',
+  'excludes_all',
+]);
+
+/** True when `operator` is a value-bearing multi-value membership operator. */
+function isMultiValueOperator(operator: unknown): operator is string {
+  return typeof operator === 'string' && MULTI_VALUE_OPERATORS.has(operator);
+}
 
 export interface FacetMultiSelectProps {
   /** Canonical spec id shared with the field's other authoring view. */
@@ -67,8 +82,8 @@ export interface FacetMultiSelectProps {
 export function FacetMultiSelect(props: FacetMultiSelectProps) {
   const { specId, column, label, operator } = props;
   const [search, setSearch] = useState('');
-  const filterSet = usePaaFilterSet();
-  const { page } = usePaaContexts();
+  const filterSet = usePageFilterSet();
+  const { page } = usePageContexts();
 
   // Read-only options + cascade counts — NO publish; the spec store owns state.
   const facet = useMosaicFacet({

@@ -74,14 +74,14 @@ async function readQuestionsKpi(page: Page): Promise<number> {
   return Number(text.replaceAll(',', '').trim());
 }
 
-test.describe('nozzle-paa dashboard', () => {
+test.describe('people-also-ask dashboard', () => {
   test('renders the header, KPIs, and initial summary tables', async ({
     page,
   }) => {
     await gotoDashboard(page);
 
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Nozzle PAA Report' }),
+      page.getByRole('heading', { level: 1, name: 'People Also Ask Report' }),
     ).toBeVisible();
     await expect(page.getByTestId('kpi-phrases')).toHaveText('2,681');
     await expect(page.getByTestId('kpi-days')).toHaveText('7');
@@ -448,7 +448,7 @@ test.describe('nozzle-paa dashboard', () => {
     );
 
     // Struct-path column: the ilike clause tests "related_phrase"."phrase".
-    await page.getByTestId('detail-filter-paa_question').fill('coleman');
+    await page.getByTestId('detail-filter-question').fill('coleman');
     await expect(page.getByTestId('detail-total-rows')).toHaveText(
       '49,344 rows match',
     );
@@ -462,9 +462,7 @@ test.describe('nozzle-paa dashboard', () => {
     await expect(page.getByTestId('detail-total-rows')).toHaveText(
       `${TOTAL_ROWS} rows match`,
     );
-    await expect(page.getByTestId('detail-filter-paa_question')).toHaveValue(
-      '',
-    );
+    await expect(page.getByTestId('detail-filter-question')).toHaveValue('');
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
