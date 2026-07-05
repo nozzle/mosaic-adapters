@@ -6,9 +6,54 @@ import type { Locator, Page } from '@playwright/test';
 // SQL-computed values — including the legacy suite's dataset literals
 // ('gaz stove' / 'gasoline stove' share the top search volume).
 const TOTAL_QUESTIONS = '4,779';
+const TOTAL_QUESTIONS_NUM = 4_779;
 const TOTAL_ROWS = '203,556';
+const TOTAL_ROWS_NUM = 203_556;
 
 const summaryTableIds = ['phrase', 'question', 'domain', 'url'] as const;
+
+/** Reads a comma-formatted integer out of a locator's text (NaN → 0). */
+async function readCount(locator: Locator): Promise<number> {
+  const text = (await locator.textContent()) ?? '';
+  return Number(text.replaceAll(/[^\d]/g, ''));
+}
+
+/**
+ * Polls a comma-formatted count locator until it HOLDS the same finite value
+ * across consecutive reads (optionally inside an open `(greaterThan, lessThan)`
+ * interval), then returns that settled value.
+ *
+ * Authoring a `not_in` complement drives the detail count and its sibling KPI
+ * through transient states before the result settles: the `in [reddit]` subset
+ * (≈ the option's own count), and — while the facet's re-attach effect
+ * reassociates its options client (see facet-multi-select.tsx) — a frame of the
+ * unfiltered total. A bare "value changed" / "greater than the `in` subset" wait
+ * races those: the unfiltered total is also greater than the subset, so a slow
+ * runner (CI) captures `203,556` before the complement lands. The complement is
+ * the ONLY value strictly between the subset and the unfiltered total, and it
+ * must hold — so bound the interval AND require stability.
+ */
+async function waitForStableCount(
+  locator: Locator,
+  bounds: { greaterThan?: number; lessThan?: number } = {},
+): Promise<number> {
+  let previous = Number.NaN;
+  await expect
+    .poll(
+      async () => {
+        const current = await readCount(locator);
+        const withinBounds =
+          (bounds.greaterThan === undefined || current > bounds.greaterThan) &&
+          (bounds.lessThan === undefined || current < bounds.lessThan);
+        const settled = withinBounds && current === previous;
+        previous = current;
+        return settled;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  return previous;
+}
 
 async function gotoDashboard(page: Page): Promise<void> {
   await page.goto('/');
@@ -585,17 +630,16 @@ test.describe('nozzle-paa dashboard', () => {
     ).toHaveText('not_in');
     // `not_in reddit.com` is the complement: a strictly larger, and different,
     // result than `in reddit.com` (and still a narrowing of the full dataset).
+    // The settled complement is the only value strictly between the `in` subset
+    // and the unfiltered total — wait for it to hold there, never the transient
+    // full-total the re-attach effect flashes.
     const inRows = Number(inCount.replaceAll(',', ''));
-    await expect
-      .poll(async () => {
-        const text =
-          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
-        return Number(text.replaceAll(/[^\d]/g, ''));
-      })
-      .toBeGreaterThan(inRows);
-    const notInText =
-      (await page.getByTestId('detail-total-rows').textContent()) ?? '';
-    expect(Number(notInText.replaceAll(/[^\d]/g, ''))).toBeLessThan(203_556);
+    const notInRows = await waitForStableCount(
+      page.getByTestId('detail-total-rows'),
+      { greaterThan: inRows, lessThan: TOTAL_ROWS_NUM },
+    );
+    expect(notInRows).toBeGreaterThan(inRows);
+    expect(notInRows).toBeLessThan(TOTAL_ROWS_NUM);
   });
 
   test('builder: (e) always-shown controls — Requested Date renders disabled placement + a disabled "in range" operator', async ({
@@ -690,21 +734,16 @@ test.describe('nozzle-paa dashboard', () => {
     const bar = page.getByTestId('active-filter-bar');
     await expect(bar.getByTestId('chip-operator')).toHaveText('not_in');
     // Capture the not_in (complement) result so we can prove it is untouched.
-    // Poll until the detail count has settled to the complement (the not_in
-    // query resolves ~a frame after the chip flips, so a bare read here would
-    // race and capture the prior `in` count): the complement is strictly larger
-    // than the `in` subset and still below the unfiltered total.
-    await expect
-      .poll(async () => {
-        const text =
-          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
-        return Number(text.replaceAll(/[^\d]/g, ''));
-      })
-      .toBeGreaterThan(inRows);
-    const complementText =
-      (await page.getByTestId('detail-total-rows').textContent()) ?? '';
-    const complementRows = Number(complementText.replaceAll(/[^\d]/g, ''));
-    expect(complementRows).toBeLessThan(203_556);
+    // Wait until the detail count has SETTLED to the complement: the not_in
+    // query resolves a frame after the chip flips, and the re-attach effect
+    // flashes the unfiltered total in between — both a bare read and a
+    // "greater than the `in` subset" poll would race those. The complement is
+    // the only value strictly between the `in` subset and the unfiltered total.
+    const complementRows = await waitForStableCount(
+      page.getByTestId('detail-total-rows'),
+      { greaterThan: inRows, lessThan: TOTAL_ROWS_NUM },
+    );
+    expect(complementRows).toBeLessThan(TOTAL_ROWS_NUM);
 
     // Classic → merely OPEN the Domain dropdown. The re-attach effect must NOT
     // rewrite the spec with the control's hardcoded `in`; the operator (and so
@@ -824,25 +863,25 @@ test.describe('nozzle-paa dashboard', () => {
 
     const bar = page.getByTestId('active-filter-bar');
     await expect(bar.getByTestId('chip-operator')).toHaveText('not_in');
-    // Poll the detail count to the settled complement (strictly larger than the
-    // `in` subset, still below the unfiltered total) so both the KPI and the row
-    // count are read once results have settled — not the loading placeholder,
-    // the pre-filter total, or the transient `in` count. The KPI is the
-    // COMPLEMENT (fewer than the unfiltered total); the shared link must
-    // reproduce exactly this, not the raw total.
-    await expect
-      .poll(async () => {
-        const text =
-          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
-        return Number(text.replaceAll(/[^\d]/g, ''));
-      })
-      .toBeGreaterThan(inRows);
+    // Wait for the detail count to SETTLE to the complement (strictly between the
+    // `in` subset and the unfiltered total) so both the KPI and the row count are
+    // read once results have settled — not the loading placeholder, the pre-filter
+    // total, or the transient `in` count. The KPI resolves on its own query a beat
+    // behind the detail count, so wait for it to hold too: it is the COMPLEMENT
+    // (fewer than the unfiltered total) the shared link must reproduce exactly,
+    // never the transient `in` count a bare snapshot here would capture.
+    const complementRows = await waitForStableCount(
+      page.getByTestId('detail-total-rows'),
+      { greaterThan: inRows, lessThan: TOTAL_ROWS_NUM },
+    );
+    await waitForStableCount(page.getByTestId('kpi-questions'), {
+      greaterThan: 0,
+      lessThan: TOTAL_QUESTIONS_NUM,
+    });
     const questionsText =
       (await page.getByTestId('kpi-questions').textContent()) ?? '';
-    // The complement result the shared link must reproduce exactly.
     const complementText =
       (await page.getByTestId('detail-total-rows').textContent()) ?? '';
-    const complementRows = Number(complementText.replaceAll(/[^\d]/g, ''));
 
     // The URL must carry the non-default operator (the `op~` envelope), not a
     // bare list that would silently decode back to `in`.
@@ -865,7 +904,7 @@ test.describe('nozzle-paa dashboard', () => {
     // Prove the filter is genuinely active: the complement KPI is not the
     // unfiltered total, and the row count is below the full dataset.
     expect(questionsText).not.toBe(TOTAL_QUESTIONS);
-    expect(complementRows).toBeLessThan(203_556);
+    expect(complementRows).toBeLessThan(TOTAL_ROWS_NUM);
   });
 
   test('builder: (l) a valueless is_empty Domain spec survives the URL share-loop', async ({
