@@ -3,14 +3,18 @@ import { Query, count, gt } from '@uwdata/mosaic-sql';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
+  createAthletesDb,
+  settle,
+  waitFor,
+} from '@nozzleio/test-support/duckdb';
+import {
   conditionFilterKind,
   createFilterSet,
   createRowsClient,
   subqueryFilterKind,
 } from '../src/index';
-import { createAthletesDb, settle, waitFor } from './test-utils';
 import type { FilterKind, FilterSpec, Persister } from '../src/index';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 let db: TestDb;
 

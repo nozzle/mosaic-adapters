@@ -1,9 +1,9 @@
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 
+import { createTestDb, waitFor } from '@nozzleio/test-support/duckdb';
 import { createPivotClient } from '../src/index';
-import { createTestDb, waitFor } from './test-utils';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface SalesRow extends Record<string, unknown> {
   region: string;

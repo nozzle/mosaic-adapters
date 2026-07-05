@@ -2,10 +2,10 @@ import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
+import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
 import { createRowsClient } from '../src/index';
-import { createAthletesDb, waitFor } from './test-utils';
 import type { ClauseSource } from '@uwdata/mosaic-core';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface AthleteRow {
   id: number;
