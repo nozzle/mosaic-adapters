@@ -167,6 +167,17 @@ class FilterSetImpl implements FilterSet {
     return this.#destroyed;
   }
 
+  ownsClauseSource(source: ClauseSource): boolean {
+    // `#sources` holds every stable per-`(spec.id, target)` source this set has
+    // ever minted; a clause is ours iff its source is one of those objects.
+    for (const owned of this.#sources.values()) {
+      if (owned === source) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   set(spec: FilterSpec, options?: FilterSetSetOptions): void {
     if (this.#destroyed) {
       return;

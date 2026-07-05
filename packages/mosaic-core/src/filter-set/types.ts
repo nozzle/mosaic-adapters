@@ -12,6 +12,7 @@
 import type { Store } from '@tanstack/store';
 import type {
   ClauseMetadata,
+  ClauseSource,
   MosaicClient,
   Selection,
 } from '@uwdata/mosaic-core';
@@ -235,4 +236,11 @@ export interface FilterSet {
   destroy: () => void;
   /** True once {@link FilterSet.destroy} has run. */
   readonly destroyed: boolean;
+  /**
+   * True when `source` is a clause source this FilterSet created (one of its
+   * stable per-`(spec.id, target)` sources). Lets an owner that constructed
+   * this set — e.g. `createTopology` — recognise the set's own clauses on a
+   * shared target Selection and exclude them from foreign-clause enumeration.
+   */
+  ownsClauseSource: (source: ClauseSource) => boolean;
 }
