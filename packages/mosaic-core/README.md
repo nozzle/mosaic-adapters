@@ -18,6 +18,7 @@ npm install @nozzleio/mosaic-core @uwdata/mosaic-core @uwdata/mosaic-sql
 - `createValuesClient` — single-row aggregate query → typed record (N KPI cards, one round trip)
 - `createValueClause`, `createSubqueryClause`, `createClearClause` — shared Selection clause construction
 - `routeFilter`, `applyRoutedFilters` — WHERE/HAVING predicate routing at the SQL edge
+- `FilterKind.operators` + `OperatorDescriptor`/`OperatorArity` and the exported `ConditionOperator`/`MatchOperator` unions — operator introspection metadata for building a generic filter picker
 - The full type contract: `DataClient`, `QuerySource`, `RowsInputs`, ...
 
 ```ts

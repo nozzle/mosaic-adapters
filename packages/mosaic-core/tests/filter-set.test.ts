@@ -357,6 +357,172 @@ describe('replace / remove / clear / reset', () => {
   });
 });
 
+describe('chip routing target', () => {
+  test('a spec with no target produces chips targeting "where"', () => {
+    const $where = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $where } });
+
+    set.set({ id: 'p', column: 'sport', kind: 'point', value: 'swim' });
+
+    const chips = set.store.state.chips;
+    expect(chips).toHaveLength(1);
+    expect(chips[0]?.target).toBe('where');
+    set.destroy();
+  });
+
+  test('an explicit spec target is reflected on the chip', () => {
+    const $where = Selection.crossfilter();
+    const $having = Selection.crossfilter();
+    const set = createFilterSet({
+      targets: { where: $where, 'having:foo': $having },
+    });
+
+    set.set({
+      id: 'p',
+      column: 'sport',
+      kind: 'point',
+      value: 'swim',
+      target: 'having:foo',
+    });
+
+    const chips = set.store.state.chips;
+    expect(chips).toHaveLength(1);
+    expect(chips[0]?.target).toBe('having:foo');
+    set.destroy();
+  });
+
+  test('exploded chips inherit the parent spec target', () => {
+    const $where = Selection.crossfilter();
+    const $having = Selection.crossfilter();
+    const set = createFilterSet({
+      targets: { where: $where, 'having:foo': $having },
+    });
+
+    set.set({
+      id: 'names',
+      column: 'name',
+      kind: 'points',
+      value: ['Ada', 'Ed'],
+      target: 'having:foo',
+    });
+
+    const chips = set.store.state.chips;
+    expect(chips).toHaveLength(2);
+    expect(chips.every((chip) => chip.exploded)).toBe(true);
+    expect(chips.every((chip) => chip.target === 'having:foo')).toBe(true);
+    set.destroy();
+  });
+
+  test('a self-routing kind reports its resolved target, not spec.target', () => {
+    const $where = Selection.crossfilter();
+    const $havingA = Selection.crossfilter();
+    const $membersA = Selection.crossfilter();
+    // A kind that ignores spec.target and routes its own emissions to
+    // `having:a` (primary) + `members:a` for the same spec.
+    const selfRouting: FilterKind = {
+      emit: () => [
+        { target: 'having:a', clause: { predicate: gt(count(), 1) } },
+        { target: 'members:a', clause: { predicate: gt(count(), 1) } },
+      ],
+    };
+    const set = createFilterSet({
+      targets: { where: $where, 'having:a': $havingA, 'members:a': $membersA },
+      kinds: { metric: selfRouting },
+    });
+
+    // Decorative spec.target that the kind overrides on every emission.
+    set.set({
+      id: 'm',
+      column: 'wins',
+      kind: 'metric',
+      value: 5,
+      target: 'where',
+    });
+
+    const chips = set.store.state.chips;
+    expect(chips).toHaveLength(1);
+    // Primary = first emission's resolved target in declaration order.
+    expect(chips[0]?.target).toBe('having:a');
+    expect(chips[0]?.target).not.toBe('where');
+    set.destroy();
+  });
+
+  test('exploded chips of a self-routing kind report the resolved target', () => {
+    const $where = Selection.crossfilter();
+    const $havingA = Selection.crossfilter();
+    // A self-routing kind that also explodes array values.
+    const selfRoutingExplode: FilterKind = {
+      explodeValues: true,
+      emit: () => [
+        { target: 'having:a', clause: { predicate: gt(count(), 1) } },
+      ],
+    };
+    const set = createFilterSet({
+      targets: { where: $where, 'having:a': $havingA },
+      kinds: { metricSet: selfRoutingExplode },
+    });
+
+    set.set({
+      id: 'ms',
+      column: 'wins',
+      kind: 'metricSet',
+      value: [1, 2, 3],
+      target: 'where',
+    });
+
+    const chips = set.store.state.chips;
+    expect(chips).toHaveLength(3);
+    expect(chips.every((chip) => chip.exploded)).toBe(true);
+    expect(chips.every((chip) => chip.target === 'having:a')).toBe(true);
+    set.destroy();
+  });
+
+  test('a declared spec.target still resolves for a non-self-routing kind', () => {
+    const $where = Selection.crossfilter();
+    const $having = Selection.crossfilter();
+    // point does not override the target, so the declared spec.target wins.
+    const set = createFilterSet({
+      targets: { where: $where, 'having:bar': $having },
+    });
+
+    set.set({
+      id: 'p',
+      column: 'sport',
+      kind: 'point',
+      value: 'swim',
+      target: 'having:bar',
+    });
+
+    const chips = set.store.state.chips;
+    expect(chips).toHaveLength(1);
+    expect(chips[0]?.target).toBe('having:bar');
+    set.destroy();
+  });
+
+  test("a spec's operator is reflected on its chip (undefined when absent)", () => {
+    const $where = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $where } });
+
+    set.set({
+      id: 'c',
+      column: 'domain',
+      kind: 'condition',
+      operator: 'not_in',
+      value: ['reddit.com'],
+      label: 'Domain',
+    });
+    set.set({ id: 'p', column: 'sport', kind: 'point', value: 'swim' });
+
+    const chips = set.store.state.chips;
+    const conditionChip = chips.find((chip) => chip.id === 'c');
+    const pointChip = chips.find((chip) => chip.id === 'p');
+    expect(conditionChip?.operator).toBe('not_in');
+    // `point` specs carry no operator, so the chip's operator is undefined.
+    expect(pointChip?.operator).toBeUndefined();
+    set.destroy();
+  });
+});
+
 describe('external clear mirroring', () => {
   test('an external actor dropping the clause removes the spec with one external write', async () => {
     const $where = Selection.crossfilter();

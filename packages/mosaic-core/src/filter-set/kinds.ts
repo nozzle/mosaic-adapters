@@ -29,7 +29,12 @@ import { formatRange } from './format';
 import type { ClauseMetadata, ClauseSource } from '@uwdata/mosaic-core';
 import type { ExprNode } from '@uwdata/mosaic-sql';
 import type { SubqueryFilterQuery } from '../subquery-predicate';
-import type { FilterKind, FilterKindArgs, FilterSpec } from './types';
+import type {
+  FilterKind,
+  FilterKindArgs,
+  FilterSpec,
+  OperatorDescriptor,
+} from './types';
 
 /** A throwaway source for the upstream clause factories we only read from. */
 const SCRATCH_SOURCE: ClauseSource = {};
@@ -236,11 +241,27 @@ function resolveMatchMethod(operator: string | undefined): MatchMethod {
 }
 
 /**
+ * Descriptive operator vocabulary for {@link matchFilterKind}. The `id`s mirror
+ * the {@link MatchMethod} set the kind actually resolves; all are `unary`
+ * (single string value). Source of truth for {@link MatchOperator}.
+ */
+const MATCH_OPERATORS = [
+  { id: 'contains', label: 'contains', arity: 'unary' },
+  { id: 'prefix', label: 'starts with', arity: 'unary' },
+  { id: 'suffix', label: 'ends with', arity: 'unary' },
+  { id: 'regexp', label: 'matches regexp', arity: 'unary' },
+] as const satisfies ReadonlyArray<OperatorDescriptor>;
+
+/** Compile-time-safe operator id accepted by {@link matchFilterKind}. */
+export type MatchOperator = (typeof MATCH_OPERATORS)[number]['id'];
+
+/**
  * `match` — text search. `spec.operator` selects the method
  * (`contains` default | `prefix` | `suffix` | `regexp`). Empty/blank string
  * value → inactive.
  */
 export const matchFilterKind: FilterKind = {
+  operators: MATCH_OPERATORS,
   emit: (args) => {
     const { value } = args.spec;
     if (typeof value !== 'string' || value.length === 0) {
@@ -336,6 +357,42 @@ const CANONICAL_OPERATORS = new Set<CanonicalOperator>([
   'list_has_any',
   'list_has_all',
 ]);
+
+/**
+ * Descriptive operator vocabulary for {@link conditionFilterKind} — the
+ * canonical operators plus the empty-value/collection operators the kind
+ * special-cases (`is_empty`/`is_not_empty`/`excludes_all`). Ids the kind also
+ * accepts as {@link OPERATOR_ALIASES} (e.g. `equals`, `is_any_of`) are not
+ * listed here; they resolve to a canonical id already present. Source of truth
+ * for {@link ConditionOperator}.
+ */
+const CONDITION_OPERATORS = [
+  { id: 'eq', label: 'equals', arity: 'unary' },
+  { id: 'neq', label: 'does not equal', arity: 'unary' },
+  { id: 'gt', label: 'greater than', arity: 'unary' },
+  { id: 'gte', label: 'greater than or equal', arity: 'unary' },
+  { id: 'lt', label: 'less than', arity: 'unary' },
+  { id: 'lte', label: 'less than or equal', arity: 'unary' },
+  { id: 'contains', label: 'contains', arity: 'unary' },
+  { id: 'not_contains', label: 'does not contain', arity: 'unary' },
+  { id: 'starts_with', label: 'starts with', arity: 'unary' },
+  { id: 'not_starts_with', label: 'does not start with', arity: 'unary' },
+  { id: 'ends_with', label: 'ends with', arity: 'unary' },
+  { id: 'not_ends_with', label: 'does not end with', arity: 'unary' },
+  { id: 'is_null', label: 'is null', arity: 'none' },
+  { id: 'not_null', label: 'is not null', arity: 'none' },
+  { id: 'is_empty', label: 'is empty', arity: 'none' },
+  { id: 'is_not_empty', label: 'is not empty', arity: 'none' },
+  { id: 'between', label: 'between', arity: 'range' },
+  { id: 'in', label: 'is any of', arity: 'set' },
+  { id: 'not_in', label: 'is not any of', arity: 'set' },
+  { id: 'list_has_any', label: 'has any of', arity: 'set' },
+  { id: 'list_has_all', label: 'has all of', arity: 'set' },
+  { id: 'excludes_all', label: 'excludes all of', arity: 'set' },
+] as const satisfies ReadonlyArray<OperatorDescriptor>;
+
+/** Compile-time-safe operator id accepted by {@link conditionFilterKind}. */
+export type ConditionOperator = (typeof CONDITION_OPERATORS)[number]['id'];
 
 function inferDataType(value: unknown): 'string' | 'number' | 'boolean' {
   if (typeof value === 'number') {
@@ -590,6 +647,7 @@ export function conditionFilterKind(
   const columnType = options?.columnType ?? 'scalar';
 
   return {
+    operators: CONDITION_OPERATORS,
     emit: (args) => {
       const { spec } = args;
       const operator = spec.operator ?? 'eq';

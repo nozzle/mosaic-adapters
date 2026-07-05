@@ -8,7 +8,11 @@ export {
   pointsFilterKind,
   subqueryFilterKind,
 } from './kinds';
-export type { ConditionKindOptions } from './kinds';
+export type {
+  ConditionKindOptions,
+  ConditionOperator,
+  MatchOperator,
+} from './kinds';
 export { formatFilterValue, formatRange } from './format';
 export type {
   FilterKind,
@@ -20,4 +24,6 @@ export type {
   FilterSetSetOptions,
   FilterSetState,
   FilterSpec,
+  OperatorArity,
+  OperatorDescriptor,
 } from './types';

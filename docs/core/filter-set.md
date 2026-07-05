@@ -115,6 +115,100 @@ const filters = createFilterSet({
 });
 ```
 
+## Operators
+
+A `FilterKind` may carry introspection metadata describing the operators it interprets, so a generic filter-picker UI can enumerate a kind's operators and pick the right value input without hard-coding the vocabulary.
+
+```ts
+type OperatorArity = 'none' | 'unary' | 'range' | 'set';
+
+interface OperatorDescriptor {
+  id: string; // canonical operator id written to spec.operator
+  label?: string; // human label for a menu
+  arity?: OperatorArity; // value cardinality
+}
+
+interface FilterKind {
+  /* existing: emit, formatValue?, explodeValues? */
+  operators?: ReadonlyArray<OperatorDescriptor>;
+}
+```
+
+`arity` maps to how many values the spec carries:
+
+| arity   | spec shape                    | example operators     |
+| ------- | ----------------------------- | --------------------- |
+| `none`  | no value                      | `is_null`, `is_empty` |
+| `unary` | single `spec.value`           | `eq`, `contains`      |
+| `range` | `spec.value` + `spec.valueTo` | `between`             |
+| `set`   | array `spec.value`            | `in`, `not_in`        |
+
+This is descriptive metadata only — `FilterSet.set()` performs no runtime enforcement against it.
+
+`operators` is populated on the two operator-interpreting built-in kinds, `condition` and `match`. `point`/`points`/`interval` never read `spec.operator`, so they omit it. The typed unions **`ConditionOperator`** and **`MatchOperator`** are exported and derived from the same const-asserted descriptor arrays, so the runtime ids and the compile-time union cannot drift.
+
+`match` operators (all `unary`):
+
+| id         | label          |
+| ---------- | -------------- |
+| `contains` | contains       |
+| `prefix`   | starts with    |
+| `suffix`   | ends with      |
+| `regexp`   | matches regexp |
+
+`condition` operators:
+
+| id                | label                 | arity   |
+| ----------------- | --------------------- | ------- |
+| `eq`              | equals                | `unary` |
+| `neq`             | does not equal        | `unary` |
+| `gt`              | greater than          | `unary` |
+| `gte`             | greater than or equal | `unary` |
+| `lt`              | less than             | `unary` |
+| `lte`             | less than or equal    | `unary` |
+| `contains`        | contains              | `unary` |
+| `not_contains`    | not contains          | `unary` |
+| `starts_with`     | starts with           | `unary` |
+| `not_starts_with` | does not start with   | `unary` |
+| `ends_with`       | ends with             | `unary` |
+| `not_ends_with`   | does not end with     | `unary` |
+| `is_null`         | is null               | `none`  |
+| `not_null`        | is not null           | `none`  |
+| `is_empty`        | is empty              | `none`  |
+| `is_not_empty`    | is not empty          | `none`  |
+| `between`         | between               | `range` |
+| `in`              | is any of             | `set`   |
+| `not_in`          | is not any of         | `set`   |
+| `list_has_any`    | has any of            | `set`   |
+| `list_has_all`    | has all of            | `set`   |
+| `excludes_all`    | excludes all of       | `set`   |
+
+The `condition` kind still accepts operator aliases at runtime (`is`, `is_any_of`, `before`, `on_or_after`, …), but those are deliberately absent from the descriptor list: each resolves to one of the canonical ids above, so a picker enumerates canonical operators only.
+
+A picker reads `builtinFilterKinds.condition.operators` to render the menu, then chooses the value input by `arity`:
+
+```tsx
+import { builtinFilterKinds } from '@nozzleio/mosaic-core';
+
+const ops = builtinFilterKinds.condition.operators ?? [];
+
+<select value={operator} onChange={(e) => setOperator(e.currentTarget.value)}>
+  {ops.map((op) => (
+    <option key={op.id} value={op.id}>
+      {op.label ?? op.id}
+    </option>
+  ))}
+</select>;
+
+const arity = ops.find((op) => op.id === operator)?.arity ?? 'unary';
+// none  → render nothing; set spec.value undefined
+// unary → one input        → spec.value
+// range → two inputs        → spec.value + spec.valueTo
+// set   → tag/multi input   → spec.value (array)
+```
+
+See [nozzle-paa](../../examples/react/nozzle-paa) for a live implementation of exactly this picker.
+
 ## Custom kinds
 
 A kind maps a spec to one or more clauses on named targets — the consolidation point for anything that used to be a hand-rolled publisher. `subqueryFilterKind(build)` ports the membership-subquery machinery: `build` receives the spec, the struct-path-resolved column expression, and `contextPredicate` — the AND of the context Selection's clauses excluding this spec's own. Reading `contextPredicate` marks the spec context-dependent: when the context Selection changes, the set republishes the affected specs (suppressed when the SQL is unchanged, so rebuilds converge).
@@ -174,6 +268,8 @@ const facet = createFacetClient({
 ## Chips
 
 `store.state.chips` derives from the specs — label from `label`/`column`, value formatted per kind (ranges join as `lo - hi`, arrays explode into one chip per value for multi-value kinds). `removeChip(chip)` narrows an exploded value or removes the spec; `reset()` clears the bar. Foreign clauses published directly onto the Selections are chip-invisible by design; the chip list derives from an iterable so a future adapter can contribute entries additively.
+
+`chip.target` is the **resolved** routing target — where the kind's emission actually landed (`emission.target ?? spec.target ?? 'where'`), not the declared `spec.target`. A self-routing kind that overrides the target on every emission (e.g. metric-threshold → `having:<card>` + `members:<card>`) reports the resolved target on its chip, so a decorative `spec.target` is no longer needed to label such chips (and no longer silently lost on URL hydration). When a kind emits to multiple targets for one spec, `chip.target` is the deterministic primary: the first emission's resolved target in kind-declaration order. Exploded chips report the same resolved target as their parent spec. Before a spec has published an active clause, `chip.target` falls back to `spec.target ?? 'where'`.
 
 In React, subscribe with `useFilterSetState(filters)` / `useFilterSetChips(filters)` from `@nozzleio/react-mosaic`.
 
