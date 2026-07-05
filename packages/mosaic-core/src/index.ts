@@ -41,6 +41,8 @@ export type { RoutedFilterExpr, SqlFilterClauseTarget } from './filter-routing';
 
 export * from './filter-set/index';
 
+export * from './topology/index';
+
 export { isFilterSetPublishTarget } from './types';
 
 export { deepEqual, resolveCoerce } from './utils';
