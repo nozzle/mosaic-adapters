@@ -3,17 +3,17 @@ import { Query } from '@uwdata/mosaic-sql';
 import { createFilterSet, createRowsClient } from '@nozzleio/mosaic-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import { createFilterBridge } from '../src/index';
 import {
   createAthletesDb,
   settle,
   waitFor,
-} from '../../mosaic-core/tests/test-utils';
+} from '@nozzleio/test-support/duckdb';
+import { createFilterBridge } from '../src/index';
 import type { FilterSet } from '@nozzleio/mosaic-core';
 import type { SelectionClause } from '@uwdata/mosaic-core';
 import type { ColumnFiltersState } from '@tanstack/table-core';
 import type { FilterBridgeColumns } from '../src/index';
-import type { TestDb } from '../../mosaic-core/tests/test-utils';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 function predicateSql(clause: SelectionClause | undefined): string {
   return String(clause?.predicate);
