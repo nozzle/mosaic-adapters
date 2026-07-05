@@ -55,8 +55,7 @@
     "@uwdata/mosaic-sql": ">=0.24.3 <1"
   },
   "devDependencies": {
-    "@duckdb/duckdb-wasm": "catalog:",
-    "@uwdata/flechette": "catalog:",
+    "@nozzleio/test-support": "workspace:*",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
     "eslint": "catalog:",
