@@ -20,8 +20,12 @@ export default defineConfig([
     // ref guard (the React-docs lazy-initialization pattern) so the client
     // exists on the first render; react-hooks/refs cannot see the guard.
     // use-mosaic-schema.ts applies the same pattern to the (setter-less)
-    // schema client.
-    files: ['src/use-data-client.ts', 'src/use-mosaic-schema.ts'],
+    // schema client, and use-topology-helpers.ts to the composition handles.
+    files: [
+      'src/use-data-client.ts',
+      'src/use-mosaic-schema.ts',
+      'src/use-topology-helpers.ts',
+    ],
     rules: {
       'react-hooks/refs': 'off',
     },
