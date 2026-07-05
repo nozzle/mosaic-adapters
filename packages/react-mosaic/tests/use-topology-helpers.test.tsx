@@ -8,8 +8,8 @@
 import { Selection } from '@uwdata/mosaic-core';
 import { describe, expect, test } from 'vitest';
 
+import { renderHook } from '@nozzleio/test-support/react';
 import { useMosaicSelection } from '../src/index';
-import { renderHook } from './test-utils';
 
 describe('useMosaicSelection', () => {
   test('returns a Selection instance', async () => {

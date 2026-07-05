@@ -10,8 +10,8 @@ import { Selection } from '@uwdata/mosaic-core';
 import { createFilterSet } from '@nozzleio/mosaic-core';
 import { describe, expect, test, vi } from 'vitest';
 
+import { interact, renderHook, waitFor } from '@nozzleio/test-support/react';
 import { useFilterSetChips, useFilterSetState } from '../src/index';
-import { actWaitFor, renderHook } from './test-utils';
 import type { FilterSet, FilterSpec, Persister } from '../src/index';
 
 /** In-memory persister with a write spy, standing in for consumer storage. */
@@ -48,21 +48,25 @@ describe('useFilterSetState / useFilterSetChips', () => {
     expect(hook.result.current.chips).toEqual([]);
 
     // set(...) publishes a spec → specs and chips update.
-    set.set({ id: 'sport', column: 'sport', kind: 'point', value: 'run' });
-    await actWaitFor(() => {
+    await interact(() =>
+      set.set({ id: 'sport', column: 'sport', kind: 'point', value: 'run' }),
+    );
+    await waitFor(() => {
       expect(hook.result.current.state.specs).toHaveLength(1);
       expect(hook.result.current.chips).toHaveLength(1);
     });
     expect(hook.result.current.chips[0]?.id).toBe('sport');
 
     // A multi-value `points` spec explodes into one chip per element.
-    set.set({
-      id: 'names',
-      column: 'name',
-      kind: 'points',
-      value: ['Ada', 'Bo'],
-    });
-    await actWaitFor(() => {
+    await interact(() =>
+      set.set({
+        id: 'names',
+        column: 'name',
+        kind: 'points',
+        value: ['Ada', 'Bo'],
+      }),
+    );
+    await waitFor(() => {
       expect(hook.result.current.chips).toHaveLength(3);
     });
     const exploded = hook.result.current.chips.filter((c) => c.exploded);
@@ -73,15 +77,15 @@ describe('useFilterSetState / useFilterSetChips', () => {
     if (!first) {
       throw new Error('expected an exploded chip');
     }
-    set.removeChip(first);
-    await actWaitFor(() => {
+    await interact(() => set.removeChip(first));
+    await waitFor(() => {
       expect(hook.result.current.chips).toHaveLength(2);
       expect(hook.result.current.state.specs).toHaveLength(2);
     });
 
     // reset empties everything.
-    set.reset();
-    await actWaitFor(() => {
+    await interact(() => set.reset());
+    await waitFor(() => {
       expect(hook.result.current.state.specs).toEqual([]);
       expect(hook.result.current.chips).toEqual([]);
     });
@@ -108,19 +112,21 @@ describe('useFilterSetState / useFilterSetChips', () => {
         state: useFilterSetState(set),
         chips: useFilterSetChips(set),
       }),
-      { initialProps: {}, strict: true },
+      { initialProps: {}, reactStrictMode: true },
     );
 
     // The subscription observes the hydrated spec.
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.chips).toHaveLength(1);
     });
     // StrictMode mount + double-render: subscription alone never writes.
     expect(write).not.toHaveBeenCalled();
 
     // A real interaction still works and does write.
-    set.set({ id: 'weight', column: 'weight', kind: 'point', value: 70 });
-    await actWaitFor(() => {
+    await interact(() =>
+      set.set({ id: 'weight', column: 'weight', kind: 'point', value: 70 }),
+    );
+    await waitFor(() => {
       expect(hook.result.current.chips).toHaveLength(2);
     });
     expect(write).toHaveBeenCalled();

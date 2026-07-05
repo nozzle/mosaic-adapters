@@ -3,14 +3,19 @@ import { Query, count, eq, literal, max } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
 import {
+  createAthletesDb,
+  interact,
+  renderHook,
+  waitFor,
+} from '@nozzleio/test-support/react';
+import {
   MosaicProvider,
   createRowsClient,
   createValuesClient,
   useMosaicValues,
 } from '../src/index';
-import { actWaitFor, createAthletesDb, renderHook } from './test-utils';
 import type { ReactNode } from 'react';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/react';
 
 interface Kpis extends Record<string, unknown> {
   athletes: number;
@@ -38,7 +43,7 @@ describe('useMosaicValues', () => {
         }),
       {
         initialProps: {},
-        wrapper: (children: ReactNode) => (
+        wrapper: ({ children }: { children: ReactNode }) => (
           <MosaicProvider coordinator={db.coordinator}>
             {children}
           </MosaicProvider>
@@ -46,7 +51,7 @@ describe('useMosaicValues', () => {
       },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.status).toBe('success');
       expect(hook.result.current.values).toEqual({
         athletes: 6,
@@ -55,13 +60,15 @@ describe('useMosaicValues', () => {
     });
     expect(db.coordinator.clients.size).toBe(1);
 
-    $page.update({
-      source: {},
-      value: 'run',
-      predicate: eq('sport', literal('run')),
+    await interact(() => {
+      $page.update({
+        source: {},
+        value: 'run',
+        predicate: eq('sport', literal('run')),
+      });
     });
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.values).toEqual({ athletes: 2, heaviest: 65 });
     });
 

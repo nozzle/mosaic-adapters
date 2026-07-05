@@ -57,11 +57,10 @@
     "react": ">=19.2.0"
   },
   "devDependencies": {
-    "@duckdb/duckdb-wasm": "catalog:",
     "@eslint-react/eslint-plugin": "catalog:",
+    "@nozzleio/test-support": "workspace:*",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@uwdata/flechette": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
     "@uwdata/vgplot": "catalog:",

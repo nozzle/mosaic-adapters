@@ -1,9 +1,15 @@
 import { Selection } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 
+import {
+  createAthletesDb,
+  interact,
+  renderHook,
+  settle,
+  waitFor,
+} from '@nozzleio/test-support/react';
 import { useMosaicFacet } from '../src/index';
-import { actWaitFor, createAthletesDb, renderHook, settle } from './test-utils';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/react';
 
 let db: TestDb;
 
@@ -27,22 +33,22 @@ describe('useMosaicFacet', () => {
       { initialProps: {} },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.options).toEqual([
         { value: 'swim', count: 4 },
         { value: 'run', count: 2 },
       ]);
     });
 
-    hook.result.current.client.toggle('run');
-    await actWaitFor(() => {
+    await interact(() => hook.result.current.client.toggle('run'));
+    await waitFor(() => {
       expect(hook.result.current.selected).toEqual(['run']);
     });
     expect($page.clauses).toHaveLength(1);
 
     await hook.unmount();
     // Unmount clears the published clause (Selection events are async).
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect($page.clauses).toHaveLength(0);
     });
     expect(db.coordinator.clients.size).toBe(0);
@@ -65,7 +71,7 @@ describe('useMosaicFacet', () => {
     expect(db.clientQueries).toHaveLength(0);
 
     await hook.rerender({ open: true });
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.options).toHaveLength(2);
     });
 
@@ -85,7 +91,7 @@ describe('useMosaicFacet', () => {
       { initialProps: { search: '' } },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.options).toHaveLength(6);
     });
     const queriesAfterInit = db.clientQueries.length;
@@ -96,7 +102,7 @@ describe('useMosaicFacet', () => {
     expect(db.clientQueries.length).toBe(queriesAfterInit);
 
     await hook.rerender({ search: 'a' });
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.options.map((o) => o.value)).toEqual(['Ada']);
     });
     expect(db.clientQueries.length).toBe(queriesAfterInit + 1);

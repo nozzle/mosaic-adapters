@@ -11,10 +11,15 @@ import { Selection } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+import {
+  createAthletesDb,
+  interact,
+  renderHook,
+  waitFor,
+} from '@nozzleio/test-support/react';
 import { useMosaicFacet, useMosaicRows } from '../src/index';
-import { actWaitFor, createAthletesDb, renderHook } from './test-utils';
 import type { Persister, QuerySource, RowsInputs } from '../src/index';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/react';
 
 let db: TestDb;
 
@@ -52,10 +57,10 @@ describe('useMosaicFacet persistence', () => {
           publish: { as: $page },
           persist: persister,
         }),
-      { initialProps: {}, strict: true },
+      { initialProps: {}, reactStrictMode: true },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.selected).toEqual(['run']);
     });
     // Hydration replays through the publish path but is never written back.
@@ -80,16 +85,16 @@ describe('useMosaicFacet persistence', () => {
           publish: { as: $page },
           persist: persister,
         }),
-      { initialProps: {}, strict: true },
+      { initialProps: {}, reactStrictMode: true },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.options).toHaveLength(2);
     });
     expect(write).not.toHaveBeenCalled();
 
-    hook.result.current.client.toggle('run');
-    await actWaitFor(() => {
+    await interact(() => hook.result.current.client.toggle('run'));
+    await waitFor(() => {
       expect(hook.result.current.selected).toEqual(['run']);
     });
     expect(writes.at(-1)).toEqual({ state: ['run'], reason: 'update' });
@@ -114,10 +119,10 @@ describe('useMosaicFacet persistence', () => {
           publish: { as: $page },
           persist: rehydratingPersister,
         }),
-      { initialProps: {}, strict: true },
+      { initialProps: {}, reactStrictMode: true },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(remount.result.current.selected).toEqual(['run']);
     });
     expect(writes.length).toBe(writesAfterToggle);
@@ -144,7 +149,7 @@ describe('useMosaicFacet persistence', () => {
       { initialProps: { persist: persisterA } },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.options).toHaveLength(2);
     });
     const clientA = hook.result.current.client;
@@ -156,7 +161,7 @@ describe('useMosaicFacet persistence', () => {
 
     // New identity: recreate, old destroyed.
     await hook.rerender({ persist: persisterB });
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.client).not.toBe(clientA);
     });
     expect(clientA.destroyed).toBe(true);
@@ -195,15 +200,15 @@ describe('useMosaicRows persistence', () => {
           },
           persist: persister,
         }),
-      { initialProps: {}, strict: true },
+      { initialProps: {}, reactStrictMode: true },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows).toHaveLength(6);
     });
 
     // The persisted tuple lands as a published point clause on the Selection.
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect($selected.clauses).toHaveLength(1);
       expect($selected.clauses[0]?.value).toEqual([['Ada']]);
     });
