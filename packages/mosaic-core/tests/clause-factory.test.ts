@@ -2,12 +2,12 @@ import { Selection } from '@uwdata/mosaic-core';
 import { count, eq, gt, literal } from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
+import { waitFor } from '@nozzleio/test-support/duckdb';
 import {
   createClearClause,
   createValueClause,
   updateClauseIfChanged,
 } from '../src/index';
-import { waitFor } from './test-utils';
 
 // `selection.clauses` reads the last *emitted* value event, which lags one
 // tick once listeners attach; `_resolved` is the synchronously-maintained

@@ -1,9 +1,13 @@
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 
+import {
+  createAthletesDb,
+  settle,
+  waitFor,
+} from '@nozzleio/test-support/duckdb';
 import { createFacetClient, createRowsClient } from '../src/index';
-import { createAthletesDb, settle, waitFor } from './test-utils';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface AthleteRow {
   id: number;

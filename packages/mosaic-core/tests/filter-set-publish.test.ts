@@ -2,14 +2,18 @@ import { Selection } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
+  createAthletesDb,
+  settle,
+  waitFor,
+} from '@nozzleio/test-support/duckdb';
+import {
   createFacetClient,
   createFilterSet,
   createHistogramClient,
   createRowsClient,
 } from '../src/index';
-import { createAthletesDb, settle, waitFor } from './test-utils';
 import type { FilterSpec, Persister } from '../src/index';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface AthleteRow {
   id: number;

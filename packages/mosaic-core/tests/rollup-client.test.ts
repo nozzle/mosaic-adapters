@@ -2,9 +2,9 @@ import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { Query, count, sum } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
+import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
 import { createRollupClient, rollupRowsToTree } from '../src/index';
-import { createAthletesDb, waitFor } from './test-utils';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface WeightRollup {
   sport: string | null;

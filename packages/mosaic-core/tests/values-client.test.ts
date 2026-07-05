@@ -2,9 +2,9 @@ import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { Query, avg, count, max } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
+import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
 import { createValuesClient } from '../src/index';
-import { createAthletesDb, waitFor } from './test-utils';
-import type { TestDb } from './test-utils';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 let db: TestDb;
 
