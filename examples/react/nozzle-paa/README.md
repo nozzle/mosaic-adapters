@@ -9,10 +9,10 @@ subquery, top-bar facet/text/date inputs, an active-filter chip bar with
 global reset, a sparkline column, a detail table with bridged column
 filters, per-widget SQL debug footers, and shareable-URL filter persistence.
 
-Data: the `questions` table loads from
-`https://fastopendata.org/nozzle_test.parquet` through a Vite proxy
-(`/data-proxy`, CORS strip) into DuckDB-WASM. (The remote file name is external
-and not ours to rename.)
+Data: the `questions` table loads from `/data/questions.parquet` — served from
+the app's own origin — into DuckDB-WASM. The dataset is vendored in the repo
+under `media/data/questions.parquet` and symlinked into `public/data`, so it
+loads locally in dev and is copied into the build (no network fetch, no CORS).
 
 ## One FilterSet owns every filter (`src/page-context.ts`)
 
