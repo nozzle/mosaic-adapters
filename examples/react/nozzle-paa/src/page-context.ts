@@ -1,33 +1,49 @@
 /**
- * The page's Selection topology and its single {@link FilterSet}.
+ * The page's Selection topology, declared as data.
  *
- * Every dashboard filter — top-bar text/date/min-domains, facet picks, summary
- * row selections, per-card metric thresholds, detail column filters — is a
- * {@link FilterSpec} on `filterSet`. The set owns clause publication, targets,
- * self-exclusion `clients`, chips, and global reset; the components only read
- * its store and call its mutators.
+ * The whole page is driven by a single hoisted {@link TopologyConfig} — a pure
+ * JSON document naming every Selection on the page — resolved to live instances
+ * by `useTopology` (see {@link usePaaTopology}) under a `MosaicTopologyProvider`.
+ * Widgets resolve their `filterBy` / target selections by *ref* through the
+ * provider (`useMosaicSelectionRef`, or the app-derived contexts below), never
+ * by importing Selection instances.
  *
- * Topology (native Mosaic constructors, module scope):
+ * ## What is declared vs. what is code
  *
- * - `$where = Selection.crossfilter()` — the shared WHERE target. Text, date,
- *   min-domains, facet picks, summary row selections, and detail filters all
- *   land here. Per-widget self-exclusion is clause-`clients` based (publish.into
- *   wires it), governed by the OUTER selection's cross flag when composed.
- * - `$having[card]` × 4 — a card's own metric HAVING (`<agg> >/< N`), wired to
- *   its grouped rows query via `havingBy`.
- * - `$members[card]` × 4 — a card's metric membership subquery
- *   (`<groupKey> IN (SELECT … HAVING <agg cmp N>)`), narrowing every sibling.
- * - `$page = Selection.crossfilter({ include: [$where, ...all members] })` —
- *   the everything-composite; filterBy for KPIs, detail, facets, sparkline. It
- *   is also the set's `context`, so the metric kind's subquery WHERE embeds the
- *   full page predicate (own-spec-source excluded by the set).
- * - `summaryFilterBy[card] = Selection.crossfilter({ include: [$where,
- *   ...members of the OTHER three cards] })` — a summary table sees the page
- *   minus its own membership overlay (its own HAVING applies that instead).
+ * - **`filters` (`filter-set`)** — THE page filter set. Its nine targets (`where`
+ *   plus the four `having:<card>` / four `members:<card>` overlays) each become
+ *   an addressable target Selection resolvable as `filters.<target>`. The
+ *   code-only parts of the set — the custom `metric-threshold` / `min-domains`
+ *   kinds and the URL `persist`er — travel in the options bag
+ *   ({@link paaTopologyOptions}), keyed by the entry name. Every dashboard
+ *   filter is a {@link FilterSpec} on this set.
+ * - **`spotlight` (`single`)** — a standalone, topology-owned Selection the
+ *   "Domain spotlight" quick-filter publishes a point clause into *directly*
+ *   (bypassing the FilterSet). It is the page's one genuinely FOREIGN clause
+ *   source: it surfaces on `topology.activeClauses` and drives the foreign half
+ *   of the {@link useActiveFilters} recipe.
  *
- * MUST be `Selection.crossfilter({ include })`, never `intersect`: per-client
- * clause exclusion (facet/summary self-exclusion) is governed by the outer
- * composite's cross flag, so an intersect composite would silently disable it.
+ * ## The crossfilter read-contexts are `external` (escape hatch)
+ *
+ * The KPI/detail/facet/summary widgets read a set of *composite* contexts —
+ * `page` (WHERE + every card's membership overlay + spotlight) and one
+ * `summaryFilterBy:<card>` per card (the page minus that card's own
+ * membership). These MUST be `Selection.crossfilter({ include })`, never
+ * `intersect`: per-client clause exclusion (the facet self-exclusion and summary
+ * self-exclusion, wired through `filterSet.set(spec, { clients })` and row-select
+ * publishing) is governed by the OUTER composite's `cross` flag — an `intersect`
+ * composite silently disables it (proven: `intersect.predicate(ownClient)` still
+ * returns the client's own predicate, `crossfilter.predicate(ownClient)` returns
+ * `undefined`).
+ *
+ * The closed declaration vocabulary's `compose` type yields an `intersect`
+ * Selection, so these crossfilter composites are not expressible as
+ * declarations. They are declared `external` — so the config stays the complete
+ * namespace document — with empty `Selection.crossfilter()` instances supplied
+ * at construction and wired to the topology's resolved targets immediately after
+ * ({@link wirePaaContexts}). This is the sanctioned escape hatch: exotic,
+ * hand-wired composites the library does not model, still named in the config so
+ * `validNames` is total. `page` doubles as the FilterSet's subquery `context`.
  */
 import { Selection } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
@@ -35,7 +51,6 @@ import {
   SqlIdentifier,
   buildSubqueryPredicate,
   builtinFilterKinds,
-  createFilterSet,
   createStructAccess,
   subqueryFilterKind,
 } from '@nozzleio/react-mosaic';
@@ -44,6 +59,9 @@ import type {
   FilterKind,
   FilterKindArgs,
   OperatorDescriptor,
+  Topology,
+  TopologyConfig,
+  TopologyOptions,
 } from '@nozzleio/react-mosaic';
 import type { ExprNode } from '@uwdata/mosaic-sql';
 
@@ -67,49 +85,15 @@ function perSummary<T>(
   >;
 }
 
-// ── Target Selections ────────────────────────────────────────────────────────
-
-/** Shared WHERE target: text, date, min-domains, facets, summary rows, detail. */
-export const $where = Selection.crossfilter();
-
-/** Per-card metric HAVING (`<agg> >/< N`), routed via `havingBy`. */
-export const $having: Record<SummaryTableId, Selection> = perSummary(() =>
-  Selection.crossfilter(),
-);
-
-/** Per-card metric membership subquery, seen by every sibling. */
-export const $members: Record<SummaryTableId, Selection> = perSummary(() =>
-  Selection.crossfilter(),
-);
-
-// ── Composed contexts ────────────────────────────────────────────────────────
-
-const allMembers = SUMMARY_IDS.map((id) => $members[id]);
-
-function membersExcept(self: SummaryTableId): Array<Selection> {
-  return SUMMARY_IDS.filter((id) => id !== self).map((id) => $members[id]);
+/** The FilterSet target name a card's HAVING clause routes to. */
+export function havingTarget(id: SummaryTableId): string {
+  return `having:${id}`;
 }
 
-/** Everything on the page: WHERE + every card's membership overlay. */
-export const $page = Selection.crossfilter({
-  include: [$where, ...allMembers],
-});
-
-/**
- * Per-summary-table filter context: the page minus this card's own membership
- * overlay (the card applies that restriction through its own HAVING instead).
- */
-export const summaryFilterBy: Record<SummaryTableId, Selection> = perSummary(
-  (id) =>
-    Selection.crossfilter({
-      include: [$where, ...membersExcept(id)],
-    }),
-);
-
-/**
- * The phrase table's sparklines see exactly what the phrase table sees.
- */
-export const sparklineContext = summaryFilterBy.phrase;
+/** The FilterSet target name a card's membership subquery routes to. */
+export function membersTarget(id: SummaryTableId): string {
+  return `members:${id}`;
+}
 
 // ── Metric-threshold custom kind ─────────────────────────────────────────────
 
@@ -147,16 +131,6 @@ function metricCardId(specId: string): SummaryTableId | null {
 }
 
 /**
- * `metric-threshold` kind. One spec per card (`metric:<card>`) with an operator
- * (`gt`/`lt`) and a numeric value emits two clauses:
- *
- * 1. `having:<card>` — `<agg> >/< N` for the card's own grouped query.
- * 2. `members:<card>` — `<groupKey> IN (SELECT <groupKey> FROM nozzle_paa
- *    WHERE <page predicate> GROUP BY 1 HAVING <agg cmp N>)`, so every sibling
- *    narrows to the matching group subset. Reading `contextPredicate` registers
- *    the spec as context-dependent, so the set rebuilds this on page changes.
- */
-/**
  * The operator vocabulary the `metric-threshold` kind interprets — a custom
  * kind self-describing its operators exactly like the built-ins (issue #180),
  * so a UI (e.g. the filter builder) can enumerate them. Descriptive only; the
@@ -167,6 +141,16 @@ const METRIC_THRESHOLD_OPERATORS: ReadonlyArray<OperatorDescriptor> = [
   { id: 'lt', label: 'less than', arity: 'unary' },
 ];
 
+/**
+ * `metric-threshold` kind. One spec per card (`metric:<card>`) with an operator
+ * (`gt`/`lt`) and a numeric value emits two clauses:
+ *
+ * 1. `having:<card>` — `<agg> >/< N` for the card's own grouped query.
+ * 2. `members:<card>` — `<groupKey> IN (SELECT <groupKey> FROM nozzle_paa
+ *    WHERE <page predicate> GROUP BY 1 HAVING <agg cmp N>)`, so every sibling
+ *    narrows to the matching group subset. Reading `contextPredicate` registers
+ *    the spec as context-dependent, so the set rebuilds this on page changes.
+ */
 export const metricThresholdKind: FilterKind = {
   operators: METRIC_THRESHOLD_OPERATORS,
   emit: (args: FilterKindArgs) => {
@@ -201,11 +185,11 @@ export const metricThresholdKind: FilterKind = {
 
     return [
       {
-        target: `having:${cardId}`,
+        target: havingTarget(cardId),
         clause: { value, predicate: havingPredicate },
       },
       {
-        target: `members:${cardId}`,
+        target: membersTarget(cardId),
         clause: {
           value,
           predicate: buildSubqueryPredicate({
@@ -223,6 +207,16 @@ export const metricThresholdKind: FilterKind = {
 // ── Min-domains custom kind ──────────────────────────────────────────────────
 
 /**
+ * The `min-domains` operator vocabulary — a single `gte` ("at least N")
+ * operator, self-described so the filter builder can enumerate it exactly like
+ * the built-in kinds (issue #180). The subquery `emit` below is the source of
+ * truth for behavior; this is descriptive only.
+ */
+const MIN_DOMAINS_OPERATORS: ReadonlyArray<OperatorDescriptor> = [
+  { id: 'gte', label: 'at least', arity: 'unary' },
+];
+
+/**
  * `min-domains` — keep rows whose PAA question appears on at least N distinct
  * domains:
  *
@@ -230,17 +224,6 @@ export const metricThresholdKind: FilterKind = {
  *     SELECT related_phrase.phrase FROM nozzle_paa
  *     GROUP BY 1 HAVING count(DISTINCT domain) >= N)
  */
-/**
- * The `min-domains` operator vocabulary — a single `gte` ("at least N")
- * operator, self-described so the filter builder can enumerate it exactly like
- * the built-in kinds (issue #180). The subquery `emit` below is the source of
- * truth for behavior; this is descriptive only. A single operator means the
- * builder renders a disabled operator control showing its static label.
- */
-const MIN_DOMAINS_OPERATORS: ReadonlyArray<OperatorDescriptor> = [
-  { id: 'gte', label: 'at least', arity: 'unary' },
-];
-
 export const minDomainsKind: FilterKind = {
   operators: MIN_DOMAINS_OPERATORS,
   ...subqueryFilterKind((args) => {
@@ -257,26 +240,12 @@ export const minDomainsKind: FilterKind = {
   formatValue: (spec) => `≥ ${String(spec.value)}`,
 };
 
-// ── The page FilterSet ───────────────────────────────────────────────────────
-
-function havingTargets(): Record<string, Selection> {
-  return Object.fromEntries(
-    SUMMARY_IDS.map((id) => [`having:${id}`, $having[id]]),
-  );
-}
-
-function membersTargets(): Record<string, Selection> {
-  return Object.fromEntries(
-    SUMMARY_IDS.map((id) => [`members:${id}`, $members[id]]),
-  );
-}
-
 /**
- * The kind registry the page {@link filterSet} resolves through: the built-ins
- * merged with this app's custom kinds. Exported so the filter builder can
- * enumerate a kind's self-describing `operators` metadata for its operator
- * dropdown (`kindRegistry[kind]?.operators`) — the SAME merged map the set
- * uses, so what the builder offers is exactly what the set can resolve.
+ * The kind registry the page filter set resolves through: the built-ins merged
+ * with this app's custom kinds. Exported so the filter builder can enumerate a
+ * kind's self-describing `operators` metadata for its operator dropdown
+ * (`kindRegistry[kind]?.operators`) — the SAME merged map the set uses, so what
+ * the builder offers is exactly what the set can resolve.
  */
 export const kindRegistry: Record<string, FilterKind> = {
   ...builtinFilterKinds,
@@ -284,25 +253,200 @@ export const kindRegistry: Record<string, FilterKind> = {
   'min-domains': minDomainsKind,
 };
 
+// ── The topology config (pure JSON, hoisted) ─────────────────────────────────
+
+/** The FilterSet entry name in the topology config. */
+export const FILTERS_ENTRY = 'filters';
+
+/** The foreign-source ("Domain spotlight") entry name in the topology config. */
+export const SPOTLIGHT_ENTRY = 'spotlight';
+
+/** The page-wide crossfilter composite entry name (external). */
+export const PAGE_ENTRY = 'page';
+
+/** The per-card summary read-context entry name (external). */
+export function summaryContextEntry(id: SummaryTableId): string {
+  return `summaryFilterBy:${id}`;
+}
+
 /**
- * The single page-level filter set. Every widget publishes/reads specs here;
- * the chip bar and Clear All are `useFilterSetChips` + `filterSet.reset()`.
+ * True when a topology ref names one of the derived crossfilter read-contexts
+ * (`page`, `summaryFilterBy:<card>`). These external composites only RELAY the
+ * base selections' clauses, so the topology's active-clause store reports a
+ * foreign clause once per context it reached — the {@link useActiveFilters}
+ * recipe skips them so a foreign clause surfaces once, on its base source.
  */
-export const filterSet = createFilterSet({
-  targets: {
-    where: $where,
-    ...havingTargets(),
-    ...membersTargets(),
+export function isDerivedContextRef(ref: string): boolean {
+  const entry = ref.includes('.') ? ref.slice(0, ref.indexOf('.')) : ref;
+  return entry === PAGE_ENTRY || entry.startsWith('summaryFilterBy:');
+}
+
+/**
+ * The FilterSet's target map: `where`, plus a `having:<card>` and a
+ * `members:<card>` per summary card. Every target is a `crossfilter` so the
+ * clause-`clients` self-exclusion the facet/summary controls rely on resolves
+ * correctly wherever a widget reads a target directly.
+ */
+function filterSetTargets(): Record<string, 'crossfilter'> {
+  const targets: Record<string, 'crossfilter'> = { where: 'crossfilter' };
+  for (const id of SUMMARY_IDS) {
+    targets[havingTarget(id)] = 'crossfilter';
+    targets[membersTarget(id)] = 'crossfilter';
+  }
+  return targets;
+}
+
+/**
+ * THE page topology, declared as data. Hoisted (module scope) so its object
+ * identity is stable — `useTopology` keys recreation on identity, so a stable
+ * config means one topology for the page's lifetime.
+ */
+function externalSummaryContexts(): TopologyConfig {
+  const entries: TopologyConfig = {};
+  for (const id of SUMMARY_IDS) {
+    // reset: false — a derived read-context holds no clauses of its own (its
+    // clauses are relayed from the base targets), so page reset must skip it.
+    entries[summaryContextEntry(id)] = { type: 'external', reset: false };
+  }
+  return entries;
+}
+
+export const topologyConfig: TopologyConfig = {
+  [FILTERS_ENTRY]: {
+    type: 'filter-set',
+    label: 'Filters',
+    targets: filterSetTargets(),
+    // The FilterSet subquery context is the `page` crossfilter composite: the
+    // set reads its `_resolved` clauses (own-source exclusion is by source
+    // identity, not the cross flag). Supplied external + wired post-construction.
+    context: PAGE_ENTRY,
   },
-  kinds: {
-    'metric-threshold': metricThresholdKind,
-    'min-domains': minDomainsKind,
+  [SPOTLIGHT_ENTRY]: {
+    type: 'single',
+    label: 'Domain Spotlight',
+    // Opaque passthrough surfaced on the annotated active-clause store; the
+    // foreign-chip recipe reads `meta.column` to label the clause.
+    meta: { column: 'domain' },
   },
-  context: $page,
-  // Consumer-owned URL persistence: every spec round-trips through
-  // `location.search` (one `f.` param each), so any filtered view is a
-  // shareable link. Module-scope set creation means this read runs
-  // synchronously before the first query — the dashboard hydrates with zero
-  // flash. See `src/filter-url.ts`.
-  persist: urlPersister,
-});
+  // The crossfilter read-contexts (escape hatch — see the module doc). Declared
+  // so the config is a complete namespace document; empty instances are supplied
+  // in `paaTopologyOptions.selections` and wired by `wirePaaContexts`.
+  // `reset: false`: derived, holds no own clauses.
+  [PAGE_ENTRY]: { type: 'external', reset: false },
+  ...externalSummaryContexts(),
+};
+
+/**
+ * The code-only options bag, keyed by the config's entry names: the FilterSet's
+ * custom kinds and URL persister. Hoisted for the same stable-identity reason as
+ * {@link topologyConfig}.
+ */
+function externalCompositeInstances(): Record<string, Selection> {
+  const selections: Record<string, Selection> = {
+    [PAGE_ENTRY]: Selection.crossfilter(),
+  };
+  for (const id of SUMMARY_IDS) {
+    selections[summaryContextEntry(id)] = Selection.crossfilter();
+  }
+  return selections;
+}
+
+export const paaTopologyOptions: TopologyOptions = {
+  // Empty crossfilter composites for every `external` read-context, wired to the
+  // topology's resolved targets by `wirePaaContexts` right after construction.
+  selections: externalCompositeInstances(),
+  filterSets: {
+    [FILTERS_ENTRY]: {
+      kinds: {
+        'metric-threshold': metricThresholdKind,
+        'min-domains': minDomainsKind,
+      },
+      // Consumer-owned URL persistence: every spec round-trips through
+      // `location.search` (one `f.` param each), so any filtered view is a
+      // shareable link. `useTopology` constructs the topology during the first
+      // render, synchronously before any query, so this hydrates with zero flash.
+      persist: urlPersister,
+    },
+  },
+};
+
+// ── Wiring the external crossfilter read-contexts (escape hatch) ─────────────
+
+/**
+ * The crossfilter composites widgets read as `filterBy`, resolved from a
+ * constructed topology. `page` is the everything-composite (also the FilterSet
+ * context); each `summaryFilterBy[card]` is the page minus that card's own
+ * membership overlay.
+ */
+export interface PaaContexts {
+  /** Everything on the page: WHERE + every card's membership + spotlight. */
+  page: Selection;
+  /** Per-card context: the page minus that card's own membership overlay. */
+  summaryFilterBy: Record<SummaryTableId, Selection>;
+  /** The phrase table's sparklines see exactly what the phrase table sees. */
+  sparklineContext: Selection;
+}
+
+/** Register `derived` to relay `source`'s clauses, seeding current clauses. */
+function includeInto(source: Selection, derived: Selection): void {
+  source._relay.add(derived);
+  for (const clause of source.clauses) {
+    derived.update(clause);
+  }
+}
+
+const WIRED = new WeakSet<Topology>();
+const CONTEXTS_CACHE = new WeakMap<Topology, PaaContexts>();
+
+/**
+ * Wire the topology's `external` crossfilter composites to its resolved
+ * FilterSet targets and foreign `spotlight` source, and return them as
+ * {@link PaaContexts}. Idempotent per topology instance: the relay wiring runs
+ * once (a second call returns the cached contexts), so it is safe to call during
+ * render (it must run synchronously, before the first query paints, so the
+ * FilterSet's `context` reflects hydrated clauses with zero flash).
+ */
+export function wirePaaContexts(topology: Topology): PaaContexts {
+  const cached = CONTEXTS_CACHE.get(topology);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const where = topology.resolve(`${FILTERS_ENTRY}.where`);
+  const spotlight = topology.resolve(SPOTLIGHT_ENTRY);
+  const members = perSummary((id) =>
+    topology.resolve(`${FILTERS_ENTRY}.${membersTarget(id)}`),
+  );
+
+  const page = topology.resolve(PAGE_ENTRY);
+  const summaryFilterBy = perSummary((id) =>
+    topology.resolve(summaryContextEntry(id)),
+  );
+
+  if (!WIRED.has(topology)) {
+    WIRED.add(topology);
+    includeInto(where, page);
+    includeInto(spotlight, page);
+    for (const id of SUMMARY_IDS) {
+      includeInto(members[id], page);
+    }
+    for (const self of SUMMARY_IDS) {
+      const context = summaryFilterBy[self];
+      includeInto(where, context);
+      includeInto(spotlight, context);
+      for (const id of SUMMARY_IDS) {
+        if (id !== self) {
+          includeInto(members[id], context);
+        }
+      }
+    }
+  }
+
+  const contexts: PaaContexts = {
+    page,
+    summaryFilterBy,
+    sparklineContext: summaryFilterBy.phrase,
+  };
+  CONTEXTS_CACHE.set(topology, contexts);
+  return contexts;
+}

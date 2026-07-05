@@ -4,16 +4,23 @@
  * publishing, in-widget selection chips, and per-card metric-threshold
  * (HAVING + membership) filters, the min-domains subquery filter, top-bar
  * facet/text/date inputs, an active-filter chip bar with global reset, a
- * sparkline column, and a detail table with bridged column filters — all on
- * a static Selection topology composed with native `include` lists
- * (page-context.ts).
+ * sparkline column, and a detail table with bridged column filters — all
+ * driven by a declared Selection topology (`topologyConfig` in page-context.ts,
+ * resolved via `useTopology` + `MosaicTopologyProvider`), plus a "Domain
+ * spotlight" quick-filter that publishes a FOREIGN clause direct to a
+ * topology-owned Selection.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Query, column, count, isNotNull, sql } from '@uwdata/mosaic-sql';
-import { useMosaicValues } from '@nozzleio/react-mosaic';
+import {
+  MosaicTopologyProvider,
+  useMosaicValues,
+} from '@nozzleio/react-mosaic';
 import { initPaaTable } from './mosaic-setup';
-import { $page, tableName } from './page-context';
+import { tableName } from './page-context';
+import { usePaaContexts, usePaaTopology } from './topology';
 import { ActiveFilterBar } from './components/active-filter-bar';
+import { SpotlightFilter } from './components/spotlight-filter';
 import { DetailTable } from './components/detail-table';
 import { FilterBuilder } from './components/filter-builder';
 import {
@@ -74,6 +81,18 @@ const summaryTables: Array<SummaryTableConfig> = [
 ];
 
 function App() {
+  // Build the ONE page topology from the hoisted config + options (identity is
+  // stable, so this is one topology for the page's lifetime), and distribute it
+  // so every widget resolves its selections by ref without prop-drilling.
+  const topology = usePaaTopology();
+  return (
+    <MosaicTopologyProvider topology={topology}>
+      <Dashboard />
+    </MosaicTopologyProvider>
+  );
+}
+
+function Dashboard() {
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [expandedTableId, setExpandedTableId] = useState<SummaryTableId | null>(
@@ -183,6 +202,7 @@ function App() {
                 testId="filter-question"
               />
               <QuestionMinDomainsFilter />
+              <SpotlightFilter enabled={isReady} />
             </div>
           ) : (
             // Builder view: the dynamic builder over the same page filterSet.
@@ -314,6 +334,7 @@ function FilterViewToggle(props: {
 }
 
 function HeaderSection(props: { enabled: boolean }) {
+  const { page } = usePaaContexts();
   // One values client, four KPIs per round trip, filtered by everything on
   // the page.
   const kpis = useMosaicValues<{
@@ -331,7 +352,7 @@ function HeaderSection(props: { enabled: boolean }) {
           devices: count('device').distinct(),
         })
         .where(where),
-    filterBy: $page,
+    filterBy: page,
     enabled: props.enabled,
   });
 

@@ -25,7 +25,8 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useFilterSetState, useMosaicFacet } from '@nozzleio/react-mosaic';
-import { $page, filterSet, tableName } from '../page-context';
+import { tableName } from '../page-context';
+import { usePaaContexts, usePaaFilterSet } from '../topology';
 import {
   facetTriggerLabel,
   isMultiValueOperator,
@@ -66,6 +67,8 @@ export interface FacetMultiSelectProps {
 export function FacetMultiSelect(props: FacetMultiSelectProps) {
   const { specId, column, label, operator } = props;
   const [search, setSearch] = useState('');
+  const filterSet = usePaaFilterSet();
+  const { page } = usePaaContexts();
 
   // Read-only options + cascade counts — NO publish; the spec store owns state.
   const facet = useMosaicFacet({
@@ -74,7 +77,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
     arrayColumn: props.arrayColumn,
     select: 'multi',
     sort: props.sort,
-    filterBy: $page,
+    filterBy: page,
     inputs: { search, limit: props.limit },
     enabled: props.enabled,
   });
@@ -167,7 +170,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
     let cancelled = false;
     // Wait for the clause-clients update to flush, then re-query against the
     // now self-excluding predicate.
-    void $page.pending('value').then(() => {
+    void page.pending('value').then(() => {
       if (!cancelled) {
         void facet.client.refetch();
       }
@@ -175,7 +178,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
     return () => {
       cancelled = true;
     };
-  }, [clients, specId, facet.client]);
+  }, [clients, specId, facet.client, filterSet, page]);
 
   const toggle = (rawValue: unknown) => {
     const value = String(rawValue);

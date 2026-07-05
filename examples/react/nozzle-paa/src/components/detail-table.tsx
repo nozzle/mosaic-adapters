@@ -18,7 +18,8 @@ import {
   paginationToWindow,
   useTanStackFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { $page, filterSet, tableName } from '../page-context';
+import { tableName } from '../page-context';
+import { usePaaContexts, usePaaFilterSet } from '../topology';
 import { WidgetSqlDetails } from './widget-sql-details';
 import type {
   Column,
@@ -60,6 +61,8 @@ const bridgeColumns: FilterBridgeColumns = {
 const PAGE_SIZE = 20;
 
 export function DetailTable(props: { enabled: boolean }) {
+  const filterSet = usePaaFilterSet();
+  const { page } = usePaaContexts();
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -89,7 +92,7 @@ export function DetailTable(props: { enabled: boolean }) {
           description: 'description',
         })
         .where(where),
-    filterBy: $page,
+    filterBy: page,
     inputs: paginationToWindow(pagination),
     rowCount: 'window',
     enabled: props.enabled,
