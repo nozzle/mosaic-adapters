@@ -3,7 +3,7 @@
  * module (and, later, by `createTopology`).
  *
  * Mosaic's `Selection` relays clauses to any derived Selection registered in its
- * private `_relay` set (see `Selection.include` / the `include` constructor
+ * internal `_relay` set (see `Selection.include` / the `include` constructor
  * arg). The composition primitives here wire that relay imperatively so a
  * derived "context" Selection mirrors the clauses of one or more source
  * Selections, and — critically — can be torn down again: detaching the relay
@@ -13,16 +13,12 @@
  */
 import type { Selection } from '@uwdata/mosaic-core';
 
-/** A Selection with the (internal) relay set Mosaic uses to fan out clauses. */
-type LinkedSelection = Selection & { _relay: Set<Selection> };
-
 /** Register `derived` to receive relayed clauses from `source`. */
 export function attachIncludedSelection(
   source: Selection,
   derived: Selection,
 ): void {
-  const relay = (source as LinkedSelection)._relay;
-  relay.add(derived);
+  source._relay.add(derived);
 }
 
 /** Stop `derived` from receiving relayed clauses from `source`. */
@@ -30,8 +26,7 @@ export function detachIncludedSelection(
   source: Selection,
   derived: Selection,
 ): void {
-  const relay = (source as LinkedSelection)._relay;
-  relay.delete(derived);
+  source._relay.delete(derived);
 }
 
 /**
