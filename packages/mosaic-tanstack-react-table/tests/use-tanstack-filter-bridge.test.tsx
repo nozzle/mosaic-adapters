@@ -4,17 +4,18 @@ import { Query } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { createFilterSet, useMosaicRows } from '@nozzleio/react-mosaic';
 
-import { useTanStackFilterBridge } from '../src/index';
 import {
-  actWaitFor,
   createAthletesDb,
+  interact,
   renderHook,
   settle,
-} from '../../react-mosaic/tests/test-utils';
+  waitFor,
+} from '@nozzleio/test-support/react';
+import { useTanStackFilterBridge } from '../src/index';
 import type { FilterSet } from '@nozzleio/react-mosaic';
 import type { ColumnFiltersState } from '@tanstack/table-core';
 import type { FilterBridgeColumns } from '../src/index';
-import type { TestDb } from '../../react-mosaic/tests/test-utils';
+import type { TestDb } from '@nozzleio/test-support/react';
 
 interface AthleteRow {
   id: number;
@@ -62,7 +63,7 @@ describe('full loop with a consuming rows client', () => {
       { initialProps: { filters: [{ id: 'sport', value: 'swim' }] } },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows).toHaveLength(4);
     });
     expect($page.clauses).toHaveLength(1);
@@ -79,7 +80,7 @@ describe('full loop with a consuming rows client', () => {
     // A changed value replaces the clause (same source) and re-filters.
     const source = $page.clauses[0]?.source;
     await hook.rerender({ filters: [{ id: 'sport', value: 'run' }] });
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows).toHaveLength(2);
     });
     expect($page.clauses).toHaveLength(1);
@@ -87,13 +88,13 @@ describe('full loop with a consuming rows client', () => {
 
     // Clearing the column filter removes its clause and unfilters.
     await hook.rerender({ filters: [] });
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows).toHaveLength(6);
     });
     expect($page.clauses).toHaveLength(0);
 
     await hook.rerender({ filters: [{ id: 'name', value: 'ad' }] });
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows.map((row) => row.name)).toEqual(['Ada']);
     });
 
@@ -122,11 +123,11 @@ describe('full loop with a consuming rows client', () => {
       },
       {
         initialProps: { filters: [{ id: 'weight', value: [60, 70] }] },
-        strict: true,
+        reactStrictMode: true,
       },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current.rows).toHaveLength(3);
     });
     // The simulated unmount destroyed the first bridge and removed its spec;
@@ -234,7 +235,7 @@ describe('bridge lifecycle without a client', () => {
     await settle();
     expect($detail.clauses).toHaveLength(1);
 
-    set.reset();
+    await interact(() => set.reset());
     await settle();
     expect(reported.at(-1)).toEqual([]);
     expect($detail.clauses).toHaveLength(0);
@@ -284,7 +285,7 @@ describe('hydration adoption', () => {
       { initialProps: {} },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current).toEqual([{ id: 'name', value: 'ada' }]);
     });
     // The spec was never removed/re-added: adoption writes nothing to the
@@ -318,10 +319,10 @@ describe('hydration adoption', () => {
         });
         return filters;
       },
-      { initialProps: {}, strict: true },
+      { initialProps: {}, reactStrictMode: true },
     );
 
-    await actWaitFor(() => {
+    await waitFor(() => {
       expect(hook.result.current).toEqual([{ id: 'name', value: 'ada' }]);
     });
     // The first bridge's destroy left the (unconfirmed) adopted spec in
