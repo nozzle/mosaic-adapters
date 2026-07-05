@@ -21,6 +21,18 @@ function chipRank(chip: FilterSetChip): number {
   return 1;
 }
 
+/**
+ * Maps a chip's resolved routing `target` to a short placement badge:
+ * `where` → "WHERE" (row-level predicate), anything `having:`/`members:` →
+ * "HAVING" (aggregate threshold + its membership overlay).
+ */
+function placementBadge(target: string): string {
+  if (target.startsWith('having:') || target.startsWith('members:')) {
+    return 'HAVING';
+  }
+  return 'WHERE';
+}
+
 export function ActiveFilterBar() {
   const chips = useFilterSetChips(filterSet);
 
@@ -48,6 +60,20 @@ export function ActiveFilterBar() {
           key={chip.key}
           className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 py-1 pr-1 pl-2 text-xs text-blue-800 shadow-sm transition-all hover:bg-blue-100"
         >
+          <span
+            data-testid="chip-target"
+            className="rounded-sm bg-orange-100 px-1 text-[9px] font-bold tracking-wider text-orange-600"
+          >
+            {placementBadge(chip.target)}
+          </span>
+          {chip.operator !== undefined ? (
+            <span
+              data-testid="chip-operator"
+              className="rounded-sm bg-slate-100 px-1 text-[9px] font-bold tracking-wider text-slate-500"
+            >
+              {chip.operator}
+            </span>
+          ) : null}
           <span className="font-semibold text-blue-900">{chip.label}:</span>
           <span className="max-w-[150px] truncate" title={chip.formattedValue}>
             {chip.formattedValue}
