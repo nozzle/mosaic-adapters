@@ -250,8 +250,8 @@ interface ActiveClause {
 
 Two more properties of the store worth knowing when building a chip recipe over it:
 
-1. **`compose` / `cascading` contexts are excluded from enumeration** — they are derived mirrors of their inputs, so enumerating them would double-count. The store observes standalone, external, and filter-set-target Selections only.
-2. **`external` composites that _relay_ base selections are still observed.** If a foreign clause lands on a base Selection that is relayed into an observed `external` read-context, the same clause is reported **once per sighting** (once on the base source, once on each observed context it reached). An app-side chip recipe dedups by clause source. See the [active-filters recipe](../react/topology-recipes.md#active-filters--chips) — the reference implementation is in [`examples/react/nozzle-paa/src/topology.ts`](../../examples/react/nozzle-paa/src/topology.ts).
+1. **`compose` / `cascading` contexts are excluded from enumeration** — they are derived mirrors of their inputs, so enumerating them would double-count. The store observes standalone, external, and filter-set-target Selections only. Declare a shared crossfilter read-context as a [`compose`](#compose) entry (rather than an `external` hand-wired composite) and its relayed clauses stay out of the store, so each foreign clause surfaces exactly once on its base source with no app-side dedup. See the [active-filters recipe](../react/topology-recipes.md#active-filters--chips) — the reference implementation is in [`examples/react/nozzle-paa/src/components/active-filter-bar.tsx`](../../examples/react/nozzle-paa/src/components/active-filter-bar.tsx).
+2. **An observed `external` composite that _relays_ a base selection double-reports.** An `external` read-context is observed (unlike `compose`), so a foreign clause relayed into it is reported **once per sighting** — once on the base source, once on each observed `external` context it reached. Prefer a `compose` entry (property 1) to avoid this; if an `external` composite is unavoidable, an app-side chip recipe must dedup by clause source.
 
 **Clearing a foreign clause clears the _whole_ clause** — publish a null predicate from the clause's own source. Per-value narrowing / write-back stays app-side (a FilterSet concern). Note that Mosaic's `Selection.remove(source)` does **not** clear a `single` Selection's clause, so the null-predicate publish is the reliable form across every resolution type:
 
@@ -269,9 +269,9 @@ There is **no chip model in the package** — no chip shapes, groups, or label m
 
 `topology.destroy()` tears down every composition and FilterSet the topology created and unsubscribes all its clause listeners. **`external` instances are never destroyed** — the topology does not own them. Idempotent; `topology.destroyed` reports it (the React binding uses this for StrictMode remount detection). Calling `reset()` or reading `activeClauses` after `destroy()` is a safe no-op.
 
-## Composite strategies and the external escape hatch
+## Composite strategies and the escape hatch
 
-The declarative form covers the common graph shapes directly. For anything it does not model, declare the entry `external` and wire it in app code — the sanctioned escape hatch, with the config still naming every hole so `validNames` stays total. The reference is [`examples/react/nozzle-paa/src/page-context.ts`](../../examples/react/nozzle-paa/src/page-context.ts) (`wirePageContexts`).
+The declarative form covers the common graph shapes directly — including self-excluding crossfilter composites (`as: 'crossfilter'`) and self-referential filter-set contexts (both below). For anything it still does not model, declare the entry `external` and wire it in app code — the sanctioned escape hatch, with the config still naming every hole so `validNames` stays total.
 
 ### Self-excluding (crossfilter) composites
 
@@ -337,4 +337,4 @@ These are the same factories the `useComposedSelection` / `useCascadingContexts`
 - [React topology bindings](../react/topology.md) — `useTopology`, the provider/consumer hooks, `useMosaicSelectionRef`, and the active-clause hooks.
 - [Topology recipes](../react/topology-recipes.md) — page-wide reset and the active-filters / chips union.
 - [Filter set](./filter-set.md) — the serializable filter-spec primitive a `filter-set` entry wraps.
-- [`examples/react/nozzle-paa`](../../examples/react/nozzle-paa) — the reference implementation: a hoisted config with custom kinds, a URL persister, external crossfilter composites, and the active-filters recipe.
+- [`examples/react/nozzle-paa`](../../examples/react/nozzle-paa) — the reference implementation: a hoisted config with custom kinds, a URL persister, declared `as: 'crossfilter'` compose read-contexts (including a self-referential filter-set context), and the active-filters recipe.

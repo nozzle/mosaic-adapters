@@ -23,29 +23,29 @@
  *   source: it surfaces on `topology.activeClauses` and drives the foreign half
  *   of the active-filter-bar's chip recipe (see `active-filter-bar.tsx`).
  *
- * ## The crossfilter read-contexts are `external` (escape hatch)
+ * ## The crossfilter read-contexts are declared `compose` entries
  *
  * The KPI/detail/facet/summary widgets read a set of *composite* contexts —
- * `page` (WHERE + every card's membership overlay + spotlight) and one
- * `summaryFilterBy:<card>` per card (the page minus that card's own
- * membership). These MUST be `Selection.crossfilter({ include })`, never
- * `intersect`: per-client clause exclusion (the facet self-exclusion and summary
+ * `page` (WHERE + every card's membership overlay + spotlight + volume brush),
+ * `volumeBrushFilterBy` (the page minus its own brush clause), and one
+ * `summaryFilterBy:<card>` per card (the page minus that card's own membership).
+ * Each is a declared `{ type: 'compose', include: [...], as: 'crossfilter' }`
+ * entry: the `include` list composes exactly the base selections that context
+ * reads, and `as: 'crossfilter'` supplies the per-client clause exclusion the
+ * facet/summary controls rely on (the facet self-exclusion and summary
  * self-exclusion, wired through `filterSet.set(spec, { clients })` and row-select
- * publishing) is governed by the OUTER composite's `cross` flag — an `intersect`
- * composite silently disables it (proven: `intersect.predicate(ownClient)` still
- * returns the client's own predicate, `crossfilter.predicate(ownClient)` returns
- * `undefined`).
+ * publishing). An `intersect` composite would silently disable that exclusion
+ * (proven: `intersect.predicate(ownClient)` still returns the client's own
+ * predicate, `crossfilter.predicate(ownClient)` returns `undefined`).
  *
- * The closed declaration vocabulary's `compose` type yields an `intersect`
- * Selection, so these crossfilter composites are not expressible as
- * declarations. They are declared `external` — so the config stays the complete
- * namespace document — with empty `Selection.crossfilter()` instances supplied
- * at construction and wired to the topology's resolved targets immediately after
- * ({@link wirePageContexts}). This is the sanctioned escape hatch: exotic,
- * hand-wired composites the library does not model, still named in the config so
- * `validNames` is total. `page` doubles as the FilterSet's subquery `context`.
+ * The structural minus-self include lists are load-bearing peer exclusion:
+ * `summaryFilterBy:<card>` omits that card's own `members:<card>` target, and
+ * `volumeBrushFilterBy` omits the `volumeBrush` source, so each read-context is
+ * never narrowed by its own clause. `page` doubles as the FilterSet's subquery
+ * `context` — a `compose` that includes the set's own targets, made legal by
+ * two-phase compose construction (the construction cycle is excluded from cycle
+ * validation).
  */
-import { Selection } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
 import {
   SqlIdentifier,
@@ -64,6 +64,7 @@ import type {
   TopologyOptions,
 } from '@nozzleio/react-mosaic';
 import type { ExprNode } from '@uwdata/mosaic-sql';
+import type { Selection } from '@uwdata/mosaic-core';
 
 export const tableName = 'questions';
 
@@ -267,16 +268,24 @@ export const VOLUME_BRUSH_ENTRY = 'volumeBrush';
 /** The column the volume brush ranges over. */
 export const VOLUME_BRUSH_COLUMN = 'search_volume';
 
-/** The page-wide crossfilter composite entry name (external). */
+/** The page-wide crossfilter composite entry name. */
 export const PAGE_ENTRY = 'page';
 
-/** The volume-brush read-context entry name (external): the page minus its own clause. */
+/** The volume-brush read-context entry name: the page minus its own clause. */
 export const VOLUME_BRUSH_CONTEXT_ENTRY = 'volumeBrushFilterBy';
 
-/** The per-card summary read-context entry name (external). */
+/** The per-card summary read-context entry name. */
 export function summaryContextEntry(id: SummaryTableId): string {
   return `summaryFilterBy:${id}`;
 }
+
+/** The FilterSet target ref a card's membership subquery resolves through. */
+function membersRef(id: SummaryTableId): string {
+  return `${FILTERS_ENTRY}.${membersTarget(id)}`;
+}
+
+/** The `where` target ref on the page FilterSet. */
+const WHERE_REF = `${FILTERS_ENTRY}.where`;
 
 /**
  * The FilterSet's target map: `where`, plus a `having:<card>` and a
@@ -294,16 +303,27 @@ function filterSetTargets(): Record<string, 'crossfilter'> {
 }
 
 /**
- * THE page topology, declared as data. Hoisted (module scope) so its object
- * identity is stable — `useTopology` keys recreation on identity, so a stable
- * config means one topology for the page's lifetime.
+ * The per-card summary read-contexts, as declared `compose` entries. Each
+ * `summaryFilterBy:<card>` composes WHERE + spotlight + volume brush + every
+ * card's membership overlay EXCEPT its own — the structural peer-exclusion that
+ * keeps a summary card unfiltered by its own selection. `as: 'crossfilter'`
+ * supplies the per-client self-exclusion the card's row-select publishing
+ * relies on. Composes are derived, so page reset auto-skips them.
  */
-function externalSummaryContexts(): TopologyConfig {
+function summaryComposeContexts(): TopologyConfig {
   const entries: TopologyConfig = {};
-  for (const id of SUMMARY_IDS) {
-    // reset: false — a derived read-context holds no clauses of its own (its
-    // clauses are relayed from the base targets), so page reset must skip it.
-    entries[summaryContextEntry(id)] = { type: 'external', reset: false };
+  for (const self of SUMMARY_IDS) {
+    const include = [
+      WHERE_REF,
+      SPOTLIGHT_ENTRY,
+      VOLUME_BRUSH_ENTRY,
+      ...SUMMARY_IDS.filter((id) => id !== self).map(membersRef),
+    ];
+    entries[summaryContextEntry(self)] = {
+      type: 'compose',
+      include,
+      as: 'crossfilter',
+    };
   }
   return entries;
 }
@@ -313,9 +333,11 @@ export const topologyConfig: TopologyConfig = {
     type: 'filter-set',
     label: 'Filters',
     targets: filterSetTargets(),
-    // The FilterSet subquery context is the `page` crossfilter composite: the
+    // The FilterSet subquery context is the `page` crossfilter compose: the
     // set reads its `_resolved` clauses (own-source exclusion is by source
-    // identity, not the cross flag). Supplied external + wired post-construction.
+    // identity, not the cross flag). A compose that includes the set's own
+    // targets is legal via two-phase construction (the construction cycle is
+    // excluded from cycle validation).
     context: PAGE_ENTRY,
   },
   [SPOTLIGHT_ENTRY]: {
@@ -333,13 +355,29 @@ export const topologyConfig: TopologyConfig = {
     // Read by the foreign-chip recipe to label the clause (like spotlight).
     meta: { column: VOLUME_BRUSH_COLUMN },
   },
-  // The crossfilter read-contexts (escape hatch — see the module doc). Declared
-  // so the config is a complete namespace document; empty instances are supplied
-  // in `topologyOptions.selections` and wired by `wirePageContexts`.
-  // `reset: false`: derived, holds no own clauses.
-  [PAGE_ENTRY]: { type: 'external', reset: false },
-  [VOLUME_BRUSH_CONTEXT_ENTRY]: { type: 'external', reset: false },
-  ...externalSummaryContexts(),
+  // The crossfilter read-contexts, declared as `compose` entries (see module
+  // doc). `page` is the everything-composite (also the FilterSet context);
+  // `volumeBrushFilterBy` is the page minus its own brush; each
+  // `summaryFilterBy:<card>` is the page minus that card's own membership.
+  // Composes are derived, so page reset auto-skips them.
+  [PAGE_ENTRY]: {
+    type: 'compose',
+    as: 'crossfilter',
+    include: [
+      WHERE_REF,
+      SPOTLIGHT_ENTRY,
+      VOLUME_BRUSH_ENTRY,
+      ...SUMMARY_IDS.map(membersRef),
+    ],
+  },
+  [VOLUME_BRUSH_CONTEXT_ENTRY]: {
+    type: 'compose',
+    as: 'crossfilter',
+    // Everything page sees EXCEPT the volume brush, so the brushed histogram is
+    // never narrowed by its own brush.
+    include: [WHERE_REF, SPOTLIGHT_ENTRY, ...SUMMARY_IDS.map(membersRef)],
+  },
+  ...summaryComposeContexts(),
 };
 
 /**
@@ -347,21 +385,7 @@ export const topologyConfig: TopologyConfig = {
  * custom kinds and URL persister. Hoisted for the same stable-identity reason as
  * {@link topologyConfig}.
  */
-function externalCompositeInstances(): Record<string, Selection> {
-  const selections: Record<string, Selection> = {
-    [PAGE_ENTRY]: Selection.crossfilter(),
-    [VOLUME_BRUSH_CONTEXT_ENTRY]: Selection.crossfilter(),
-  };
-  for (const id of SUMMARY_IDS) {
-    selections[summaryContextEntry(id)] = Selection.crossfilter();
-  }
-  return selections;
-}
-
 export const topologyOptions: TopologyOptions = {
-  // Empty crossfilter composites for every `external` read-context, wired to the
-  // topology's resolved targets by `wirePageContexts` right after construction.
-  selections: externalCompositeInstances(),
   filterSets: {
     [FILTERS_ENTRY]: {
       kinds: {
@@ -377,10 +401,10 @@ export const topologyOptions: TopologyOptions = {
   },
 };
 
-// ── Wiring the external crossfilter read-contexts (escape hatch) ─────────────
+// ── Resolving the declared crossfilter read-contexts ─────────────────────────
 
 /**
- * The crossfilter composites widgets read as `filterBy`, resolved from a
+ * The crossfilter compose contexts widgets read as `filterBy`, resolved from a
  * constructed topology. `page` is the everything-composite (also the FilterSet
  * context); each `summaryFilterBy[card]` is the page minus that card's own
  * membership overlay.
@@ -396,78 +420,19 @@ export interface PageContexts {
   volumeBrushFilterBy: Selection;
 }
 
-/** Register `derived` to relay `source`'s clauses, seeding current clauses. */
-function includeInto(source: Selection, derived: Selection): void {
-  source._relay.add(derived);
-  for (const clause of source.clauses) {
-    derived.update(clause);
-  }
-}
-
-const WIRED = new WeakSet<Topology>();
-const CONTEXTS_CACHE = new WeakMap<Topology, PageContexts>();
-
 /**
- * Wire the topology's `external` crossfilter composites to its resolved
- * FilterSet targets and foreign `spotlight` source, and return them as
- * {@link PageContexts}. Idempotent per topology instance: the relay wiring runs
- * once (a second call returns the cached contexts), so it is safe to call during
- * render (it must run synchronously, before the first query paints, so the
- * FilterSet's `context` reflects hydrated clauses with zero flash).
+ * Resolve the declared `compose` read-contexts from a constructed topology.
+ * They are wired and seeded by `createTopology` itself (two-phase compose
+ * construction), so this is a pure lookup — safe to call during render.
  */
-export function wirePageContexts(topology: Topology): PageContexts {
-  const cached = CONTEXTS_CACHE.get(topology);
-  if (cached !== undefined) {
-    return cached;
-  }
-
-  const where = topology.resolve(`${FILTERS_ENTRY}.where`);
-  const spotlight = topology.resolve(SPOTLIGHT_ENTRY);
-  const volumeBrush = topology.resolve(VOLUME_BRUSH_ENTRY);
-  const members = perSummary((id) =>
-    topology.resolve(`${FILTERS_ENTRY}.${membersTarget(id)}`),
-  );
-
-  const page = topology.resolve(PAGE_ENTRY);
-  const volumeBrushFilterBy = topology.resolve(VOLUME_BRUSH_CONTEXT_ENTRY);
+export function resolvePageContexts(topology: Topology): PageContexts {
   const summaryFilterBy = perSummary((id) =>
     topology.resolve(summaryContextEntry(id)),
   );
-
-  if (!WIRED.has(topology)) {
-    WIRED.add(topology);
-    includeInto(where, page);
-    includeInto(spotlight, page);
-    includeInto(volumeBrush, page);
-    for (const id of SUMMARY_IDS) {
-      includeInto(members[id], page);
-    }
-    // The volume-brush context relays every source page sees except the volume
-    // brush itself, so the brushed histogram is never narrowed by its own brush.
-    includeInto(where, volumeBrushFilterBy);
-    includeInto(spotlight, volumeBrushFilterBy);
-    for (const id of SUMMARY_IDS) {
-      includeInto(members[id], volumeBrushFilterBy);
-    }
-    for (const self of SUMMARY_IDS) {
-      const context = summaryFilterBy[self];
-      includeInto(where, context);
-      includeInto(spotlight, context);
-      includeInto(volumeBrush, context);
-      for (const id of SUMMARY_IDS) {
-        if (id !== self) {
-          includeInto(members[id], context);
-        }
-      }
-    }
-  }
-
-  const contexts: PageContexts = {
-    page,
+  return {
+    page: topology.resolve(PAGE_ENTRY),
     summaryFilterBy,
     sparklineContext: summaryFilterBy.phrase,
-    volumeBrushFilterBy,
+    volumeBrushFilterBy: topology.resolve(VOLUME_BRUSH_CONTEXT_ENTRY),
   };
-  CONTEXTS_CACHE.set(topology, contexts);
-  return contexts;
 }

@@ -8,15 +8,16 @@
  *
  * - {@link usePageFilterSet} — the page FilterSet (`filters` entry).
  * - {@link usePageContexts} — the crossfilter read-contexts (`page`,
- *   `summaryFilterBy:<card>`), wired lazily on first use.
+ *   `summaryFilterBy:<card>`), declared `compose` entries resolved from the
+ *   topology.
  */
 import { useMemo } from 'react';
 import { useMosaicTopology, useTopology } from '@nozzleio/react-mosaic';
 import {
   FILTERS_ENTRY,
+  resolvePageContexts,
   topologyConfig,
   topologyOptions,
-  wirePageContexts,
 } from './page-context';
 import type { PageContexts } from './page-context';
 import type { FilterSet, Topology } from '@nozzleio/react-mosaic';
@@ -37,11 +38,11 @@ export function usePageFilterSet(): FilterSet {
 }
 
 /**
- * The crossfilter read-contexts, resolved + wired from the provided topology.
- * `wirePageContexts` is idempotent per topology, so this is a stable object for
- * the topology's lifetime.
+ * The crossfilter read-contexts, resolved from the provided topology. They are
+ * declared `compose` entries wired and seeded by `createTopology`, so this is a
+ * pure lookup, memoized to a stable object for the topology's lifetime.
  */
 export function usePageContexts(): PageContexts {
   const topology = useMosaicTopology();
-  return useMemo(() => wirePageContexts(topology), [topology]);
+  return useMemo(() => resolvePageContexts(topology), [topology]);
 }

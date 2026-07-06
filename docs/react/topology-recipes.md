@@ -23,9 +23,11 @@ The declaration types carry the ownership, so you never enumerate selections by 
 const config = {
   where: { type: 'crossfilter' }, // cleared
   scope: { type: 'single', reset: false }, // survives clear-all
-  page: { type: 'external', reset: false }, // derived read-context, nothing to clear
+  brush: { type: 'external', reset: false }, // an app-owned instance clear-all must not touch
 } as const;
 ```
+
+(Derived `compose` / `cascading` read-contexts are skipped automatically — they hold no clauses of their own — so they never need `reset: false`.)
 
 This replaces the pre-rewrite "selection registry for reset-all" — there is no standalone React-context registry, only a method on the topology object.
 
@@ -76,13 +78,11 @@ function useActiveFilters(filterSet: FilterSet): Array<ActiveFilterChip> {
       }),
     );
 
-    // 2. Foreign clauses — dedup by source, clear the WHOLE clause on remove.
-    const seenSources = new Set<object>();
+    // 2. Foreign clauses — clear the WHOLE clause on remove. Each surfaces
+    // exactly once: shared read-contexts are declared `compose` entries, which
+    // core excludes from active-clause observation, so no context relays a
+    // duplicate report of the base source's clause.
     for (const active of foreignClauses) {
-      if (isDerivedContextRef(active.ref)) continue; // skip relayed read-contexts
-      if (seenSources.has(active.clause.source)) continue;
-      seenSources.add(active.clause.source);
-
       chips.push({
         key: `foreign:${active.ref}`,
         label: active.label ?? active.entry, // the declaration's `label`
@@ -107,11 +107,11 @@ function useActiveFilters(filterSet: FilterSet): Array<ActiveFilterChip> {
 }
 ```
 
-### Three things to get right
+### Two things to get right
 
 The example's inline comments call these out; they are the whole reason this is a recipe and not a package export.
 
-- **Dedup by clause source.** If a foreign base Selection is relayed into an observed `external` read-context (a crossfilter composite that `include`s it — see [self-excluding composites](../core/selection-topology.md#self-excluding-crossfilter-composites)), the topology reports the same clause once per context it reached. Skip the derived read-context refs (`isDerivedContextRef` in the example matches `page` / `summaryFilterBy:*`) so each clause surfaces once on its base source; the `seenSources` guard is belt-and-braces against any residual duplicate.
+- **Each foreign clause surfaces once — no dedup needed.** Declare shared crossfilter read-contexts as [`compose`](../core/selection-topology.md#self-excluding-crossfilter-composites) entries (`as: 'crossfilter'`), not `external` hand-wired composites. Core excludes `compose` / `cascading` contexts from active-clause observation, so a foreign clause relayed into a read-context is never re-reported — it appears exactly once, on its base source. (An observed `external` composite that relays would double-report; that is the reason to prefer `compose`.)
 - **Label from the annotation.** A foreign clause has no spec, so its human label comes from the declaration's `label` (and/or `meta`) surfaced on the [`ActiveClause`](../core/selection-topology.md#active-clauses) — e.g. the example declares `spotlight: { type: 'single', label: 'Domain Spotlight', meta: { column: 'domain' } }` and reads both back.
 - **Foreign removal is a null-predicate publish.** Clearing the whole clause means publishing `{ source, value: null, predicate: null }` from the clause's own source onto its owning Selection. `Selection.remove(source)` does **not** clear a `single` Selection's clause, so the null-predicate publish is the form that works across every resolution type. Per-value narrowing (removing one value from a multi-value clause) stays a FilterSet concern.
 
