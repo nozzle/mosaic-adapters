@@ -48,7 +48,11 @@ export function initAthletesTable(): Promise<void> {
 
 Gate rendering on this promise (see the example's `App.tsx`). The client hooks
 default to this same global coordinator; pass one explicitly via
-`MosaicProvider` or the `coordinator` option if you manage your own.
+`MosaicProvider` or the `coordinator` option if you manage your own. For an
+app-owned coordinator with reconnect handling instead of the global singleton,
+see the [connector lifecycle recipe](react/connector-lifecycle.md); for turning
+this ad-hoc load into a serializable, per-table-tracked one, the
+[data loading recipe](react/data-loading.md).
 
 ## 2. The page context: one Selection
 

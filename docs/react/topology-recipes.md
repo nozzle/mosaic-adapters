@@ -120,3 +120,4 @@ The example's inline comments call these out; they are the whole reason this is 
 - [Selection topology (core)](../core/selection-topology.md) — reset and active-clause semantics.
 - [Topology bindings (React)](./topology.md) — `useTopology`, provider/consumer hooks, active-clause hooks.
 - [Filter set](../core/filter-set.md) — the chip model (`useFilterSetChips`) the FilterSet half of the union uses.
+- Sibling React recipes: [connector lifecycle](./connector-lifecycle.md), [data loading](./data-loading.md), [filter editor](./filter-editor.md).

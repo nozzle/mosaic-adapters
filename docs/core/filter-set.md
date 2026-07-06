@@ -75,7 +75,7 @@ filters.set({
 });
 ```
 
-A downstream consumer cannot tell which UI produced a spec; the chip bar, persistence, and clause resolution treat them identically. Design filter UIs around _producing specs_, not around a filter "type".
+A downstream consumer cannot tell which UI produced a spec; the chip bar, persistence, and clause resolution treat them identically. Design filter UIs around _producing specs_, not around a filter "type". For the user-built shape — draft state, an arity-driven value input, and building the spec from the draft at commit time (never an argument-less apply that reads shared state) — see the [filter editor recipe](../react/filter-editor.md).
 
 ## Serializable state
 
