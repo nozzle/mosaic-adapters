@@ -4,6 +4,7 @@ import {
   createCascadingContexts,
   createComposedSelection,
 } from '@nozzleio/mosaic-core';
+import type { ComposedSelectionOptions } from '@nozzleio/mosaic-core';
 
 type SelectionType = 'intersect' | 'union' | 'single' | 'crossfilter';
 
@@ -194,6 +195,7 @@ export function useCascadingContexts<TKey extends string>(
 
 export function useComposedSelection(
   includedSelections: Array<Selection>,
+  options: ComposedSelectionOptions = {},
 ): Selection {
   const includedSelectionsKey = getSelectionListKey(includedSelections);
   const stableIncludedSelections = useMemo(
@@ -203,12 +205,18 @@ export function useComposedSelection(
     [includedSelectionsKey],
   );
 
+  // `as` is part of the handle's identity: switching resolution strategy mints a
+  // different composite, so a change must rebuild the handle exactly like a
+  // changed include list does.
+  const as = options.as ?? 'intersect';
+  const stableOptions = useMemo<ComposedSelectionOptions>(() => ({ as }), [as]);
+
   // The core factory owns the composed Selection and its relay wiring; the hook
-  // recreates the handle when the included list changes and destroys it on
-  // unmount (and on the change).
+  // recreates the handle when the included list or `as` changes and destroys it
+  // on unmount (and on the change).
   const handle = useCompositionHandle(
-    () => createComposedSelection(stableIncludedSelections),
-    includedSelectionsKey,
+    () => createComposedSelection(stableIncludedSelections, stableOptions),
+    `${includedSelectionsKey}::${as}`,
   );
 
   return handle.selection;

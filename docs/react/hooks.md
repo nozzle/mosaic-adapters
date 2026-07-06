@@ -69,7 +69,7 @@ Clients are created once per mount and destroyed on unmount; StrictMode's double
 
 - `useMosaicSelection(type?)` — one stable `Selection` (memoized on `type`, default `'intersect'`); the singular case most consumers reach for first — `filterBy`/`havingBy` wiring and a pub/sub channel between sibling widgets. For full control drop to `const [selection] = useState(() => Selection.single())`; the hook is preferred because it guarantees stable identity and a consistent surface.
 - `useMosaicSelections(keys, type?)` — batch-create stable Selections for a set of inputs.
-- `useComposedSelection(selections)` — one Selection that mirrors the AND of the given Selections (relay-linked, seeded, cleaned up on unmount).
+- `useComposedSelection(selections, options?)` — one Selection that mirrors the AND of the given Selections (relay-linked, seeded, cleaned up on unmount). `options.as` picks the resolution strategy (`'intersect'`, default, or `'crossfilter'` for per-client self-exclusion); changing it rebuilds the composite.
 - `useCascadingContexts(inputs, externals?)` — peer-minus-self contexts for facet inputs: each input's context includes every _other_ input plus the externals, so a dropdown is filtered by everything except its own value.
 
 For a topology known up front, prefer composing statically at module scope with upstream-native `Selection.intersect({ include: [...] })` — the hooks above exist for graphs assembled inside React lifecycles.
