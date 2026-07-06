@@ -4,7 +4,7 @@ import {
   useMosaicActiveClauses,
   useMosaicTopology,
 } from '@nozzleio/react-mosaic';
-import { PAGE_ENTRY, SPOTLIGHT_ENTRY } from '../page-context';
+import { SPOTLIGHT_ENTRY } from '../page-context';
 import { usePageFilterSet } from '../topology';
 import type { FilterSetChip } from '@nozzleio/react-mosaic';
 
@@ -74,18 +74,6 @@ function formatForeignValue(value: unknown): string {
 }
 
 /**
- * True when a topology ref names one of the derived crossfilter read-contexts
- * (`page`, `summaryFilterBy:<card>`). These external composites only RELAY the
- * base selections' clauses, so the topology's active-clause store reports a
- * foreign clause once per context it reached — the {@link useActiveFilters}
- * recipe skips them so a foreign clause surfaces once, on its base source.
- */
-function isDerivedContextRef(ref: string): boolean {
-  const entry = ref.includes('.') ? ref.slice(0, ref.indexOf('.')) : ref;
-  return entry === PAGE_ENTRY || entry.startsWith('summaryFilterBy:');
-}
-
-/**
  * The active-filter-bar recipe: union the FilterSet's spec-derived chips with
  * the topology's genuinely foreign clauses, both normalized to
  * {@link ActiveFilterChip}.
@@ -120,21 +108,11 @@ function useActiveFilters(): Array<ActiveFilterChip> {
       }),
     );
 
-    // A foreign clause on a base source (here, `spotlight`) is RELAYED into the
-    // derived crossfilter read-contexts (`page`, every `summaryFilterBy:*`),
-    // which the topology also observes — so the same clause is reported once per
-    // context it reached. The recipe skips those derived read-contexts, so each
-    // foreign clause surfaces exactly once on its base source; a `seenSources`
-    // guard is belt-and-braces against any residual duplicate.
-    const seenSources = new Set<object>();
+    // Foreign clauses (on `spotlight` / `volumeBrush`) surface exactly once:
+    // the derived crossfilter read-contexts are declared `compose` entries,
+    // which core excludes from active-clause observation, so no context relays a
+    // duplicate report of the base source's clause.
     for (const active of foreignClauses) {
-      if (isDerivedContextRef(active.ref)) {
-        continue;
-      }
-      if (seenSources.has(active.clause.source)) {
-        continue;
-      }
-      seenSources.add(active.clause.source);
       const column = readColumn(active.meta);
       chips.push({
         key: `foreign:${active.ref}`,
