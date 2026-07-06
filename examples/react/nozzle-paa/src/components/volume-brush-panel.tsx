@@ -7,10 +7,11 @@
  * reaches ~90k), so the x-scale is log and brushing the tail can slice the page
  * down to a handful of high-demand keywords.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
 import {
   useMosaicActiveClauses,
+  useMosaicCoordinator,
   useMosaicSelectionRef,
   useVgPlot,
 } from '@nozzleio/react-mosaic';
@@ -77,6 +78,17 @@ export function VolumeBrushPanel(props: { enabled: boolean }) {
   const { volumeBrushFilterBy } = usePageContexts();
   const volumeBrush = useMosaicSelectionRef(VOLUME_BRUSH_ENTRY);
 
+  // vgplot marks connect to whatever coordinator the API context carries; the
+  // bare `vg.*` namespace binds to Mosaic's GLOBAL singleton, but this app owns
+  // an explicit coordinator (recipe 1) provided via `MosaicProvider`. Build an
+  // API context bound to that resolved coordinator so the histogram's marks and
+  // brush interactor live on the same coordinator as every client hook.
+  const coordinator = useMosaicCoordinator();
+  const api = useMemo(
+    () => vg.createAPIContext({ coordinator }),
+    [coordinator],
+  );
+
   // Derive the strip's range from the committed clause, so it reflects external
   // clears (chip ✕, Clear All) and a hydrated range.
   const foreign = useMosaicActiveClauses();
@@ -100,35 +112,35 @@ export function VolumeBrushPanel(props: { enabled: boolean }) {
   // invisible to the active-clause store (no chip, no range strip).
   const attachPlot = useVgPlot(() => {
     const size = sizeRef.current;
-    const element = vg.plot(
+    const element = api.plot(
       // The bars read the self-excluding context (page minus this brush's own
       // clause), so they cascade with every other filter but not this one —
       // the same pattern as the summary cards.
-      vg.rectY(vg.from(tableName, { filterBy: volumeBrushFilterBy }), {
-        x: vg.bin(VOLUME_BRUSH_COLUMN),
-        y: vg.count(),
+      api.rectY(api.from(tableName, { filterBy: volumeBrushFilterBy }), {
+        x: api.bin(VOLUME_BRUSH_COLUMN),
+        y: api.count(),
         fill: '#0e7490',
         inset: 0.5,
       }),
       // The brush publishes its `[min, max]` interval into the foreign
       // `volumeBrush` Selection, resolved by ref.
-      vg.intervalX({
+      api.intervalX({
         as: volumeBrush,
         brush: BRUSH_STYLE,
       }),
-      vg.xScale('log'),
-      vg.xDomain(vg.Fixed),
-      vg.xLabel('Search volume →'),
-      vg.yLabel(null),
-      vg.yTicks(size.yTicks),
-      vg.marginLeft(size.marginLeft),
-      vg.marginBottom(size.marginBottom),
-      vg.width(size.width),
-      vg.height(size.height),
+      api.xScale('log'),
+      api.xDomain(api.Fixed),
+      api.xLabel('Search volume →'),
+      api.yLabel(null),
+      api.yTicks(size.yTicks),
+      api.marginLeft(size.marginLeft),
+      api.marginBottom(size.marginBottom),
+      api.width(size.width),
+      api.height(size.height),
     );
     plotElementRef.current = element;
     return element;
-  }, [volumeBrush, volumeBrushFilterBy]);
+  }, [api, volumeBrush, volumeBrushFilterBy]);
 
   // Clear the ref on detach so a stale (disconnected) plot is never resized.
   const plotRef = useCallback(
