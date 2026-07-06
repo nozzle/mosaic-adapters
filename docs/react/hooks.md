@@ -17,6 +17,8 @@ const coordinator = new Coordinator(connector);
 </MosaicProvider>;
 ```
 
+The library ships `MosaicProvider` and stops there — connector choice, retry, reconnect, and keying page state to the connection are app policy. For that app-owned lifecycle (a `ConnectorProvider`, connection-identity keying on reconnect, and the vgplot `createAPIContext` gotcha), see the [connector lifecycle recipe](./connector-lifecycle.md); for loading tables into the coordinator, the [data loading recipe](./data-loading.md).
+
 ## The hooks
 
 Every client has a controlled-binding hook: `useMosaicRows`, `useMosaicValues`, `useMosaicFacet`, `useMosaicHistogram`, `useMosaicSparkline`, `useMosaicRollup`, `useMosaicPivot`, and `useMosaicSchema`. Each takes the client options (minus the now-optional `coordinator`) and returns the client's store state spread together with the client instance:

@@ -25,7 +25,7 @@ Semantics:
 
 - The factory is held by latest-ref and invoked on every (re)build; the returned element is appended to the ref'd node.
 - On detach the plot's mark clients are disconnected from their coordinator and the element is removed. StrictMode's simulated remount builds a fresh plot.
-- Bare `vg.plot(...)` connects marks to the upstream **global** coordinator. To target a specific coordinator (e.g. the one in `MosaicProvider`), build the plot through `createAPIContext({ coordinator })`.
+- Bare `vg.plot(...)` connects marks to the upstream **global** coordinator. To target a specific coordinator (e.g. the one in `MosaicProvider`), build the plot through `createAPIContext({ coordinator })` — see the [connector lifecycle recipe](./connector-lifecycle.md#the-vgplot-gotcha-bind-plots-to-the-provided-coordinator) for the full pattern.
 - Interactors attach DOM/Selection listeners that upstream vgplot provides no teardown for; the hook disconnects the _clients_ (marks), which stops all querying.
 
 ## `deps` — rebuild when captured identities change
