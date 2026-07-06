@@ -10,13 +10,15 @@
  * spotlight" quick-filter that publishes a FOREIGN clause direct to a
  * topology-owned Selection.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Query, column, count, isNotNull, sql } from '@uwdata/mosaic-sql';
 import {
+  MosaicProvider,
   MosaicTopologyProvider,
   useMosaicValues,
 } from '@nozzleio/react-mosaic';
-import { initQuestionsTable } from './mosaic-setup';
+import { ConnectorProvider, useConnector } from './connector';
+import { useDataLoad } from './data-loader';
 import { tableName } from './page-context';
 import { usePageContexts, usePageTopology } from './topology';
 import { ActiveFilterBar } from './components/active-filter-bar';
@@ -40,9 +42,18 @@ import {
   SummaryTable,
   SummaryTablePlaceholder,
 } from './components/summary-table';
+import type { DataLoadConfig } from './data-loader';
 import type { MetricThresholdFilterState } from './components/metric-threshold-filter';
 import type { SummaryTableConfig } from './components/summary-table';
 import type { SummaryTableId } from './page-context';
+
+// Declarative source config (recipe 2). The dataset is vendored under
+// media/data and symlinked into this app's public/data, so it is served from
+// the app's own origin — no network fetch, no CORS. The loader resolves the
+// relative path to a fully-qualified URL for DuckDB-WASM.
+const dataLoadConfig: DataLoadConfig = {
+  [tableName]: { type: 'parquet', url: '/data/questions.parquet' },
+};
 
 const summaryTables: Array<SummaryTableConfig> = [
   {
@@ -82,20 +93,57 @@ const summaryTables: Array<SummaryTableConfig> = [
 ];
 
 function App() {
-  // Build the ONE page topology from the hoisted config + options (identity is
-  // stable, so this is one topology for the page's lifetime), and distribute it
-  // so every widget resolves its selections by ref without prop-drilling.
+  // Recipe 1: own the coordinator lifecycle. Everything below resolves this
+  // explicit coordinator (via MosaicProvider) instead of Mosaic's global.
+  return (
+    <ConnectorProvider>
+      <Bootstrap />
+    </ConnectorProvider>
+  );
+}
+
+/**
+ * Bridges the connector (recipe 1) and the data loader (recipe 2) into the
+ * app's single status gate, then provides the coordinator and topology to the
+ * tree. The topology (and thus all Selection state) is keyed on the connection
+ * identity, so recreating the connector resets it cleanly.
+ */
+function Bootstrap() {
+  const { coordinator, connectionId } = useConnector();
+  const load = useDataLoad(coordinator, dataLoadConfig);
+  const status: BootstrapStatus =
+    load.error !== null ? 'error' : load.done ? 'ready' : 'connecting';
+
+  return (
+    <MosaicProvider coordinator={coordinator}>
+      {/* Key on the connection identity: recreating the connector remounts the
+          whole topology subtree, so `usePageTopology` builds fresh Selections
+          and no stale state survives against the new coordinator. */}
+      <PageTopology key={connectionId} status={status} error={load.error} />
+    </MosaicProvider>
+  );
+}
+
+type BootstrapStatus = 'connecting' | 'error' | 'ready';
+
+/**
+ * Builds the ONE page topology and distributes it so every widget resolves its
+ * selections by ref without prop-drilling. Lives inside the connection-keyed
+ * boundary so the topology (and all Selection state) is torn down and rebuilt
+ * with the connection.
+ */
+function PageTopology(props: { status: BootstrapStatus; error: Error | null }) {
   const topology = usePageTopology();
   return (
     <MosaicTopologyProvider topology={topology}>
-      <Dashboard />
+      <Dashboard status={props.status} error={props.error} />
     </MosaicTopologyProvider>
   );
 }
 
-function Dashboard() {
-  const [isReady, setIsReady] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+function Dashboard(props: { status: BootstrapStatus; error: Error | null }) {
+  const { status, error } = props;
+  const isReady = status === 'ready';
   const [expandedTableId, setExpandedTableId] = useState<SummaryTableId | null>(
     null,
   );
@@ -126,30 +174,12 @@ function Dashboard() {
     }),
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    initQuestionsTable()
-      .then(() => {
-        if (!cancelled) {
-          setIsReady(true);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const expandedTable = useMemo(
     () => summaryTables.find((table) => table.id === expandedTableId) ?? null,
     [expandedTableId],
   );
 
-  if (error !== null) {
+  if (status === 'error') {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-4 text-red-500">
         <div className="text-lg font-bold">Initialization Failed</div>
@@ -157,7 +187,7 @@ function Dashboard() {
           className="max-w-md rounded border border-red-100 bg-red-50 p-2 text-center text-sm"
           data-testid="load-error"
         >
-          {error.message}
+          {error?.message ?? 'Unknown error'}
         </p>
         <button
           type="button"
