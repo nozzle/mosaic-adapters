@@ -8,10 +8,12 @@
  * point clauses published directly onto Selections — no coordinator required.
  */
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
+import { Query } from '@uwdata/mosaic-sql';
 import { describe, expect, test, vi } from 'vitest';
 
-import { settle } from '@nozzleio/test-support/duckdb';
-import { createTopology } from '../src/index';
+import { settle, waitFor } from '@nozzleio/test-support/duckdb';
+import { createTopology, subqueryFilterKind } from '../src/index';
+import type { FilterSpec, Persister } from '../src/index';
 
 /** Publish a point clause from an independent (foreign) source. */
 function publishForeign(
@@ -479,5 +481,179 @@ describe('createTopology — destroy()', () => {
     topology.destroy();
     topology.destroy();
     expect(topology.destroyed).toBe(true);
+  });
+});
+
+describe('createTopology — two-phase compose construction', () => {
+  test('a filter-set context naming a compose that includes its own targets constructs and sees peer clauses', async () => {
+    // The subquery kind embeds the context predicate; the context is a compose
+    // that includes the filter-set's own targets — the previously-forbidden
+    // self-referential shape. Two-phase construction allows it.
+    const membership = subqueryFilterKind((args) => {
+      const q = Query.from('data').select('id');
+      if (args.contextPredicate != null) {
+        q.where(args.contextPredicate);
+      }
+      return q;
+    });
+
+    const topology = createTopology(
+      {
+        filters: {
+          type: 'filter-set',
+          targets: { where: 'crossfilter' },
+          context: 'page',
+        },
+        // The compose context includes the filter-set's own target.
+        page: { type: 'compose', include: ['filters.where'] },
+      },
+      { filterSets: { filters: { kinds: { membership } } } },
+    );
+
+    // Constructing without throwing proves the self-referential context wired.
+    expect(topology.getFilterSet('filters')).toBeDefined();
+
+    const where = topology.resolve('filters.where');
+    // A foreign peer clause on the target flows through the compose context, so
+    // the subquery predicate rebuilds to embed it.
+    const set = topology.getFilterSet('filters');
+    set?.set({ id: 'sq', column: 'id', kind: 'membership', value: null });
+
+    const before = String(where._resolved[0]?.predicate);
+    expect(before).toContain('IN (SELECT');
+
+    publishForeign(where, 'weight', '70');
+    await waitFor(() => {
+      const after = String(where._resolved[0]?.predicate);
+      expect(after).toContain('"weight"');
+    });
+
+    topology.destroy();
+  });
+
+  test('publishing into a target with a self-referential compose context terminates and the context carries the clause', async () => {
+    const topology = createTopology({
+      page: { type: 'compose', include: ['filters.where'] },
+      filters: {
+        type: 'filter-set',
+        targets: { where: 'crossfilter' },
+        context: 'page',
+      },
+    });
+
+    publishForeign(topology.resolve('filters.where'), 'sport', 'swim');
+    // No infinite relay: settle resolves rather than hanging.
+    await settle();
+
+    expect(resolvedColumns(topology.resolve('page'))).toEqual(['sport']);
+    topology.destroy();
+  });
+
+  test('nested compose (A includes B) relays clauses regardless of declaration order — A before B', () => {
+    const topology = createTopology({
+      outer: { type: 'compose', include: ['inner', 'x'] },
+      inner: { type: 'compose', include: ['a', 'b'] },
+      a: { type: 'crossfilter' },
+      b: { type: 'crossfilter' },
+      x: { type: 'crossfilter' },
+    });
+
+    publishForeign(topology.resolve('a'), 'colA', 'v');
+    publishForeign(topology.resolve('x'), 'colX', 'v');
+
+    // outer sees a (via inner) and x directly.
+    expect(resolvedColumns(topology.resolve('outer')).sort()).toEqual([
+      'colA',
+      'colX',
+    ]);
+    // inner sees a but not x.
+    expect(resolvedColumns(topology.resolve('inner'))).toEqual(['colA']);
+    topology.destroy();
+  });
+
+  test('nested compose relays pre-existing clauses regardless of declaration order — B before A', () => {
+    // Same graph, inner declared before outer, AND the inner source already
+    // carries a clause at construction — attach-all-then-seed must land it on
+    // the outer compose too.
+    const a = Selection.crossfilter();
+    publishForeign(a, 'preA', 'v');
+
+    const topology = createTopology(
+      {
+        a: { type: 'external' },
+        b: { type: 'crossfilter' },
+        inner: { type: 'compose', include: ['a', 'b'] },
+        outer: { type: 'compose', include: ['inner'] },
+      },
+      { selections: { a } },
+    );
+
+    // The pre-existing clause on `a` was seeded transitively into inner AND
+    // outer at construction.
+    expect(resolvedColumns(topology.resolve('inner'))).toEqual(['preA']);
+    expect(resolvedColumns(topology.resolve('outer'))).toEqual(['preA']);
+    topology.destroy();
+  });
+
+  test('compose↔compose cycle still throws with the exact path message', () => {
+    expect(() =>
+      createTopology({
+        a: { type: 'compose', include: ['b'] },
+        b: { type: 'compose', include: ['a'] },
+      }),
+    ).toThrow(/dependency cycle detected: a → b → a/);
+  });
+
+  test('compose self-include still throws with the exact path message', () => {
+    expect(() =>
+      createTopology({
+        a: { type: 'compose', include: ['a'] },
+      }),
+    ).toThrow(/dependency cycle detected: a → a/);
+  });
+
+  test('a cascading routing through a compose back to its own child is rejected as a cycle', () => {
+    // cascading `wrap` keys off `key`, whose per-key context includes external
+    // `combo`; `combo` is a compose that includes `wrap.key` — a genuine mutual
+    // relay loop through a compose. The context edge exclusion does NOT apply
+    // (this is a compose include + cascading external, both structural).
+    expect(() =>
+      createTopology({
+        key: { type: 'crossfilter' },
+        combo: { type: 'compose', include: ['wrap.key'] },
+        wrap: { type: 'cascading', keys: ['key'], externals: ['combo'] },
+      }),
+    ).toThrow(/dependency cycle detected/);
+  });
+
+  test('persistence-hydrated clauses appear in a compose that includes the target', () => {
+    // FilterSet hydration publishes onto its targets during phase 1 (a
+    // synchronous persister read applies immediately); phase-2 seeding reads
+    // `.clauses` afterwards, so the hydrated clause must land in the compose
+    // that includes the target.
+    const persisted: Array<FilterSpec> = [
+      { id: 'p', column: 'sport', kind: 'point', value: 'swim' },
+    ];
+    const persist: Persister<Array<FilterSpec>> = {
+      read: () => persisted,
+      write: () => {},
+    };
+
+    const topology = createTopology(
+      {
+        filters: {
+          type: 'filter-set',
+          targets: { where: 'crossfilter' },
+        },
+        page: { type: 'compose', include: ['filters.where'] },
+      },
+      { filterSets: { filters: { persist } } },
+    );
+
+    // The hydrated point clause on filters.where was seeded into the compose.
+    expect(String(topology.resolve('page')._resolved[0]?.predicate)).toContain(
+      '"sport"',
+    );
+    topology.destroy();
   });
 });

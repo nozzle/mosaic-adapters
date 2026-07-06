@@ -292,11 +292,13 @@ for (const source of sources) {
 
 This is the current boundary of the declarative form — exotic, hand-wired composites the library does not model, still named in the config.
 
-### The filter-set context cycle
+### Self-referential filter-set contexts (supported)
 
-A `filter-set` entry whose `context` ref (transitively) includes the set's own targets is a **construction cycle by design**: the FilterSet's targets feed the context (for membership subqueries), and the context feeds the FilterSet (as its subquery context). `createTopology` catches this as a dependency cycle and throws.
+A `filter-set` entry whose `context` ref (transitively) includes the set's own targets is **supported directly**. The FilterSet's targets feed the context (for membership subqueries), and the context feeds the FilterSet (as its subquery context) — a shape that once tripped construction-order cycle detection.
 
-The pattern is the same escape hatch: declare that context `external`, supply a `Selection.crossfilter()`, and relay-wire the FilterSet's resolved targets into it _after_ construction (so the FilterSet reads its `_resolved` clauses). In the example, the FilterSet's `context` is the `page` external composite above, wired by `wirePaaContexts`.
+`createTopology` builds `compose` entries in two phases: it first allocates every compose's (empty) Selection, then, once all entries exist, resolves each compose's includes and wires the relays (attaching all relays before seeding any, so a nested compose's pre-existing clauses are never dropped). Cycle validation runs over the declaration graph with the filter-set `context` ref **excluded** — it is a read edge (the FilterSet consumes its context by clause-source identity), not a relay/build edge. Compose↔compose cycles, compose self-includes, and cycles routing through a compose via cascading are still rejected.
+
+So the previously-required escape hatch is gone: declare the context as an ordinary `compose` entry that includes the FilterSet's targets. To make that context self-exclude its publishers, add `as: 'crossfilter'` (see below).
 
 ## Standalone composition factories
 
