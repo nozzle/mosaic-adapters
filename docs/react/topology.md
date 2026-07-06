@@ -94,7 +94,11 @@ function KpiCard() {
 }
 ```
 
-This is the spec-driven wiring in one line: a widget spec carries a string ref (`filterBy: 'detail'`), and the widget resolves it against the provided topology at mount. To retrieve a FilterSet by entry name, reach through the topology object rather than a ref (a FilterSet is compound and has no bare ref):
+This is the spec-driven wiring in one line: a widget spec carries a string ref (`filterBy: 'detail'`), and the widget resolves it against the provided topology at mount.
+
+Resolved Selections are owned by the topology's React lifecycle, so their identity changes when the topology is recreated — including on StrictMode's simulated remount in dev. Hooks that resolve per render pick the change up automatically; anything that **captures** a resolved Selection at build time must be told to rebuild. For vgplot this is `useVgPlot`'s `deps` argument — pass every topology-resolved Selection the plot factory closes over (`useVgPlot(factory, [$brush, $context])`), or the plot keeps publishing into a destroyed topology's Selection: it still filters (relays survive) but its clauses are invisible to `activeClauses` and `reset()`.
+
+To retrieve a FilterSet by entry name, reach through the topology object rather than a ref (a FilterSet is compound and has no bare ref):
 
 ```tsx
 const topology = useMosaicTopology();
