@@ -62,7 +62,7 @@ A single Selection of a fixed resolution strategy.
 
 ### `compose`
 
-An `intersect` Selection mirroring the union of the clauses of every ref in `include`.
+A Selection mirroring the union of the clauses of every ref in `include`.
 
 ```json
 {
@@ -72,7 +72,19 @@ An `intersect` Selection mirroring the union of the clauses of every ref in `inc
 
 Each ref in `include` must resolve to a non-compound entry. The composed Selection is seeded with the included Selections' current clauses at construction (it reflects existing state, not just future updates) and relays their future updates. Derived — [skipped by `reset()`](#reset-semantics).
 
-> **`compose` yields `intersect`, never `crossfilter`.** Mosaic's per-client self-exclusion (a control not filtering by its own clause) is governed by the _outer_ composite's cross flag — an `intersect` composite silently disables it. If you need a crossfilter composite (a shared page context that self-excludes its publishers), declare it [`external`](#external) and wire it in app code. See [the crossfilter caveat](#the-crossfilter-caveat) below.
+`as` (optional) picks the composite's resolution strategy — `'intersect'` (default) or `'crossfilter'`:
+
+```json
+{
+  "page": {
+    "type": "compose",
+    "as": "crossfilter",
+    "include": ["where", "brush"]
+  }
+}
+```
+
+Mosaic's per-client self-exclusion (a control not filtering by its own clause) is governed by the composite's cross flag: `as: 'crossfilter'` yields a composite that self-excludes its own publishers (a shared page context that must not filter by the control that wrote a clause), whereas the default `intersect` never self-excludes. See [self-excluding composites](#self-excluding-crossfilter-composites) below.
 
 ### `cascading`
 
@@ -113,7 +125,7 @@ A [FilterSet](./filter-set.md) whose declared `targets` each become an addressab
 
 Compound entry: bare ref is a parse error. Retrieve the constructed FilterSet with `topology.getFilterSet('filters')` (or `topology.filterSets.filters`) to call `set()` / `remove()` / subscribe to its store.
 
-> A `filter-set` `context` ref that (transitively) includes the set's own targets is a **construction cycle by design** — the FilterSet's targets feed the context, and the context feeds the FilterSet. Declare that context [`external`](#external) and relay-wire it in app code (see [the cycle caveat](#the-filter-set-context-cycle)).
+> A `filter-set` `context` ref that (transitively) includes the set's own targets is **supported directly** — the FilterSet's targets feed the context, and the context feeds the FilterSet, without tripping cycle detection (the `context` ref is a read edge, excluded from the structural cycle graph). Declare the context as an ordinary [`compose`](#compose) entry that includes the targets; add `as: 'crossfilter'` if it must self-exclude its publishers. See [self-referential filter-set contexts](#self-referential-filter-set-contexts-supported).
 
 ### `external`
 
@@ -257,40 +269,32 @@ There is **no chip model in the package** — no chip shapes, groups, or label m
 
 `topology.destroy()` tears down every composition and FilterSet the topology created and unsubscribes all its clause listeners. **`external` instances are never destroyed** — the topology does not own them. Idempotent; `topology.destroyed` reports it (the React binding uses this for StrictMode remount detection). Calling `reset()` or reading `activeClauses` after `destroy()` is a safe no-op.
 
-## Caveats and the external escape hatch
+## Composite strategies and the external escape hatch
 
-The declarative form covers the common graph shapes. Two real-world patterns sit at its current boundary; both are handled cleanly by declaring the entry `external` and wiring it in app code — the sanctioned escape hatch, with the config still naming every hole so `validNames` stays total. The reference for both is [`examples/react/nozzle-paa/src/page-context.ts`](../../examples/react/nozzle-paa/src/page-context.ts) (`wirePaaContexts`).
+The declarative form covers the common graph shapes directly. For anything it does not model, declare the entry `external` and wire it in app code — the sanctioned escape hatch, with the config still naming every hole so `validNames` stays total. The reference is [`examples/react/nozzle-paa/src/page-context.ts`](../../examples/react/nozzle-paa/src/page-context.ts) (`wirePageContexts`).
 
-### The crossfilter caveat
+### Self-excluding (crossfilter) composites
 
-A `compose` declaration yields an `intersect` composite. Mosaic's per-client self-exclusion — a facet or summary control not filtering by its own clause — is governed by the _outer_ composite's cross flag: `crossfilter.predicate(ownClient)` returns `undefined` (excluded), whereas `intersect.predicate(ownClient)` still returns the client's own predicate (not excluded). So a shared page context that must self-exclude its publishers **cannot** be a `compose` entry today.
+A `compose` declaration yields an `intersect` composite by default. Mosaic's per-client self-exclusion — a facet or summary control not filtering by its own clause — is governed by the composite's cross flag: `crossfilter.predicate(ownClient)` returns `undefined` (excluded), whereas `intersect.predicate(ownClient)` still returns the client's own predicate (not excluded).
 
-Declare it `external` with an empty `Selection.crossfilter()` instance supplied at construction, then relay-wire it to the topology's resolved targets in app code:
+Set `as: 'crossfilter'` on the declaration to get a self-excluding composite — a shared page context that must not filter by its own publishers is a plain `compose` entry:
 
 ```ts
 const config = {
   filters: { type: 'filter-set', targets: { where: 'crossfilter' } },
   spotlight: { type: 'single' },
-  page: { type: 'external', reset: false }, // the crossfilter composite (derived)
+  // Self-excludes each clause's own clients; includes are seeded and relayed.
+  page: {
+    type: 'compose',
+    as: 'crossfilter',
+    include: ['filters.where', 'spotlight'],
+  },
 } as const;
 
-const topology = createTopology(config, {
-  selections: { page: Selection.crossfilter() }, // empty; wired below
-});
-
-// Relay every base source into the crossfilter composite (run once per topology).
-const page = topology.resolve('page');
-const sources = [
-  topology.resolve('filters.where'),
-  topology.resolve('spotlight'),
-];
-for (const source of sources) {
-  source._relay.add(page); // forward the source's future clauses
-  for (const clause of source.clauses) page.update(clause); // seed current clauses
-}
+const topology = createTopology(config);
 ```
 
-This is the current boundary of the declarative form — exotic, hand-wired composites the library does not model, still named in the config.
+Self-exclusion is a property of the composite a client _reads_, so it is never inherited from includes: an `intersect` compose that includes a `crossfilter` compose does **not** self-exclude for its own readers. The standalone `createComposedSelection(selections, { as: 'crossfilter' })` takes the same option.
 
 ### Self-referential filter-set contexts (supported)
 
@@ -310,8 +314,9 @@ import {
   createCascadingContexts,
 } from '@nozzleio/mosaic-core';
 
-// One intersect Selection mirroring the union of the given Selections' clauses.
-const composed = createComposedSelection([$where, $brush]);
+// One Selection mirroring the union of the given Selections' clauses.
+// `as: 'crossfilter'` makes it self-exclude each clause's own clients.
+const composed = createComposedSelection([$where, $brush], { as: 'intersect' });
 composed.selection; // → Selection
 composed.destroy(); // detach relays, clear seeded clauses (idempotent)
 
@@ -325,7 +330,7 @@ cascading.contexts.sport; // → Selection (sees country + where, not sport)
 cascading.destroy();
 ```
 
-These are the same factories the `useComposedSelection` / `useCascadingContexts` hooks (and `createTopology`) call, so declared and hand-written topology behave identically.
+These are the same factories the `useComposedSelection` / `useCascadingContexts` hooks call; `createTopology` wires composes with the same `wiring.ts` primitives, so declared and hand-written topology behave identically.
 
 ## See also
 

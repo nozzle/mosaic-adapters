@@ -14,6 +14,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { settle, waitFor } from '@nozzleio/test-support/duckdb';
 import { createTopology, subqueryFilterKind } from '../src/index';
 import type { FilterSpec, Persister } from '../src/index';
+import type { MosaicClient } from '@uwdata/mosaic-core';
 
 /** Publish a point clause from an independent (foreign) source. */
 function publishForeign(
@@ -654,6 +655,97 @@ describe('createTopology — two-phase compose construction', () => {
     expect(String(topology.resolve('page')._resolved[0]?.predicate)).toContain(
       '"sport"',
     );
+    topology.destroy();
+  });
+});
+
+describe("createTopology — compose as: 'crossfilter'", () => {
+  /** A stand-in Mosaic client (only object identity matters here). */
+  function fakeClient(): MosaicClient {
+    return {} as unknown as MosaicClient;
+  }
+
+  /** Publish a clause whose clients set names `client`, from a foreign source. */
+  function publishForClient(
+    selection: Selection,
+    column: string,
+    value: string,
+    client: MosaicClient,
+  ): void {
+    selection.update(
+      clausePoint(column, value, {
+        source: { column, value } as object,
+        clients: new Set([client]),
+      }),
+    );
+  }
+
+  test('a crossfilter compose self-excludes a client that published into an included selection', () => {
+    const topology = createTopology({
+      a: { type: 'crossfilter' },
+      page: { type: 'compose', as: 'crossfilter', include: ['a'] },
+    });
+
+    const client = fakeClient();
+    publishForClient(topology.resolve('a'), 'sport', 'swim', client);
+
+    const page = topology.resolve('page');
+    // The owning client's own (only) predicate is omitted.
+    expect(page.predicate(client)).toBeUndefined();
+    // Another client still sees it.
+    expect(String(page.predicate(fakeClient()))).toContain('"sport"');
+    topology.destroy();
+  });
+
+  test('an intersect compose (default) does NOT self-exclude the publishing client', () => {
+    const topology = createTopology({
+      a: { type: 'crossfilter' },
+      pageIntersect: { type: 'compose', include: ['a'] },
+      pageExplicit: { type: 'compose', as: 'intersect', include: ['a'] },
+    });
+
+    const client = fakeClient();
+    publishForClient(topology.resolve('a'), 'sport', 'swim', client);
+
+    // Default and explicit intersect both keep the client's own predicate.
+    expect(
+      String(topology.resolve('pageIntersect').predicate(client)),
+    ).toContain('"sport"');
+    expect(
+      String(topology.resolve('pageExplicit').predicate(client)),
+    ).toContain('"sport"');
+    topology.destroy();
+  });
+
+  test('self-exclusion is not inherited: an intersect compose including a crossfilter compose does not self-exclude its readers', () => {
+    const topology = createTopology({
+      a: { type: 'crossfilter' },
+      inner: { type: 'compose', as: 'crossfilter', include: ['a'] },
+      outer: { type: 'compose', as: 'intersect', include: ['inner'] },
+    });
+
+    const client = fakeClient();
+    publishForClient(topology.resolve('a'), 'sport', 'swim', client);
+
+    // Reading the crossfilter inner self-excludes the client.
+    expect(topology.resolve('inner').predicate(client)).toBeUndefined();
+    // Reading the intersect outer does NOT — the inner's cross flag is not
+    // inherited by the entry the client reads.
+    expect(String(topology.resolve('outer').predicate(client))).toContain(
+      '"sport"',
+    );
+    topology.destroy();
+  });
+
+  test("an empty-include compose with as: 'crossfilter' allocates a crossfilter Selection", () => {
+    const topology = createTopology({
+      page: { type: 'compose', as: 'crossfilter', include: [] },
+    });
+
+    const page = topology.resolve('page');
+    const client = fakeClient();
+    publishForClient(page, 'x', '1', client);
+    expect(page.predicate(client)).toBeUndefined();
     topology.destroy();
   });
 });

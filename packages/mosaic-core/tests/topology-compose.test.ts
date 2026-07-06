@@ -10,11 +10,32 @@ import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { describe, expect, test } from 'vitest';
 
 import { createComposedSelection } from '../src/index';
+import type { MosaicClient } from '@uwdata/mosaic-core';
 
 /** Publish a point clause from an independent source onto a Selection. */
 function publish(selection: Selection, column: string, value: string): void {
   selection.update(
     clausePoint(column, value, { source: { column, value } as object }),
+  );
+}
+
+/** A stand-in Mosaic client (only object identity matters for self-exclusion). */
+function fakeClient(): MosaicClient {
+  return {} as unknown as MosaicClient;
+}
+
+/** Publish a clause whose `clients` set names `client`, from a foreign source. */
+function publishForClient(
+  selection: Selection,
+  column: string,
+  value: string,
+  client: MosaicClient,
+): void {
+  selection.update(
+    clausePoint(column, value, {
+      source: { column, value } as object,
+      clients: new Set([client]),
+    }),
   );
 }
 
@@ -58,6 +79,48 @@ describe('createComposedSelection', () => {
     handle.destroy();
     handle.destroy();
     expect(handle.destroyed).toBe(true);
+  });
+
+  test('as: crossfilter yields a self-excluding composite', () => {
+    const $a = Selection.crossfilter();
+    const handle = createComposedSelection([$a], { as: 'crossfilter' });
+
+    // A clause whose clients set names `client`; the composite must exclude it
+    // from that client's predicate.
+    const client = fakeClient();
+    publishForClient($a, 'sport', 'swim', client);
+
+    // Reading for the owning client self-excludes (its own only clause drops).
+    expect(handle.selection.predicate(client)).toBeUndefined();
+    // A different client still sees the clause.
+    expect(String(handle.selection.predicate(fakeClient()))).toContain(
+      '"sport"',
+    );
+    handle.destroy();
+  });
+
+  test('as: crossfilter with an empty include list produces a crossfilter Selection', () => {
+    const handle = createComposedSelection([], { as: 'crossfilter' });
+
+    expect(handle.selection).toBeInstanceOf(Selection);
+    // crossfilter is a (non-single) intersect resolver with the cross flag set;
+    // its self-exclusion behavior distinguishes it from a plain intersect.
+    const client = fakeClient();
+    publishForClient(handle.selection, 'x', '1', client);
+    expect(handle.selection.predicate(client)).toBeUndefined();
+    handle.destroy();
+  });
+
+  test('default (no options) stays intersect — no self-exclusion', () => {
+    const $a = Selection.crossfilter();
+    const handle = createComposedSelection([$a]);
+
+    const client = fakeClient();
+    publishForClient($a, 'sport', 'swim', client);
+
+    // An intersect composite does NOT self-exclude the owning client.
+    expect(String(handle.selection.predicate(client))).toContain('"sport"');
+    handle.destroy();
   });
 
   test('destroy detaches relays: later publishes no longer propagate', () => {
