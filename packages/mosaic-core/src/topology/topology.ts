@@ -350,9 +350,12 @@ export function createTopology(
     // instance with no recursion into its includes. Relays are attached and
     // clauses seeded later, in phase 2, so a filter-set `context` naming a
     // compose that includes the set's own targets does not trip
-    // construction-order detection. Crossfilter (`as: 'crossfilter'`) support
-    // is added in a follow-up; for now every compose allocates an `intersect`.
-    const bareSelection = Selection.intersect();
+    // construction-order detection. The `as` strategy (default `'intersect'`)
+    // is honored here so a crossfilter compose self-excludes its publishers.
+    const bareSelection =
+      declaration.as === 'crossfilter'
+        ? Selection.crossfilter()
+        : Selection.intersect();
     return {
       declaration,
       bareSelection,

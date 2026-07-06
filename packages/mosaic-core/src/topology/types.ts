@@ -44,14 +44,28 @@ export interface StandaloneDeclaration extends DeclarationBase {
 }
 
 /**
- * A composed `intersect` Selection mirroring the union of the clauses of every
- * ref in `include`. Refs must resolve to non-compound entries. Derived: skipped
- * by {@link Topology.reset}.
+ * A composed Selection mirroring the union of the clauses of every ref in
+ * `include`. Refs must resolve to non-compound entries. Derived: skipped by
+ * {@link Topology.reset}.
+ *
+ * `as` picks the composite's resolution strategy (default `'intersect'`). With
+ * `as: 'crossfilter'` the composite self-excludes its own publishers: a client
+ * that published a clause into an included Selection reads a
+ * `context.predicate(ownClient)` that omits that client's own predicate — the
+ * per-client self-exclusion a facet or summary control needs to avoid filtering
+ * by itself. Self-exclusion is a property of the composite a client *reads*, so
+ * it is never inherited from includes: an `intersect` compose that includes a
+ * `crossfilter` compose does not self-exclude for its readers.
  */
 export interface ComposeDeclaration extends DeclarationBase {
   type: 'compose';
   /** Refs to other declared selections whose clauses are composed. */
   include: Array<string>;
+  /**
+   * Resolution strategy for the composite. `'intersect'` (default) never
+   * self-excludes; `'crossfilter'` self-excludes each clause's own clients.
+   */
+  as?: 'intersect' | 'crossfilter';
 }
 
 /**
