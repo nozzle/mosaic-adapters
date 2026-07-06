@@ -1,5 +1,49 @@
 # @nozzleio/react-mosaic
 
+## 0.4.0
+
+### Minor Changes
+
+- [#167](https://github.com/nozzle/mosaic-adapters/pull/167) [`4771d10`](https://github.com/nozzle/mosaic-adapters/commit/4771d10e5053ba0d631f452efb005fc3eca1b9f7) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - **BREAKING — rebuilt from scratch.** `@nozzleio/react-mosaic` is now a set of controlled-binding React hooks over `@nozzleio/mosaic-core`; the legacy provider, registry, and hook APIs are removed. The core is a regular dependency whose full public API is re-exported here (the `@tanstack/react-table` distribution model), so consumers install and import from this package alone.
+
+  - Provider and coordinator: `MosaicProvider`, `useMosaicCoordinator`.
+  - Data hooks over the core clients: `useMosaicRows`, `useMosaicValues`, `useMosaicFacet`, `useMosaicHistogram`, `useMosaicSparkline`, `useMosaicRollup`, `useMosaicPivot`, `useMosaicSchema`, plus `useVgPlot`.
+  - Filter-builder bindings: `useMosaicFilters`, `useFilterBinding`, `useFilterFacet`, and `useFilterChips`.
+  - Topology and selection helpers: `useMosaicSelections`, `useCascadingContexts`, `useComposedSelection`, `useMosaicSelectionValue`.
+
+  See `docs/react/*`.
+
+- [#176](https://github.com/nozzle/mosaic-adapters/pull/176) [`45c8273`](https://github.com/nozzle/mosaic-adapters/commit/45c82730099083274ecfefa4bf2d8271447e5cbd) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Adds `useFilterSetState` and `useFilterSetChips`, subscription hooks over a `FilterSet`'s `@tanstack/store` (whole state, and just the derived chip list). Additive — no breaking changes.
+
+  - The facet, histogram, and rows client hooks' structural keys now understand the `publish.into` form: a change of target `FilterSet`, spec `id`, `kind`, or `label` recreates the client, matching the existing `publish.as` identity rules.
+
+  See `docs/core/filter-set.md` and `docs/react/hooks.md`.
+
+- [#176](https://github.com/nozzle/mosaic-adapters/pull/176) [`7be04e4`](https://github.com/nozzle/mosaic-adapters/commit/7be04e475f942761e17d2bc83d62af91d4e65cf7) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - **BREAKING — filter-builder hooks deleted.** The per-binding hook surface is subsumed by the `FilterSet` hooks.
+
+  - Removed: `useFilterBinding`, `useMosaicFilters`, `useFilterFacet`, `useFilterBindingControllerState`, `useFilterChips`, and the `FilterBindingPersister` types.
+  - Migrate to `useFilterSetState` / `useFilterSetChips` over a `createFilterSet`, and `publish.into` on the facet, histogram, and rows client hooks for widget-to-set wiring.
+
+  See `docs/core/filter-set.md`.
+
+- [#176](https://github.com/nozzle/mosaic-adapters/pull/176) [`2f5702c`](https://github.com/nozzle/mosaic-adapters/commit/2f5702c1f19dca55f7f4fa3dec82e7535b194ae4) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - **Contains breaking changes (0.x convention).** `persist` passes through `useMosaicFacet`, `useMosaicHistogram`, and `useMosaicRows` as a structural option — a new persister identity is a new storage location, so keep it stable (module scope or `useMemo`) or the client recreates every render.
+
+  - Breaking: scope-level filter persistence is removed — `FilterScopePersister`, `FilterScopePersistenceContext`, `FilterScopePersistenceWriteContext`, `createFilterScopePersistenceContext`, `createSparseFilterScopeSnapshot`, and the `persister` option on `useMosaicFilters` are gone. Per-binding persisters (`useFilterBinding({ persister })`) cover the use case.
+  - Breaking: `FilterBindingPersister` is re-typed as `Persister<FilterBindingState, FilterBindingPersistenceContext>` (the new core contract). The write reason `'apply'` is renamed to `'update'`; `FilterPersistenceWriteReason` is now an alias of the core's `PersisterWriteReason`.
+
+  See `docs/core/filter-builder.md` and `docs/react/hooks.md`.
+
+- [#185](https://github.com/nozzle/mosaic-adapters/pull/185) [`e46da90`](https://github.com/nozzle/mosaic-adapters/commit/e46da901a1386566ffc9bbd92a765b7b667086c5) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Add `useMosaicSelection(type = 'intersect')` — a singular companion to `useMosaicSelections` returning one stable `Selection`. It's the first hook most consumers reach for, both for `filterBy` / `havingBy` wiring and as a lightweight pub/sub channel between sibling widgets. The `useState(() => Selection.single())` idiom is documented as the escape hatch.
+
+### Patch Changes
+
+- [#177](https://github.com/nozzle/mosaic-adapters/pull/177) [`981a59f`](https://github.com/nozzle/mosaic-adapters/commit/981a59f6745282e2cc1c49df169316fc84222a58) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - build(deps): upgrade dependencies to their latest eligible versions.
+
+  Notably `@tanstack/store` and `@tanstack/react-store` move to `^0.11.0` (from `^0.9.1`) — no API changes. All other bumps are build tooling and dev dependencies (no change to published runtime surface). TypeScript moves to the `6.0.x` line.
+
+- Updated dependencies [[`981a59f`](https://github.com/nozzle/mosaic-adapters/commit/981a59f6745282e2cc1c49df169316fc84222a58), [`4771d10`](https://github.com/nozzle/mosaic-adapters/commit/4771d10e5053ba0d631f452efb005fc3eca1b9f7), [`db5138b`](https://github.com/nozzle/mosaic-adapters/commit/db5138b57bad77ca9866c7052af6f4b2caebb761), [`45c8273`](https://github.com/nozzle/mosaic-adapters/commit/45c82730099083274ecfefa4bf2d8271447e5cbd), [`7be04e4`](https://github.com/nozzle/mosaic-adapters/commit/7be04e475f942761e17d2bc83d62af91d4e65cf7), [`2f5702c`](https://github.com/nozzle/mosaic-adapters/commit/2f5702c1f19dca55f7f4fa3dec82e7535b194ae4)]:
+  - @nozzleio/mosaic-core@0.2.0
+
 ## 0.3.2
 
 ### Patch Changes

@@ -1,5 +1,36 @@
 # @nozzleio/mosaic-tanstack-table-core
 
+## 0.8.0
+
+### Minor Changes
+
+- [#185](https://github.com/nozzle/mosaic-adapters/pull/185) [`a477934`](https://github.com/nozzle/mosaic-adapters/commit/a4779349415e9ec6f6869cbcd8d4e31ed4fa65a3) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Add `clampPagination(pagination, totalRows)` — clamps a stale `pageIndex` into range when a filter shrinks the result set below the current page (the sharp edge of the manual-pagination model, where an unclamped index otherwise renders an empty table with a broken pager). `totalRows` of `0`/`undefined` clamps to page 0; the input is returned unchanged when already in range. Under `rowCount: 'window'`, past-the-end recovers only to page 0 (`totalRows: 0` is ambiguous there); use `rowCount: 'query'` for exact last-page recovery.
+
+- [#167](https://github.com/nozzle/mosaic-adapters/pull/167) [`4771d10`](https://github.com/nozzle/mosaic-adapters/commit/4771d10e5053ba0d631f452efb005fc3eca1b9f7) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - **BREAKING — rebuilt as pure TanStack glue.** The monolithic `MosaicDataTable` adapter is removed; TanStack Table is now driven in fully manual mode by the consumer, and this package only supplies the translation layer between TanStack state and Mosaic clients/selections.
+
+  - State translators: `sortingToOrderBy` and `paginationToWindow`.
+  - `createFilterBridge` — publishes one clause per actively filtered column onto a Selection, with six declarative clause kinds (`equals`, `ilike`, `prefix`, `range`, `date-range`, `in`), struct-path columns (dotted ids → struct access), stable per-column clause sources, and an `onExternalClear` callback for reconciling external clause removals (chip-bar X, `selection.reset()`) back into TanStack `columnFilters`.
+
+  See `docs/tanstack/integration.md`.
+
+- [#176](https://github.com/nozzle/mosaic-adapters/pull/176) [`7be04e4`](https://github.com/nozzle/mosaic-adapters/commit/7be04e475f942761e17d2bc83d62af91d4e65cf7) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - **BREAKING — bridge re-cut over FilterSet.** The column-filter bridge is now a thin `columnFilters` → `FilterSpec` translator; the target `FilterSet` owns all clause machinery (publishing, per-spec sources, targets, external-clear detection).
+
+  - `FilterBridgeOptions.selection` is replaced by `set: FilterSet`.
+  - New `idPrefix` option (spec id = `` `${idPrefix}${columnId}` ``) and per-column `label`/`target` on `FilterBridgeColumn`.
+  - `onExternalClear` is replaced by `onExternalChange`, which now reports the full rebuilt `ColumnFiltersState` for both external spec removals and pre-mount hydrated specs, so consumers can adopt persisted state.
+  - Internal clause construction, `BridgeClauseSource` bookkeeping, and the Selection value-listener plumbing are deleted — the six clause kinds and their TanStack-value normalization are unchanged.
+
+  See `docs/tanstack/integration.md`.
+
+### Patch Changes
+
+- [#177](https://github.com/nozzle/mosaic-adapters/pull/177) [`981a59f`](https://github.com/nozzle/mosaic-adapters/commit/981a59f6745282e2cc1c49df169316fc84222a58) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - build(deps): upgrade dependencies to their latest eligible versions.
+
+  Notably `@tanstack/store` and `@tanstack/react-store` move to `^0.11.0` (from `^0.9.1`) — no API changes. All other bumps are build tooling and dev dependencies (no change to published runtime surface). TypeScript moves to the `6.0.x` line.
+
+- Updated dependencies [[`981a59f`](https://github.com/nozzle/mosaic-adapters/commit/981a59f6745282e2cc1c49df169316fc84222a58), [`4771d10`](https://github.com/nozzle/mosaic-adapters/commit/4771d10e5053ba0d631f452efb005fc3eca1b9f7), [`db5138b`](https://github.com/nozzle/mosaic-adapters/commit/db5138b57bad77ca9866c7052af6f4b2caebb761), [`45c8273`](https://github.com/nozzle/mosaic-adapters/commit/45c82730099083274ecfefa4bf2d8271447e5cbd), [`7be04e4`](https://github.com/nozzle/mosaic-adapters/commit/7be04e475f942761e17d2bc83d62af91d4e65cf7), [`2f5702c`](https://github.com/nozzle/mosaic-adapters/commit/2f5702c1f19dca55f7f4fa3dec82e7535b194ae4)]:
+  - @nozzleio/mosaic-core@0.2.0
+
 ## 0.7.0
 
 ### Minor Changes
