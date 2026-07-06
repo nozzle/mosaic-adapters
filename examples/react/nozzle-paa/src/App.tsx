@@ -21,6 +21,7 @@ import { tableName } from './page-context';
 import { usePageContexts, usePageTopology } from './topology';
 import { ActiveFilterBar } from './components/active-filter-bar';
 import { SpotlightFilter } from './components/spotlight-filter';
+import { VolumeBrushPanel } from './components/volume-brush-panel';
 import { DetailTable } from './components/detail-table';
 import { FilterBuilder } from './components/filter-builder';
 import {
@@ -209,6 +210,10 @@ function Dashboard() {
             <FilterBuilder />
           )}
         </div>
+      </div>
+
+      <div className="px-6">
+        <VolumeBrushPanel enabled={isReady} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 px-6 lg:grid-cols-2 xl:grid-cols-4">

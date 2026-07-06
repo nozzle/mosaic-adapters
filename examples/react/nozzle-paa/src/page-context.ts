@@ -261,8 +261,17 @@ export const FILTERS_ENTRY = 'filters';
 /** The foreign-source ("Domain spotlight") entry name in the topology config. */
 export const SPOTLIGHT_ENTRY = 'spotlight';
 
+/** The second foreign-source ("Search Volume" brush) entry name in the topology config. */
+export const VOLUME_BRUSH_ENTRY = 'volumeBrush';
+
+/** The column the volume brush ranges over. */
+export const VOLUME_BRUSH_COLUMN = 'search_volume';
+
 /** The page-wide crossfilter composite entry name (external). */
 export const PAGE_ENTRY = 'page';
+
+/** The volume-brush read-context entry name (external): the page minus its own clause. */
+export const VOLUME_BRUSH_CONTEXT_ENTRY = 'volumeBrushFilterBy';
 
 /** The per-card summary read-context entry name (external). */
 export function summaryContextEntry(id: SummaryTableId): string {
@@ -316,11 +325,20 @@ export const topologyConfig: TopologyConfig = {
     // foreign-chip recipe reads `meta.column` to label the clause.
     meta: { column: 'domain' },
   },
+  [VOLUME_BRUSH_ENTRY]: {
+    // `single` so each drag replaces the brush's last interval rather than
+    // accumulating one clause per drag.
+    type: 'single',
+    label: 'Search Volume',
+    // Read by the foreign-chip recipe to label the clause (like spotlight).
+    meta: { column: VOLUME_BRUSH_COLUMN },
+  },
   // The crossfilter read-contexts (escape hatch — see the module doc). Declared
   // so the config is a complete namespace document; empty instances are supplied
   // in `topologyOptions.selections` and wired by `wirePageContexts`.
   // `reset: false`: derived, holds no own clauses.
   [PAGE_ENTRY]: { type: 'external', reset: false },
+  [VOLUME_BRUSH_CONTEXT_ENTRY]: { type: 'external', reset: false },
   ...externalSummaryContexts(),
 };
 
@@ -332,6 +350,7 @@ export const topologyConfig: TopologyConfig = {
 function externalCompositeInstances(): Record<string, Selection> {
   const selections: Record<string, Selection> = {
     [PAGE_ENTRY]: Selection.crossfilter(),
+    [VOLUME_BRUSH_CONTEXT_ENTRY]: Selection.crossfilter(),
   };
   for (const id of SUMMARY_IDS) {
     selections[summaryContextEntry(id)] = Selection.crossfilter();
@@ -373,6 +392,8 @@ export interface PageContexts {
   summaryFilterBy: Record<SummaryTableId, Selection>;
   /** The phrase table's sparklines see exactly what the phrase table sees. */
   sparklineContext: Selection;
+  /** The volume brush's own read-context: the page minus its own clause. */
+  volumeBrushFilterBy: Selection;
 }
 
 /** Register `derived` to relay `source`'s clauses, seeding current clauses. */
@@ -402,11 +423,13 @@ export function wirePageContexts(topology: Topology): PageContexts {
 
   const where = topology.resolve(`${FILTERS_ENTRY}.where`);
   const spotlight = topology.resolve(SPOTLIGHT_ENTRY);
+  const volumeBrush = topology.resolve(VOLUME_BRUSH_ENTRY);
   const members = perSummary((id) =>
     topology.resolve(`${FILTERS_ENTRY}.${membersTarget(id)}`),
   );
 
   const page = topology.resolve(PAGE_ENTRY);
+  const volumeBrushFilterBy = topology.resolve(VOLUME_BRUSH_CONTEXT_ENTRY);
   const summaryFilterBy = perSummary((id) =>
     topology.resolve(summaryContextEntry(id)),
   );
@@ -415,13 +438,22 @@ export function wirePageContexts(topology: Topology): PageContexts {
     WIRED.add(topology);
     includeInto(where, page);
     includeInto(spotlight, page);
+    includeInto(volumeBrush, page);
     for (const id of SUMMARY_IDS) {
       includeInto(members[id], page);
+    }
+    // The volume-brush context relays every source page sees except the volume
+    // brush itself, so the brushed histogram is never narrowed by its own brush.
+    includeInto(where, volumeBrushFilterBy);
+    includeInto(spotlight, volumeBrushFilterBy);
+    for (const id of SUMMARY_IDS) {
+      includeInto(members[id], volumeBrushFilterBy);
     }
     for (const self of SUMMARY_IDS) {
       const context = summaryFilterBy[self];
       includeInto(where, context);
       includeInto(spotlight, context);
+      includeInto(volumeBrush, context);
       for (const id of SUMMARY_IDS) {
         if (id !== self) {
           includeInto(members[id], context);
@@ -434,6 +466,7 @@ export function wirePageContexts(topology: Topology): PageContexts {
     page,
     summaryFilterBy,
     sparklineContext: summaryFilterBy.phrase,
+    volumeBrushFilterBy,
   };
   CONTEXTS_CACHE.set(topology, contexts);
   return contexts;

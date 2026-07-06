@@ -19,6 +19,7 @@
     "@tanstack/react-table": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
+    "@uwdata/vgplot": "catalog:",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwindcss": "^4.3.1"

@@ -4,7 +4,7 @@ import {
   useMosaicActiveClauses,
   useMosaicTopology,
 } from '@nozzleio/react-mosaic';
-import { PAGE_ENTRY } from '../page-context';
+import { PAGE_ENTRY, SPOTLIGHT_ENTRY } from '../page-context';
 import { usePageFilterSet } from '../topology';
 import type { FilterSetChip } from '@nozzleio/react-mosaic';
 
@@ -55,9 +55,16 @@ function readColumn(meta: unknown): string | undefined {
   return undefined;
 }
 
-/** Formats a foreign clause's value for display (arrays comma-joined). */
+/** Formats a foreign clause's value for display. */
 function formatForeignValue(value: unknown): string {
   if (Array.isArray(value)) {
+    // A two-number array is an interval clause (the volume brush): a rounded
+    // range. Any other array comma-joins.
+    if (value.length === 2 && value.every((n) => typeof n === 'number')) {
+      const [lo, hi] = value as [number, number];
+      const round = (n: number) => Math.round(n).toLocaleString('en-US');
+      return `${round(lo)} – ${round(hi)}`;
+    }
     return value.map((entry) => String(entry)).join(', ');
   }
   if (value === null || value === undefined) {
@@ -170,11 +177,12 @@ function chipRank(chip: ActiveFilterChip): number {
 /**
  * Maps a chip's routing `target` to a short placement badge: any `having:` /
  * `members:` target → "HAVING" (aggregate threshold + its membership overlay);
- * a foreign clause → "SPOTLIGHT"; anything else → "WHERE" (row-level predicate).
+ * a foreign clause → its source badge (the domain spotlight → "SPOTLIGHT", the
+ * search-volume brush → "BRUSH"); anything else → "WHERE" (row-level predicate).
  */
 function placementBadge(chip: ActiveFilterChip): string {
   if (chip.foreign) {
-    return 'SPOTLIGHT';
+    return chip.target === SPOTLIGHT_ENTRY ? 'SPOTLIGHT' : 'BRUSH';
   }
   if (chip.target.startsWith('having:') || chip.target.startsWith('members:')) {
     return 'HAVING';

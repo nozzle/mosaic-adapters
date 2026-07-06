@@ -229,6 +229,9 @@ importers:
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
         version: 0.28.1
+      '@uwdata/vgplot':
+        specifier: 'catalog:'
+        version: 0.28.1
       react:
         specifier: ^19.2.7
         version: 19.2.7

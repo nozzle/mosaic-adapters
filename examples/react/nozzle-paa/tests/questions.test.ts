@@ -382,6 +382,11 @@ test.describe('people-also-ask dashboard', () => {
       `${TOTAL_ROWS} rows match`,
     );
 
+    // The callout explains why this control is different from the rest.
+    await expect(page.getByTestId('spotlight-domain-note')).toContainText(
+      'bypasses the FilterSet',
+    );
+
     // Spotlight reddit.com: a direct-to-Selection point clause narrows the
     // detail table to reddit.com's answer rows (17,902 — the share-loop value).
     await page.getByTestId('spotlight-domain-input').fill('reddit.com');
@@ -1127,10 +1132,224 @@ test.describe('people-also-ask dashboard', () => {
   test('every widget exposes the SQL it last executed', async ({ page }) => {
     await gotoDashboard(page);
 
-    // 4 summary tables + the detail table each render a SQL footer.
+    // 4 summary tables + the detail table each render a SQL footer. The vgplot
+    // volume-brush panel is not a data-client store (no `lastQuery`), so it adds
+    // no footer — the count stays 5.
     await expect(page.getByTestId('widget-sql')).toHaveCount(5);
     const first = page.getByTestId('widget-sql').first();
     await first.locator('summary').click();
     await expect(first.locator('pre')).toContainText('SELECT');
+  });
+
+  // The vgplot brush publishes a search-volume range into the foreign
+  // `volumeBrush` Selection (never the FilterSet), like the domain spotlight.
+
+  /**
+   * Expands the panel and drags a brush across the right half of the plot (the
+   * high-volume tail), then waits for the questions KPI to settle below the full
+   * total. The plot's SVG has a fixed 900×300 coordinate space but is scaled to
+   * its container, so the drag operates on the on-screen box.
+   */
+  async function brushVolumeRange(page: Page): Promise<void> {
+    await page.getByTestId('volume-brush-toggle').click();
+    await expect(page.getByTestId('volume-brush-panel')).toHaveAttribute(
+      'data-expanded',
+      'true',
+    );
+    const svg = page.locator('[data-testid="volume-brush-plot"] svg');
+    // Settle the plot before capturing its box: on expand it re-renders (its
+    // mark query may still be in flight when the page is already filtered) and
+    // the page can reflow. Scroll it into view, then poll until its on-screen
+    // box stops moving — a mid-drag layout shift would send the mouse events to
+    // the wrong coordinates and the brush would never register.
+    await svg.scrollIntoViewIfNeeded();
+    let previous = '';
+    await expect
+      .poll(async () => {
+        const current = await svg.boundingBox();
+        const key = current === null ? '' : `${current.x},${current.y}`;
+        const settled = key !== '' && key === previous;
+        previous = key;
+        return settled;
+      })
+      .toBe(true);
+    const box = await svg.boundingBox();
+    if (box === null) {
+      throw new Error('volume-brush plot svg not found');
+    }
+    const y = box.y + box.height * 0.5;
+    await page.mouse.move(box.x + box.width * 0.5, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.95, y, { steps: 12 });
+    await page.mouse.up();
+
+    // The drag published a clause: the range strip leaves "Full range". This
+    // signals the brush landed even when the page is already filtered (so the
+    // questions KPI is below the total before brushing).
+    await expect(page.getByTestId('volume-brush-range')).not.toContainText(
+      'Full range',
+    );
+    // The brushed range narrows the page: the questions KPI settles above zero.
+    await waitForStableCount(page.getByTestId('kpi-questions'), {
+      greaterThan: 0,
+      lessThan: TOTAL_QUESTIONS_NUM,
+    });
+  }
+
+  test('the volume-brush panel expands and collapses', async ({ page }) => {
+    await gotoDashboard(page);
+
+    const panel = page.getByTestId('volume-brush-panel');
+    await expect(panel).toHaveAttribute('data-expanded', 'false');
+    // The compact panel still renders its histogram bars.
+    await expect
+      .poll(async () =>
+        page.locator('[data-testid="volume-brush-plot"] rect').count(),
+      )
+      .toBeGreaterThan(5);
+
+    await page.getByTestId('volume-brush-toggle').click();
+    await expect(panel).toHaveAttribute('data-expanded', 'true');
+
+    await page.getByTestId('volume-brush-toggle').click();
+    await expect(panel).toHaveAttribute('data-expanded', 'false');
+  });
+
+  test('brushing the volume histogram narrows the page and renders a removable foreign chip', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+
+    await brushVolumeRange(page);
+
+    // The detail table (and every widget) narrows to the brushed subset.
+    const brushedRows = await readCount(page.getByTestId('detail-total-rows'));
+    expect(brushedRows).toBeGreaterThan(0);
+    expect(brushedRows).toBeLessThan(TOTAL_ROWS_NUM);
+
+    // A FOREIGN chip renders, labeled from the declaration and badged BRUSH.
+    const foreignChip = page.getByTestId('foreign-chip');
+    await expect(foreignChip).toBeVisible();
+    await expect(foreignChip).toContainText('Search Volume:');
+    await expect(foreignChip.getByTestId('chip-target')).toHaveText('BRUSH');
+    // The panel's summary strip reflects the committed range (not "Full range").
+    await expect(page.getByTestId('volume-brush-range')).not.toContainText(
+      'Full range',
+    );
+
+    // Removing the chip clears the whole clause — the page returns to total.
+    await foreignChip
+      .getByRole('button', { name: /Remove filter Search Volume/ })
+      .click();
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+    await expect(page.getByTestId('volume-brush-range')).toContainText(
+      'Full range',
+    );
+    // The external clear also resets the interactor: the brush overlay is no
+    // longer painted (it must not linger until the next click on the chart).
+    await expect(
+      page.locator('[data-testid="volume-brush-plot"] svg rect.selection'),
+    ).toBeHidden();
+  });
+
+  test('the brushed range and its overlay survive an expand/collapse toggle', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // Brush the high-volume tail in the expanded plot.
+    await brushVolumeRange(page);
+    const brushedQuestions = await readCount(page.getByTestId('kpi-questions'));
+    expect(brushedQuestions).toBeGreaterThan(0);
+    expect(brushedQuestions).toBeLessThan(TOTAL_QUESTIONS_NUM);
+
+    // The D3 brush overlay (rect.selection) is painted with a non-zero width.
+    const brushRect = page.locator(
+      '[data-testid="volume-brush-plot"] svg rect.selection',
+    );
+    const widthBefore = await brushRect.evaluate((rect) =>
+      Number((rect as SVGRectElement).getAttribute('width')),
+    );
+    expect(widthBefore).toBeGreaterThan(0);
+
+    // Collapse the panel — the plot is resized in place, not remounted, so the
+    // interval interactor and its overlay survive.
+    await page.getByTestId('volume-brush-toggle').click();
+    await expect(page.getByTestId('volume-brush-panel')).toHaveAttribute(
+      'data-expanded',
+      'false',
+    );
+
+    // The brush rectangle is still visible with a non-zero width in the
+    // re-rendered (compact) plot.
+    await expect(brushRect).toBeVisible();
+    await expect
+      .poll(async () =>
+        brushRect.evaluate((rect) =>
+          Number((rect as SVGRectElement).getAttribute('width')),
+        ),
+      )
+      .toBeGreaterThan(0);
+
+    // The clause never dropped: the questions KPI is unchanged by the toggle
+    // (still the brushed subset, not the full total).
+    await expect(page.getByTestId('kpi-questions')).toHaveText(
+      brushedQuestions.toLocaleString('en-US'),
+    );
+    await expect(page.getByTestId('volume-brush-range')).not.toContainText(
+      'Full range',
+    );
+
+    // The restored brush is still interactive: expanding again keeps it, and
+    // the foreign chip stays live and removable.
+    await page.getByTestId('volume-brush-toggle').click();
+    await expect(page.getByTestId('volume-brush-panel')).toHaveAttribute(
+      'data-expanded',
+      'true',
+    );
+    await expect(brushRect).toBeVisible();
+    const foreignChip = page.getByTestId('foreign-chip');
+    await expect(foreignChip).toContainText('Search Volume:');
+  });
+
+  test('Clear All clears the volume brush alongside a FilterSet spec', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // A FilterSet spec (min-domains → 418 questions)…
+    await page.getByTestId('question-min-domains-input').fill('4');
+    await expect(page.getByTestId('kpi-questions')).toHaveText('418', {
+      timeout: 15_000,
+    });
+
+    // …AND the foreign volume-brush clause active together.
+    await brushVolumeRange(page);
+    const bar = page.getByTestId('active-filter-bar');
+    await expect(bar).toContainText('Min Domains:≥ 4');
+    await expect(bar.getByTestId('foreign-chip')).toContainText(
+      'Search Volume:',
+    );
+
+    // Clear All (topology.reset) clears BOTH in one call.
+    await page.getByTestId('clear-all-filters').click();
+    await expect(page.getByTestId('kpi-questions')).toHaveText(TOTAL_QUESTIONS);
+    await expect(page.getByTestId('question-min-domains-input')).toHaveValue(
+      '',
+    );
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+    await expect(page.getByTestId('volume-brush-range')).toContainText(
+      'Full range',
+    );
+    // Clear All resets the interactor too — no stale brush overlay.
+    await expect(
+      page.locator('[data-testid="volume-brush-plot"] svg rect.selection'),
+    ).toBeHidden();
   });
 });

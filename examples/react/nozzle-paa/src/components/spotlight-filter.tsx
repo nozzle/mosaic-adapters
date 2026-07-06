@@ -67,6 +67,14 @@ export function SpotlightFilter(props: { enabled: boolean }) {
         disabled={!props.enabled}
         onChange={(event) => publish(event.target.value)}
       />
+      <p
+        data-testid="spotlight-domain-note"
+        className="text-[11px] text-slate-400"
+      >
+        Unlike the other controls, this bypasses the FilterSet and publishes a
+        clause straight onto a topology Selection. Its chip comes from the
+        topology's active clauses, not a FilterSpec.
+      </p>
     </div>
   );
 }
