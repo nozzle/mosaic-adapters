@@ -17,11 +17,14 @@ import { Store } from '@tanstack/store';
 import { Selection } from '@uwdata/mosaic-core';
 import { createFilterSet } from '../filter-set/filter-set';
 import { createCascadingContexts } from './cascading';
-import { createComposedSelection } from './compose';
-import { clearSeededClauses } from './wiring';
+import {
+  attachIncludedSelection,
+  clearSeededClauses,
+  detachIncludedSelection,
+  seedContext,
+} from './wiring';
 import type { FilterSet } from '../filter-set/types';
 import type { CascadingContextsHandle } from './cascading';
-import type { ComposedSelectionHandle } from './compose';
 import type {
   ActiveClause,
   CascadingDeclaration,
@@ -146,10 +149,75 @@ export function createTopology(
     }
   }
 
+  // --- Cycle validation over the declaration graph. ---
+  //
+  // Edges are the *structural* (relay/build) refs: every compose `include`,
+  // and every cascading `keys` / `externals` ref. The filter-set `context` ref
+  // is EXCLUDED — it is a read edge (the FilterSet consumes its context by
+  // clause-source identity at subquery-predicate time), not a relay/build edge,
+  // so a filter-set context naming a compose that includes the set's own
+  // targets is permitted. This still rejects compose↔compose cycles,
+  // compose self-includes, and cycles routing through a compose via cascading
+  // (a genuine mutual relay loop). Refs are reduced to their entry name (the
+  // part before any dot) — a cycle is a property of the entry graph.
+  //
+  // A DFS over this graph reproduces the exact `a → b → a` / `a → a` message
+  // format the construction-order detector uses, so existing tests are
+  // unaffected.
+  function structuralEdges(name: string): Array<string> {
+    const declaration = config[name];
+    if (declaration === undefined) {
+      return [];
+    }
+    if (declaration.type === 'compose') {
+      return declaration.include.map((ref) => parseRef(ref).entry);
+    }
+    if (declaration.type === 'cascading') {
+      const refs = [...declaration.keys, ...(declaration.externals ?? [])];
+      return refs.map((ref) => parseRef(ref).entry);
+    }
+    return [];
+  }
+
+  const cycleVisited = new Set<string>();
+  const cycleStack = new Set<string>();
+  const cyclePath: Array<string> = [];
+
+  function detectCycles(name: string): void {
+    if (cycleVisited.has(name)) {
+      return;
+    }
+    if (cycleStack.has(name)) {
+      const start = cyclePath.indexOf(name);
+      const rendered = [...cyclePath.slice(start), name].join(' → ');
+      throw new Error(
+        `[mosaic-core] createTopology: dependency cycle detected: ${rendered}.`,
+      );
+    }
+    cycleStack.add(name);
+    cyclePath.push(name);
+    for (const target of structuralEdges(name)) {
+      // A ref to an undeclared entry is caught during construction with a
+      // clearer message; skip it here so cycle detection never masks it.
+      if (config[target] !== undefined) {
+        detectCycles(target);
+      }
+    }
+    cyclePath.pop();
+    cycleStack.delete(name);
+    cycleVisited.add(name);
+  }
+
+  for (const name of entryNames) {
+    detectCycles(name);
+  }
+
   // --- Track everything the topology owns for teardown. ---
   let destroyed = false;
   const nodes = new Map<string, EntryNode>();
-  const composeHandles: Array<ComposedSelectionHandle> = [];
+  // Per-compose teardown handles, built in phase 2. Each detaches its own
+  // relays and clears its seeded clauses.
+  const composeHandles: Array<{ destroy: () => void }> = [];
   const cascadingHandles: Array<CascadingContextsHandle> = [];
   const filterSets: Record<string, FilterSet> = {};
 
@@ -277,12 +345,17 @@ export function createTopology(
   }
 
   function buildCompose(declaration: ComposeDeclaration): EntryNode {
-    const included = declaration.include.map((ref) => resolveRef(ref));
-    const handle = createComposedSelection(included);
-    composeHandles.push(handle);
+    // Phase 1: allocate the compose entry's bare Selection immediately, WITHOUT
+    // resolving includes. A ref to this compose resolves to this pre-allocated
+    // instance with no recursion into its includes. Relays are attached and
+    // clauses seeded later, in phase 2, so a filter-set `context` naming a
+    // compose that includes the set's own targets does not trip
+    // construction-order detection. Crossfilter (`as: 'crossfilter'`) support
+    // is added in a follow-up; for now every compose allocates an `intersect`.
+    const bareSelection = Selection.intersect();
     return {
       declaration,
-      bareSelection: handle.selection,
+      bareSelection,
       children: new Map(),
     };
   }
@@ -352,6 +425,71 @@ export function createTopology(
   // --- Eager construction: build every entry now so validation is eager. ---
   for (const entry of entryNames) {
     ensureBuilt(entry);
+  }
+
+  // --- Phase 2: resolve compose includes and wire relays. ---
+  //
+  // Every compose entry's bare Selection was allocated (empty) in phase 1. Now
+  // resolve each compose's `include` refs and wire the relays. Correctness
+  // requires attaching ALL relays across ALL composes FIRST, and only then
+  // seeding ALL — a per-compose attach+seed in arbitrary order can drop a
+  // nested compose's pre-existing clauses (seeding an outer compose before an
+  // inner one is attached would copy only the outer sources' clauses, missing
+  // the inner compose's own seeded state). Seeding after every relay is in
+  // place lets a source's existing clauses propagate transitively.
+  interface ComposeWiring {
+    context: Selection;
+    sources: Array<Selection>;
+  }
+  const composeWirings: Array<ComposeWiring> = [];
+  for (const [entry, node] of nodes) {
+    const { declaration } = node;
+    if (declaration.type !== 'compose') {
+      continue;
+    }
+    const context = node.bareSelection;
+    if (context === undefined) {
+      // Unreachable: phase 1 always allocates a compose's bare Selection.
+      throw new Error(
+        `[mosaic-core] createTopology: compose entry '${entry}' has no ` +
+          `allocated selection.`,
+      );
+    }
+    // Resolving includes here keeps the ref-must-exist and bare-ref-to-compound
+    // checks (resolveRef enforces both); every referenced entry is already
+    // built, so resolution never recurses into construction.
+    const sources = declaration.include.map((ref) => resolveRef(ref));
+    composeWirings.push({ context, sources });
+  }
+  // Attach ALL relays first.
+  for (const { context, sources } of composeWirings) {
+    for (const source of sources) {
+      attachIncludedSelection(source, context);
+    }
+  }
+  // Then seed ALL.
+  for (const { context, sources } of composeWirings) {
+    if (sources.length > 0) {
+      seedContext(sources, context);
+    }
+  }
+  // Build a teardown handle per compose (detach relays, clear seeded clauses).
+  for (const { context, sources } of composeWirings) {
+    let handleDestroyed = false;
+    composeHandles.push({
+      destroy: () => {
+        if (handleDestroyed) {
+          return;
+        }
+        handleDestroyed = true;
+        for (const source of sources) {
+          detachIncludedSelection(source, context);
+        }
+        if (sources.length > 0) {
+          clearSeededClauses(sources, context);
+        }
+      },
+    });
   }
 
   // --- validNames: every bare simple entry + every dotted child. ---
