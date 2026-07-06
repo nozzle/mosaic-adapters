@@ -1,5 +1,34 @@
 # @nozzleio/mosaic-tanstack-react-table
 
+## 0.9.0
+
+### Minor Changes
+
+- [#167](https://github.com/nozzle/mosaic-adapters/pull/167) [`4771d10`](https://github.com/nozzle/mosaic-adapters/commit/4771d10e5053ba0d631f452efb005fc3eca1b9f7) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - **BREAKING — rebuilt.** `useMosaicReactTable` and the legacy hook surface are removed. This package is now a thin React wrapper over `@nozzleio/mosaic-tanstack-table-core`, which is a regular dependency whose full public API is re-exported here, so consumers install and import from this package alone.
+
+  - `useTanStackFilterBridge` — React binding around the glue core's `createFilterBridge`.
+  - Full re-export of the glue core (`sortingToOrderBy`, `paginationToWindow`, `createFilterBridge`, and the bridge types).
+
+  See `docs/tanstack/integration.md`.
+
+- [#176](https://github.com/nozzle/mosaic-adapters/pull/176) [`7be04e4`](https://github.com/nozzle/mosaic-adapters/commit/7be04e475f942761e17d2bc83d62af91d4e65cf7) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - **BREAKING — follows the glue-core bridge re-cut.** `useTanStackFilterBridge` carries the same option changes as `@nozzleio/mosaic-tanstack-table-core`.
+
+  - `selection` → `set: FilterSet`; new `idPrefix` and per-column `label`/`target`.
+  - `onExternalClear` → `onExternalChange`, reporting rebuilt `ColumnFiltersState` for external removals and hydration adoption.
+  - `@nozzleio/mosaic-core` moves from a dev dependency to a runtime `dependency`.
+
+  See `docs/tanstack/integration.md`.
+
+### Patch Changes
+
+- [#177](https://github.com/nozzle/mosaic-adapters/pull/177) [`981a59f`](https://github.com/nozzle/mosaic-adapters/commit/981a59f6745282e2cc1c49df169316fc84222a58) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - build(deps): upgrade dependencies to their latest eligible versions.
+
+  Notably `@tanstack/store` and `@tanstack/react-store` move to `^0.11.0` (from `^0.9.1`) — no API changes. All other bumps are build tooling and dev dependencies (no change to published runtime surface). TypeScript moves to the `6.0.x` line.
+
+- Updated dependencies [[`981a59f`](https://github.com/nozzle/mosaic-adapters/commit/981a59f6745282e2cc1c49df169316fc84222a58), [`4771d10`](https://github.com/nozzle/mosaic-adapters/commit/4771d10e5053ba0d631f452efb005fc3eca1b9f7), [`db5138b`](https://github.com/nozzle/mosaic-adapters/commit/db5138b57bad77ca9866c7052af6f4b2caebb761), [`45c8273`](https://github.com/nozzle/mosaic-adapters/commit/45c82730099083274ecfefa4bf2d8271447e5cbd), [`7be04e4`](https://github.com/nozzle/mosaic-adapters/commit/7be04e475f942761e17d2bc83d62af91d4e65cf7), [`2f5702c`](https://github.com/nozzle/mosaic-adapters/commit/2f5702c1f19dca55f7f4fa3dec82e7535b194ae4), [`a477934`](https://github.com/nozzle/mosaic-adapters/commit/a4779349415e9ec6f6869cbcd8d4e31ed4fa65a3), [`4771d10`](https://github.com/nozzle/mosaic-adapters/commit/4771d10e5053ba0d631f452efb005fc3eca1b9f7), [`7be04e4`](https://github.com/nozzle/mosaic-adapters/commit/7be04e475f942761e17d2bc83d62af91d4e65cf7)]:
+  - @nozzleio/mosaic-core@0.2.0
+  - @nozzleio/mosaic-tanstack-table-core@0.8.0
+
 ## 0.8.0
 
 ### Minor Changes
