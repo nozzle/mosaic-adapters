@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createFilterBridge } from '@nozzleio/mosaic-tanstack-table-core';
+import { createTanStackTableFilterBridge } from '@nozzleio/mosaic-tanstack-table-core';
 import type { FilterSet } from '@nozzleio/mosaic-core';
 import type { ColumnFiltersState } from '@tanstack/react-table';
 import type {
@@ -7,13 +7,13 @@ import type {
   FilterBridgeColumns,
 } from '@nozzleio/mosaic-tanstack-table-core';
 
-export interface UseTanStackFilterBridgeOptions {
-  /** TanStack column-filter state (consumer-owned, controlled). */
+export interface UseTanStackTableFilterBridgeOptions {
+  /** TanStack Table column-filter state (consumer-owned, controlled). */
   filters: ColumnFiltersState;
   /** FilterSet that receives one spec per actively filtered column. */
   set: FilterSet;
   /**
-   * Per-column clause config, keyed by TanStack column id. Compared by
+   * Per-column clause config, keyed by TanStack Table column id. Compared by
    * value — inline literals are fine.
    */
   columns: FilterBridgeColumns;
@@ -23,7 +23,7 @@ export interface UseTanStackFilterBridgeOptions {
    */
   idPrefix?: string;
   /**
-   * Reports the TanStack `columnFilters` state the consumer should adopt after
+   * Reports the TanStack Table `columnFilters` state the consumer should adopt after
    * an external spec change (a chip bar's X, a global `set.reset()`, or
    * persisted state hydrated before mount): the bridge inverts the surviving
    * specs back to filter values so the consumer can prune cleared columns or
@@ -34,7 +34,12 @@ export interface UseTanStackFilterBridgeOptions {
 }
 
 /**
- * Controlled wrapper over the filter-bridge core: translates TanStack
+ * @deprecated Use {@link UseTanStackTableFilterBridgeOptions} instead.
+ */
+export interface UseTanStackFilterBridgeOptions extends UseTanStackTableFilterBridgeOptions {}
+
+/**
+ * Controlled wrapper over the filter-bridge core: translates TanStack Table
  * `columnFilters` state into {@link FilterSpec}s on a FilterSet.
  *
  * The bridge owns no data client and renders nothing, so its lifecycle is
@@ -46,8 +51,8 @@ export interface UseTanStackFilterBridgeOptions {
  * equal state publish nothing and cannot echo into a Selection-activation
  * feedback loop.
  */
-export function useTanStackFilterBridge(
-  options: UseTanStackFilterBridgeOptions,
+export function useTanStackTableFilterBridge(
+  options: UseTanStackTableFilterBridgeOptions,
 ): void {
   const { filters, set, columns, idPrefix, onExternalChange } = options;
 
@@ -69,7 +74,7 @@ export function useTanStackFilterBridge(
     // The initial columns must reach the constructor: hydration adoption
     // scans the set for specs under the managed (column-derived) ids, so a
     // column-less bridge would never adopt persisted state at mount.
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns: columnsRef.current,
       idPrefix,
@@ -95,3 +100,8 @@ export function useTanStackFilterBridge(
     bridge.setFilters(filters);
   });
 }
+
+/**
+ * @deprecated Use {@link useTanStackTableFilterBridge} instead.
+ */
+export const useTanStackFilterBridge = useTanStackTableFilterBridge;
