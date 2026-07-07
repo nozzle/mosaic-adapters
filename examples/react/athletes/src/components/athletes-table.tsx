@@ -13,7 +13,7 @@ import { useMosaicRows, useMosaicSparkline } from '@nozzleio/react-mosaic';
 import {
   paginationToWindow,
   sortingToOrderBy,
-  useTanStackFilterBridge,
+  useTanStackTableFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { $page, $picked, filterSet, tableName } from '../page-context';
 import { Sparkline } from './sparkline';
@@ -57,7 +57,7 @@ const columns: Array<ColumnDef<typeof features, AthleteRow>> = [
   { accessorKey: 'gold', header: 'Gold' },
   {
     // One batched sparkline client serves every cell in this column; its
-    // series reach the cells through TanStack's own `table.options.meta`.
+    // series reach the cells through TanStack Table's own `table.options.meta`.
     id: 'weightDist',
     header: 'Weight dist. (sport)',
     cell: (cell) => (
@@ -73,7 +73,7 @@ const columns: Array<ColumnDef<typeof features, AthleteRow>> = [
   },
 ];
 
-// Bridge config: TanStack column id → clause kind. Every id here must match a
+// Bridge config: TanStack Table column id → clause kind. Every id here must match a
 // column above exactly — the bridge silently ignores unconfigured ids, so a
 // typo would no-op with no signal. (The sport filter lives outside the table
 // now — the facet client publishes it directly into $page.)
@@ -100,7 +100,7 @@ export function AthletesTable() {
     new Map(),
   );
 
-  useTanStackFilterBridge({
+  useTanStackTableFilterBridge({
     filters: columnFilters,
     set: filterSet,
     columns: bridgeColumns,
@@ -143,7 +143,7 @@ export function AthletesTable() {
     inputs: { keys: [...new Set(athletes.rows.map((row) => row.sport))] },
   });
 
-  // A non-TanStack $page change (vgplot brush, facet, histogram) can shrink
+  // A non-TanStack Table $page change (vgplot brush, facet, histogram) can shrink
   // totalRows below the current offset with no state handler involved; clamp
   // back to the last populated page so the table never strands on an empty
   // one.

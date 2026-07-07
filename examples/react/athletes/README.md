@@ -11,7 +11,7 @@ Mosaic data client, and the whole page cross-filters through one
   publishes into the page Selection and filters everything else.
 - **The table** — user-owned `useReactTable` in fully manual mode: sorting and
   pagination execute in SQL as serializable rows-client inputs, column filters
-  become Selection clauses through the TanStack filter bridge, and row clicks
+  become Selection clauses through the TanStack Table filter bridge, and row clicks
   publish picked athletes into a `$picked` Selection.
 
 The sport facet select, brushable histogram, and sparkline column arrive with

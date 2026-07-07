@@ -1,6 +1,6 @@
 /**
  * The detail table: user-owned `useReactTable` in fully manual mode. Column
- * filters become Selection clauses through the TanStack filter bridge
+ * filters become Selection clauses through the TanStack Table filter bridge
  * (including the struct-path `related_phrase.phrase` column) and land in
  * `$detail` — which the table's own context includes, so, matching the
  * legacy page, the detail table is filtered by its own filters while every
@@ -20,7 +20,7 @@ import { Query, sql } from '@uwdata/mosaic-sql';
 import { useMosaicRows } from '@nozzleio/react-mosaic';
 import {
   paginationToWindow,
-  useTanStackFilterBridge,
+  useTanStackTableFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { tableName } from '../page-context';
 import { usePageContexts, usePageFilterSet } from '../topology';
@@ -56,7 +56,7 @@ const columns: Array<ColumnDef<typeof features, DetailRow>> = [
 ];
 
 // Every column filters as a partial (case-insensitive contains) match; the
-// question TanStack id maps onto the struct path. Spec ids are prefixed
+// question TanStack Table id maps onto the struct path. Spec ids are prefixed
 // `detail:` (idPrefix below); labels drive the chip bar's Detail Filters group.
 const bridgeColumns: FilterBridgeColumns = {
   domain: { clause: 'ilike', label: 'Domain' },
@@ -80,12 +80,12 @@ export function DetailTable(props: { enabled: boolean }) {
     pageSize: PAGE_SIZE,
   });
 
-  useTanStackFilterBridge({
+  useTanStackTableFilterBridge({
     filters: columnFilters,
     set: filterSet,
     columns: bridgeColumns,
     idPrefix: 'detail:',
-    // Chip removal and global reset win over TanStack state: the bridge reports
+    // Chip removal and global reset win over TanStack Table state: the bridge reports
     // the surviving filter state after an external spec removal, so we adopt it
     // and the cleared columns' inputs empty instead of republishing.
     onExternalChange: (filters) => {

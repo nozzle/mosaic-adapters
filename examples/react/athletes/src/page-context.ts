@@ -14,7 +14,7 @@ export const tableName = 'athletes';
 export const $page = Selection.crossfilter();
 
 /**
- * The table's column filters flow through the TanStack bridge as
+ * The table's column filters flow through the TanStack Table bridge as
  * {@link FilterSpec}s on this module-scope set, which publishes them as clauses
  * on `$page` (target `where`). The specs carry no `clients`, so — exactly like
  * the old direct-Selection bridge — the table is filtered by its own column

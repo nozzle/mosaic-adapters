@@ -22,7 +22,7 @@ The factory supplies the **aggregate select only** — no `groupby`: the client 
 Each flat row carries its tree position:
 
 - `level` — `0` is the grand total, `groupBy.length` a leaf; rolled-up group columns are `NULL` in `data`.
-- `groupPath` — the group values down to this row's level (stringified): a stable key for expansion state (e.g. TanStack `expanded`).
+- `groupPath` — the group values down to this row's level (stringified): a stable key for expansion state (e.g. TanStack Table `expanded`).
 - `isLeaf`.
 
 Rows arrive pre-ordered (each subtotal immediately precedes its children — real `NULL` group values are disambiguated from rolled-up `NULL`s by the `GROUPING` tag), so "expanded" rendering is a pure filter over the flat list. `rollupRowsToTree(rows)` derives a nested `{row, children}` view when a tree shape is easier.

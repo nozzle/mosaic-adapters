@@ -99,9 +99,9 @@ the set, which validates again — malformed or unknown params are skipped
 defensively.
 
 The detail-table example is worth calling out: a `detail:<column>` param
-hydrates before the detail table mounts, and the TanStack bridge's adoption path
+hydrates before the detail table mounts, and the TanStack Table bridge's adoption path
 picks the spec up and drives the column input — so both the query _and_ the
-TanStack UI reflect the shared state.
+TanStack Table UI reflect the shared state.
 
 ### Router note
 
@@ -125,7 +125,7 @@ navigation — see [`docs/react/router-persistence.md`](../../../docs/react/rout
   predicates (own HAVING + sibling membership subquery), republished on context
   changes so the subquery converges.
 - **Clear All** — `filterSet.reset()`; every input syncs back (it reads its spec
-  from the store), including TanStack detail-column filters via the bridge's
+  from the store), including TanStack Table detail-column filters via the bridge's
   external-change write-back.
 - **Shareable URLs** — filter, then copy the address bar; open it in a new tab
   and the dashboard hydrates to the same filtered state.

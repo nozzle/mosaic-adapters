@@ -92,7 +92,7 @@ const columns: Array<ColumnDef<typeof features, RollupNode>> = [
  * Hierarchical grouping as one SQL query: `GROUP BY ROLLUP(sport,
  * nationality)` returns the whole tree — grand total, per-sport subtotals,
  * and leaves — level-tagged and pre-ordered. Expanding a row is pure UI
- * visibility over the flat rows via TanStack's `rowExpandingFeature`; no
+ * visibility over the flat rows via TanStack Table's `rowExpandingFeature`; no
  * query runs.
  */
 export function RollupView() {
