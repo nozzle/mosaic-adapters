@@ -4,7 +4,7 @@ export {
   sortingToOrderBy,
 } from './translators';
 
-export { createFilterBridge } from './filter-bridge';
+export { createTanStackTableFilterBridge } from './filter-bridge';
 
 export type {
   ColumnFilterClauseKind,

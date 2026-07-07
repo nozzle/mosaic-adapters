@@ -19,22 +19,24 @@ type NormalizedFilter = { active: false } | { active: true; value: unknown };
 
 const INACTIVE: NormalizedFilter = { active: false };
 
-export function createFilterBridge(options: FilterBridgeOptions): FilterBridge {
-  return new TanStackFilterBridge(options);
+export function createTanStackTableFilterBridge(
+  options: FilterBridgeOptions,
+): FilterBridge {
+  return new TanStackTableFilterBridge(options);
 }
 
 /**
- * Translates TanStack `columnFilters` state into {@link FilterSpec}s on a
+ * Translates TanStack Table `columnFilters` state into {@link FilterSpec}s on a
  * {@link FilterSet}. The set owns all clause machinery — this bridge only
- * normalizes TanStack values into specs, diffs them against its last-pushed
- * state, and mirrors external spec removals back into TanStack state.
+ * normalizes TanStack Table values into specs, diffs them against its last-pushed
+ * state, and mirrors external spec removals back into TanStack Table state.
  *
  * Suppression is value-level: a spec is written only when its normalized
  * content (kind, column, operator, value, label, target) actually changed, and
  * a removal is issued only for a spec this bridge previously wrote. The set
  * adds its own SQL-level suppression on top.
  */
-class TanStackFilterBridge implements FilterBridge {
+class TanStackTableFilterBridge implements FilterBridge {
   readonly #set: FilterSet;
   readonly #idPrefix: string;
   readonly #onExternalChange:
@@ -54,7 +56,7 @@ class TanStackFilterBridge implements FilterBridge {
 
   /**
    * Ids adopted from pre-existing set state (persisted hydration) that the
-   * consumer's TanStack state has not yet confirmed. Reconciles against
+   * consumer's TanStack Table state has not yet confirmed. Reconciles against
    * not-yet-caught-up consumer state must not remove them, and `destroy()`
    * must leave them in the set (a StrictMode double-mount would otherwise
    * wipe persisted state). An id graduates to the normal lifecycle the first
@@ -73,7 +75,7 @@ class TanStackFilterBridge implements FilterBridge {
 
     // Adopt any specs the set already holds under this bridge's managed ids
     // (persisted state hydrated before mount): report them via the callback so
-    // the consumer's TanStack state drives them, and never clear them here.
+    // the consumer's TanStack Table state drives them, and never clear them here.
     this.#adoptExisting();
 
     const subscription = this.#set.store.subscribe(() => {
@@ -123,7 +125,7 @@ class TanStackFilterBridge implements FilterBridge {
     this.#adopted.clear();
   }
 
-  /** The managed spec id for a TanStack column id. */
+  /** The managed spec id for a TanStack Table column id. */
   #specId(columnId: string): string {
     return `${this.#idPrefix}${columnId}`;
   }
@@ -137,7 +139,7 @@ class TanStackFilterBridge implements FilterBridge {
       return;
     }
     // Track them so external-removal detection and value-diffing behave as if
-    // this bridge published them; the consumer owns their TanStack state now.
+    // this bridge published them; the consumer owns their TanStack Table state now.
     // They stay in #adopted until the consumer's filter state confirms them.
     for (const spec of managed) {
       this.#published.set(spec.id, spec);
@@ -182,7 +184,7 @@ class TanStackFilterBridge implements FilterBridge {
   }
 
   #reconcile(): void {
-    // Last write wins if TanStack state ever carries duplicate column ids.
+    // Last write wins if TanStack Table state ever carries duplicate column ids.
     const desired = new Map<string, FilterSpec>();
     for (const filter of this.#filters) {
       const config = this.#columns[filter.id];
@@ -265,9 +267,9 @@ class TanStackFilterBridge implements FilterBridge {
   /**
    * Reacts to the set's store changing: if a spec id this bridge manages
    * disappears (and the bridge did not remove it itself), the intent was
-   * dropped externally. Tracking is always pruned — TanStack state stays
+   * dropped externally. Tracking is always pruned — TanStack Table state stays
    * authoritative and the next state sync republishes — and, with a callback,
-   * the surviving TanStack state is rebuilt and reported so the consumer
+   * the surviving TanStack Table state is rebuilt and reported so the consumer
    * prunes instead.
    */
   #onSetStoreChange(): void {
@@ -289,8 +291,8 @@ class TanStackFilterBridge implements FilterBridge {
   }
 
   /**
-   * Rebuilds the TanStack `columnFilters` state from the specs this bridge
-   * still tracks, inverting each spec's value back to its TanStack shape.
+   * Rebuilds the TanStack Table `columnFilters` state from the specs this bridge
+   * still tracks, inverting each spec's value back to its TanStack Table shape.
    */
   #rebuildFilters(): ColumnFiltersState {
     const filters: Array<ColumnFilter> = [];
@@ -332,7 +334,7 @@ function specOperator(kind: ColumnFilterClauseKind): string | undefined {
 }
 
 /**
- * Inverts a managed spec's value back to the TanStack filter value the bridge
+ * Inverts a managed spec's value back to the TanStack Table filter value the bridge
  * would have normalized from — the shape column filter UIs expect. `match`
  * specs carry the raw string; `interval` specs carry `[lo, hi]`; `points`
  * specs carry the value array; `point` specs carry the scalar.

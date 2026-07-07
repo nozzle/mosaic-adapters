@@ -11,7 +11,7 @@ import {
   settle,
   waitFor,
 } from '@nozzleio/test-support/react';
-import { useTanStackFilterBridge } from '../src/index';
+import { useTanStackTableFilterBridge } from '../src/index';
 import type { FilterSet } from '@nozzleio/react-mosaic';
 import type { ColumnFiltersState } from '@tanstack/table-core';
 import type { FilterBridgeColumns } from '../src/index';
@@ -46,7 +46,7 @@ describe('full loop with a consuming rows client', () => {
     // re-runs the bridge effects — the exact publish/echo loop shape.
     const hook = await renderHook(
       (props: { filters: ColumnFiltersState }) => {
-        useTanStackFilterBridge({
+        useTanStackTableFilterBridge({
           filters: props.filters,
           set,
           columns: bridgeColumns,
@@ -109,7 +109,7 @@ describe('full loop with a consuming rows client', () => {
 
     const hook = await renderHook(
       (props: { filters: ColumnFiltersState }) => {
-        useTanStackFilterBridge({
+        useTanStackTableFilterBridge({
           filters: props.filters,
           set,
           columns: bridgeColumns,
@@ -150,7 +150,7 @@ describe('bridge lifecycle without a client', () => {
 
     const hook = await renderHook(
       (props: { set: FilterSet }) => {
-        useTanStackFilterBridge({
+        useTanStackTableFilterBridge({
           filters,
           set: props.set,
           columns: bridgeColumns,
@@ -183,7 +183,7 @@ describe('bridge lifecycle without a client', () => {
 
     const hook = await renderHook(
       (props: { kind: 'equals' | 'ilike' }) => {
-        useTanStackFilterBridge({
+        useTanStackTableFilterBridge({
           filters,
           set,
           // Inline literal: fresh identity on every render, by construction.
@@ -220,7 +220,7 @@ describe('bridge lifecycle without a client', () => {
 
     const hook = await renderHook(
       (props: { filters: ColumnFiltersState }) => {
-        useTanStackFilterBridge({
+        useTanStackTableFilterBridge({
           filters: props.filters,
           set,
           columns: bridgeColumns,
@@ -274,7 +274,7 @@ describe('hydration adoption', () => {
     const hook = await renderHook(
       () => {
         const [filters, setFilters] = useState<ColumnFiltersState>([]);
-        useTanStackFilterBridge({
+        useTanStackTableFilterBridge({
           filters,
           set,
           columns: bridgeColumns,
@@ -311,7 +311,7 @@ describe('hydration adoption', () => {
     const hook = await renderHook(
       () => {
         const [filters, setFilters] = useState<ColumnFiltersState>([]);
-        useTanStackFilterBridge({
+        useTanStackTableFilterBridge({
           filters,
           set,
           columns: bridgeColumns,

@@ -8,7 +8,7 @@ import {
   settle,
   waitFor,
 } from '@nozzleio/test-support/duckdb';
-import { createFilterBridge } from '../src/index';
+import { createTanStackTableFilterBridge } from '../src/index';
 import type { FilterSet } from '@nozzleio/mosaic-core';
 import type { SelectionClause } from '@uwdata/mosaic-core';
 import type { ColumnFiltersState } from '@tanstack/table-core';
@@ -48,7 +48,10 @@ describe('clause kinds', () => {
     value: unknown,
   ): SelectionClause | undefined {
     const selection = Selection.intersect();
-    const bridge = createFilterBridge({ set: makeSet(selection), columns });
+    const bridge = createTanStackTableFilterBridge({
+      set: makeSet(selection),
+      columns,
+    });
     bridge.setFilters([{ id, value }]);
     return resolved(selection)[0];
   }
@@ -128,7 +131,7 @@ describe('clause kinds', () => {
     expect(scalar?.value).toEqual(['swim']);
   });
 
-  test('columns map TanStack ids onto different SQL columns', () => {
+  test('columns map TanStack Table ids onto different SQL columns', () => {
     const clause = publish(
       { fullName: { column: 'full_name', clause: 'ilike' } },
       'fullName',
@@ -164,7 +167,7 @@ describe('clause kinds', () => {
     const $where = Selection.intersect();
     const $other = Selection.intersect();
     const set = createFilterSet({ targets: { where: $where, other: $other } });
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns: {
         domain: { clause: 'ilike', label: 'Domain', target: 'other' },
@@ -183,7 +186,7 @@ describe('clause kinds', () => {
   test('idPrefix namespaces the managed spec ids', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       idPrefix: 'detail:',
       columns: { domain: { clause: 'ilike' } },
@@ -248,7 +251,7 @@ describe('clause kinds', () => {
       const selection = Selection.intersect();
       const set = makeSet(selection);
       const events = countValueEvents(selection);
-      const bridge = createFilterBridge({ set, columns });
+      const bridge = createTanStackTableFilterBridge({ set, columns });
       bridge.setFilters([{ id, value }]);
       await settle();
       expect(set.store.state.specs).toHaveLength(0);
@@ -267,7 +270,7 @@ describe('spec lifecycle', () => {
   test('filter changes replace the spec (stable id), never accumulate', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
-    const bridge = createFilterBridge({ set, columns });
+    const bridge = createTanStackTableFilterBridge({ set, columns });
 
     bridge.setFilters([{ id: 'name', value: 'ada' }]);
     expect(set.store.state.specs).toHaveLength(1);
@@ -285,7 +288,7 @@ describe('spec lifecycle', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
     const events = countValueEvents(selection);
-    const bridge = createFilterBridge({ set, columns });
+    const bridge = createTanStackTableFilterBridge({ set, columns });
 
     bridge.setFilters([
       { id: 'name', value: 'ada' },
@@ -310,7 +313,7 @@ describe('spec lifecycle', () => {
   test('clearing one column removes exactly its spec and clause', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
-    const bridge = createFilterBridge({ set, columns });
+    const bridge = createTanStackTableFilterBridge({ set, columns });
 
     bridge.setFilters([
       { id: 'name', value: 'ada' },
@@ -328,7 +331,7 @@ describe('spec lifecycle', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
     const events = countValueEvents(selection);
-    const bridge = createFilterBridge({ set, columns });
+    const bridge = createTanStackTableFilterBridge({ set, columns });
 
     bridge.setFilters([{ id: 'mystery', value: 'x' }]);
     await settle();
@@ -340,7 +343,7 @@ describe('spec lifecycle', () => {
   test('destroy removes every managed spec and disables the bridge', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
-    const bridge = createFilterBridge({ set, columns });
+    const bridge = createTanStackTableFilterBridge({ set, columns });
 
     bridge.setFilters([
       { id: 'name', value: 'ada' },
@@ -360,7 +363,7 @@ describe('spec lifecycle', () => {
   test('setColumns rewrites an active filter under its new clause kind', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns: { sport: { clause: 'equals' } },
     });
@@ -381,7 +384,7 @@ describe('spec lifecycle', () => {
   test('removing a column config clears its spec', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
-    const bridge = createFilterBridge({ set, columns });
+    const bridge = createTanStackTableFilterBridge({ set, columns });
 
     bridge.setFilters([{ id: 'name', value: 'ada' }]);
     expect(resolved(selection)).toHaveLength(1);
@@ -402,7 +405,7 @@ describe('external changes via the set store', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
     const reported: Array<ColumnFiltersState> = [];
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns,
       onExternalChange: (filters) => {
@@ -427,7 +430,7 @@ describe('external changes via the set store', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
     const reported: Array<ColumnFiltersState> = [];
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns,
       onExternalChange: (filters) => {
@@ -450,10 +453,10 @@ describe('external changes via the set store', () => {
     expect(set.store.state.specs.map((s) => s.id)).toEqual(['name']);
   });
 
-  test('without onExternalChange, TanStack state stays authoritative', () => {
+  test('without onExternalChange, TanStack Table state stays authoritative', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
-    const bridge = createFilterBridge({ set, columns });
+    const bridge = createTanStackTableFilterBridge({ set, columns });
 
     bridge.setFilters([{ id: 'name', value: 'ada' }]);
     set.remove('name');
@@ -472,7 +475,7 @@ describe('external changes via the set store', () => {
     const selection = Selection.intersect();
     const set = makeSet(selection);
     const reported: Array<ColumnFiltersState> = [];
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns,
       onExternalChange: (filters) => {
@@ -505,7 +508,7 @@ describe('hydration adoption', () => {
     expect(resolved(selection)).toHaveLength(1);
 
     const reported: Array<ColumnFiltersState> = [];
-    createFilterBridge({
+    createTanStackTableFilterBridge({
       set,
       columns,
       onExternalChange: (filters) => {
@@ -513,7 +516,7 @@ describe('hydration adoption', () => {
       },
     });
 
-    // The bridge reports the inverted TanStack value; the clause survives.
+    // The bridge reports the inverted TanStack Table value; the clause survives.
     expect(reported).toHaveLength(1);
     expect(reported[0]).toEqual([{ id: 'name', value: 'ada' }]);
     expect(resolved(selection)).toHaveLength(1);
@@ -524,7 +527,7 @@ describe('hydration adoption', () => {
     const set = makeSet(selection);
     set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
 
-    const bridge = createFilterBridge({ set, columns });
+    const bridge = createTanStackTableFilterBridge({ set, columns });
     // No callback: the bridge does not adopt or clear the spec.
     expect(resolved(selection)).toHaveLength(1);
 
@@ -541,7 +544,7 @@ describe('hydration adoption', () => {
     set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
 
     const reported: Array<ColumnFiltersState> = [];
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       onExternalChange: (filters) => {
         reported.push(filters);
@@ -561,7 +564,7 @@ describe('hydration adoption', () => {
     const set = makeSet(selection);
     set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
 
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns,
       onExternalChange: () => {},
@@ -579,7 +582,7 @@ describe('hydration adoption', () => {
     const set = makeSet(selection);
     set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
 
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns,
       onExternalChange: () => {},
@@ -601,7 +604,7 @@ describe('hydration adoption', () => {
     const set = makeSet(selection);
     set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
 
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns,
       onExternalChange: () => {},
@@ -618,7 +621,7 @@ describe('hydration adoption', () => {
     const set = makeSet(selection);
     set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
 
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns,
       onExternalChange: () => {},
@@ -636,7 +639,7 @@ describe('hydration adoption', () => {
     set.set({ id: 'name', column: 'name', kind: 'match', value: 'ada' });
 
     const reported: Array<ColumnFiltersState> = [];
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns,
       onExternalChange: (filters) => {
@@ -674,7 +677,7 @@ describe('end-to-end against DuckDB', () => {
       expect(rows.store.state.rows).toHaveLength(6);
     });
 
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns: {
         sport: { clause: 'equals' },
@@ -730,7 +733,7 @@ describe('end-to-end against DuckDB', () => {
         Query.from('athletes').select('id', 'sport').where(where),
       filterBy: $page,
     });
-    const bridge = createFilterBridge({
+    const bridge = createTanStackTableFilterBridge({
       set,
       columns: { sport: { clause: 'in' } },
     });
