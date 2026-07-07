@@ -3,7 +3,7 @@ import type { ColumnFiltersState } from '@tanstack/table-core';
 
 /**
  * Declarative clause kinds for the column-filter bridge. Each kind maps a
- * TanStack column-filter value onto a {@link FilterSpec} written into a
+ * TanStack Table column-filter value onto a {@link FilterSpec} written into a
  * {@link FilterSet}, which owns the clause lifecycle (publishing, targets,
  * self-exclusion, external-clear detection, persistence):
  *
@@ -31,7 +31,7 @@ export type ColumnFilterClauseKind =
 
 export interface FilterBridgeColumn {
   /**
-   * SQL column the spec predicates test; defaults to the TanStack column id.
+   * SQL column the spec predicates test; defaults to the TanStack Table column id.
    * Dotted paths are struct access (`related_phrase.phrase` →
    * `"related_phrase"."phrase"`).
    */
@@ -43,7 +43,7 @@ export interface FilterBridgeColumn {
   target?: string;
 }
 
-/** Per-column bridge config, keyed by TanStack column id. */
+/** Per-column bridge config, keyed by TanStack Table column id. */
 export type FilterBridgeColumns = Record<string, FilterBridgeColumn>;
 
 export interface FilterBridgeOptions {
@@ -57,13 +57,13 @@ export interface FilterBridgeOptions {
   columns?: FilterBridgeColumns;
   /**
    * Prefix for every managed spec id: `spec.id = `${idPrefix}${columnId}``.
-   * Defaults to `''` (spec id equals the TanStack column id).
+   * Defaults to `''` (spec id equals the TanStack Table column id).
    */
   idPrefix?: string;
   /**
    * How the bridge reacts to external spec removals (a chip bar's X, a global
    * `set.reset()`, or persisted state hydrated before mount). The bridge
-   * inverts the surviving specs back to TanStack filter values and reports the
+   * inverts the surviving specs back to TanStack Table filter values and reports the
    * full rebuilt state so the consumer can adopt it (prune cleared columns,
    * hydrate persisted ones). Without this callback the bridge leaves such
    * specs untouched and never republishes over them.
@@ -72,15 +72,15 @@ export interface FilterBridgeOptions {
 }
 
 /**
- * Framework-agnostic core of the TanStack column-filter bridge: a thin
+ * Framework-agnostic core of the TanStack Table column-filter bridge: a thin
  * `columnFilters` → {@link FilterSpec} translator over a {@link FilterSet}.
- * The bridge normalizes each configured column's TanStack value into a spec
+ * The bridge normalizes each configured column's TanStack Table value into a spec
  * (or removes it when inactive), value-diffs against its last-pushed state so
  * render-loop echoes publish nothing, and watches the set's store for external
  * removals of the ids it manages.
  */
 export interface FilterBridge {
-  /** Reconcile managed specs against the given TanStack filter state. */
+  /** Reconcile managed specs against the given TanStack Table filter state. */
   setFilters: (filters: ColumnFiltersState) => void;
   /**
    * Swap the per-column config; affected specs are rewritten or removed.

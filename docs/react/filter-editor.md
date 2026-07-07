@@ -159,7 +159,7 @@ Both are the same theme as the invariant: the committed spec is always built fro
 
 ## Sorting and pagination
 
-A filter editor changes result size, so a table paired with one can strand on an out-of-range page. That is not filter-editor state — clamp `pageIndex` against the rows client's `totalRows`. See the [TanStack integration clamping notes](../tanstack/integration.md#manual-mode-wiring) (`clampPagination`); no new clamping logic belongs here.
+A filter editor changes result size, so a table paired with one can strand on an out-of-range page. That is not filter-editor state — clamp `pageIndex` against the rows client's `totalRows`. See the [TanStack Table integration clamping notes](../tanstack-table/integration.md#manual-mode-wiring) (`clampPagination`); no new clamping logic belongs here.
 
 ## See also
 

@@ -25,7 +25,7 @@ export type UseMosaicRollupResult<TRow> = RollupClientState<TRow> & {
 /**
  * Controlled binding over `createRollupClient`. `groupBy` is structural (it
  * defines the ROLLUP hierarchy); `query` and `coerce` are latest-ref.
- * Expansion state stays in the consumer (e.g. TanStack `expanded` keyed by
+ * Expansion state stays in the consumer (e.g. TanStack Table `expanded` keyed by
  * `groupPath`) — it is UI visibility, not a data operation.
  */
 export function useMosaicRollup<TRow>(

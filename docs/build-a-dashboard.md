@@ -2,7 +2,7 @@
 
 The canonical getting-started walkthrough. It builds the athletes dashboard
 from [`examples/react/athletes`](../examples/react/athletes) — KPI cards, a
-native vgplot scatterplot, and a fully server-side TanStack table, all
+native vgplot scatterplot, and a fully server-side TanStack Table, all
 cross-filtering through **one** Mosaic Selection. Every piece of data the page
 renders flows through a data client; every data operation executes in SQL.
 
@@ -128,14 +128,14 @@ return <div ref={plotRef} />;
 Because `$page` is a crossfilter Selection, the brush filters every _other_
 view while the scatterplot keeps showing the full distribution.
 
-## 5. The table — rows client + manual-mode TanStack
+## 5. The table — rows client + manual-mode TanStack Table
 
 You own `useTable`, in fully manual mode: the core row model (built in under
 TanStack Table v9) is the only row model, and `data`/`rowCount` come verbatim
 from a [rows client](core/rows-client.md). Sorting and pagination travel as
 serializable inputs — the client appends `ORDER BY`/`LIMIT`/`OFFSET` in SQL.
 Column filters become `$page` clauses through the
-[TanStack filter bridge](tanstack/integration.md), so they filter the KPIs
+[TanStack Table filter bridge](tanstack-table/integration.md), so they filter the KPIs
 and the scatterplot too:
 
 ```tsx
@@ -155,7 +155,7 @@ const [pagination, setPagination] = useState<PaginationState>({
 const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
 // Column ids must match the config exactly — unconfigured ids are ignored.
-useTanStackFilterBridge({
+useTanStackTableFilterBridge({
   filters: columnFilters,
   selection: $page,
   columns: {
@@ -204,7 +204,7 @@ const table = useTable({
 });
 ```
 
-Render it as any TanStack table. A row click publishes a native point clause
+Render it as any TanStack Table. A row click publishes a native point clause
 into `$picked` for downstream consumers:
 
 ```tsx
@@ -212,9 +212,9 @@ into `$picked` for downstream consumers:
 ```
 
 In practice, reset `pageIndex` inside your `onSortingChange`/
-`onColumnFiltersChange` handlers — manual mode disables TanStack's auto-reset.
+`onColumnFiltersChange` handlers — manual mode disables TanStack Table's auto-reset.
 
-Those handlers only cover filters born in TanStack state. Any other `$page`
+Those handlers only cover filters born in TanStack Table state. Any other `$page`
 publisher — a vgplot brush, a facet toggle, a histogram range — can shrink
 `totalRows` below the current offset with no handler involved, stranding the
 table on an empty page. Clamp against the client's `totalRows` (with
@@ -271,7 +271,7 @@ Its Playwright suite asserts each of those flows end-to-end.
 - [Membership subqueries](core/subquery-predicates.md) — `IN (SELECT …)`
   predicates, context embedding, and change-suppressed republishing.
 - [React hooks](react/hooks.md) — controlled-binding rules (what recreates a client, what never re-queries).
-- [TanStack integration](tanstack/integration.md) — translators, clause kinds, bridge lifecycle, and when _not_ to use the bridge.
+- [TanStack Table integration](tanstack-table/integration.md) — translators, clause kinds, bridge lifecycle, and when _not_ to use the bridge.
 - The [`nozzle-paa` example](../examples/react/nozzle-paa) — a bigger page
   (four cross-filtering summary tables, membership subqueries, chip bar) built
   on a static per-widget Selection topology composed with native

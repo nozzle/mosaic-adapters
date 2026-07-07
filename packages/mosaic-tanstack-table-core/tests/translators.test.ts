@@ -37,7 +37,7 @@ describe('sortingToOrderBy', () => {
       ],
     },
     {
-      name: 'columnMap remaps TanStack ids to SQL columns',
+      name: 'columnMap remaps TanStack Table ids to SQL columns',
       sorting: [
         { id: 'fullName', desc: false },
         { id: 'weight', desc: true },

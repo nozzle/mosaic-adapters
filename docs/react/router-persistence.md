@@ -113,7 +113,7 @@ Each client's `write` calls `coalescedWrite`; the first schedules the flush, the
 
 ## Sorting and pagination
 
-Sorting and pagination are **not** filter state — they are plain consumer React state, and the FilterSet is not involved. Initialize from storage/search on mount, and the [translators](../tanstack/integration.md) replay them into serializable rows-client inputs:
+Sorting and pagination are **not** filter state — they are plain consumer React state, and the FilterSet is not involved. Initialize from storage/search on mount, and the [translators](../tanstack-table/integration.md) replay them into serializable rows-client inputs:
 
 ```tsx
 const search = useSearch({ from: '/dashboard' });
@@ -145,4 +145,4 @@ No spec, no kind, no persister — the translators (`sortingToOrderBy`, `paginat
 - [nozzle-paa](../../examples/react/nozzle-paa) — the wired reference: router-less by design, `location.search` written with `replaceState` only. `src/filter-url.ts` is the codec; its header comment marks where a router would swap in.
 - [Filter set](../core/filter-set.md) — the set, kinds, and the persistence lifecycle.
 - [Data client concepts](../core/concepts.md#persistence) — the `Persister` contract and the two-lane split for the publishing clients.
-- [TanStack Table integration](../tanstack/integration.md) — the sorting/pagination translators and the filter bridge.
+- [TanStack Table integration](../tanstack-table/integration.md) — the sorting/pagination translators and the filter bridge.

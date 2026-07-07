@@ -22,7 +22,7 @@ function currentView(): View {
  * The executable north star (issue #131, round 3 Part A): KPI cards (values
  * client + $metric Param), a sport facet select, a brushable custom-rendered
  * weight histogram, a native vgplot scatterplot, and a user-owned TanStack
- * table in fully manual mode with a batched sparkline column — all
+ * Table in fully manual mode with a batched sparkline column — all
  * cross-filtering through one Selection.crossfilter() ($page). The rollup
  * and pivot views (?view=rollup / ?view=pivot) show the SQL-first grouped
  * clients on the same dataset.

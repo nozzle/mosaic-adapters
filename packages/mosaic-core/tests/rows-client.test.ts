@@ -49,7 +49,7 @@ describe('rowCount: "window"', () => {
       'weight',
     ]);
 
-    // An externally published column filter (a facet menu, a TanStack filter
+    // An externally published column filter (a facet menu, a TanStack Table filter
     // bridge, ...). Its clause does not list our client in `clients`, so the
     // client must NOT self-exclude it: page rows and total both shrink.
     const externalFacet: ClauseSource = {};

@@ -54,7 +54,7 @@ A whole page typically runs on **one** `Selection.crossfilter()`. Every filter U
 
 To name a page's whole Selection graph as data — so widgets reference selections by name and a dashboard spec is serializable — see [Selection topology](./selection-topology.md); it resolves a declarative config to these same Selection instances at mount.
 
-Publishing (clause emission) is per-client, built on shared clause utilities (`createValueClause`, `createSubqueryClause`, `createClearClause`). The rows client publishes row selection and hover; there is no generic publish slot in the base contract. External publishers (like the [TanStack filter bridge](../tanstack/integration.md)) build on the same utilities; `deepEqual` — the value-equality the core diffs inputs with — is exported for them to diff with the same semantics.
+Publishing (clause emission) is per-client, built on shared clause utilities (`createValueClause`, `createSubqueryClause`, `createClearClause`). The rows client publishes row selection and hover; there is no generic publish slot in the base contract. External publishers (like the [TanStack Table filter bridge](../tanstack-table/integration.md)) build on the same utilities; `deepEqual` — the value-equality the core diffs inputs with — is exported for them to diff with the same semantics.
 
 ## Persistence
 

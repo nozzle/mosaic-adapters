@@ -443,7 +443,7 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
-  test('detail column filters bridge into the page selection, and Clear All wins over TanStack state', async ({
+  test('detail column filters bridge into the page selection, and Clear All wins over TanStack Table state', async ({
     page,
   }) => {
     await gotoDashboard(page);
@@ -461,7 +461,7 @@ test.describe('people-also-ask dashboard', () => {
       'PAA Question:coleman',
     );
 
-    // Global reset prunes the TanStack filter state through the bridge's
+    // Global reset prunes the TanStack Table filter state through the bridge's
     // external-clear write-back — the input empties instead of republishing.
     await page.getByTestId('clear-all-filters').click();
     await expect(page.getByTestId('detail-total-rows')).toHaveText(

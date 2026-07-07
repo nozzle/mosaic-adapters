@@ -45,7 +45,7 @@ test('sorting executes in SQL across the whole dataset', async ({ page }) => {
   await gotoDashboard(page);
 
   // The dataset's global min/max weights can only appear on page one if the
-  // ORDER BY runs in SQL — getCoreRowModel never sorts. TanStack's default
+  // ORDER BY runs in SQL — getCoreRowModel never sorts. TanStack Table's default
   // toggle order for numeric columns is desc first.
   await page.getByTestId('sort-weight').click();
   await expect(tableRows(page).first().locator('td').nth(5)).toHaveText(
@@ -244,7 +244,7 @@ test('one batched sparkline client feeds every table cell', async ({
   await expect(page.locator('[data-testid="sparkline"]')).toHaveCount(25);
 });
 
-test('a non-TanStack $page narrowing while paginated deep clamps the page index instead of stranding the table', async ({
+test('a non-TanStack Table $page narrowing while paginated deep clamps the page index instead of stranding the table', async ({
   page,
 }) => {
   await gotoDashboard(page);
@@ -269,7 +269,7 @@ test('a non-TanStack $page narrowing while paginated deep clamps the page index 
   const startPage = lastPage + 2;
 
   // Paginate past the narrowed set's last page first — facet selects (like
-  // vgplot brushes) publish straight into $page with no TanStack state
+  // vgplot brushes) publish straight into $page with no TanStack Table state
   // handler to reset pagination.
   for (let i = 1; i < startPage; i += 1) {
     await page.getByTestId('page-next').click();

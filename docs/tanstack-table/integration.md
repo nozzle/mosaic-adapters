@@ -1,18 +1,18 @@
 # TanStack Table integration
 
-`@nozzleio/mosaic-tanstack-react-table` is the only TanStack-aware layer in the stack. Install this package only — it re-exports the full `@nozzleio/mosaic-tanstack-table-core` public API (the same distribution model as `@nozzleio/react-mosaic`; the glue core is a regular dependency, never a peer).
+`@nozzleio/mosaic-tanstack-react-table` is the only TanStack Table-aware layer in the stack. Install this package only — it re-exports the full `@nozzleio/mosaic-tanstack-table-core` public API (the same distribution model as `@nozzleio/react-mosaic`; the glue core is a regular dependency, never a peer).
 
 ## TanStack Table v9
 
-The library targets TanStack Table v9 — install `@tanstack/react-table@beta` (v9 is not yet the npm `latest` tag). TanStack is a peer dependency of the glue packages, matching what you install: `@nozzleio/mosaic-tanstack-react-table` peers on `@tanstack/react-table`, and the framework-agnostic `@nozzleio/mosaic-tanstack-table-core` peers on `@tanstack/table-core` (satisfied transitively by any TanStack framework adapter). The glue's public API is unchanged across the v8→v9 migration; the new v9 surfaces (`table.atoms`, `<table.Subscribe>`, `createTableHook`) are intentionally not used by the glue — you wire `useTable` and its state yourself, exactly as below.
+The library targets TanStack Table v9 — install `@tanstack/react-table@beta` (v9 is not yet the npm `latest` tag). TanStack Table is a peer dependency of the glue packages, matching what you install: `@nozzleio/mosaic-tanstack-react-table` peers on `@tanstack/react-table`, and the framework-agnostic `@nozzleio/mosaic-tanstack-table-core` peers on `@tanstack/table-core` (satisfied transitively by any TanStack Table framework adapter). The glue's public API is unchanged across the v8→v9 migration; the new v9 surfaces (`table.atoms`, `<table.Subscribe>`, `createTableHook`) are intentionally not used by the glue — you wire `useTable` and its state yourself, exactly as below.
 
-The model is strictly server-side: Mosaic is the server, TanStack Table is a client in fully manual mode. The table renders `data` and `rowCount` verbatim from a [rows client](../core/rows-client.md) and never re-processes rows — the core row model (built in under v9) is the only row model, and a manual-mode table registers no other row-model factories. The glue translates TanStack state _into_ the native path (serializable inputs and Selection clauses); `@nozzleio/mosaic-core` never imports TanStack, and the bridge never touches a data client.
+The model is strictly server-side: Mosaic is the server, TanStack Table is a client in fully manual mode. The table renders `data` and `rowCount` verbatim from a [rows client](../core/rows-client.md) and never re-processes rows — the core row model (built in under v9) is the only row model, and a manual-mode table registers no other row-model factories. The glue translates TanStack Table state _into_ the native path (serializable inputs and Selection clauses); `@nozzleio/mosaic-core` never imports TanStack Table, and the bridge never touches a data client.
 
 ## Manual-mode wiring
 
-You own `useTable` and its state, exactly where TanStack manual mode wants it. Sorting and pagination become serializable rows-client inputs through two pure translators:
+You own `useTable` and its state, exactly where TanStack Table manual mode wants it. Sorting and pagination become serializable rows-client inputs through two pure translators:
 
-- `sortingToOrderBy(sorting, columnMap?)` → `Array<OrderByItem>` — TanStack column ids are used as SQL column names unless remapped via `columnMap`.
+- `sortingToOrderBy(sorting, columnMap?)` → `Array<OrderByItem>` — TanStack Table column ids are used as SQL column names unless remapped via `columnMap`.
 - `paginationToWindow(pagination)` → `{ limit, offset }`.
 - `clampPagination(pagination, totalRows)` → `PaginationState` — clamp a stale `pageIndex` into `[0, lastPage]` when a filter shrinks the result under the current page. This is the sharp edge of the manual-pagination model: an unclamped `pageIndex` renders an empty table with a broken pager and no error. `totalRows` of `0`/`undefined` → page 0; a `pageIndex` already in range is returned unchanged. **Caveat:** under `rowCount: 'window'`, `totalRows: 0` is ambiguous between "empty result" and "past the end", so past-the-end recovers only to page 0, not the true last page — use `rowCount: 'query'` when exact last-page recovery matters.
 
@@ -45,7 +45,7 @@ import { createFilterSet, useMosaicRows } from '@nozzleio/react-mosaic';
 import {
   paginationToWindow,
   sortingToOrderBy,
-  useTanStackFilterBridge,
+  useTanStackTableFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
 
 // v9 requires an explicit feature set; register exactly the features this
@@ -70,8 +70,8 @@ function AthletesTable() {
   });
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
-  // Opt-in: TanStack columnFilters state → specs on the page FilterSet.
-  useTanStackFilterBridge({
+  // Opt-in: TanStack Table columnFilters state → specs on the page FilterSet.
+  useTanStackTableFilterBridge({
     filters: columnFilters,
     set: filterSet,
     columns: {
@@ -109,15 +109,15 @@ function AthletesTable() {
     getRowId: (row) => String(row.id),
   });
 
-  // …plain TanStack rendering.
+  // …plain TanStack Table rendering.
 }
 ```
 
 ## The filter bridge
 
-`useTanStackFilterBridge({ filters, set, columns })` is a thin translator: it maps TanStack `columnFilters` state onto [`FilterSpec`](../core/filter-set.md)s written into a [FilterSet](../core/filter-set.md). The set owns everything downstream — resolving each spec into Selection clauses, routing them to named targets, self-exclusion, external-clear detection, chip derivation, and persistence. `column.setFilterValue()` and ecosystem filter components work unmodified; the data layer only ever sees a Selection.
+`useTanStackTableFilterBridge({ filters, set, columns })` is a thin translator: it maps TanStack Table `columnFilters` state onto [`FilterSpec`](../core/filter-set.md)s written into a [FilterSet](../core/filter-set.md). The set owns everything downstream — resolving each spec into Selection clauses, routing them to named targets, self-exclusion, external-clear detection, chip derivation, and persistence. `column.setFilterValue()` and ecosystem filter components work unmodified; the data layer only ever sees a Selection.
 
-Per-column config maps a TanStack column id to `{ column?, clause, label?, target? }`:
+Per-column config maps a TanStack Table column id to `{ column?, clause, label?, target? }`:
 
 - `column` defaults to the id (dotted paths are struct access: `related_phrase.phrase` → `"related_phrase"."phrase"`).
 - `label` and `target` carry onto the spec (`spec.label`, `spec.target`) — a chip label and the FilterSet target name the clauses route to.
@@ -148,10 +148,10 @@ The bridge diffs precisely, because every set write can re-query every consumer:
 
 ### External changes and hydration
 
-Someone other than the table can change a managed spec — an active-filter chip bar's X, a global `set.reset()`, or persisted state hydrated into the set before the table mounts. The bridge watches the set's store (not Selection value events) and, when an id it manages disappears without the bridge removing it, reports the rebuilt TanStack state via `onExternalChange` so the consumer adopts it:
+Someone other than the table can change a managed spec — an active-filter chip bar's X, a global `set.reset()`, or persisted state hydrated into the set before the table mounts. The bridge watches the set's store (not Selection value events) and, when an id it manages disappears without the bridge removing it, reports the rebuilt TanStack Table state via `onExternalChange` so the consumer adopts it:
 
 ```tsx
-useTanStackFilterBridge({
+useTanStackTableFilterBridge({
   filters: columnFilters,
   set: pageSet,
   idPrefix: 'detail:',
@@ -165,7 +165,7 @@ useTanStackFilterBridge({
 
 Held by latest-ref — a new `onExternalChange` identity never recreates the bridge.
 
-Framework-agnostic consumers can use the core directly: `createFilterBridge({ set, columns, idPrefix?, onExternalChange? })` with `setFilters` / `setColumns` / `destroy`.
+Framework-agnostic consumers can use the core directly: `createTanStackTableFilterBridge({ set, columns, idPrefix?, onExternalChange? })` with `setFilters` / `setColumns` / `destroy`.
 
 ### Atom-controlled filter state
 
@@ -187,7 +187,7 @@ const table = useTable({
   atoms: { columnFilters: columnFiltersAtom },
 });
 
-useTanStackFilterBridge({
+useTanStackTableFilterBridge({
   filters: columnFilters,
   set: pageSet,
   columns: bridgeColumns,
@@ -199,10 +199,10 @@ This is a workaround for now, not the end state: `useAtom` subscribes the compon
 
 ## When not to use the bridge
 
-The bridge exists for one case: you want TanStack's filter _state model_ (`columnFilters`, `column.setFilterValue()`, existing filter UI components) on a Mosaic-backed table. Everything else on the page should write into the same [FilterSet](../core/filter-set.md) directly:
+The bridge exists for one case: you want TanStack Table's filter _state model_ (`columnFilters`, `column.setFilterValue()`, existing filter UI components) on a Mosaic-backed table. Everything else on the page should write into the same [FilterSet](../core/filter-set.md) directly:
 
-- Top-bar text inputs, date pickers, facet menus, histogram brushes, and summary-row selections call `set.set(spec)` (or publish through `publish.into`) — no TanStack state in the loop, no bridge.
+- Top-bar text inputs, date pickers, facet menus, histogram brushes, and summary-row selections call `set.set(spec)` (or publish through `publish.into`) — no TanStack Table state in the loop, no bridge.
 - The bridge's six clause kinds are deliberately simple, one spec per column. Composite predicates, OR groups, subquery/membership filters, and metric thresholds belong in [custom FilterSet kinds](../core/filter-set.md) built on the core clause factories and `subqueryFilterKind`.
-- If your filter UI does not need to live in TanStack table state, skip `manualFiltering`/`columnFilters` entirely and let the rows client's `filterBy` do the work.
+- If your filter UI does not need to live in TanStack Table state, skip `manualFiltering`/`columnFilters` entirely and let the rows client's `filterBy` do the work.
 
-Sorting and pagination are different: those translators are just data mapping with no lifecycle, and are always the right tool when the state lives in TanStack.
+Sorting and pagination are different: those translators are just data mapping with no lifecycle, and are always the right tool when the state lives in TanStack Table.

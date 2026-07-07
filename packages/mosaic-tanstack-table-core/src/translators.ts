@@ -2,9 +2,9 @@ import type { OrderByItem } from '@nozzleio/mosaic-core';
 import type { PaginationState, SortingState } from '@tanstack/table-core';
 
 /**
- * Translate TanStack sorting state into serializable `orderBy` inputs for a
+ * Translate TanStack Table sorting state into serializable `orderBy` inputs for a
  * rows client. Column ids are used as SQL column names unless remapped via
- * `columnMap` (TanStack column id → SQL column).
+ * `columnMap` (TanStack Table column id → SQL column).
  */
 export function sortingToOrderBy(
   sorting: SortingState,
@@ -17,7 +17,7 @@ export function sortingToOrderBy(
 }
 
 /**
- * Translate TanStack pagination state into serializable `{ limit, offset }`
+ * Translate TanStack Table pagination state into serializable `{ limit, offset }`
  * window inputs for a rows client.
  */
 export function paginationToWindow(pagination: PaginationState): {
@@ -31,10 +31,10 @@ export function paginationToWindow(pagination: PaginationState): {
 }
 
 /**
- * Clamp a TanStack `pageIndex` into the valid range implied by a rows client's
+ * Clamp a TanStack Table `pageIndex` into the valid range implied by a rows client's
  * `totalRows`, preserving `pageSize`.
  *
- * This is *the* sharp edge of the manual-pagination model. TanStack does not
+ * This is *the* sharp edge of the manual-pagination model. TanStack Table does not
  * know how many rows the backend holds, so it will happily keep a `pageIndex`
  * that no longer has any rows behind it. The classic trap: the user is on a
  * later page, applies a filter that shrinks the result below the current

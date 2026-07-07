@@ -116,7 +116,7 @@ test.describe('people-also-ask share loop', () => {
     ).toBeChecked();
   });
 
-  test('a detail-column URL hydrates the query and the TanStack input', async ({
+  test('a detail-column URL hydrates the query and the TanStack Table input', async ({
     page,
   }) => {
     await page.goto('/?f.detail:question=coleman');
@@ -126,7 +126,7 @@ test.describe('people-also-ask share loop', () => {
       '49,344 rows match',
       { timeout: 90_000 },
     );
-    // …and the bridge's adoption path drives the TanStack column input.
+    // …and the bridge's adoption path drives the TanStack Table column input.
     await expect(page.getByTestId('detail-filter-question')).toHaveValue(
       'coleman',
     );
