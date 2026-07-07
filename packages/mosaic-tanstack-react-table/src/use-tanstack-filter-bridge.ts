@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createFilterBridge } from '@nozzleio/mosaic-tanstack-table-core';
 import type { FilterSet } from '@nozzleio/mosaic-core';
-import type { ColumnFiltersState } from '@tanstack/table-core';
+import type { ColumnFiltersState } from '@tanstack/react-table';
 import type {
   FilterBridge,
   FilterBridgeColumns,

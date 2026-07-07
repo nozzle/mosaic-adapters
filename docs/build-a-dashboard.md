@@ -18,7 +18,7 @@ Params, SQL builders, and vgplot are the native vocabulary, not wrapped
 concepts:
 
 ```bash
-pnpm add @uwdata/mosaic-core @uwdata/mosaic-sql @uwdata/vgplot @tanstack/react-table
+pnpm add @uwdata/mosaic-core @uwdata/mosaic-sql @uwdata/vgplot @tanstack/react-table@beta
 ```
 
 ## 1. A coordinator and a table
@@ -130,15 +130,23 @@ view while the scatterplot keeps showing the full distribution.
 
 ## 5. The table — rows client + manual-mode TanStack
 
-You own `useReactTable`, in fully manual mode: `getCoreRowModel` is the only
-row model, and `data`/`rowCount` come verbatim from a
-[rows client](core/rows-client.md). Sorting and pagination travel as
+You own `useTable`, in fully manual mode: the core row model (built in under
+TanStack Table v9) is the only row model, and `data`/`rowCount` come verbatim
+from a [rows client](core/rows-client.md). Sorting and pagination travel as
 serializable inputs — the client appends `ORDER BY`/`LIMIT`/`OFFSET` in SQL.
 Column filters become `$page` clauses through the
 [TanStack filter bridge](tanstack/integration.md), so they filter the KPIs
 and the scatterplot too:
 
 ```tsx
+// v9: declare the built-in feature set once at module scope. Register exactly
+// the features this table's state uses; the core row model is built in.
+const features = tableFeatures({
+  rowSortingFeature,
+  rowPaginationFeature,
+  columnFilteringFeature,
+});
+
 const [sorting, setSorting] = useState<SortingState>([]);
 const [pagination, setPagination] = useState<PaginationState>({
   pageIndex: 0,
@@ -180,7 +188,8 @@ const athletes = useMosaicRows<AthleteRow>({
   publish: { select: { as: $picked, columns: ['id'] } },
 });
 
-const table = useReactTable({
+const table = useTable({
+  features, // v9: the built-in feature set declared above
   data: athletes.rows, // …data out, verbatim
   rowCount: athletes.totalRows,
   columns,
@@ -191,7 +200,6 @@ const table = useReactTable({
   manualSorting: true,
   manualFiltering: true,
   manualPagination: true,
-  getCoreRowModel: getCoreRowModel(), // the only row model
   getRowId: (row) => String(row.id),
 });
 ```
