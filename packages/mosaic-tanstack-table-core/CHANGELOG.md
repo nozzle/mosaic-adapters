@@ -1,5 +1,31 @@
 # @nozzleio/mosaic-tanstack-table-core
 
+## 0.9.0
+
+### Minor Changes
+
+- [#192](https://github.com/nozzle/mosaic-adapters/pull/192) [`0c42068`](https://github.com/nozzle/mosaic-adapters/commit/0c42068fcb75fa7625bd73528846ca91d8aa2361) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Rename the filter-bridge APIs to name TanStack Table explicitly (not the
+  umbrella "TanStack" brand):
+
+  - `@nozzleio/mosaic-tanstack-react-table`: `useTanStackFilterBridge` →
+    `useTanStackTableFilterBridge` (and `UseTanStackFilterBridgeOptions` →
+    `UseTanStackTableFilterBridgeOptions`). The old names remain as `@deprecated`
+    aliases, so this is non-breaking — migrate at your convenience.
+  - `@nozzleio/mosaic-tanstack-table-core`: `createFilterBridge` →
+    `createTanStackTableFilterBridge`. No alias is kept, so framework-agnostic
+    consumers importing it directly must update the name.
+
+- [#192](https://github.com/nozzle/mosaic-adapters/pull/192) [`f3b1718`](https://github.com/nozzle/mosaic-adapters/commit/f3b1718fe4eeae336e86a90decbbc6b3afe2f7a6) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Reorient the TanStack Table glue to v9-first ([#166](https://github.com/nozzle/mosaic-adapters/issues/166)). Public API unchanged — the
+  only TanStack types crossing it (`SortingState`, `PaginationState`,
+  `ColumnFiltersState`) are identical in v9, so no source changes were required.
+  TanStack Table moves from a regular dependency to a peerDependency matching what
+  consumers actually install: `@nozzleio/mosaic-tanstack-react-table` now peers on
+  `@tanstack/react-table` (`^9.0.0-beta.34`) and `@nozzleio/mosaic-tanstack-table-core`
+  peers on `@tanstack/table-core` (`^9.0.0-beta.34`, provided transitively by any
+  TanStack Table framework adapter).
+
+  Verified against `@tanstack/table-core@9.0.0-beta.34`.
+
 ## 0.8.0
 
 ### Minor Changes
