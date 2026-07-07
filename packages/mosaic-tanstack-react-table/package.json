@@ -48,10 +48,10 @@
   },
   "dependencies": {
     "@nozzleio/mosaic-core": "workspace:*",
-    "@nozzleio/mosaic-tanstack-table-core": "workspace:*",
-    "@tanstack/table-core": "catalog:"
+    "@nozzleio/mosaic-tanstack-table-core": "workspace:*"
   },
   "peerDependencies": {
+    "@tanstack/react-table": "^9.0.0-beta.34",
     "@uwdata/mosaic-core": ">=0.24.3 <1",
     "@uwdata/mosaic-sql": ">=0.24.3 <1",
     "react": ">=19.2.0"
@@ -60,6 +60,8 @@
     "@eslint-react/eslint-plugin": "catalog:",
     "@nozzleio/react-mosaic": "workspace:*",
     "@nozzleio/test-support": "workspace:*",
+    "@tanstack/react-table": "catalog:",
+    "@tanstack/table-core": "catalog:",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@uwdata/mosaic-core": "catalog:",

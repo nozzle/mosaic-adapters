@@ -2,11 +2,15 @@
 
 `@nozzleio/mosaic-tanstack-react-table` is the only TanStack-aware layer in the stack. Install this package only — it re-exports the full `@nozzleio/mosaic-tanstack-table-core` public API (the same distribution model as `@nozzleio/react-mosaic`; the glue core is a regular dependency, never a peer).
 
-The model is strictly server-side: Mosaic is the server, TanStack Table is a client in fully manual mode. The table renders `data` and `rowCount` verbatim from a [rows client](../core/rows-client.md) and never re-processes rows — `getCoreRowModel` is the only row model. The glue translates TanStack state _into_ the native path (serializable inputs and Selection clauses); `@nozzleio/mosaic-core` never imports TanStack, and the bridge never touches a data client.
+## TanStack Table v9
+
+The library targets TanStack Table v9 — install `@tanstack/react-table@beta` (v9 is not yet the npm `latest` tag). TanStack is a peer dependency of the glue packages, matching what you install: `@nozzleio/mosaic-tanstack-react-table` peers on `@tanstack/react-table`, and the framework-agnostic `@nozzleio/mosaic-tanstack-table-core` peers on `@tanstack/table-core` (satisfied transitively by any TanStack framework adapter). The glue's public API is unchanged across the v8→v9 migration; the new v9 surfaces (`table.atoms`, `<table.Subscribe>`, `createTableHook`) are intentionally not used by the glue — you wire `useTable` and its state yourself, exactly as below.
+
+The model is strictly server-side: Mosaic is the server, TanStack Table is a client in fully manual mode. The table renders `data` and `rowCount` verbatim from a [rows client](../core/rows-client.md) and never re-processes rows — the core row model (built in under v9) is the only row model, and a manual-mode table registers no other row-model factories. The glue translates TanStack state _into_ the native path (serializable inputs and Selection clauses); `@nozzleio/mosaic-core` never imports TanStack, and the bridge never touches a data client.
 
 ## Manual-mode wiring
 
-You own `useReactTable` and its state, exactly where TanStack manual mode wants it. Sorting and pagination become serializable rows-client inputs through two pure translators:
+You own `useTable` and its state, exactly where TanStack manual mode wants it. Sorting and pagination become serializable rows-client inputs through two pure translators:
 
 - `sortingToOrderBy(sorting, columnMap?)` → `Array<OrderByItem>` — TanStack column ids are used as SQL column names unless remapped via `columnMap`.
 - `paginationToWindow(pagination)` → `{ limit, offset }`.
@@ -26,8 +30,11 @@ You own `useReactTable` and its state, exactly where TanStack manual mode wants 
 ```tsx
 import { useState } from 'react';
 import {
-  useReactTable,
-  getCoreRowModel,
+  columnFilteringFeature,
+  rowPaginationFeature,
+  rowSortingFeature,
+  tableFeatures,
+  useTable,
   type ColumnFiltersState,
   type PaginationState,
   type SortingState,
@@ -40,6 +47,15 @@ import {
   sortingToOrderBy,
   useTanStackFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
+
+// v9 requires an explicit feature set; register exactly the features this
+// table's state uses (sorting, pagination, column filtering). The core row
+// model is built in — no `getCoreRowModel`.
+const features = tableFeatures({
+  rowSortingFeature,
+  rowPaginationFeature,
+  columnFilteringFeature,
+});
 
 const $page = Selection.crossfilter();
 // The bridge translates column filters into specs on a page-level FilterSet,
@@ -78,7 +94,8 @@ function AthletesTable() {
     rowCount: 'window',
   });
 
-  const table = useReactTable({
+  const table = useTable({
+    features, // v9: the built-in feature set declared above
     data: athletes.rows, // …data out, verbatim
     rowCount: athletes.totalRows,
     columns,
@@ -89,7 +106,6 @@ function AthletesTable() {
     manualSorting: true,
     manualFiltering: true,
     manualPagination: true,
-    getCoreRowModel: getCoreRowModel(), // the only row model
     getRowId: (row) => String(row.id),
   });
 
@@ -150,6 +166,36 @@ useTanStackFilterBridge({
 Held by latest-ref — a new `onExternalChange` identity never recreates the bridge.
 
 Framework-agnostic consumers can use the core directly: `createFilterBridge({ set, columns, idPrefix?, onExternalChange? })` with `setFilters` / `setColumns` / `destroy`.
+
+### Atom-controlled filter state
+
+v9's [recommended controlled-state pattern](https://tanstack.com/table/beta/docs/framework/react/guide/table-state#controlled-state) is external atoms: pass a writable atom via the table's `atoms` option and it takes ownership of that state slice (no `onColumnFiltersChange` needed). The bridge's contract is value-in/callback-out, so an atom-owned `columnFilters` slice drives it through a read-and-write-back adapter:
+
+```tsx
+import { useAtom, useCreateAtom } from '@tanstack/react-store';
+import type { ColumnFiltersState } from '@tanstack/react-table';
+
+const columnFiltersAtom = useCreateAtom<ColumnFiltersState>([]);
+const [columnFilters, setColumnFilters] = useAtom(columnFiltersAtom);
+
+const table = useTable({
+  features,
+  columns,
+  data,
+  manualFiltering: true,
+  // The atom owns the slice — do not also pass state/onColumnFiltersChange.
+  atoms: { columnFilters: columnFiltersAtom },
+});
+
+useTanStackFilterBridge({
+  filters: columnFilters,
+  set: pageSet,
+  columns: bridgeColumns,
+  onExternalChange: setColumnFilters,
+});
+```
+
+This is a workaround for now, not the end state: `useAtom` subscribes the component to the atom, so every filter change round-trips through a React re-render solely to feed the bridge — the coupling the atom model exists to avoid. Built-in atom support (the bridge subscribing to the atom directly, with external changes written back without the callback) is not implemented; if you need it, [file an issue](https://github.com/nozzle/mosaic-adapters/issues).
 
 ## When not to use the bridge
 

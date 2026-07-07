@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
+  columnFilteringFeature,
+  columnVisibilityFeature,
   flexRender,
-  getCoreRowModel,
-  useReactTable,
+  rowPaginationFeature,
+  rowSortingFeature,
+  tableFeatures,
+  useTable,
 } from '@tanstack/react-table';
 import { Query } from '@uwdata/mosaic-sql';
 import { useMosaicRows, useMosaicSparkline } from '@nozzleio/react-mosaic';
@@ -25,16 +29,17 @@ import type { FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-react-table'
 import type { SparklinePoint } from '@nozzleio/react-mosaic';
 import type { AthleteRow } from '../page-context';
 
-declare module '@tanstack/react-table' {
-  // TanStack's own channel from client output to cell renderers.
-  interface TableMeta<TData> {
-    sparklines: Map<unknown, Array<SparklinePoint>>;
-  }
-}
+const features = tableFeatures({
+  rowSortingFeature,
+  rowPaginationFeature,
+  columnFilteringFeature,
+  columnVisibilityFeature,
+  tableMeta: {} as { sparklines: Map<unknown, Array<SparklinePoint>> },
+});
 
 const SPARKLINE_STEP = 5;
 
-const columns: Array<ColumnDef<AthleteRow>> = [
+const columns: Array<ColumnDef<typeof features, AthleteRow>> = [
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'nationality', header: 'Country' },
   { accessorKey: 'sport', header: 'Sport' },
@@ -165,7 +170,8 @@ export function AthletesTable() {
     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   };
 
-  const table = useReactTable({
+  const table = useTable({
+    features,
     data: athletes.rows, // …data out, verbatim
     rowCount: athletes.totalRows,
     columns,
@@ -177,7 +183,6 @@ export function AthletesTable() {
     manualSorting: true,
     manualFiltering: true,
     manualPagination: true,
-    getCoreRowModel: getCoreRowModel(), // the only row model
     getRowId: (row) => String(row.id),
   });
 
@@ -289,7 +294,9 @@ export function AthletesTable() {
   );
 }
 
-function ColumnFilter(props: { column: Column<AthleteRow, unknown> }) {
+function ColumnFilter(props: {
+  column: Column<typeof features, AthleteRow, unknown>;
+}) {
   const { column } = props;
   if (column.id === 'name') {
     const value = (column.getFilterValue() as string | undefined) ?? '';

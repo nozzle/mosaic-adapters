@@ -8,9 +8,13 @@
  */
 import { useState } from 'react';
 import {
+  columnFilteringFeature,
+  columnSizingFeature,
+  columnVisibilityFeature,
   flexRender,
-  getCoreRowModel,
-  useReactTable,
+  rowPaginationFeature,
+  tableFeatures,
+  useTable,
 } from '@tanstack/react-table';
 import { Query, sql } from '@uwdata/mosaic-sql';
 import { useMosaicRows } from '@nozzleio/react-mosaic';
@@ -30,6 +34,13 @@ import type {
 } from '@tanstack/react-table';
 import type { FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-react-table';
 
+const features = tableFeatures({
+  rowPaginationFeature,
+  columnFilteringFeature,
+  columnSizingFeature,
+  columnVisibilityFeature,
+});
+
 interface DetailRow {
   domain: string | null;
   question: string | null;
@@ -37,7 +48,7 @@ interface DetailRow {
   description: string | null;
 }
 
-const columns: Array<ColumnDef<DetailRow>> = [
+const columns: Array<ColumnDef<typeof features, DetailRow>> = [
   { accessorKey: 'domain', header: 'Domain', size: 150 },
   { accessorKey: 'question', header: 'PAA Question', size: 350 },
   { accessorKey: 'title', header: 'Answer Title', size: 300 },
@@ -103,7 +114,8 @@ export function DetailTable(props: { enabled: boolean }) {
     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   };
 
-  const table = useReactTable({
+  const table = useTable({
+    features,
     data: details.rows,
     rowCount: details.totalRows,
     columns,
@@ -112,7 +124,6 @@ export function DetailTable(props: { enabled: boolean }) {
     onPaginationChange: setPagination,
     manualFiltering: true,
     manualPagination: true,
-    getCoreRowModel: getCoreRowModel(),
   });
 
   return (
@@ -187,7 +198,9 @@ export function DetailTable(props: { enabled: boolean }) {
   );
 }
 
-function ColumnFilter(props: { column: Column<DetailRow, unknown> }) {
+function ColumnFilter(props: {
+  column: Column<typeof features, DetailRow, unknown>;
+}) {
   const value = (props.column.getFilterValue() as string | undefined) ?? '';
   return (
     <input
