@@ -1,4 +1,4 @@
-import { useStore } from '@tanstack/react-store';
+import { useSelector } from '@tanstack/react-store';
 import type {
   FilterSet,
   FilterSetChip,
@@ -12,7 +12,7 @@ import type {
  * per-component); this hook is only the store subscription.
  */
 export function useFilterSetState(filterSet: FilterSet): FilterSetState {
-  return useStore(filterSet.store, (state) => state);
+  return useSelector(filterSet.store, (state) => state);
 }
 
 /**
@@ -21,5 +21,5 @@ export function useFilterSetState(filterSet: FilterSet): FilterSetState {
  * page's Selections); this hook is only the store subscription.
  */
 export function useFilterSetChips(filterSet: FilterSet): Array<FilterSetChip> {
-  return useStore(filterSet.store, (state) => state.chips);
+  return useSelector(filterSet.store, (state) => state.chips);
 }

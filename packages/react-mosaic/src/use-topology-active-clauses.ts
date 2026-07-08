@@ -1,4 +1,4 @@
-import { useStore } from '@tanstack/react-store';
+import { useSelector } from '@tanstack/react-store';
 import { useMosaicTopology } from './topology-context';
 import type { ActiveClause, Topology } from '@nozzleio/mosaic-core';
 
@@ -15,7 +15,7 @@ import type { ActiveClause, Topology } from '@nozzleio/mosaic-core';
 export function useTopologyActiveClauses(
   topology: Topology,
 ): Array<ActiveClause> {
-  return useStore(topology.activeClauses, (state) => state.clauses);
+  return useSelector(topology.activeClauses, (state) => state.clauses);
 }
 
 /**

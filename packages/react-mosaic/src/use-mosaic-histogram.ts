@@ -1,4 +1,4 @@
-import { useStore } from '@tanstack/react-store';
+import { useSelector } from '@tanstack/react-store';
 import {
   createHistogramClient,
   isFilterSetPublishTarget,
@@ -73,6 +73,6 @@ export function useMosaicHistogram(
     },
   });
 
-  const state = useStore(client.store, (s) => s);
+  const state = useSelector(client.store, (s) => s);
   return { ...state, status: deriveStatus(state.status, enabled), client };
 }

@@ -1,4 +1,4 @@
-import { useStore } from '@tanstack/react-store';
+import { useSelector } from '@tanstack/react-store';
 import { createValuesClient } from '@nozzleio/mosaic-core';
 import { deriveStatus, paramsKey, useBoundClient } from './use-data-client';
 import { useMosaicCoordinator } from './context';
@@ -52,6 +52,6 @@ export function useMosaicValues<TValues extends Record<string, unknown>>(
     },
   });
 
-  const state = useStore(client.store, (s) => s);
+  const state = useSelector(client.store, (s) => s);
   return { ...state, status: deriveStatus(state.status, enabled), client };
 }

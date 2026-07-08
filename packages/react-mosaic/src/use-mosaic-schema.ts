@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from 'react';
-import { useStore } from '@tanstack/react-store';
+import { useSelector } from '@tanstack/react-store';
 import { createSchemaClient } from '@nozzleio/mosaic-core';
 import { useMosaicCoordinator } from './context';
 import type { Coordinator } from '@uwdata/mosaic-core';
@@ -67,6 +67,6 @@ export function useMosaicSchema(
     };
   }, [client]);
 
-  const state = useStore(client.store, (s) => s);
+  const state = useSelector(client.store, (s) => s);
   return { ...state, client };
 }
