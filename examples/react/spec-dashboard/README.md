@@ -343,8 +343,9 @@ pnpm --filter example-react-spec-dashboard test:e2e
 populate, the vgplot bars paint, the summary and detail tables show rows, **and
 no page errors or catalog/`exclusiveFacets` console noise appear** (the
 construct-before-load race guard); (b) a builder phrase
-filter cross-filtering the page while the opt-out `kpi_phrases_all` value stays
-byte-for-byte constant, then clearing; (c) a summary row selection cross-filtering
+filter — pick the field, "Add & edit" to open its popover, type a term — cross-
+filtering the page while the opt-out `kpi_phrases_all` value stays byte-for-byte
+constant, then clearing; (c) a summary row selection cross-filtering
 the detail table via a `select:` chip; (d) a spec edit + Apply remount surfacing
 a new label, then an invalid spec showing errors while the last-good dashboard
 keeps rendering; (e) the vgplot panel expanding (its plot grows) and collapsing;
@@ -355,6 +356,9 @@ regression guard); (i) the quick-load selector rendering the manifest option,
 `?spec=questions` loading identically to no param, and switching the selector
 writing `?spec=<id>` and reloading; (ii) the detail table's Export CSV button
 producing a download whose header row matches the column headers; (iii) the
-header rendering the title only, with the removed subtitle absent. DuckDB-WASM's
+header rendering the title only, with the removed subtitle absent; (iv) the
+filter builder confirming a picked field into a button, opening/closing its
+editor popover (Escape + outside click), and removing the filter from inside the
+popover. DuckDB-WASM's
 first paint is slow, so the suite waits on dataset-constant KPI values with
 generous timeouts rather than fixed sleeps.

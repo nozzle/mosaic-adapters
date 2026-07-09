@@ -2,16 +2,32 @@
  * The spec-driven filter builder — the only filter authoring surface on the
  * page, driven from `spec.filters.fields`.
  *
- * The user picks a field from the spec's field list; each pick appends a filter
- * block (one per field id). A block flows:
+ * The user picks a field from the spec's field list and confirms with the
+ * "Add & edit" button (testid `filter-builder-confirm`); confirming appends a
+ * compact filter BUTTON (one per field id) into the builder strip and opens its
+ * editor popover. Each button shows the field label plus a short summary of the
+ * committed spec (operator + formatted value, or a HAVING badge); an
+ * unconfigured field shows just the label in a dashed/muted style.
+ *
+ * Clicking a button toggles a popover editor anchored below it. The popover body
+ * carries the same controls the old inline block did, stacked for a small panel:
  *
  *   placement → kind → operators (`kindRegistry[kind].operators`) → arity →
  *   value control (by `valueKind`) → `filterSet.set(spec)` (debounced text /
  *   immediate facets), writing the placement's canonical `specId` into the
- *   primary FilterSet.
+ *   primary FilterSet, plus a "Remove filter" action.
  *
- * Blocks hydrate from committed specs, so a re-render or a spec re-apply reopens
- * every field that already holds a spec on the current set.
+ * Only one popover is open at a time (state lives in `FilterBuilder` as
+ * `openPopoverFieldId`); it closes on an outside `mousedown` or Escape. Popover
+ * content stays MOUNTED while its button exists and is hidden with `display:none`
+ * when closed — this preserves in-flight debounced scalar writes, the
+ * ScalarValue/FacetValue draft + mirror state, and the FacetMultiSelect facet
+ * client registration / self-exclusion re-attach effect, all of which assume the
+ * control never unmounts.
+ *
+ * Buttons hydrate from committed specs, so a re-render or a spec re-apply
+ * re-materializes a button (popover closed) for every field that already holds a
+ * spec on the current set.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFilterSetState } from '@nozzleio/react-mosaic';
@@ -154,6 +170,105 @@ function hydrateOpenFields(
   return added.length === 0 ? prev : [...prev, ...added];
 }
 
+// ── Committed-spec summary (drives the button label) ─────────────────────────
+
+/** A placement whose routing target lands in a HAVING/membership clause. */
+function isHavingPlacement(placement: FilterPlacementSpec): boolean {
+  return (
+    placement.target.startsWith('having:') ||
+    placement.target.startsWith('members:')
+  );
+}
+
+/** Format a committed spec's value into a compact, human-readable fragment. */
+function formatSummaryValue(field: FilterFieldSpec, spec: FilterSpec): string {
+  const { value, valueTo } = spec;
+  if (field.value_kind === 'date') {
+    if (!Array.isArray(value)) {
+      return '';
+    }
+    const lo = typeof value[0] === 'string' && value[0] !== '' ? value[0] : '…';
+    const hi = typeof value[1] === 'string' && value[1] !== '' ? value[1] : '…';
+    return `${lo} – ${hi}`;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return '';
+    }
+    if (value.length === 1) {
+      return String(value[0]);
+    }
+    return `${value.length} selected`;
+  }
+  if (value === undefined) {
+    return '';
+  }
+  if (valueTo !== undefined) {
+    return `${String(value)} – ${String(valueTo)}`;
+  }
+  if (field.value_kind === 'text') {
+    return `"${String(value)}"`;
+  }
+  return String(value);
+}
+
+interface FieldSummary {
+  /** True once any placement holds a committed spec (drives the button style). */
+  configured: boolean;
+  /** Short placement badge (`HAVING`) or null for row-level WHERE placements. */
+  badge: string | null;
+  /** Operator + formatted value (empty when there is nothing to show). */
+  text: string;
+}
+
+/**
+ * Summarize a field from the COMMITTED set: find whichever placement currently
+ * holds a spec (independent of the popover's live placement selection) and
+ * render its operator + value. An unconfigured field returns `configured:false`.
+ */
+function summarizeField(
+  field: FilterFieldSpec,
+  specs: ReadonlyArray<FilterSpec>,
+  kindRegistry: KindRegistry,
+): FieldSummary {
+  const placement = field.placements.find((entry) =>
+    specs.some((spec) => spec.id === entry.spec_id),
+  );
+  if (placement === undefined) {
+    return { configured: false, badge: null, text: '' };
+  }
+  const spec = specs.find((entry) => entry.id === placement.spec_id);
+  if (spec === undefined) {
+    return { configured: false, badge: null, text: '' };
+  }
+  const operators = operatorsForBlock(field, placement, kindRegistry);
+  const opLabel =
+    typeof spec.operator === 'string'
+      ? operatorLabel(operators, spec.operator)
+      : '';
+  const valueText = formatSummaryValue(field, spec);
+  const text = [opLabel, valueText].filter((part) => part !== '').join(' ');
+  return {
+    configured: true,
+    badge: isHavingPlacement(placement) ? 'HAVING' : null,
+    text,
+  };
+}
+
+/** Trigger-button classes: active accent when configured, dashed when not. */
+function filterButtonClassName(configured: boolean, open: boolean): string {
+  const base =
+    'flex h-7 max-w-full items-center gap-1.5 rounded-gf border px-2 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-gf-blue';
+  const state = configured
+    ? 'border-gf-blue/40 bg-gf-blue/10 text-ink'
+    : 'border-dashed border-line bg-field text-muted hover:text-ink';
+  const openState = open ? 'ring-2 ring-gf-blue' : '';
+  return `${base} ${state} ${openState}`;
+}
+
+const confirmButtonClassName =
+  'h-7 rounded-gf border border-gf-blue/50 bg-gf-blue/10 px-2 text-xs font-medium text-ink hover:bg-gf-blue/20 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-gf-blue';
+
 export interface FilterBuilderProps {
   fields: ReadonlyArray<FilterFieldSpec>;
   filterSet: FilterSet;
@@ -178,6 +293,13 @@ export function FilterBuilder(props: FilterBuilderProps) {
   const [openFieldIds, setOpenFieldIds] = useState<Array<string>>(() =>
     hydrateOpenFields(fields, specs, []),
   );
+  // The field chosen in the add `<select>` but not yet confirmed. Confirming
+  // (`filter-builder-confirm`) materializes its button and opens its popover.
+  const [pendingFieldId, setPendingFieldId] = useState('');
+  // The single field whose popover is open (null = all closed).
+  const [openPopoverFieldId, setOpenPopoverFieldId] = useState<string | null>(
+    null,
+  );
 
   // Merge in any field that now holds a committed spec (hydration / re-apply)
   // during render. `hydrateOpenFields` returns `prev` unchanged when nothing was
@@ -197,10 +319,47 @@ export function FilterBuilder(props: FilterBuilderProps) {
     [openFieldIds, fields],
   );
 
-  const addField = (fieldId: string) => {
+  // Dismiss the open popover on an outside mousedown or Escape. Clicks that land
+  // inside ANY popover root (a button or its panel) are left alone — the owning
+  // button's `onToggle` handles closing/switching, so clicking another field's
+  // button just switches which popover is open.
+  useEffect(() => {
+    if (openPopoverFieldId === null) {
+      return;
+    }
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('[data-filter-popover-root]') !== null
+      ) {
+        return;
+      }
+      setOpenPopoverFieldId(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenPopoverFieldId(null);
+      }
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openPopoverFieldId]);
+
+  const confirmAdd = () => {
+    if (pendingFieldId === '') {
+      return;
+    }
+    const fieldId = pendingFieldId;
     setOpenFieldIds((prev) =>
       prev.includes(fieldId) ? prev : [...prev, fieldId],
     );
+    setPendingFieldId('');
+    setOpenPopoverFieldId(fieldId);
   };
 
   const removeField = (field: FilterFieldSpec) => {
@@ -208,6 +367,11 @@ export function FilterBuilder(props: FilterBuilderProps) {
       filterSet.remove(placement.spec_id);
     }
     setOpenFieldIds((prev) => prev.filter((id) => id !== field.id));
+    setOpenPopoverFieldId((prev) => (prev === field.id ? null : prev));
+  };
+
+  const togglePopover = (fieldId: string) => {
+    setOpenPopoverFieldId((prev) => (prev === fieldId ? null : fieldId));
   };
 
   const available = fields.filter((field) => !openFieldIds.includes(field.id));
@@ -220,12 +384,8 @@ export function FilterBuilder(props: FilterBuilderProps) {
           data-testid="filter-builder-add-field"
           aria-label="Add filter field"
           className={selectClassName}
-          value=""
-          onChange={(event) => {
-            if (event.target.value !== '') {
-              addField(event.target.value);
-            }
-          }}
+          value={pendingFieldId}
+          onChange={(event) => setPendingFieldId(event.target.value)}
         >
           <option value="">+ Add field…</option>
           {available.map((field) => (
@@ -234,36 +394,44 @@ export function FilterBuilder(props: FilterBuilderProps) {
             </option>
           ))}
         </select>
-        <p className="text-[11px] text-faint">
-          Pick a field, then choose where it applies (row-level WHERE vs
-          aggregate HAVING), how it compares, and its value.
-        </p>
+        <button
+          type="button"
+          data-testid="filter-builder-confirm"
+          className={confirmButtonClassName}
+          disabled={pendingFieldId === ''}
+          onClick={confirmAdd}
+        >
+          Add &amp; edit
+        </button>
+
+        {openFields.map((field) => (
+          <FilterButton
+            key={field.id}
+            field={field}
+            filterSet={filterSet}
+            kindRegistry={props.kindRegistry}
+            selfRoutingKinds={props.selfRoutingKinds}
+            page={props.page}
+            defaultFacetTable={props.defaultFacetTable}
+            enabled={props.enabled}
+            open={openPopoverFieldId === field.id}
+            onToggle={() => togglePopover(field.id)}
+            onRemove={() => removeField(field)}
+          />
+        ))}
       </div>
 
-      {openFields.length > 0 ? (
-        <div className="flex flex-col gap-2">
-          {openFields.map((field) => (
-            <FilterBlock
-              key={field.id}
-              field={field}
-              filterSet={filterSet}
-              kindRegistry={props.kindRegistry}
-              selfRoutingKinds={props.selfRoutingKinds}
-              page={props.page}
-              defaultFacetTable={props.defaultFacetTable}
-              enabled={props.enabled}
-              onRemove={() => removeField(field)}
-            />
-          ))}
-        </div>
-      ) : null}
+      <p className="text-[11px] text-faint">
+        Pick a field and choose “Add &amp; edit”, then set where it applies
+        (row-level WHERE vs aggregate HAVING), how it compares, and its value.
+      </p>
     </div>
   );
 }
 
-// ── One filter block ─────────────────────────────────────────────────────────
+// ── One filter button + its popover editor ───────────────────────────────────
 
-interface BlockProps {
+interface FilterButtonProps {
   field: FilterFieldSpec;
   filterSet: FilterSet;
   kindRegistry: KindRegistry;
@@ -271,12 +439,17 @@ interface BlockProps {
   page: Selection | undefined;
   defaultFacetTable: string;
   enabled: boolean;
+  /** Whether this field's popover is the one currently open. */
+  open: boolean;
+  /** Toggle this field's popover (open if closed, close if open). */
+  onToggle: () => void;
   onRemove: () => void;
 }
 
-function FilterBlock(props: BlockProps) {
-  const { field, filterSet } = props;
+function FilterButton(props: FilterButtonProps) {
+  const { field, filterSet, open } = props;
   const testId = `filter-block-${field.id}`;
+  const { specs } = useFilterSetState(filterSet);
 
   // Seed once on mount to the placement that already holds a committed spec (if
   // any); the mirror effects handle live sync thereafter, so this must not re-run
@@ -297,82 +470,125 @@ function FilterBlock(props: BlockProps) {
   const specColumn = placement.spec_column ?? field.column;
   const singlePlacement = field.placements.length === 1;
 
+  // Button summary reflects the COMMITTED set, not the popover's live placement
+  // selection — so it stays correct while the popover is closed.
+  const summary = useMemo(
+    () => summarizeField(field, specs, props.kindRegistry),
+    [field, specs, props.kindRegistry],
+  );
+
   return (
-    <div
-      data-testid={testId}
-      className="flex flex-wrap items-center gap-2 rounded-gf border border-line bg-panel-header px-2 py-1.5"
-    >
-      <span className="text-xs font-medium text-ink">{field.label}</span>
-
-      {/* Placement control is ALWAYS shown; disabled when there is only one. */}
-      <select
-        data-testid={`${testId}-placement`}
-        aria-label={`${field.label} placement`}
-        className={selectClassName}
-        disabled={singlePlacement}
-        value={String(placementIndex)}
-        onChange={(event) => {
-          const nextIndex = Number(event.target.value);
-          const prevPlacement = field.placements[placementIndex];
-          if (prevPlacement !== undefined) {
-            filterSet.remove(prevPlacement.spec_id);
-          }
-          setPlacementIndex(nextIndex);
-        }}
-      >
-        {field.placements.map((entry, index) => (
-          <option key={entry.spec_id} value={String(index)}>
-            {entry.label}
-          </option>
-        ))}
-      </select>
-
-      {/* Key value controls by the active placement's spec id so switching
-          placement REMOUNTS them (cancels a pending debounce for the outgoing
-          spec that the switch just removed). */}
-      {isFacetField(field) ? (
-        <FacetValue
-          key={placement.spec_id}
-          field={field}
-          placement={placement}
-          specColumn={specColumn}
-          operators={operators}
-          testId={testId}
-          filterSet={filterSet}
-          page={props.page}
-          defaultFacetTable={props.defaultFacetTable}
-          enabled={props.enabled}
-        />
-      ) : field.value_kind === 'date' ? (
-        <DateRangeValue
-          key={placement.spec_id}
-          field={field}
-          placement={placement}
-          testId={testId}
-          filterSet={filterSet}
-        />
-      ) : (
-        <ScalarValue
-          key={placement.spec_id}
-          field={field}
-          placement={placement}
-          specColumn={specColumn}
-          operators={operators}
-          testId={testId}
-          filterSet={filterSet}
-          selfRoutingKinds={props.selfRoutingKinds}
-        />
-      )}
-
+    <div className="relative" data-filter-popover-root>
       <button
         type="button"
-        data-testid={`${testId}-remove`}
-        aria-label={`Remove ${field.label} filter`}
-        className="ml-auto flex h-6 w-6 items-center justify-center rounded-gf text-faint hover:bg-hover hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-gf-blue"
-        onClick={props.onRemove}
+        data-testid={`filter-button-${field.id}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className={filterButtonClassName(summary.configured, open)}
+        onClick={props.onToggle}
       >
-        ✕
+        <span className="shrink-0 font-medium">{field.label}</span>
+        {summary.badge !== null ? (
+          <span className="shrink-0 rounded-[1px] bg-gf-orange/20 px-1 text-[9px] font-bold tracking-wider text-gf-orange">
+            {summary.badge}
+          </span>
+        ) : null}
+        {summary.text !== '' ? (
+          <span className="truncate text-muted">{summary.text}</span>
+        ) : null}
+        <span aria-hidden className="shrink-0 text-faint">
+          {open ? '▴' : '▾'}
+        </span>
       </button>
+
+      {/* Popover content stays MOUNTED while the button exists (hidden via
+          `display:none` when closed) so in-flight debounced writes, the value
+          controls' draft/mirror state, and the facet client's self-exclusion
+          re-attach effect all survive an open/close. z-30 clears the sticky
+          header (z-20) and the panel grid. */}
+      <div
+        data-testid={`filter-popover-${field.id}`}
+        role="dialog"
+        aria-label={`${field.label} filter`}
+        className={`absolute top-full left-0 z-30 mt-1 flex min-w-[240px] flex-col gap-2 rounded-gf border border-line bg-panel p-3 shadow-lg ${
+          open ? '' : 'hidden'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-ink">{field.label}</span>
+          <button
+            type="button"
+            data-testid={`${testId}-remove`}
+            aria-label={`Remove ${field.label} filter`}
+            className="rounded-gf px-1.5 py-0.5 text-[11px] text-faint hover:bg-hover hover:text-gf-red focus:outline-none focus-visible:ring-2 focus-visible:ring-gf-blue"
+            onClick={props.onRemove}
+          >
+            Remove filter
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-2 [&_input]:w-full [&_select]:w-full">
+          {/* Placement control is ALWAYS shown; disabled when there is only one. */}
+          <select
+            data-testid={`${testId}-placement`}
+            aria-label={`${field.label} placement`}
+            className={selectClassName}
+            disabled={singlePlacement}
+            value={String(placementIndex)}
+            onChange={(event) => {
+              const nextIndex = Number(event.target.value);
+              const prevPlacement = field.placements[placementIndex];
+              if (prevPlacement !== undefined) {
+                filterSet.remove(prevPlacement.spec_id);
+              }
+              setPlacementIndex(nextIndex);
+            }}
+          >
+            {field.placements.map((entry, index) => (
+              <option key={entry.spec_id} value={String(index)}>
+                {entry.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Key value controls by the active placement's spec id so switching
+              placement REMOUNTS them (cancels a pending debounce for the outgoing
+              spec that the switch just removed). */}
+          {isFacetField(field) ? (
+            <FacetValue
+              key={placement.spec_id}
+              field={field}
+              placement={placement}
+              specColumn={specColumn}
+              operators={operators}
+              testId={testId}
+              filterSet={filterSet}
+              page={props.page}
+              defaultFacetTable={props.defaultFacetTable}
+              enabled={props.enabled}
+            />
+          ) : field.value_kind === 'date' ? (
+            <DateRangeValue
+              key={placement.spec_id}
+              field={field}
+              placement={placement}
+              testId={testId}
+              filterSet={filterSet}
+            />
+          ) : (
+            <ScalarValue
+              key={placement.spec_id}
+              field={field}
+              placement={placement}
+              specColumn={specColumn}
+              operators={operators}
+              testId={testId}
+              filterSet={filterSet}
+              selfRoutingKinds={props.selfRoutingKinds}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
