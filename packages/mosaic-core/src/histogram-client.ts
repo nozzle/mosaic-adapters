@@ -193,6 +193,14 @@ class HistogramDataClient
    * clients-set change).
    */
   #adoptFromSet(target: FilterSetPublishTarget): void {
+    // The deferred prepare hook runs after an awaited extent-discovery query,
+    // so this client can be destroyed by the time it reaches here (StrictMode /
+    // fast remount discards the first client). A dead client must never re-key
+    // the surviving clause to its own about-to-die MosaicClient, or
+    // self-exclusion is lost for the live client.
+    if (this.destroyed) {
+      return;
+    }
     const spec = target.into.store.state.specs.find(
       (candidate) => candidate.id === target.id,
     );
@@ -208,6 +216,11 @@ class HistogramDataClient
     } finally {
       this.#writingToSet = false;
     }
+    // The re-key above only reaches the composed filterBy selection's published
+    // value one dispatch later; re-query once it is confirmed self-excluded for
+    // this client, so the stale first query (keyed to the prior client) is not
+    // left on screen.
+    this.requeryOnSelfExclusion(target.id);
   }
 
   /**

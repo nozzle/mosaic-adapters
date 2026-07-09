@@ -73,9 +73,19 @@ export abstract class BaseDataClient<
       // makeClient connects (and may initialize) synchronously inside this
       // constructor; defer the hook one microtask so it runs against a fully
       // constructed subclass. The coordinator awaits the returned promise
-      // before issuing the first query either way.
+      // before issuing the first query either way. The client can be destroyed
+      // within that microtask window (a React StrictMode or fast unmount/remount
+      // discards the first client before its deferred hook runs); a destroyed
+      // client must not re-key adopted FilterSet clauses to its own about-to-die
+      // MosaicClient, so short-circuit the hook here.
       prepare: prepare
-        ? () => Promise.resolve().then(() => prepare())
+        ? () =>
+            Promise.resolve().then(() => {
+              if (this.#destroyed) {
+                return undefined;
+              }
+              return prepare();
+            })
         : undefined,
       // Upstream types the filter as always-present, but `requestQuery()`
       // passes undefined when the active clause cross-filters this client.
@@ -183,6 +193,75 @@ export abstract class BaseDataClient<
   /** Register cleanup that runs once on `destroy()`. */
   protected onDestroy(dispose: () => void): void {
     this.#teardown.push(dispose);
+  }
+
+  /**
+   * True once the clause sourced by `specId` is present in the `filterBy`
+   * selection AND keyed (via its `clients` set) to this client's MosaicClient —
+   * i.e. the crossfilter context is self-excluding this client's own selection,
+   * so the client is not filtered by it. False while a surviving clause is still
+   * keyed to a prior, now-unmounted client (the state right after an
+   * unmount/remount adopt, before the re-key lands on the composed value).
+   */
+  #isClauseSelfExcluded(specId: string): boolean {
+    const filterBy = this.options.filterBy;
+    if (!filterBy) {
+      return false;
+    }
+    for (const clause of filterBy.clauses) {
+      const source = clause.source as { id?: unknown };
+      if (source.id === specId) {
+        return clause.clients?.has(this.#client) ?? false;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Re-query this client exactly once, the moment its own FilterSet clause is
+   * confirmed self-excluded for this client in the `filterBy` selection.
+   *
+   * A freshly-mounted client that adopts a surviving spec re-keys that spec's
+   * clause to itself for crossfilter self-exclusion, but the re-keyed `clients`
+   * set only reaches the composed `filterBy` selection's published value one
+   * event-dispatch later — after this client has already issued its first query
+   * against the stale clause (still keyed to the prior, now-destroyed client).
+   * Because a client is never re-queried for a change to its OWN clause, that
+   * stale first query would otherwise stay on screen: self-exclusion matches no
+   * live client, so the client filters itself down to just its own selection.
+   *
+   * Checking the actual self-exclusion condition (rather than refetching on the
+   * first event or after a fixed delay) is what makes this robust across the
+   * differing dispatch orderings of different composed contexts. The listener
+   * is one-shot and idempotent, uses no timers, detaches the moment it fires,
+   * and is torn down on destroy; a synchronous check first handles the case
+   * where the re-key already landed before the listener was attached. A no-op
+   * without a `filterBy` selection or on an already-destroyed client.
+   */
+  protected requeryOnSelfExclusion(specId: string): void {
+    const filterBy = this.options.filterBy;
+    if (!filterBy || this.#destroyed) {
+      return;
+    }
+    let done = false;
+    const settle = (): void => {
+      if (done || this.#destroyed) {
+        return;
+      }
+      if (!this.#isClauseSelfExcluded(specId)) {
+        return;
+      }
+      done = true;
+      filterBy.removeEventListener('value', settle);
+      void this.refetch();
+    };
+    filterBy.addEventListener('value', settle);
+    this.onDestroy(() => {
+      done = true;
+      filterBy.removeEventListener('value', settle);
+    });
+    // Catch the case where the re-key already landed before this listener.
+    settle();
   }
 
   protected patchState(partial: Partial<TState>): void {
