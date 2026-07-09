@@ -5,27 +5,45 @@
  * its canonical spec id + kind with a Classic control, so setting a filter in
  * either view reflects losslessly in the other.
  *
- * The user picks fields from the catalog ({@link FILTER_CATALOG}); each pick
- * appends a *filter block* (one per canonical field id). A block flows:
+ * The user picks a field from the catalog ({@link FILTER_CATALOG}) and confirms
+ * with the "Add & edit" button (testid `filter-builder-confirm`); confirming
+ * appends a compact filter BUTTON (one per canonical field id) into the builder
+ * strip and opens its editor popover. Each button shows the field label plus a
+ * short summary of the committed spec (operator + formatted value, or a HAVING
+ * badge); an unconfigured field shows just the label in a dashed/muted style.
+ *
+ * Clicking a button toggles a popover editor anchored below it. The popover body
+ * carries the same controls the old inline block did, stacked for a small panel:
  *
  *   placement → kind → operators (`kindRegistry[kind]?.operators`) → arity →
  *   value control(s) → `filterSet.set(spec)` (debounced text; immediate facets)
  *
- * Every block ALWAYS renders a placement control and an operator control, even
+ * The popover ALWAYS renders a placement control and an operator control, even
  * when only one option applies — they are then disabled (not hidden), so the
  * user always sees where a filter applies and how it compares. For list/facet
  * fields the operator is changeable (`in`/`not_in`/`is_empty`/`is_not_empty`, or
  * the array operators for an array column); for a kind with no operator axis
  * (interval date) the operator control is disabled with a static "in range"
  * label.
+ *
+ * Only one popover is open at a time (state lives in `FilterBuilder` as
+ * `openPopoverFieldId`); it closes on an outside `mousedown` or Escape. Popover
+ * content stays MOUNTED while its button exists and is hidden with Tailwind
+ * `hidden` when closed — this preserves in-flight debounced scalar writes, the
+ * ScalarValue/FacetValue mirror state, and the FacetMultiSelect facet client's
+ * self-exclusion re-attach effect, all of which assume the control never
+ * unmounts. Buttons hydrate from committed specs (with popovers CLOSED), so a
+ * view switch or a shared link re-materializes a button for every field that
+ * already holds a spec.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFilterSetState } from '@nozzleio/react-mosaic';
 import { kindRegistry } from '../page-context';
 import { usePageFilterSet } from '../topology';
 import { FILTER_CATALOG, facetOperatorIds } from '../filter-catalog';
 import { useDebouncedRun } from '../filter-controls';
 import { FacetMultiSelect } from './facet-multi-select';
+import { usePopoverDismiss } from './use-popover-dismiss';
 import type {
   FilterSet,
   FilterSpec,
@@ -101,21 +119,133 @@ function defaultOperatorId(
   return operators[0]?.id ?? '';
 }
 
+// ── Committed-spec summary (drives the button label) ─────────────────────────
+
+/**
+ * A placement whose committed filter lands in an aggregate HAVING (+ membership)
+ * clause rather than a row-level WHERE. This mirrors the active-filter-bar's
+ * badge logic: an explicit `having:` target, OR a self-routing kind
+ * (metric-threshold / min-domains) that emits its own having:/members: clauses
+ * — so the button badge and the chip badge stay consistent.
+ */
+function isHavingPlacement(placement: CatalogPlacement): boolean {
+  return (
+    placement.target.startsWith('having:') || isSelfRoutingKind(placement.kind)
+  );
+}
+
+/** Format a committed spec's value into a compact, human-readable fragment. */
+function formatSummaryValue(field: CatalogField, spec: FilterSpec): string {
+  const { value, valueTo } = spec;
+  if (field.valueKind === 'date-range') {
+    if (!Array.isArray(value)) {
+      return '';
+    }
+    const lo = typeof value[0] === 'string' && value[0] !== '' ? value[0] : '…';
+    const hi = typeof value[1] === 'string' && value[1] !== '' ? value[1] : '…';
+    return `${lo} – ${hi}`;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return '';
+    }
+    if (value.length === 1) {
+      return String(value[0]);
+    }
+    return `${value.length} selected`;
+  }
+  if (value === undefined) {
+    return '';
+  }
+  if (valueTo !== undefined) {
+    return `${String(value)} – ${String(valueTo)}`;
+  }
+  if (field.valueKind === 'text') {
+    return `"${String(value)}"`;
+  }
+  return String(value);
+}
+
+interface FieldSummary {
+  /** True once any placement holds a committed spec (drives the button style). */
+  configured: boolean;
+  /** Short placement badge (`HAVING`) or null for row-level WHERE placements. */
+  badge: string | null;
+  /** Operator + formatted value (empty when there is nothing to show). */
+  text: string;
+}
+
+/**
+ * Summarize a field from the COMMITTED set: find whichever placement currently
+ * holds a spec (independent of the popover's live placement selection) and
+ * render its operator + value. An unconfigured field returns `configured:false`.
+ */
+function summarizeField(
+  field: CatalogField,
+  specs: ReadonlyArray<FilterSpec>,
+): FieldSummary {
+  const placement = field.placements.find((entry) =>
+    specs.some((spec) => spec.id === entry.specId),
+  );
+  if (placement === undefined) {
+    return { configured: false, badge: null, text: '' };
+  }
+  const spec = specs.find((entry) => entry.id === placement.specId);
+  if (spec === undefined) {
+    return { configured: false, badge: null, text: '' };
+  }
+  const operators = operatorsForBlock(field, placement);
+  const opLabel =
+    typeof spec.operator === 'string'
+      ? operatorLabel(operators, spec.operator)
+      : '';
+  const valueText = formatSummaryValue(field, spec);
+  const text = [opLabel, valueText].filter((part) => part !== '').join(' ');
+  return {
+    configured: true,
+    badge: isHavingPlacement(placement) ? 'HAVING' : null,
+    text,
+  };
+}
+
+/** Trigger-button classes: cyan accent when configured, dashed when not. */
+function filterButtonClassName(configured: boolean, open: boolean): string {
+  const base =
+    'flex h-9 max-w-full items-center gap-1.5 rounded border px-3 text-sm';
+  const state = configured
+    ? 'border-cyan-300 bg-cyan-50 text-slate-800'
+    : 'border-dashed border-slate-300 bg-white text-slate-500 hover:text-slate-700';
+  const openState = open ? 'ring-2 ring-cyan-500' : '';
+  return `${base} ${state} ${openState}`;
+}
+
+const confirmButtonClassName =
+  'h-9 rounded border border-cyan-600 bg-cyan-50 px-3 text-sm font-medium text-cyan-800 hover:bg-cyan-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400';
+
 // ── The builder ──────────────────────────────────────────────────────────────
 
 export function FilterBuilder() {
-  // The managed list of open blocks, one per canonical field id. Hydrating from
-  // the current specs keeps the builder in sync after a view switch: any field
-  // that already holds a spec (set by the classic view, a chip, or a shared
-  // link) opens as a block automatically.
+  // The managed list of open fields, one button per canonical field id.
+  // Hydrating from the current specs keeps the builder in sync after a view
+  // switch: any field that already holds a spec (set by the classic view, a
+  // chip, or a shared link) materializes a button automatically (popover
+  // closed).
   const filterSet = usePageFilterSet();
   const { specs } = useFilterSetState(filterSet);
   const [openFieldIds, setOpenFieldIds] = useState<Array<string>>(() =>
     hydrateOpenFields(filterSet, []),
   );
+  // The field chosen in the add `<select>` but not yet confirmed. Confirming
+  // (`filter-builder-confirm`) materializes its button and opens its popover.
+  const [pendingFieldId, setPendingFieldId] = useState('');
+  // The single field whose popover is open (null = all closed).
+  const [openPopoverFieldId, setOpenPopoverFieldId] = useState<string | null>(
+    null,
+  );
 
   // Adopt fields that gained a spec elsewhere (classic view / shared link),
-  // without dropping blocks the user opened but has not yet filled.
+  // without dropping buttons the user opened but has not yet filled. This never
+  // opens a popover, so a hydrated field surfaces as a closed button.
   useEffect(() => {
     setOpenFieldIds((prev) => hydrateOpenFields(filterSet, prev));
   }, [filterSet, specs]);
@@ -128,19 +258,37 @@ export function FilterBuilder() {
     [openFieldIds],
   );
 
-  const addField = (fieldId: string) => {
+  // Each open button dismisses its own popover via `usePopoverDismiss`; this
+  // shared close handler is stable so the per-button dismiss effects do not
+  // re-subscribe every render.
+  const closePopover = useCallback(() => {
+    setOpenPopoverFieldId(null);
+  }, []);
+
+  const confirmAdd = () => {
+    if (pendingFieldId === '') {
+      return;
+    }
+    const fieldId = pendingFieldId;
     setOpenFieldIds((prev) =>
       prev.includes(fieldId) ? prev : [...prev, fieldId],
     );
+    setPendingFieldId('');
+    setOpenPopoverFieldId(fieldId);
   };
 
   const removeField = (field: CatalogField) => {
-    // Clearing a block removes every spec its placements might own so no stale
-    // spec lingers on a target the block is no longer showing.
+    // Clearing a field removes every spec its placements might own so no stale
+    // spec lingers on a target the button is no longer showing.
     for (const placement of field.placements) {
       filterSet.remove(placement.specId);
     }
     setOpenFieldIds((prev) => prev.filter((id) => id !== field.id));
+    setOpenPopoverFieldId((prev) => (prev === field.id ? null : prev));
+  };
+
+  const togglePopover = (fieldId: string) => {
+    setOpenPopoverFieldId((prev) => (prev === fieldId ? null : fieldId));
   };
 
   const available = FILTER_CATALOG.filter(
@@ -149,18 +297,14 @@ export function FilterBuilder() {
 
   return (
     <div className="flex w-full flex-col gap-3" data-testid="filter-builder">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <span className={labelClassName}>Build a filter</span>
         <select
           data-testid="filter-builder-add-field"
           aria-label="Add filter field"
-          className={inputClassName}
-          value=""
-          onChange={(event) => {
-            if (event.target.value !== '') {
-              addField(event.target.value);
-            }
-          }}
+          className={selectClassName}
+          value={pendingFieldId}
+          onChange={(event) => setPendingFieldId(event.target.value)}
         >
           <option value="">Add field…</option>
           {available.map((field) => (
@@ -169,24 +313,33 @@ export function FilterBuilder() {
             </option>
           ))}
         </select>
-        <p className="text-xs text-slate-500">
-          These edit the same page filters as the Classic view — including a
-          field, an operator, and where it applies (row-level WHERE vs aggregate
-          HAVING).
-        </p>
+        <button
+          type="button"
+          data-testid="filter-builder-confirm"
+          className={confirmButtonClassName}
+          disabled={pendingFieldId === ''}
+          onClick={confirmAdd}
+        >
+          Add &amp; edit
+        </button>
+
+        {openFields.map((field) => (
+          <FilterButton
+            key={field.id}
+            field={field}
+            open={openPopoverFieldId === field.id}
+            onToggle={() => togglePopover(field.id)}
+            onClose={closePopover}
+            onRemove={() => removeField(field)}
+          />
+        ))}
       </div>
 
-      {openFields.length > 0 ? (
-        <div className="flex flex-col gap-2">
-          {openFields.map((field) => (
-            <FilterBlock
-              key={field.id}
-              field={field}
-              onRemove={() => removeField(field)}
-            />
-          ))}
-        </div>
-      ) : null}
+      <p className="text-xs text-slate-500">
+        Pick a field and choose “Add &amp; edit”, then set where it applies
+        (row-level WHERE vs aggregate HAVING), how it compares, and its value.
+        These edit the same page filters as the Classic view.
+      </p>
     </div>
   );
 }
@@ -216,15 +369,33 @@ function hydrateOpenFields(
   return added.length === 0 ? prev : [...prev, ...added];
 }
 
-// ── One filter block ───────────────────────────────────────────────────────
+// ── One filter button + its popover editor ───────────────────────────────────
 
-function FilterBlock(props: { field: CatalogField; onRemove: () => void }) {
-  const { field } = props;
+interface FilterButtonProps {
+  field: CatalogField;
+  /** Whether this field's popover is the one currently open. */
+  open: boolean;
+  /** Toggle this field's popover (open if closed, close if open). */
+  onToggle: () => void;
+  /** Close this field's popover (outside mousedown / Escape dismissal). */
+  onClose: () => void;
+  onRemove: () => void;
+}
+
+function FilterButton(props: FilterButtonProps) {
+  const { field, open } = props;
   const filterSet = usePageFilterSet();
   const testId = `filter-block-${field.id}`;
+  const { specs } = useFilterSetState(filterSet);
+
+  // Light-dismiss on an outside mousedown or Escape. A mousedown on ANOTHER
+  // field's button lands outside this root, so it dismisses this popover first
+  // and that button's click then opens its own — switching still works.
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePopoverDismiss(rootRef, open, props.onClose);
 
   // Which placement is active. Hydrate from whichever placement currently holds
-  // a spec, so a view switch or shared link reopens the block on the right one.
+  // a spec, so a view switch or shared link reopens the button on the right one.
   const initialPlacement = useMemo(() => {
     const withSpec = field.placements.findIndex((placement) =>
       filterSet.store.state.specs.some((spec) => spec.id === placement.specId),
@@ -242,84 +413,124 @@ function FilterBlock(props: { field: CatalogField; onRemove: () => void }) {
   const specColumn = placement.specColumn ?? field.column;
   const singlePlacement = field.placements.length === 1;
 
+  // Button summary reflects the COMMITTED set, not the popover's live placement
+  // selection — so it stays correct while the popover is closed.
+  const summary = useMemo(() => summarizeField(field, specs), [field, specs]);
+
   return (
-    <div
-      data-testid={testId}
-      className="flex flex-wrap items-center gap-2 rounded border border-slate-100 bg-slate-50/60 px-3 py-2"
-    >
-      <span className="text-sm font-semibold text-slate-700">
-        {field.label}
-      </span>
-
-      {/* Placement control is ALWAYS shown; disabled when there is only one. */}
-      <select
-        data-testid={`${testId}-placement`}
-        aria-label={`${field.label} placement`}
-        className={selectClassName}
-        disabled={singlePlacement}
-        value={String(placementIndex)}
-        onChange={(event) => {
-          const nextIndex = Number(event.target.value);
-          const prevPlacement = field.placements[placementIndex];
-          // Placements route to different spec ids; drop the old spec so it does
-          // not linger when the block switches kind/target.
-          if (prevPlacement !== undefined) {
-            filterSet.remove(prevPlacement.specId);
-          }
-          setPlacementIndex(nextIndex);
-        }}
-      >
-        {field.placements.map((entry, index) => (
-          <option key={entry.specId} value={String(index)}>
-            {entry.label}
-          </option>
-        ))}
-      </select>
-
-      {/*
-        Key every value control by the active placement's spec id so switching
-        placement REMOUNTS it. This is load-bearing for ScalarValue: its
-        debounced publish captures the placement's buildSpec/specId, and a
-        placement switch removes the prior spec — remounting runs the outgoing
-        control's unmount cleanup (which cancels the debounce), so a pending
-        keystroke can no longer republish the just-removed spec.
-      */}
-      {isFacetField(field) ? (
-        <FacetValue
-          key={placement.specId}
-          field={field}
-          placement={placement}
-          specColumn={specColumn}
-          operators={operators}
-          testId={testId}
-        />
-      ) : field.valueKind === 'date-range' ? (
-        <DateRangeValue
-          key={placement.specId}
-          field={field}
-          placement={placement}
-          testId={testId}
-        />
-      ) : (
-        <ScalarValue
-          key={placement.specId}
-          field={field}
-          placement={placement}
-          specColumn={specColumn}
-          operators={operators}
-          testId={testId}
-        />
-      )}
-
+    <div className="relative" ref={rootRef}>
       <button
         type="button"
-        data-testid={`${testId}-remove`}
-        aria-label={`Remove ${field.label} filter`}
-        className="ml-auto h-7 w-7 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-        onClick={props.onRemove}
+        data-testid={`filter-button-${field.id}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className={filterButtonClassName(summary.configured, open)}
+        onClick={props.onToggle}
       >
-        ✕
+        <span className="shrink-0 font-semibold">{field.label}</span>
+        {summary.badge !== null ? (
+          <span className="shrink-0 rounded-sm bg-orange-100 px-1 text-[9px] font-bold tracking-wider text-orange-600">
+            {summary.badge}
+          </span>
+        ) : null}
+        {summary.text !== '' ? (
+          <span className="truncate text-slate-500">{summary.text}</span>
+        ) : null}
+        <span aria-hidden className="shrink-0 text-slate-400">
+          {open ? '▴' : '▾'}
+        </span>
       </button>
+
+      {/* Popover content stays MOUNTED while the button exists (hidden via
+          Tailwind `hidden` when closed) so in-flight debounced writes, the value
+          controls' draft/mirror state, and the facet client's self-exclusion
+          re-attach effect all survive an open/close. z-30 clears the sticky
+          header and the summary-table grid below. */}
+      <div
+        data-testid={`filter-popover-${field.id}`}
+        role="dialog"
+        aria-label={`${field.label} filter`}
+        className={`absolute top-full left-0 z-30 mt-1 flex min-w-[240px] flex-col gap-2 rounded border border-slate-200 bg-white p-3 shadow-lg ${
+          open ? '' : 'hidden'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-slate-700">
+            {field.label}
+          </span>
+          <button
+            type="button"
+            data-testid={`${testId}-remove`}
+            aria-label={`Remove ${field.label} filter`}
+            className="rounded px-1.5 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-red-600"
+            onClick={props.onRemove}
+          >
+            Remove filter
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-2 [&_input]:w-full [&_select]:w-full">
+          {/* Placement control is ALWAYS shown; disabled when there is only one. */}
+          <select
+            data-testid={`${testId}-placement`}
+            aria-label={`${field.label} placement`}
+            className={selectClassName}
+            disabled={singlePlacement}
+            value={String(placementIndex)}
+            onChange={(event) => {
+              const nextIndex = Number(event.target.value);
+              const prevPlacement = field.placements[placementIndex];
+              // Placements route to different spec ids; drop the old spec so it
+              // does not linger when the button switches kind/target.
+              if (prevPlacement !== undefined) {
+                filterSet.remove(prevPlacement.specId);
+              }
+              setPlacementIndex(nextIndex);
+            }}
+          >
+            {field.placements.map((entry, index) => (
+              <option key={entry.specId} value={String(index)}>
+                {entry.label}
+              </option>
+            ))}
+          </select>
+
+          {/*
+            Key every value control by the active placement's spec id so switching
+            placement REMOUNTS it. This is load-bearing for ScalarValue: its
+            debounced publish captures the placement's buildSpec/specId, and a
+            placement switch removes the prior spec — remounting runs the outgoing
+            control's unmount cleanup (which cancels the debounce), so a pending
+            keystroke can no longer republish the just-removed spec.
+          */}
+          {isFacetField(field) ? (
+            <FacetValue
+              key={placement.specId}
+              field={field}
+              placement={placement}
+              specColumn={specColumn}
+              operators={operators}
+              testId={testId}
+            />
+          ) : field.valueKind === 'date-range' ? (
+            <DateRangeValue
+              key={placement.specId}
+              field={field}
+              placement={placement}
+              testId={testId}
+            />
+          ) : (
+            <ScalarValue
+              key={placement.specId}
+              field={field}
+              placement={placement}
+              specColumn={specColumn}
+              operators={operators}
+              testId={testId}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
