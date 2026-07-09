@@ -313,17 +313,37 @@ interface.
 
 ## Spec editor behavior
 
-The collapsible editor (`src/chrome/spec-editor.tsx`) is intentionally
-opinionated:
+The collapsible editor (`src/chrome/spec-editor.tsx`) is a deliberately plain
+`<textarea>` — no editor library, no syntax highlighting, no line numbers — with
+a set of "free win" affordances layered on top. It opens viewport-tall
+(`h-[70vh]`, still drag-resizable) and is intentionally opinionated:
 
 - **Apply** recompiles the draft. On success it hands the new compiled spec up
   to `Bootstrap`, which bumps a revision key and **remounts** the dashboard
   subtree — resetting every Selection and all in-widget selections. On failure
   it renders every error and leaves the last-good dashboard running untouched
-  (no teardown).
+  (no teardown). Also bound to **Cmd/Ctrl+Enter**.
+- **Prettify** reformats the draft with `yaml`'s document mode (2-space indent,
+  **comments preserved**). A parse failure surfaces its messages through the
+  same error list and leaves the text untouched. Button only — no key binding.
 - **Reset** restores the _originally fetched_ text into the draft and clears the
   error list, but does **not** apply it — the running dashboard is left as-is
   until you Apply again. (Reset is an editor-draft action, not a dashboard one.)
+- **Keyboard shortcuts** (all on a single `onKeyDown`): **Tab**/**Shift+Tab**
+  insert two spaces / dedent (indenting or dedenting every line of a multi-line
+  selection); **Escape** blurs the textarea; **Alt+ArrowUp/Down** move the
+  current line or selected block; **Shift+Alt+ArrowUp/Down** duplicate it;
+  **Enter** auto-indents, deepening one level after a trailing `:` or `-`; and
+  **Cmd/Ctrl+/** toggles YAML comments on the covered lines. IME composition is
+  respected (`isComposing` bails) and only handled keys call `preventDefault`.
+- A slim **status footer** reports the caret's `Ln`/`Col` and shows an
+  **Unsaved changes** indicator whenever the draft differs from the applied text.
+
+Every programmatic mutation (indent, move, duplicate, comment toggle,
+auto-indent, prettify) is routed through one DOM helper that uses
+`execCommand('insertText')` so the browser's native **undo stack (Cmd+Z) keeps
+working**; the pure text math lives in small exported helpers so it stays
+testable independent of the DOM.
 
 ## snake_case convention
 
@@ -361,6 +381,13 @@ producing a download whose header row matches the column headers; (iii) the
 header rendering the title only, with the removed subtitle absent; (iv) the
 filter builder confirming a picked field into a button, opening/closing its
 editor popover (Escape + outside click), and removing the filter from inside the
-popover. DuckDB-WASM's
+popover; (v) the editor textarea's keyboard
+shortcuts — Tab inserting two spaces at the caret, Alt+ArrowDown/Up moving a
+line and restoring it, and Cmd/Ctrl+/ commenting then uncommenting a line — plus
+the panel opening viewport-proportionally tall; (vi) Prettify reformatting
+valid-but-messy YAML while preserving an inline comment and surfacing an error
+(text untouched) for invalid YAML, Cmd/Ctrl+Enter applying a keyboard-edited
+title, and the status footer's `Ln`/`Col` readout + unsaved-changes indicator.
+DuckDB-WASM's
 first paint is slow, so the suite waits on dataset-constant KPI values with
 generous timeouts rather than fixed sleeps.
