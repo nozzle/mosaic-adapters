@@ -197,12 +197,23 @@ test.describe('spec-driven dashboard', () => {
     await expect(filtered).toHaveText(TOTAL_PHRASES);
     await expect(optOut).toHaveText(TOTAL_PHRASES);
 
-    // Build a Phrase filter (defaults to `contains`) and type a term.
+    // Build a Phrase filter: pick the field, confirm to add its button + open
+    // its editor popover, then type a term (defaults to `contains`).
     await page.getByTestId('filter-builder-add-field').selectOption('phrase');
+    await page.getByTestId('filter-builder-confirm').click();
+    await expect(page.getByTestId('filter-popover-phrase')).toBeVisible();
     await page.getByTestId('filter-block-phrase-value').fill('stove');
 
     // The chip appears (sanitized spec id `text:phrase` → `text-phrase`).
     await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible();
+
+    // The button summarizes the committed spec (operator + quoted value).
+    await expect(page.getByTestId('filter-button-phrase')).toContainText(
+      'contains',
+    );
+    await expect(page.getByTestId('filter-button-phrase')).toContainText(
+      'stove',
+    );
 
     // The cross-filtered KPI drops to a strict subset…
     await expect
@@ -550,5 +561,53 @@ test.describe('spec-driven dashboard', () => {
     await expect(page.locator('body')).not.toContainText(
       'Spec-driven SEO Intelligence Dashboard',
     );
+  });
+
+  test('(iv) the filter builder confirms a field into a button, opens/closes its popover, and removes it', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    const confirm = page.getByTestId('filter-builder-confirm');
+    const popover = page.getByTestId('filter-popover-phrase');
+    const button = page.getByTestId('filter-button-phrase');
+
+    // Confirm is disabled until a field is picked; picking one does NOT add a
+    // button yet (confirm-to-add, not auto-add).
+    await expect(confirm).toBeDisabled();
+    await expect(button).toHaveCount(0);
+    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
+    await expect(confirm).toBeEnabled();
+    await expect(button).toHaveCount(0);
+
+    // Confirming materializes the button and opens its editor popover; the add
+    // select resets to the empty option.
+    await confirm.click();
+    await expect(button).toBeVisible();
+    await expect(popover).toBeVisible();
+    await expect(page.getByTestId('filter-builder-add-field')).toHaveValue('');
+
+    // Escape closes the popover; the button remains (unconfigured).
+    await page.keyboard.press('Escape');
+    await expect(popover).toBeHidden();
+    await expect(button).toBeVisible();
+
+    // Clicking the button re-opens it; an outside mousedown closes it again.
+    await button.click();
+    await expect(popover).toBeVisible();
+    await page
+      .getByTestId('filter-builder')
+      .click({ position: { x: 2, y: 2 } });
+    await expect(popover).toBeHidden();
+
+    // Re-open and commit a value, then remove the filter from inside the
+    // popover: the chip, the button, and the popover all disappear.
+    await button.click();
+    await page.getByTestId('filter-block-phrase-value').fill('stove');
+    await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible();
+    await page.getByTestId('filter-block-phrase-remove').click();
+    await expect(button).toHaveCount(0);
+    await expect(popover).toHaveCount(0);
+    await expect(page.getByTestId('filter-chip-text-phrase')).toHaveCount(0);
   });
 });
