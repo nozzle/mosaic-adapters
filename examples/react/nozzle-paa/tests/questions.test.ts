@@ -515,6 +515,30 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('filter-builder-add-field')).toBeVisible();
   }
 
+  /**
+   * The Builder add flow: pick a field, confirm with "Add & edit", and wait for
+   * the field's editor popover to open. Returns the popover locator (the scope
+   * every `filter-block-<id>-*` control lives inside).
+   */
+  async function addFilterField(page: Page, fieldId: string): Promise<Locator> {
+    await page.getByTestId('filter-builder-add-field').selectOption(fieldId);
+    await page.getByTestId('filter-builder-confirm').click();
+    const popover = page.getByTestId(`filter-popover-${fieldId}`);
+    await expect(popover).toBeVisible();
+    return popover;
+  }
+
+  /** Opens (or re-opens) a materialized field's popover by clicking its button. */
+  async function openFilterPopover(
+    page: Page,
+    fieldId: string,
+  ): Promise<Locator> {
+    await page.getByTestId(`filter-button-${fieldId}`).click();
+    const popover = page.getByTestId(`filter-popover-${fieldId}`);
+    await expect(popover).toBeVisible();
+    return popover;
+  }
+
   test('builder: the catalog exposes all eight fields', async ({ page }) => {
     await gotoDashboard(page);
     await openBuilder(page);
@@ -548,8 +572,7 @@ test.describe('people-also-ask dashboard', () => {
 
     // Builder → set Domain (condition `in`) to reddit.com.
     await openBuilder(page);
-    await page.getByTestId('filter-builder-add-field').selectOption('domain');
-    const block = page.getByTestId('filter-block-domain');
+    const block = await addFilterField(page, 'domain');
     const reddit = block
       .getByTestId('filter-block-domain-option')
       .filter({ hasText: /^reddit\.com \(/ });
@@ -575,9 +598,10 @@ test.describe('people-also-ask dashboard', () => {
     ).toContainText('reddit.com');
 
     // The reverse direction: back in the Builder, the shared spec re-hydrates
-    // the block — the reddit.com option shows as selected (aria-pressed).
+    // the field as a closed button; opening its popover shows the reddit.com
+    // option selected (aria-pressed).
     await page.getByTestId('filter-view-builder').click();
-    const rebuilt = page.getByTestId('filter-block-domain');
+    const rebuilt = await openFilterPopover(page, 'domain');
     await expect(
       rebuilt
         .getByTestId('filter-block-domain-option')
@@ -590,8 +614,7 @@ test.describe('people-also-ask dashboard', () => {
   }) => {
     await gotoDashboard(page);
     await openBuilder(page);
-    await page.getByTestId('filter-builder-add-field').selectOption('domain');
-    const block = page.getByTestId('filter-block-domain');
+    const block = await addFilterField(page, 'domain');
     const option = (re: RegExp) =>
       block.getByTestId('filter-block-domain-option').filter({ hasText: re });
 
@@ -619,9 +642,7 @@ test.describe('people-also-ask dashboard', () => {
   }) => {
     await gotoDashboard(page);
     await openBuilder(page);
-    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
-
-    const block = page.getByTestId('filter-block-phrase');
+    const block = await addFilterField(page, 'phrase');
     // Phrase defaults to `contains`; type a value.
     await block.getByTestId('filter-block-phrase-value').fill('stove');
     await expect(page.getByTestId('active-filter-bar')).toContainText('Phrase');
@@ -636,13 +657,9 @@ test.describe('people-also-ask dashboard', () => {
   }) => {
     await gotoDashboard(page);
     await openBuilder(page);
-    await page
-      .getByTestId('filter-builder-add-field')
-      .selectOption('search-volume');
-
     // Build the per-keyword (HAVING) threshold in the Builder — it authors the
     // same `metric:phrase` spec the classic phrase-card metric control owns.
-    const block = page.getByTestId('filter-block-search-volume');
+    const block = await addFilterField(page, 'search-volume');
     await block
       .getByTestId('filter-block-search-volume-placement')
       .selectOption({ label: 'per keyword (HAVING)' });
@@ -673,8 +690,7 @@ test.describe('people-also-ask dashboard', () => {
     );
 
     await openBuilder(page);
-    await page.getByTestId('filter-builder-add-field').selectOption('domain');
-    const block = page.getByTestId('filter-block-domain');
+    const block = await addFilterField(page, 'domain');
 
     // `in reddit.com` → the reddit.com answer subset (its own count).
     const reddit = block
@@ -721,11 +737,7 @@ test.describe('people-also-ask dashboard', () => {
   }) => {
     await gotoDashboard(page);
     await openBuilder(page);
-    await page
-      .getByTestId('filter-builder-add-field')
-      .selectOption('requested-date');
-
-    const block = page.getByTestId('filter-block-requested-date');
+    const block = await addFilterField(page, 'requested-date');
     // A single-placement field still renders a placement control (disabled).
     await expect(
       block.getByTestId('filter-block-requested-date-placement'),
@@ -741,9 +753,7 @@ test.describe('people-also-ask dashboard', () => {
   }) => {
     await gotoDashboard(page);
     await openBuilder(page);
-    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
-
-    const block = page.getByTestId('filter-block-phrase');
+    const block = await addFilterField(page, 'phrase');
     // is_empty is arity 'none' → no value input, spec commits on operator pick.
     await block
       .getByTestId('filter-block-phrase-operator')
@@ -762,9 +772,7 @@ test.describe('people-also-ask dashboard', () => {
   }) => {
     await gotoDashboard(page);
     await openBuilder(page);
-    await page.getByTestId('filter-builder-add-field').selectOption('domain');
-
-    const block = page.getByTestId('filter-block-domain');
+    const block = await addFilterField(page, 'domain');
     const reddit = block
       .getByTestId('filter-block-domain-option')
       .filter({ hasText: /^reddit\.com \(/ });
@@ -787,8 +795,7 @@ test.describe('people-also-ask dashboard', () => {
 
     // Builder → Domain = not_in [reddit.com].
     await openBuilder(page);
-    await page.getByTestId('filter-builder-add-field').selectOption('domain');
-    const block = page.getByTestId('filter-block-domain');
+    const block = await addFilterField(page, 'domain');
     const reddit = block
       .getByTestId('filter-block-domain-option')
       .filter({ hasText: /^reddit\.com \(/ });
@@ -847,11 +854,7 @@ test.describe('people-also-ask dashboard', () => {
   }) => {
     await gotoDashboard(page);
     await openBuilder(page);
-    await page
-      .getByTestId('filter-builder-add-field')
-      .selectOption('search-volume');
-
-    const block = page.getByTestId('filter-block-search-volume');
+    const block = await addFilterField(page, 'search-volume');
     // Type a WHERE value (arms a 300ms debounce), then IMMEDIATELY switch the
     // placement to HAVING — the pending publish for the removed WHERE spec must
     // be cancelled, never producing a phantom `built:search-volume` chip.
@@ -879,19 +882,20 @@ test.describe('people-also-ask dashboard', () => {
   }) => {
     await gotoDashboard(page);
     await openBuilder(page);
-    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
-
-    const block = page.getByTestId('filter-block-phrase');
+    const block = await addFilterField(page, 'phrase');
     await block.getByTestId('filter-block-phrase-value').fill('stove');
     const bar = page.getByTestId('active-filter-bar');
     await expect(bar).toContainText('Phrase');
 
-    // Remove the spec externally via its chip ✕.
+    // Remove the spec externally via its chip ✕. The click lands outside the
+    // popover root, so it also light-dismisses the popover.
     await page.getByRole('button', { name: /Remove filter Phrase/ }).click();
     await expect(bar).toHaveCount(0);
 
-    // The Builder input must have cleared (stale-state fix). Changing the
-    // operator must NOT republish the deleted filter from stale text.
+    // Re-open the (still materialized, now unconfigured) field's popover: the
+    // Builder input must have cleared (stale-state fix). Changing the operator
+    // must NOT republish the deleted filter from stale text.
+    await openFilterPopover(page, 'phrase');
     await expect(block.getByTestId('filter-block-phrase-value')).toHaveValue(
       '',
     );
@@ -917,8 +921,7 @@ test.describe('people-also-ask dashboard', () => {
 
     // Author Domain = not_in [reddit.com] in the Builder.
     await openBuilder(page);
-    await page.getByTestId('filter-builder-add-field').selectOption('domain');
-    const block = page.getByTestId('filter-block-domain');
+    const block = await addFilterField(page, 'domain');
     const reddit = block
       .getByTestId('filter-block-domain-option')
       .filter({ hasText: /^reddit\.com \(/ });
@@ -988,8 +991,7 @@ test.describe('people-also-ask dashboard', () => {
 
     // Author Domain is_empty (arity none → no value list; commits on operator).
     await openBuilder(page);
-    await page.getByTestId('filter-builder-add-field').selectOption('domain');
-    const block = page.getByTestId('filter-block-domain');
+    const block = await addFilterField(page, 'domain');
     await expect(block.getByTestId('filter-block-domain-operator')).toBeVisible(
       { timeout: 15_000 },
     );
@@ -1032,10 +1034,7 @@ test.describe('people-also-ask dashboard', () => {
     // Author Search Volume "per row (WHERE)" gt 50000 — a `built:search-volume`
     // condition spec (distinct from the phrase card's HAVING metric).
     await openBuilder(page);
-    await page
-      .getByTestId('filter-builder-add-field')
-      .selectOption('search-volume');
-    const block = page.getByTestId('filter-block-search-volume');
+    const block = await addFilterField(page, 'search-volume');
     await block
       .getByTestId('filter-block-search-volume-placement')
       .selectOption({ label: 'per row (WHERE)' });
@@ -1127,6 +1126,68 @@ test.describe('people-also-ask dashboard', () => {
       timeout: 90_000,
     });
     await expect(bar.getByTestId('chip-target').first()).toHaveText('HAVING');
+  });
+
+  // ── Builder add flow: confirm → button → popover (issue #180 UX) ─────────────
+  // Selecting a field no longer auto-adds it: the user confirms with "Add &
+  // edit", which materializes a compact filter button and opens its editor
+  // popover. Only one popover is open at a time; it light-dismisses on Escape or
+  // an outside click, and "Remove filter" inside it drops the chip and button.
+
+  test('builder: (p) the add flow gates on confirm, materializes a button + popover, and light-dismisses', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await openBuilder(page);
+
+    // Confirm is disabled until a field is picked.
+    const confirm = page.getByTestId('filter-builder-confirm');
+    await expect(confirm).toBeDisabled();
+
+    // Picking Domain enables confirm but does NOT materialize a button yet.
+    await page.getByTestId('filter-builder-add-field').selectOption('domain');
+    await expect(confirm).toBeEnabled();
+    await expect(page.getByTestId('filter-button-domain')).toHaveCount(0);
+
+    // Confirming materializes the button, opens its popover, resets the select
+    // (confirm re-disables), and excludes Domain from the remaining options.
+    await confirm.click();
+    await expect(page.getByTestId('filter-button-domain')).toBeVisible();
+    await expect(page.getByTestId('filter-popover-domain')).toBeVisible();
+    await expect(page.getByTestId('filter-builder-add-field')).toHaveValue('');
+    await expect(confirm).toBeDisabled();
+    await expect(
+      page
+        .getByTestId('filter-builder-add-field')
+        .locator('option[value="domain"]'),
+    ).toHaveCount(0);
+
+    // Escape closes the popover; the button remains.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('filter-popover-domain')).toBeHidden();
+    await expect(page.getByTestId('filter-button-domain')).toBeVisible();
+
+    // Clicking the button re-opens it; an outside click (on the KPI header)
+    // closes it again.
+    await page.getByTestId('filter-button-domain').click();
+    await expect(page.getByTestId('filter-popover-domain')).toBeVisible();
+    await page.getByTestId('kpi-questions').click();
+    await expect(page.getByTestId('filter-popover-domain')).toBeHidden();
+
+    // Commit a value, then "Remove filter" from the popover drops both the chip
+    // and the button.
+    const block = await openFilterPopover(page, 'domain');
+    const reddit = block
+      .getByTestId('filter-block-domain-option')
+      .filter({ hasText: /^reddit\.com \(/ });
+    await expect(reddit).toBeVisible({ timeout: 15_000 });
+    await reddit.click();
+    await expect(page.getByTestId('active-filter-bar')).toContainText(
+      'reddit.com',
+    );
+    await block.getByTestId('filter-block-domain-remove').click();
+    await expect(page.getByTestId('filter-button-domain')).toHaveCount(0);
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
   test('every widget exposes the SQL it last executed', async ({ page }) => {
