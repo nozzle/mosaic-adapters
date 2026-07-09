@@ -1,0 +1,15 @@
+{
+  "default": "questions",
+  "specs": [
+    {
+      "id": "questions",
+      "label": "People Also Ask (questions)",
+      "url": "/spec/questions.yaml"
+    },
+    {
+      "id": "protein-design",
+      "label": "Protein Design",
+      "url": "/spec/protein-design.yaml"
+    }
+  ]
+}

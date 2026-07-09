@@ -1,0 +1,84 @@
+@import 'tailwindcss';
+
+/*
+ * Grafana-flavored design tokens.
+ *
+ * Semantic surface/text tokens are registered into Tailwind's theme (so
+ * `bg-panel`, `text-ink`, `border-line`, … utilities generate) but their VALUES
+ * are plain CSS custom properties that flip on `prefers-color-scheme`. The
+ * theme is therefore fully system-driven — no manual toggle, no `dark:` variant
+ * needed for the core palette; the utilities resolve to whichever value the OS
+ * scheme currently exposes.
+ *
+ * The viz/accent palette (Grafana blue + the classic categorical colors) is the
+ * SAME in both themes, so those tokens carry a single value.
+ */
+@theme {
+  /* Surfaces + text — light values (dark overrides live in the media query). */
+  --color-page: #f4f5f5;
+  --color-panel: #ffffff;
+  --color-panel-header: #f7f8fa;
+  --color-line: #e2e2e2;
+  --color-line-strong: #d0d1d3;
+  --color-ink: #24292e;
+  --color-muted: rgba(36, 41, 46, 0.65);
+  --color-faint: rgba(36, 41, 46, 0.45);
+  --color-hover: #f4f5f5;
+  --color-field: #ffffff;
+  --color-editor: #0b0c0e; /* code surface — dark in BOTH themes */
+  --color-editor-ink: #ccccdc;
+
+  /* Accent + categorical viz palette — identical across themes. */
+  --color-gf-blue: #3d71d9;
+  --color-gf-blue-strong: #5283db;
+  --color-gf-green: #73bf69;
+  --color-gf-viz-blue: #5794f2;
+  --color-gf-orange: #ff9830;
+  --color-gf-red: #f2495c;
+  --color-gf-yellow: #fade2a;
+  --color-gf-purple: #b877d9;
+
+  /* Grafana's tight 2px panel radius. */
+  --radius-gf: 2px;
+
+  --font-sans:
+    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-page: #111217;
+    --color-panel: #181b1f;
+    --color-panel-header: #1f2327;
+    --color-line: #2c3235;
+    --color-line-strong: #3d444c;
+    --color-ink: rgb(204, 204, 220);
+    --color-muted: rgba(204, 204, 220, 0.65);
+    --color-faint: rgba(204, 204, 220, 0.4);
+    --color-hover: #202226;
+    --color-field: #0b0c0e;
+  }
+}
+
+/* Set the page background/text on the root elements (system color scheme only)
+   so first paint matches the dashboard shell and dark mode never white-flashes
+   before React mounts. */
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+  html {
+    color-scheme: light dark;
+  }
+  body {
+    background-color: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+}

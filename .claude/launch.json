@@ -18,6 +18,18 @@
         "5121"
       ],
       "port": 5121
+    },
+    {
+      "name": "spec-dashboard-example",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "example-react-spec-dashboard",
+        "dev",
+        "--port",
+        "5122"
+      ],
+      "port": 5122
     }
   ]
 }
