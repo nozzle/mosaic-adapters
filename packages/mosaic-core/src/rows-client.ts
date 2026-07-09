@@ -440,6 +440,13 @@ class RowsDataClient<TRow>
    * republishes on a clients-set change).
    */
   #adoptFromSet(target: RowsFilterSetPublishTarget<TRow>): void {
+    // The deferred prepare hook can run in the microtask window after this
+    // client was destroyed (StrictMode / fast remount discards the first
+    // client). A dead client must never re-key the surviving clause to its own
+    // about-to-die MosaicClient, or self-exclusion is lost for the live client.
+    if (this.destroyed) {
+      return;
+    }
     const spec = target.into.store.state.specs.find(
       (candidate) => candidate.id === target.id,
     );
@@ -455,6 +462,11 @@ class RowsDataClient<TRow>
     } finally {
       this.#writingToSet = false;
     }
+    // The re-key above only reaches the composed filterBy selection's published
+    // value one dispatch later; re-query once it is confirmed self-excluded for
+    // this client, so the stale first query (keyed to the prior client) is not
+    // left on screen.
+    this.requeryOnSelfExclusion(target.id);
   }
 
   /**

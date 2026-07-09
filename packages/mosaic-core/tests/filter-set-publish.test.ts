@@ -385,6 +385,118 @@ describe('rows publish.into', () => {
   });
 });
 
+describe('rows publish.into — remount / adopt self-exclusion', () => {
+  /** The `select:<id>` clause currently on `$page`, if any. */
+  function pickedClause(page: Selection, id: string) {
+    return page._resolved.find(
+      (clause) => (clause.source as { id?: unknown }).id === id,
+    );
+  }
+
+  test('a destroyed client never re-keys the surviving clause to itself', async () => {
+    const $page = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $page } });
+    // A pre-existing selection spec (e.g. survived an enlarge/return move).
+    set.set({ id: 'picked', column: 'id', kind: 'points', value: [1] });
+    expect(pickedClause($page, 'picked')?.clients).toBeUndefined();
+
+    const rows = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: 'athletes',
+      filterBy: $page,
+      inputs: { orderBy: [{ column: 'id' }] },
+      publish: { select: { into: set, id: 'picked', columns: ['id'] } },
+    });
+    const deadClient = rows.mosaicClient;
+    // Unmount before the deferred prepare/adopt microtask runs.
+    rows.destroy();
+    await settle();
+
+    // The guard held: the surviving clause was NOT re-keyed to the dead client,
+    // so a live sibling's self-exclusion is not poisoned.
+    const clause = pickedClause($page, 'picked');
+    expect(clause).toBeDefined();
+    expect(clause!.clients?.has(deadClient) ?? false).toBe(false);
+    // The spec itself survives (the set owns it).
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['picked']);
+
+    set.destroy();
+  });
+
+  test('a remounted client adopts the surviving spec, self-excludes, and re-queries to the full domain', async () => {
+    const $page = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $page } });
+
+    // First mount: publish a one-row selection, then unmount. The set keeps the
+    // spec across the move; its clause stays keyed to the now-dead client.
+    const first = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: 'athletes',
+      filterBy: $page,
+      inputs: { orderBy: [{ column: 'id' }] },
+      publish: { select: { into: set, id: 'picked', columns: ['id'] } },
+    });
+    await waitFor(() => {
+      expect(first.store.state.rows).toHaveLength(6);
+    });
+    first.selectRows([{ id: 1, name: 'Ada', sport: 'swim', weight: 50 }]);
+    await settle();
+    const firstClient = first.mosaicClient;
+    first.destroy();
+    // The surviving clause is still keyed to the destroyed first client — the
+    // stale-clause ordering the remounted client must recover from.
+    expect(pickedClause($page, 'picked')?.clients?.has(firstClient)).toBe(true);
+
+    // Reproduce the async ordering that makes the fix necessary. A Selection's
+    // synchronous `update()` refreshes `_resolved` immediately, but `predicate`
+    // (and `.clauses`) reads the last *emitted* value, which lags behind while
+    // a prior 'value' emit is still in flight. Occupy that dispatch queue with a
+    // promise-returning listener so the remount's re-key is enqueued, not
+    // applied synchronously — exactly the composed-context timing in the app.
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    const hold = (): Promise<void> => gate;
+    $page.addEventListener('value', hold);
+    // Kick a 'value' emit so the queue has a pending (unresolved) dispatch. The
+    // emitted value is the current one, so no clause state changes here.
+    $page.emit('value', $page.clauses);
+
+    // Second mount: same spec id + filterBy. Its adopt re-keys the clause to
+    // itself, but that re-key is now queued behind the held emit, so the fresh
+    // client's first query still reads the stale (first-client-keyed) clause and
+    // filters itself down to just its own selected row.
+    const second = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: 'athletes',
+      filterBy: $page,
+      inputs: { orderBy: [{ column: 'id' }] },
+      publish: { select: { into: set, id: 'picked', columns: ['id'] } },
+    });
+    await waitFor(() => {
+      expect(second.store.state.rows).toEqual([
+        expect.objectContaining({ id: 1 }),
+      ]);
+    });
+
+    // Release the held emit: the queued re-key now lands on the published value,
+    // self-excluding the clause for the live client. The library re-queries on
+    // that event, so the card recovers to the FULL domain (all 6 rows) rather
+    // than staying filtered by its own selection.
+    releaseGate();
+    await waitFor(() => {
+      const clause = pickedClause($page, 'picked');
+      expect(clause?.clients?.has(second.mosaicClient)).toBe(true);
+      expect(second.store.state.rows).toHaveLength(6);
+    });
+
+    $page.removeEventListener('value', hold);
+    second.destroy();
+    set.destroy();
+  });
+});
+
 describe('filter-set hydration resilience', () => {
   test('one unknown-kind persisted spec is skipped; a valid sibling still applies', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
