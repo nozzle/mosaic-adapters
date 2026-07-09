@@ -221,7 +221,7 @@ Four generic, domain-blind renderers (`src/widgets/registry.tsx`), each keyed by
   row-select publishing (a `select:<id>` points spec every sibling reads),
   optional sparkline column (`useMosaicSparkline`) and an optional
   metric-threshold control that lives in the (right-aligned) metric column
-  header: a funnel trigger opening a native Popover-API panel (operator +
+  header: a funnel trigger opening an anchored popover panel (operator +
   value + explicit **Apply**/**Clear**) that publishes/removes the
   `metric:<id>` spec only on Apply — no publish-per-keystroke. Optional
   enlarge/return promotion.
@@ -350,7 +350,9 @@ the detail table via a `select:` chip; (d) a spec edit + Apply remount surfacing
 a new label, then an invalid spec showing errors while the last-good dashboard
 keeps rendering; (e) the vgplot panel expanding (its plot grows) and collapsing;
 (f) the phrase metric threshold routing a `HAVING` to its own table and a
-membership subquery to its siblings; (g)/(h) enlarging a summary table,
+membership subquery to its siblings; (f2) the threshold popover staying
+anchored to its trigger through page scroll and closing on Escape;
+(g)/(h) enlarging a summary table,
 selecting rows, and returning keeps the non-selected rows (the self-exclusion
 regression guard); (i) the quick-load selector rendering the manifest option,
 `?spec=questions` loading identically to no param, and switching the selector

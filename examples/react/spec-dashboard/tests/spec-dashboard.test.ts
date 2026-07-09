@@ -403,6 +403,47 @@ test.describe('spec-driven dashboard', () => {
     );
   });
 
+  test('(f2) the metric threshold popover stays anchored to its trigger through page scroll', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    const phraseRows = summaryRows(page, 'summary-table-by_phrase');
+    await expect.poll(async () => phraseRows.count()).toBeGreaterThan(2);
+
+    const trigger = page.getByTestId('metric-filter-by_phrase');
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
+    const popover = page.getByTestId('metric-filter-by_phrase-popover');
+    await expect(popover).toBeVisible();
+
+    // Record the panel's vertical offset from its trigger at open time.
+    const popoverBox = await popover.boundingBox();
+    const triggerBox = await trigger.boundingBox();
+    expect(popoverBox).not.toBeNull();
+    expect(triggerBox).not.toBeNull();
+    const gap = Math.round(popoverBox!.y - triggerBox!.y);
+
+    // Scroll the page while the popover is open: the in-flow panel moves WITH
+    // its trigger (same relative offset) instead of freezing at its open-time
+    // viewport position.
+    await page.evaluate(() => window.scrollBy(0, 150));
+    await expect(popover).toBeVisible();
+    await expect
+      .poll(async () => {
+        const nextPopover = await popover.boundingBox();
+        const nextTrigger = await trigger.boundingBox();
+        if (nextPopover === null || nextTrigger === null) {
+          return null;
+        }
+        return Math.round(nextPopover.y - nextTrigger.y);
+      })
+      .toBe(gap);
+
+    // Escape light-dismisses the panel.
+    await page.keyboard.press('Escape');
+    await expect(popover).toBeHidden();
+  });
+
   test('(g) enlarging a summary table, selecting rows, and returning keeps the non-selected rows (by_phrase)', async ({
     page,
   }) => {

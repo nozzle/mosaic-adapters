@@ -12,7 +12,7 @@
  * client-side from the selected values (no `__is_highlighted` SQL column, hence
  * no compiler surgery).
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useFilterSetState,
   useMosaicRows,
@@ -20,6 +20,7 @@ import {
 } from '@nozzleio/react-mosaic';
 import { compileQuery } from '../spec/query-compiler';
 import { resolveSelection } from '../spec/topology';
+import { usePopoverDismiss } from '../chrome/use-popover-dismiss';
 import { Sparkline } from './sparkline';
 import { WidgetSqlDetails } from './widget-sql-details';
 import type { ReactElement } from 'react';
@@ -58,11 +59,6 @@ function useSelectedValues(
 type MetricComparison = 'gt' | 'lt';
 
 const OP_SYMBOL: Record<MetricComparison, string> = { gt: '>', lt: '<' };
-
-const POPOVER_WIDTH = 216;
-const POPOVER_MARGIN = 8;
-/** Fallback panel height for the bottom-of-viewport clamp before first measure. */
-const POPOVER_FALLBACK_HEIGHT = 140;
 
 /** Compact, lowercased abbreviation for the header badge (e.g. `50k`). */
 function formatThresholdBadge(value: number): string {
@@ -170,14 +166,12 @@ function useMetricThreshold(options: {
  * Popover-API panel with an operator select, a number input, and explicit
  * Apply / Clear buttons.
  *
- * The panel is a `popover="auto"` element (light-dismiss, Escape, top-layer for
- * free) targeted by the trigger's `popoverTarget`. Top-layer popovers do not
- * anchor to their trigger, so a native `toggle`-event listener measures the
- * trigger and positions the panel imperatively with explicit `fixed`
- * `top`/`left`, clamped to the viewport. (A native listener rather than React's
- * synthetic `onToggle`, which does not reliably bind to the popover toggle
- * event.) Background/borders are set explicitly because top-layer elements do
- * not inherit the page surface, and the UA margin/inset defaults are reset.
+ * The panel is an absolutely-positioned element inside the trigger's
+ * `relative` wrapper — the same in-flow pattern as the filter builder's editor
+ * popovers — so it stays anchored through page and container scroll for free.
+ * It is right-aligned to the trigger (the metric column hugs the card's right
+ * edge) and stays mounted, hidden with `display:none`, while closed;
+ * {@link usePopoverDismiss} closes it on an outside mousedown or Escape.
  */
 function MetricThresholdControl(props: {
   id: string;
@@ -186,52 +180,22 @@ function MetricThresholdControl(props: {
   state: MetricThresholdState;
 }): ReactElement {
   const { id, label, metricLabel, state } = props;
-  const popoverId = `metric-threshold-popover-${id}`;
 
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const opRef = useRef<HTMLSelectElement>(null);
-
-  // Position the top-layer panel near its trigger on open, and land focus in it.
-  // Uses the native `toggle` event (fires once the popover is shown, so
-  // `offsetWidth`/`offsetHeight` are measurable) and writes styles imperatively
-  // to avoid a re-render frame that would flash the panel at its prior spot.
-  useEffect(() => {
-    const trigger = triggerRef.current;
-    const popover = popoverRef.current;
-    if (trigger === null || popover === null) {
-      return;
-    }
-    const onToggle = (event: Event): void => {
-      if ((event as ToggleEvent).newState !== 'open') {
-        return;
-      }
-      const rect = trigger.getBoundingClientRect();
-      const width = popover.offsetWidth || POPOVER_WIDTH;
-      const height = popover.offsetHeight || POPOVER_FALLBACK_HEIGHT;
-      const left = Math.max(
-        POPOVER_MARGIN,
-        Math.min(
-          rect.right - width,
-          window.innerWidth - width - POPOVER_MARGIN,
-        ),
-      );
-      const top = Math.max(
-        POPOVER_MARGIN,
-        Math.min(rect.bottom + 4, window.innerHeight - height - POPOVER_MARGIN),
-      );
-      popover.style.top = `${top}px`;
-      popover.style.left = `${left}px`;
-      // `auto` popovers do not steal focus on open, so land it on the first field.
-      opRef.current?.focus();
-    };
-    popover.addEventListener('toggle', onToggle);
-    return () => popover.removeEventListener('toggle', onToggle);
+  const close = useCallback((): void => {
+    setOpen(false);
   }, []);
+  usePopoverDismiss(rootRef, open, close);
 
-  const close = (): void => {
-    popoverRef.current?.hidePopover();
-  };
+  // Land focus on the first field once the panel is visible (it is
+  // `display:none` until the open state applies, so focus post-render).
+  useEffect(() => {
+    if (open) {
+      opRef.current?.focus();
+    }
+  }, [open]);
 
   const badge =
     state.applied && state.value !== null
@@ -243,14 +207,15 @@ function MetricThresholdControl(props: {
       : `${metricLabel} threshold filter, inactive`;
 
   return (
-    <>
+    <div ref={rootRef} className="relative flex shrink-0">
       <button
-        ref={triggerRef}
         type="button"
         data-testid={`metric-filter-${id}`}
-        popoverTarget={popoverId}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         aria-label={ariaLabel}
         title={ariaLabel}
+        onClick={() => setOpen((prev) => !prev)}
         className={`flex h-5 items-center gap-1 rounded-gf border px-1 text-[10px] font-medium normal-case transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gf-blue ${
           state.applied
             ? 'border-gf-blue/40 bg-gf-blue/10 text-gf-blue'
@@ -269,20 +234,15 @@ function MetricThresholdControl(props: {
           <span className="tabular-nums whitespace-nowrap">{badge}</span>
         ) : null}
       </button>
+      {/* Stays mounted while closed (`hidden`) so the draft operator/value
+          survive an open/close. z-30 clears the sticky thead (z-10). */}
       <div
-        ref={popoverRef}
-        id={popoverId}
-        popover="auto"
+        role="dialog"
+        aria-label={`${label} threshold filter`}
         data-testid={`metric-filter-${id}-popover`}
-        style={{
-          position: 'fixed',
-          margin: 0,
-          inset: 'auto',
-          top: 0,
-          left: 0,
-          width: POPOVER_WIDTH,
-        }}
-        className="rounded-gf border border-line bg-panel p-3 text-ink shadow-lg"
+        className={`absolute top-full right-0 z-30 mt-1 w-[216px] rounded-gf border border-line bg-panel p-3 text-ink shadow-lg ${
+          open ? '' : 'hidden'
+        }`}
       >
         <div className="flex flex-col gap-2 text-left normal-case">
           <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
@@ -349,7 +309,7 @@ function MetricThresholdControl(props: {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

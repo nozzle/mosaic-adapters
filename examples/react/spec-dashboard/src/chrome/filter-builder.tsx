@@ -32,6 +32,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFilterSetState } from '@nozzleio/react-mosaic';
 import { FacetMultiSelect } from './facet-multi-select';
+import { usePopoverDismiss } from './use-popover-dismiss';
 import type { Selection } from '@uwdata/mosaic-core';
 import type {
   FilterKind,
@@ -319,36 +320,12 @@ export function FilterBuilder(props: FilterBuilderProps) {
     [openFieldIds, fields],
   );
 
-  // Dismiss the open popover on an outside mousedown or Escape. Clicks that land
-  // inside ANY popover root (a button or its panel) are left alone — the owning
-  // button's `onToggle` handles closing/switching, so clicking another field's
-  // button just switches which popover is open.
-  useEffect(() => {
-    if (openPopoverFieldId === null) {
-      return;
-    }
-    const onMouseDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (
-        target instanceof Element &&
-        target.closest('[data-filter-popover-root]') !== null
-      ) {
-        return;
-      }
-      setOpenPopoverFieldId(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpenPopoverFieldId(null);
-      }
-    };
-    document.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onMouseDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [openPopoverFieldId]);
+  // Each open button dismisses its own popover via `usePopoverDismiss`; this
+  // shared close handler is stable so the per-button dismiss effects do not
+  // re-subscribe every render.
+  const closePopover = useCallback(() => {
+    setOpenPopoverFieldId(null);
+  }, []);
 
   const confirmAdd = () => {
     if (pendingFieldId === '') {
@@ -416,6 +393,7 @@ export function FilterBuilder(props: FilterBuilderProps) {
             enabled={props.enabled}
             open={openPopoverFieldId === field.id}
             onToggle={() => togglePopover(field.id)}
+            onClose={closePopover}
             onRemove={() => removeField(field)}
           />
         ))}
@@ -443,6 +421,8 @@ interface FilterButtonProps {
   open: boolean;
   /** Toggle this field's popover (open if closed, close if open). */
   onToggle: () => void;
+  /** Close this field's popover (outside mousedown / Escape dismissal). */
+  onClose: () => void;
   onRemove: () => void;
 }
 
@@ -450,6 +430,12 @@ function FilterButton(props: FilterButtonProps) {
   const { field, filterSet, open } = props;
   const testId = `filter-block-${field.id}`;
   const { specs } = useFilterSetState(filterSet);
+
+  // Light-dismiss on an outside mousedown or Escape. A mousedown on ANOTHER
+  // field's button lands outside this root, so it dismisses this popover first
+  // and that button's click then opens its own — switching still works.
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePopoverDismiss(rootRef, open, props.onClose);
 
   // Seed once on mount to the placement that already holds a committed spec (if
   // any); the mirror effects handle live sync thereafter, so this must not re-run
@@ -478,7 +464,7 @@ function FilterButton(props: FilterButtonProps) {
   );
 
   return (
-    <div className="relative" data-filter-popover-root>
+    <div className="relative" ref={rootRef}>
       <button
         type="button"
         data-testid={`filter-button-${field.id}`}
