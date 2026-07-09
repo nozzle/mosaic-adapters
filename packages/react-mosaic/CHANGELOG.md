@@ -1,5 +1,14 @@
 # @nozzleio/react-mosaic
 
+## 0.4.1
+
+### Patch Changes
+
+- [#194](https://github.com/nozzle/mosaic-adapters/pull/194) [`e590fed`](https://github.com/nozzle/mosaic-adapters/commit/e590fedc9bca9d936fcb14d694ae7bae6ec12d63) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Use `useSelector` instead of the deprecated `useStore` from `@tanstack/react-store` for all store subscriptions. No change to hook behavior or public APIs.
+
+- Updated dependencies [[`33367fb`](https://github.com/nozzle/mosaic-adapters/commit/33367fba7ed50e915612e67570d83d19bf386207)]:
+  - @nozzleio/mosaic-core@0.2.1
+
 ## 0.4.0
 
 ### Minor Changes

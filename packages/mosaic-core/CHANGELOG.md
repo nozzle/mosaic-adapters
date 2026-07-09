@@ -1,5 +1,11 @@
 # @nozzleio/mosaic-core
 
+## 0.2.1
+
+### Patch Changes
+
+- [#196](https://github.com/nozzle/mosaic-adapters/pull/196) [`33367fb`](https://github.com/nozzle/mosaic-adapters/commit/33367fba7ed50e915612e67570d83d19bf386207) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Fix crossfilter self-exclusion loss when a FilterSet-publishing client remounts. A client destroyed inside the deferred prepare/adopt window no longer re-keys the surviving clause to itself (guarded in the base client's `prepare` wrapper and in the rows/facet/histogram `#adoptFromSet` paths), and a freshly-adopted client now re-queries once its own clause is confirmed self-excluded on its filter context, so a remounted selection table no longer renders only its selected rows. Reproducible in production builds under fast unmount/remount, not just React StrictMode.
+
 ## 0.2.0
 
 ### Minor Changes
