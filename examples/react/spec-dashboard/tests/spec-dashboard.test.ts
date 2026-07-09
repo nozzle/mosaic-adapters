@@ -651,4 +651,111 @@ test.describe('spec-driven dashboard', () => {
     await expect(popover).toHaveCount(0);
     await expect(page.getByTestId('filter-chip-text-phrase')).toHaveCount(0);
   });
+
+  test('(v) the editor textarea handles Tab, line-move, and comment-toggle keyboard shortcuts and opens tall', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await page.getByTestId('spec-editor-toggle').click();
+    const textarea = page.getByTestId('spec-editor-textarea');
+
+    // The panel opens viewport-proportionally tall (h-[70vh]).
+    const viewport = page.viewportSize();
+    if (viewport === null) {
+      throw new Error('viewport size unavailable');
+    }
+    const box = await textarea.boundingBox();
+    if (box === null) {
+      throw new Error('textarea box not found');
+    }
+    expect(box.height).toBeGreaterThan(viewport.height * 0.5);
+
+    // Helper: set the textarea to a known draft, with the caret/selection at
+    // the given offsets, so the keyboard assertions are deterministic.
+    const seed = async (value: string, from: number, to: number) => {
+      await textarea.fill(value);
+      await textarea.evaluate(
+        (element, offsets) => {
+          const field = element as HTMLTextAreaElement;
+          field.focus();
+          field.setSelectionRange(offsets.from, offsets.to);
+        },
+        { from, to },
+      );
+    };
+
+    // Tab inserts two spaces at the caret ("abc|def" → "abc  |def").
+    await seed('abcdef', 3, 3);
+    await page.keyboard.press('Tab');
+    await expect(textarea).toHaveValue('abc  def');
+
+    // Alt+ArrowDown moves the current line below its neighbor; Alt+ArrowUp
+    // restores it (caret rides along with the moved line).
+    await seed('line1\nline2\nline3', 8, 8);
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect(textarea).toHaveValue('line1\nline3\nline2');
+    await page.keyboard.press('Alt+ArrowUp');
+    await expect(textarea).toHaveValue('line1\nline2\nline3');
+
+    // ControlOrMeta+/ comments the current line (a "# " after the leading
+    // whitespace); pressing again uncomments it.
+    await seed('  key: value', 6, 6);
+    await page.keyboard.press('ControlOrMeta+/');
+    await expect(textarea).toHaveValue('  # key: value');
+    await page.keyboard.press('ControlOrMeta+/');
+    await expect(textarea).toHaveValue('  key: value');
+  });
+
+  test('(vi) Prettify reformats valid YAML (keeping comments) and reports errors for invalid YAML; ControlOrMeta+Enter applies and the status footer tracks unsaved edits', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await page.getByTestId('spec-editor-toggle').click();
+    const textarea = page.getByTestId('spec-editor-textarea');
+    const status = page.getByTestId('spec-editor-status');
+
+    // The status footer reports the caret position and starts with no unsaved
+    // marker (the draft equals the applied text on open).
+    await expect(status).toContainText('Ln');
+    await expect(status).not.toContainText('Unsaved changes');
+
+    // Prettify a valid-but-messy draft: the over-indented mapping normalizes to
+    // two spaces AND the inline comment survives (document-mode stringify).
+    await textarea.fill('a:\n      b: 1   # keep me\n');
+    await expect(status).toContainText('Unsaved changes');
+    await page.getByTestId('spec-editor-prettify').click();
+    await expect(textarea).toHaveValue('a:\n  b: 1 # keep me\n');
+    await expect(page.getByTestId('spec-editor-errors')).toHaveCount(0);
+
+    // Prettify invalid YAML: an error surfaces and the text is left untouched.
+    await textarea.fill('a: [');
+    await page.getByTestId('spec-editor-prettify').click();
+    await expect(page.getByTestId('spec-editor-errors')).toBeVisible();
+    await expect(textarea).toHaveValue('a: [');
+
+    // ControlOrMeta+Enter runs the same Apply handler as the button: retitle the
+    // dashboard through a keyboard-applied draft (mirrors test (d)).
+    const NEW_TITLE = 'Edited Via Keyboard';
+    await page.getByTestId('spec-editor-reset').click();
+    const original = await textarea.inputValue();
+    const edited = original.replace('People Also Ask Report', NEW_TITLE);
+    expect(edited).not.toBe(original);
+    await textarea.fill(edited);
+    await expect(status).toContainText('Unsaved changes');
+
+    await textarea.focus();
+    await page.keyboard.press('ControlOrMeta+Enter');
+
+    // Apply remounts the dashboard with the new title (and collapses the editor).
+    await expect(
+      page.getByRole('heading', { level: 1, name: NEW_TITLE }),
+    ).toBeVisible({ timeout: 90_000 });
+
+    // Re-opening the editor after Apply shows the applied text as the draft, so
+    // the unsaved indicator is absent again.
+    await page.getByTestId('spec-editor-toggle').click();
+    await expect(page.getByTestId('spec-editor-status')).not.toContainText(
+      'Unsaved changes',
+    );
+  });
 });

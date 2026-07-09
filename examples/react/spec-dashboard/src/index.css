@@ -25,8 +25,8 @@
   --color-faint: rgba(36, 41, 46, 0.45);
   --color-hover: #f4f5f5;
   --color-field: #ffffff;
-  --color-editor: #0b0c0e; /* code surface — dark in BOTH themes */
-  --color-editor-ink: #ccccdc;
+  --color-editor: #f7f8fa; /* code surface — follows the scheme */
+  --color-editor-ink: #24292e;
 
   /* Accent + categorical viz palette — identical across themes. */
   --color-gf-blue: #3d71d9;
@@ -58,6 +58,8 @@
     --color-faint: rgba(204, 204, 220, 0.4);
     --color-hover: #202226;
     --color-field: #0b0c0e;
+    --color-editor: #0b0c0e;
+    --color-editor-ink: #ccccdc;
   }
 }
 
