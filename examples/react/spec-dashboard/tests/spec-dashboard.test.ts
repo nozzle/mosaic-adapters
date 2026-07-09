@@ -1,0 +1,554 @@
+import { readFileSync } from 'node:fs';
+import { expect, test } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+
+// The dashboard reads a fixed parquet (203,556 rows: 2,681 phrases, 4,779
+// questions, 7 days, 2 devices), so the SQL-computed KPI values are exact.
+// `kpi_phrases` and `kpi_phrases_all` both read count(DISTINCT phrase); the
+// latter omits `filter_by`, so it stays 2,681 no matter what filters are active
+// while the former reacts.
+const TOTAL_QUESTIONS = '4,779';
+const TOTAL_PHRASES = '2,681';
+const TOTAL_ROWS = '203,556';
+const TOTAL_PHRASES_NUM = 2_681;
+const TOTAL_ROWS_NUM = 203_556;
+
+const KPI_VALUE_IDS = [
+  'kpi-kpi_phrases-value',
+  'kpi-kpi_questions-value',
+  'kpi-kpi_days-value',
+  'kpi-kpi_devices-value',
+  'kpi-kpi_phrases_all-value',
+] as const;
+
+const SUMMARY_IDS = [
+  'summary-table-by_phrase',
+  'summary-table-by_domain',
+  'summary-table-by_device',
+  'summary-table-by_bucket',
+] as const;
+
+/** Reads a comma-formatted integer out of a locator's text (NaN → 0). */
+async function readCount(locator: Locator): Promise<number> {
+  const text = (await locator.textContent()) ?? '';
+  return Number(text.replaceAll(/[^\d]/g, ''));
+}
+
+/**
+ * First paint waits on DuckDB-WASM instantiation, the proxied parquet download,
+ * and the derived `questions_enriched` table. Wait on a KPI whose value is a
+ * dataset constant so the whole pipeline (spec fetch → compile → topology →
+ * load → query) is proven before any assertion.
+ */
+async function gotoDashboard(page: Page): Promise<void> {
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
+    TOTAL_QUESTIONS,
+    { timeout: 90_000 },
+  );
+}
+
+function summaryRows(page: Page, id: string): Locator {
+  return page.getByTestId(id).locator('tbody tr');
+}
+
+/**
+ * Drive the enlarge → select-in-promoted → return sequence for a selection
+ * table and assert the collapsed table still shows its non-selected rows
+ * (dimmed), not just the selected ones.
+ *
+ * Regression guard for the "collapsed table shows only the selected rows"
+ * failure mode: on the enlarge/return remount the page FilterSet keeps the
+ * card's `select:<card>` spec alive and the rows client re-adopts it to re-key
+ * its crossfilter self-exclusion to the freshly-mounted client. The card must
+ * never be filtered by its OWN selection, so after collapsing the row count has
+ * to exceed the selected count and at least one non-selected row must remain
+ * (rendered dimmed via `opacity-30`). React StrictMode's mount→unmount→mount
+ * double-invoke widens the remount window, but the failure mode is timing-
+ * sensitive rather than dev-only — it reproduces in the production preview build
+ * Playwright's webServer runs here too.
+ */
+async function expandSelectCollapseAndAssert(
+  page: Page,
+  id: string,
+): Promise<void> {
+  const table = page.getByTestId(id);
+  await expect
+    .poll(async () => summaryRows(page, id).count())
+    .toBeGreaterThan(3);
+  const initialRows = await summaryRows(page, id).count();
+
+  // Enlarge: the promoted copy renders full-width (data-mode="promoted") while a
+  // placeholder holds the grid slot.
+  await page.getByTestId(`${id}-toggle`).click();
+  await expect(table).toHaveAttribute('data-mode', 'promoted');
+  await expect
+    .poll(async () => summaryRows(page, id).count())
+    .toBeGreaterThan(3);
+
+  // Select the first two rows in the promoted view.
+  const rows = summaryRows(page, id);
+  await rows.nth(0).click();
+  await rows.nth(1).click();
+  const checked = table.locator('tbody tr input[type=checkbox]:checked');
+  await expect(checked).toHaveCount(2);
+
+  // Return to the grid: the default copy re-mounts in the slot.
+  await page.getByTestId(`${id}-toggle`).click();
+  await expect(table).toHaveAttribute('data-mode', 'default');
+
+  // The selection survives the move…
+  await expect(
+    table.locator('tbody tr input[type=checkbox]:checked'),
+  ).toHaveCount(2);
+
+  // …and — the regression assertion — the card is NOT filtered down to only its
+  // own selected rows: the full group set is still present and the non-selected
+  // rows render dimmed.
+  await expect
+    .poll(async () => summaryRows(page, id).count())
+    .toBe(initialRows);
+  expect(await summaryRows(page, id).count()).toBeGreaterThan(2);
+  await expect(table.locator('tbody tr[class*="opacity-30"]')).toHaveCount(
+    initialRows - 2,
+  );
+}
+
+test.describe('spec-driven dashboard', () => {
+  test('(a) loads with data and no catalog race errors', async ({ page }) => {
+    // Guard against the construct-before-load race: a vgplot mark constructed
+    // before its derived table exists throws a DuckDB catalog error + a vgplot
+    // `exclusiveFacets` TypeError. Capture page errors and console output from
+    // BEFORE navigation, then assert none of the tell-tale strings appear.
+    const pageErrors: Array<string> = [];
+    const badConsole: Array<string> = [];
+    const FORBIDDEN = ['Catalog Error', 'exclusiveFacets', 'does not exist'];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    page.on('console', (message) => {
+      const text = message.text();
+      if (FORBIDDEN.some((needle) => text.includes(needle))) {
+        badConsole.push(text);
+      }
+    });
+
+    await gotoDashboard(page);
+
+    // The spec-provided title renders in the header.
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'People Also Ask Report' }),
+    ).toBeVisible();
+
+    // Every KPI value populates with a concrete number (never the '…' loading
+    // placeholder or the '—' formatter fallback).
+    for (const id of KPI_VALUE_IDS) {
+      await expect(page.getByTestId(id)).toHaveText(/^[\d,]+$/);
+    }
+    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText(
+      TOTAL_PHRASES,
+    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
+      TOTAL_PHRASES,
+    );
+
+    // The vgplot histogram paints its bars.
+    await expect
+      .poll(
+        async () =>
+          page.locator('[data-testid="vgplot-volume_brush-plot"] rect').count(),
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThan(5);
+
+    // Every summary table shows rows and none reports "No results.".
+    for (const id of SUMMARY_IDS) {
+      await expect
+        .poll(async () => summaryRows(page, id).count(), { timeout: 30_000 })
+        .toBeGreaterThan(0);
+      await expect(page.getByTestId(id).locator('tbody')).not.toContainText(
+        'No results.',
+      );
+    }
+
+    // The detail table shows rows and its total matches the whole dataset.
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+    await expect
+      .poll(async () =>
+        page.getByTestId('detail-detail-body').locator('tr').count(),
+      )
+      .toBeGreaterThan(0);
+
+    // The regression assertion: the load produced no uncaught errors and no
+    // catalog/vgplot race noise on the console.
+    expect(pageErrors).toEqual([]);
+    expect(badConsole).toEqual([]);
+  });
+
+  test('(b) a builder phrase filter cross-filters the page but the opt-out KPI stays constant', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    const filtered = page.getByTestId('kpi-kpi_phrases-value');
+    const optOut = page.getByTestId('kpi-kpi_phrases_all-value');
+
+    // Both read count(DISTINCT phrase); they start equal on a clean load.
+    await expect(filtered).toHaveText(TOTAL_PHRASES);
+    await expect(optOut).toHaveText(TOTAL_PHRASES);
+
+    // Build a Phrase filter (defaults to `contains`) and type a term.
+    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
+    await page.getByTestId('filter-block-phrase-value').fill('stove');
+
+    // The chip appears (sanitized spec id `text:phrase` → `text-phrase`).
+    await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible();
+
+    // The cross-filtered KPI drops to a strict subset…
+    await expect
+      .poll(async () => readCount(filtered), { timeout: 30_000 })
+      .toBeLessThan(TOTAL_PHRASES_NUM);
+    expect(await readCount(filtered)).toBeGreaterThan(0);
+
+    // …while the opt-out KPI (no `filter_by`) is byte-for-byte unchanged.
+    await expect(optOut).toHaveText(TOTAL_PHRASES);
+
+    // Clearing all filters returns the cross-filtered KPI to its original value.
+    await page.getByTestId('clear-all-filters').click();
+    await expect(filtered).toHaveText(TOTAL_PHRASES);
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+  });
+
+  test('(c) a summary row selection cross-filters the detail table and clears', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+
+    const domainRows = summaryRows(page, 'summary-table-by_domain');
+    await expect.poll(async () => domainRows.count()).toBeGreaterThan(0);
+
+    // Selecting a domain publishes a `select:domain` points spec into the page.
+    await domainRows.first().click();
+
+    const selectChip = page.locator(
+      '[data-testid^="filter-chip-select-domain"]',
+    );
+    await expect(selectChip.first()).toBeVisible();
+
+    // The detail table narrows to that domain's answer rows.
+    await expect
+      .poll(async () => readCount(page.getByTestId('detail-detail-total')), {
+        timeout: 30_000,
+      })
+      .toBeLessThan(TOTAL_ROWS_NUM);
+
+    await page.getByTestId('clear-all-filters').click();
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+  });
+
+  test('(d) editing the spec + Apply remounts; an invalid spec shows errors and keeps the last-good dashboard', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    const NEW_LABEL = 'Total Phrases (unfiltered)';
+
+    // Open the editor and retitle the opt-out KPI.
+    await page.getByTestId('spec-editor-toggle').click();
+    const textarea = page.getByTestId('spec-editor-textarea');
+    const original = await textarea.inputValue();
+    const edited = original.replace('Phrases (all data)', NEW_LABEL);
+    // Guard: the replacement actually landed (no silent no-op).
+    expect(edited).not.toBe(original);
+    expect(edited).toContain(NEW_LABEL);
+
+    await textarea.fill(edited);
+    await page.getByTestId('spec-editor-apply').click();
+
+    // Apply remounts the dashboard: the new label renders and the value
+    // re-populates against the reloaded data (still the unfiltered 2,681).
+    await expect(page.getByTestId('kpi-kpi_phrases_all')).toContainText(
+      NEW_LABEL,
+      { timeout: 90_000 },
+    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
+      TOTAL_PHRASES,
+      { timeout: 90_000 },
+    );
+
+    // A successful Apply remounts the editor (collapsed) — re-open it, then
+    // apply an INVALID spec (a YAML parse error).
+    await page.getByTestId('spec-editor-toggle').click();
+    await page.getByTestId('spec-editor-textarea').fill('a: b: c');
+    await page.getByTestId('spec-editor-apply').click();
+
+    // Errors surface in the editor, and the last-good dashboard keeps rendering
+    // its data untouched (no fetch/compile teardown).
+    await expect(page.getByTestId('spec-editor-errors')).toBeVisible();
+    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText(
+      TOTAL_PHRASES,
+    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all')).toContainText(
+      NEW_LABEL,
+    );
+  });
+
+  test('(e) the vgplot panel expands and collapses', async ({ page }) => {
+    await gotoDashboard(page);
+
+    const figure = page.getByTestId('vgplot-volume_brush');
+    const plot = page.getByTestId('vgplot-volume_brush-plot');
+    await expect(figure).toHaveAttribute('data-expanded', 'false');
+
+    // The compact panel already paints its bars.
+    await expect
+      .poll(async () => plot.locator('rect').count(), { timeout: 30_000 })
+      .toBeGreaterThan(5);
+
+    // Settle the collapsed plot's box, then capture its height.
+    const collapsedBox = await plot.boundingBox();
+    if (collapsedBox === null) {
+      throw new Error('vgplot plot box not found (collapsed)');
+    }
+
+    // Expand: the geometry grows in place (BASE_HEIGHT → EXPANDED_HEIGHT).
+    await page.getByTestId('vgplot-volume_brush-toggle').click();
+    await expect(figure).toHaveAttribute('data-expanded', 'true');
+    await expect
+      .poll(
+        async () => {
+          const box = await plot.boundingBox();
+          return box === null ? 0 : box.height;
+        },
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThan(collapsedBox.height);
+
+    // Collapse: the plot returns to (approximately) its original height.
+    await page.getByTestId('vgplot-volume_brush-toggle').click();
+    await expect(figure).toHaveAttribute('data-expanded', 'false');
+    await expect
+      .poll(
+        async () => {
+          const box = await plot.boundingBox();
+          return box === null ? Number.POSITIVE_INFINITY : box.height;
+        },
+        { timeout: 15_000 },
+      )
+      .toBeLessThan(collapsedBox.height + 40);
+  });
+
+  test('(f) the phrase metric threshold routes HAVING to its own table and a membership subquery to its siblings', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+    const phraseRows = summaryRows(page, 'summary-table-by_phrase');
+    await expect.poll(async () => phraseRows.count()).toBeGreaterThan(2);
+
+    // Threshold the phrase card's max(search_volume) metric at > 50,000. The
+    // control lives in the metric column header: open its popover, set the
+    // operator + value, then explicitly Apply (no publish-per-keystroke).
+    await page.getByTestId('metric-filter-by_phrase').click();
+    const popover = page.getByTestId('metric-filter-by_phrase-popover');
+    await expect(popover).toBeVisible();
+    await page.getByTestId('metric-filter-by_phrase-op').selectOption('gt');
+    await page.getByTestId('metric-filter-by_phrase-value').fill('50000');
+    await page.getByTestId('metric-filter-by_phrase-apply').click();
+
+    // The HAVING clause narrows the phrase card's own grouped query: only the
+    // two 90,500-volume phrases survive.
+    await expect(phraseRows).toHaveCount(2, { timeout: 30_000 });
+
+    // The membership subquery (members:phrase, in the page context) narrows the
+    // phrase KPI and the detail table to the same subset.
+    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText('2');
+    await expect
+      .poll(async () => readCount(page.getByTestId('detail-detail-total')), {
+        timeout: 30_000,
+      })
+      .toBeLessThan(TOTAL_ROWS_NUM);
+
+    // The chip carries the HAVING badge; Clear All restores the full page.
+    await expect(
+      page.getByTestId('active-filter-bar').getByTestId('chip-target').first(),
+    ).toHaveText('HAVING');
+    await page.getByTestId('clear-all-filters').click();
+    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText(
+      TOTAL_PHRASES,
+    );
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+  });
+
+  test('(g) enlarging a summary table, selecting rows, and returning keeps the non-selected rows (by_phrase)', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    // by_phrase ships `expandable: true` in the on-load spec.
+    await expandSelectCollapseAndAssert(page, 'summary-table-by_phrase');
+  });
+
+  test('(h) the same enlarge/select/return holds for a table made expandable through the editor (by_domain)', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // Reproduce the user's exact path: add `expandable: true` to the by_domain
+    // widget in the spec editor and Apply (which remounts the dashboard), then
+    // run the enlarge → select → return sequence on it. Widgets are a map keyed
+    // by id, so target the `by_domain:` entry's `title: Domain` line.
+    await page.getByTestId('spec-editor-toggle').click();
+    const textarea = page.getByTestId('spec-editor-textarea');
+    const original = await textarea.inputValue();
+    const edited = original.replace(
+      /(\n {2}by_domain:\n {4}renderer: selection-table\n {4}title: Domain\n)/,
+      '$1    expandable: true\n',
+    );
+    // Guard: the injection actually landed (no silent no-op).
+    expect(edited).not.toBe(original);
+    await textarea.fill(edited);
+    await page.getByTestId('spec-editor-apply').click();
+
+    // Apply remounts; wait for the now-expandable table's toggle to appear.
+    await expect(
+      page.getByTestId('summary-table-by_domain-toggle'),
+    ).toBeVisible({ timeout: 90_000 });
+
+    await expandSelectCollapseAndAssert(page, 'summary-table-by_domain');
+  });
+
+  test('(i) the quick-load selector switches specs: ?spec= drives the active spec and reloads the dashboard', async ({
+    page,
+  }) => {
+    // No param on load → the manifest `default` (questions) is the selection.
+    await gotoDashboard(page);
+    const select = page.getByTestId('spec-select');
+    await expect(select).toBeVisible();
+    await expect(select).toHaveValue('questions');
+    // Options come only from the manifest (data), not from src/.
+    await expect(select.locator('option')).toHaveCount(2);
+
+    // Loading with ?spec=questions is identical to loading with no param.
+    await page.goto('/?spec=questions');
+    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
+      TOTAL_QUESTIONS,
+      { timeout: 90_000 },
+    );
+    await expect(page.getByTestId('spec-select')).toHaveValue('questions');
+
+    // Switching the selector writes ?spec=<id> and loads that spec fresh — a
+    // param-write + remount, not a no-op re-select. The `protein-design` entry
+    // is a wholly different dashboard (its own tables, plots, and columns), so
+    // the switch swaps the entire rendered page.
+    await page.getByTestId('spec-select').selectOption('protein-design');
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('spec'))
+      .toBe('protein-design');
+    await expect(page.getByTestId('spec-select')).toHaveValue('protein-design');
+
+    // The Protein Design dashboard renders its own vgplot panels (the pLDDT
+    // histogram + the pLDDT×pAE scatter) and carries NO kpi widgets. The
+    // histogram bars paint once the external parquet finishes downloading.
+    await expect(page.getByTestId('vgplot-plddt_hist')).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(page.getByTestId('vgplot-scatter')).toBeVisible();
+    await expect
+      .poll(
+        async () =>
+          page.locator('[data-testid="vgplot-plddt_hist-plot"] rect').count(),
+        { timeout: 90_000 },
+      )
+      .toBeGreaterThan(0);
+    await expect(page.locator('[data-testid^="kpi-"]')).toHaveCount(0);
+
+    // Its data-table (widget id `table`) populates from the vendored parquet:
+    // the total resolves to a concrete row count and the body renders rows.
+    await expect(page.getByTestId('detail-table-total')).toHaveText(
+      /[\d,]+ rows match/,
+      { timeout: 90_000 },
+    );
+    await expect
+      .poll(async () =>
+        page.getByTestId('detail-table-body').locator('tr').count(),
+      )
+      .toBeGreaterThan(0);
+
+    // Switching back restores the questions dashboard and its KPIs.
+    await page.getByTestId('spec-select').selectOption('questions');
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('spec'))
+      .toBe('questions');
+    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
+      TOTAL_QUESTIONS,
+      { timeout: 90_000 },
+    );
+  });
+
+  test('(ii) the detail table exports the current page as CSV whose header row matches the columns', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+    await expect
+      .poll(async () =>
+        page.getByTestId('detail-detail-body').locator('tr').count(),
+      )
+      .toBeGreaterThan(0);
+
+    // The `meta: { exportable: true }` on the detail widget surfaces the button.
+    const exportButton = page.getByTestId('detail-detail-export');
+    await expect(exportButton).toBeVisible();
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      exportButton.click(),
+    ]);
+
+    const path = await download.path();
+    const content = readFileSync(path, 'utf8');
+    expect(content.trim().length).toBeGreaterThan(0);
+
+    const lines = content.split('\n');
+    // The header row is derived from the widget's column defs, in order.
+    expect(lines[0]).toBe(
+      'Domain,PAA Question,Answer Title,Answer Description',
+    );
+    // Header + at least one data row from the current page.
+    expect(lines.length).toBeGreaterThan(1);
+  });
+
+  test('(iii) the header renders the title only — the removed subtitle never appears', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    const header = page.locator('header');
+    await expect(
+      header.getByRole('heading', {
+        level: 1,
+        name: 'People Also Ask Report',
+      }),
+    ).toBeVisible();
+    // The header carries no subtitle paragraph, and the old subtitle string is
+    // gone from the document entirely.
+    await expect(header.locator('p')).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText(
+      'Spec-driven SEO Intelligence Dashboard',
+    );
+  });
+});

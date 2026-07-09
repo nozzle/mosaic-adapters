@@ -1,0 +1,43 @@
+{
+  "name": "example-react-spec-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clear-build": "rimraf dist",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ./src ./tests",
+    "build": "pnpm run typecheck && vite build",
+    "preview": "vite preview",
+    "test:lint": "pnpm run lint",
+    "test:e2e": "playwright test",
+    "test:types": "pnpm run typecheck"
+  },
+  "dependencies": {
+    "@nozzleio/mosaic-tanstack-react-table": "^0.10.0",
+    "@nozzleio/react-mosaic": "^0.4.0",
+    "@tanstack/react-table": "catalog:",
+    "@uwdata/mosaic-core": "catalog:",
+    "@uwdata/mosaic-sql": "catalog:",
+    "@uwdata/vgplot": "catalog:",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwindcss": "^4.3.1",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint-react/eslint-plugin": "catalog:",
+    "@playwright/test": "catalog:",
+    "@tailwindcss/vite": "^4.3.1",
+    "@types/node": "catalog:",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}

@@ -1,0 +1,452 @@
+# People Also Ask dashboard, driven entirely by this spec.
+#
+# The whole page — data tables, cross-filter topology, filter behaviors, filter
+# builder, KPI cards, brush, summary cards, and the detail table — is fetched at
+# runtime, parsed, and validated by the zod schema in src/spec/schema.ts. The app
+# is a PURE INTERPRETER: it knows the four generic renderers, the plot DSL, and
+# the behavior factories, but nothing about this domain. Every domain name lives
+# here in the spec.
+#
+# Spec keys are all lower_snake_case; author-chosen names (widget ids, topology
+# entries, filter-kind names) are snake_case too. Translation to the libraries'
+# camelCase types happens once at the compile boundary.
+
+# Optional page title rendered in the header (falls back to a generic default if
+# absent — the domain string lives here, never in src/).
+title: People Also Ask Report
+
+# ── Data ─────────────────────────────────────────────────────────────────────
+# Ordered CREATE OR REPLACE TABLE statements (record insertion order = load
+# order). `questions_enriched` is a derived table that pre-computes a
+# `volume_bucket` column; every widget queries it.
+data:
+  tables:
+    questions:
+      type: parquet
+      url: /data/questions.parquet
+    questions_enriched:
+      type: sql
+      query: |
+        SELECT *,
+          CASE
+            WHEN search_volume >= 10000 THEN 'high'
+            WHEN search_volume >= 1000 THEN 'mid'
+            ELSE 'low'
+          END AS volume_bucket
+        FROM questions
+
+# ── Topology ───────────────────────────────────────────────────────────────
+# Passed (after zod validation) straight to `useTopology` as a TopologyConfig.
+# The code-only kinds (instantiated from `filter_kinds` below) are attached to
+# every filter-set entry in code, keyed by entry name.
+#
+# Every composed read-context is `crossfilter`, never `intersect` — only
+# crossfilter supplies the per-client self-exclusion the facet/summary controls
+# rely on.
+topology:
+  filters:
+    type: filter-set
+    label: Filters
+    targets:
+      where: crossfilter
+      'having:phrase': crossfilter
+      'members:phrase': crossfilter
+      'having:domain': crossfilter
+      'members:domain': crossfilter
+    context: page
+  volume_brush:
+    type: single
+    label: Search Volume
+    meta:
+      column: search_volume
+  # page = where + brush + EVERY card's memberships. Each card reads a
+  # minus-self variant below so it is never filtered by its own membership.
+  page:
+    type: compose
+    as: crossfilter
+    include:
+      - filters.where
+      - volume_brush
+      - 'filters.members:phrase'
+      - 'filters.members:domain'
+  # page minus the brush (still sees both cards' memberships).
+  volume_brush_filter_by:
+    type: compose
+    as: crossfilter
+    include:
+      - filters.where
+      - 'filters.members:phrase'
+      - 'filters.members:domain'
+  # page minus phrase's OWN members (keeps domain's).
+  'summary_filter_by:phrase':
+    type: compose
+    as: crossfilter
+    include:
+      - filters.where
+      - volume_brush
+      - 'filters.members:domain'
+  # page minus domain's OWN members (keeps phrase's).
+  'summary_filter_by:domain':
+    type: compose
+    as: crossfilter
+    include:
+      - filters.where
+      - volume_brush
+      - 'filters.members:phrase'
+
+# ── Filter kinds ─────────────────────────────────────────────────────────────
+# Generic behavior factories instantiated with config. The `aggregate-threshold`
+# behavior emits a HAVING clause on `having_target` (the widget's own grouped
+# query) and a membership subquery on `members_target` (narrowing every sibling).
+# Nothing about this is hardcoded in code — the table, group key, aggregate, and
+# targets all arrive here.
+filter_kinds:
+  metric_threshold:
+    behavior: aggregate-threshold
+    config:
+      table: questions_enriched
+      group_by: phrase
+      aggregate: 'max(search_volume)'
+      having_target: 'having:phrase'
+      members_target: 'members:phrase'
+      operators: [gt, lt]
+  metric_threshold_domain:
+    behavior: aggregate-threshold
+    config:
+      table: questions_enriched
+      group_by: domain
+      aggregate: 'count(*)'
+      having_target: 'having:domain'
+      members_target: 'members:domain'
+      operators: [gt, lt]
+
+# ── Filters (builder field catalog) ──────────────────────────────────────────
+# Each field lists placements, one per routing target; a placement pairs a
+# FilterSet `target` with the `kind` (and its operator vocabulary). The Search
+# Volume HAVING placement uses the instantiated `metric_threshold` kind.
+filters:
+  fields:
+    - id: phrase
+      label: Phrase
+      column: phrase
+      value_kind: text
+      placements:
+        - label: WHERE
+          target: where
+          kind: condition
+          spec_id: text:phrase
+    - id: domain
+      label: Domain
+      column: domain
+      value_kind: facet
+      facet_table: questions_enriched
+      placements:
+        - label: WHERE
+          target: where
+          kind: condition
+          spec_id: facet:domain
+    - id: device
+      label: Device
+      column: device
+      value_kind: facet
+      facet_table: questions_enriched
+      placements:
+        - label: WHERE
+          target: where
+          kind: condition
+          spec_id: facet:device
+    - id: volume_bucket
+      label: Volume Bucket
+      column: volume_bucket
+      value_kind: facet
+      facet_table: questions_enriched
+      placements:
+        - label: WHERE
+          target: where
+          kind: condition
+          spec_id: facet:volume_bucket
+    - id: search_volume
+      label: Search Volume
+      column: search_volume
+      value_kind: number
+      placements:
+        - label: per row (WHERE)
+          target: where
+          kind: condition
+          spec_id: built:search_volume
+        - label: per keyword (HAVING)
+          target: 'having:phrase'
+          kind: metric_threshold
+          spec_id: metric:phrase
+          spec_column: phrase
+    - id: requested_date
+      label: Requested Date
+      column: requested
+      value_kind: date
+      placements:
+        - label: WHERE
+          target: where
+          kind: interval
+          spec_id: date:requested
+
+# ── Widgets ─────────────────────────────────────────────────────────────────
+# A MAP keyed by widget id (like `topology` and `filter_kinds`): the key IS the
+# id, and `renderer` is the per-widget discriminator into the component registry
+# (src/widgets/registry.tsx) — one of kpi-card, selection-table, data-table,
+# vgplot. `filter_by` / `having_by` name topology selections by ref; omitting
+# `filter_by` opts a widget OUT of the cross-filter topology entirely (see
+# `kpi_phrases_all`).
+widgets:
+  # KPI cards — one useMosaicValues client each; `value` column, formatter key.
+  kpi_phrases:
+    renderer: kpi-card
+    label: '# of Tracked Phrases'
+    format: number
+    filter_by: page
+    query:
+      type: sql
+      statement: |
+        SELECT count(DISTINCT phrase) AS value
+        FROM questions_enriched
+        WHERE {{where}}
+  kpi_questions:
+    renderer: kpi-card
+    label: '# of Unique Questions'
+    format: number
+    filter_by: page
+    query:
+      type: sql
+      statement: |
+        SELECT count(DISTINCT "related_phrase"."phrase") AS value
+        FROM questions_enriched
+        WHERE {{where}}
+  kpi_days:
+    renderer: kpi-card
+    label: '# of Days'
+    format: number
+    filter_by: page
+    query:
+      type: sql
+      statement: |
+        SELECT count(DISTINCT requested) AS value
+        FROM questions_enriched
+        WHERE {{where}}
+  kpi_devices:
+    renderer: kpi-card
+    label: '# of Devices'
+    format: number
+    filter_by: page
+    query:
+      type: sql
+      statement: |
+        SELECT count(DISTINCT device) AS value
+        FROM questions_enriched
+        WHERE {{where}}
+  # The fifth KPI omits `filter_by`: it never joins the cross-filter topology,
+  # so its value stays constant. Its raw template MUST NOT carry a `{{where}}`
+  # placeholder (validation rejects a meaningless one).
+  kpi_phrases_all:
+    renderer: kpi-card
+    label: Phrases (all data)
+    format: number
+    query:
+      type: sql
+      statement: |
+        SELECT count(DISTINCT phrase) AS value
+        FROM questions_enriched
+
+  # Search-volume histogram — a generic vgplot widget whose plot is DECLARED in
+  # the spec's plot DSL. A rectY bar mark (binned x, counted y) reads the
+  # self-excluding `volume_brush_filter_by` context; an intervalX select
+  # publishes its `[min, max]` into the `volume_brush` topology selection. No
+  # geometry here — the renderer sizes the plot.
+  volume_brush:
+    renderer: vgplot
+    label: Search Volume
+    expandable: true
+    plot:
+      x_scale: log
+      x_domain: fixed
+      x_label: 'Search Volume →'
+      y_label: null
+      y_ticks: 3
+      marks:
+        - mark: rectY
+          data:
+            from: questions_enriched
+            filter_by: volume_brush_filter_by
+          x: { bin: search_volume }
+          y: { agg: count }
+          fill: '#73bf69'
+      selects:
+        - select: intervalX
+          as: volume_brush
+          brush:
+            fill: '#5794f2'
+            fill_opacity: 0.15
+            stroke: '#3d71d9'
+
+  # Selection tables — grouped key/metric tables with row-select publishing.
+  # The phrase and domain cards carry the metric-threshold header control and a
+  # minus-self membership context; the rest read `page` directly.
+  by_phrase:
+    renderer: selection-table
+    title: Keyword Phrase
+    metric_label: Search Vol
+    filter_by: 'summary_filter_by:phrase'
+    having_by: 'filters.having:phrase'
+    expandable: true
+    query:
+      type: sql
+      statement: |
+        SELECT phrase AS key, max(search_volume) AS metric
+        FROM questions_enriched
+        WHERE {{where}}
+        GROUP BY phrase
+        HAVING {{having}}
+    publish:
+      spec_id: select:phrase
+      label: Selected Keyword
+      columns: [key]
+      fields: [phrase]
+    sparkline:
+      table: questions_enriched
+      key: phrase
+      x:
+        column: requested
+        interval: day
+      y:
+        agg: max
+        column: search_volume
+    metric_threshold:
+      spec_id: metric:phrase
+      kind: metric_threshold
+      group_by: phrase
+      label: Search Vol
+  by_domain:
+    renderer: selection-table
+    title: Domain
+    metric_label: '# of Answers'
+    filter_by: 'summary_filter_by:domain'
+    having_by: 'filters.having:domain'
+    query:
+      type: sql
+      statement: |
+        SELECT domain AS key, count(*) AS metric
+        FROM questions_enriched
+        WHERE {{where}} AND domain IS NOT NULL
+        GROUP BY domain
+        HAVING {{having}}
+    publish:
+      spec_id: select:domain
+      label: Selected Domain
+      columns: [key]
+      fields: [domain]
+    metric_threshold:
+      spec_id: metric:domain
+      kind: metric_threshold_domain
+      group_by: domain
+      label: '# of Answers'
+  by_device:
+    renderer: selection-table
+    title: Device
+    metric_label: '# of Answers'
+    filter_by: page
+    query:
+      type: sql
+      statement: |
+        SELECT device AS key, count(*) AS metric
+        FROM questions_enriched
+        WHERE {{where}}
+        GROUP BY device
+    publish:
+      spec_id: select:device
+      label: Selected Device
+      columns: [key]
+      fields: [device]
+  by_bucket:
+    renderer: selection-table
+    title: Volume Bucket
+    metric_label: '# of Answers'
+    filter_by: page
+    query:
+      type: sql
+      statement: |
+        SELECT volume_bucket AS key, count(*) AS metric
+        FROM questions_enriched
+        WHERE {{where}}
+        GROUP BY volume_bucket
+    publish:
+      spec_id: select:bucket
+      label: Selected Bucket
+      columns: [key]
+      fields: [volume_bucket]
+
+  # Detail table — the one structured-query widget; TanStack Table v9 with column
+  # filters bridged into the `filters` set via bridge_columns.
+  detail:
+    renderer: data-table
+    title: Detailed Breakdown
+    filter_by: page
+    page_size: 20
+    # Free-form renderer metadata: the data-table renderer interprets
+    # `exportable` by offering a client-side "Export CSV" of the current page.
+    meta:
+      exportable: true
+    query:
+      type: select
+      from: questions_enriched
+      select:
+        domain: domain
+        question: related_phrase.phrase
+        title: title
+        description: description
+    columns:
+      - accessor_key: domain
+        header: Domain
+        size: 150
+      - accessor_key: question
+        header: PAA Question
+        size: 350
+      - accessor_key: title
+        header: Answer Title
+        size: 300
+      - accessor_key: description
+        header: Answer Description
+        size: 400
+    bridge_columns:
+      domain:
+        clause: ilike
+        label: Domain
+      question:
+        column: related_phrase.phrase
+        clause: ilike
+        label: PAA Question
+      title:
+        clause: ilike
+        label: Answer Title
+      description:
+        clause: ilike
+        label: Answer Description
+
+# ── Layout ──────────────────────────────────────────────────────────────────
+# CSS grid: each row is its own `columns`-wide grid; a widget's `span` maps to a
+# static Tailwind col-span class.
+layout:
+  columns: 5
+  rows:
+    - widgets:
+        - { ref: kpi_phrases, span: 1 }
+        - { ref: kpi_questions, span: 1 }
+        - { ref: kpi_days, span: 1 }
+        - { ref: kpi_devices, span: 1 }
+        - { ref: kpi_phrases_all, span: 1 }
+    - widgets:
+        - { ref: volume_brush, span: 5 }
+    - widgets:
+        - { ref: by_phrase, span: 2 }
+        - { ref: by_domain, span: 1 }
+        - { ref: by_device, span: 1 }
+        - { ref: by_bucket, span: 1 }
+    - widgets:
+        - { ref: detail, span: 5 }

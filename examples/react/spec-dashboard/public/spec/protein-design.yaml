@@ -1,0 +1,162 @@
+# Protein Design Explorer — a "street test" translation of the upstream
+# mosaic-specs example (specs/yaml/protein-design.yaml) into this example's
+# dashboard spec format. Best-effort: several upstream features have no
+# equivalent here (see the inline NOTE comments). Wired into manifest.json as a
+# second selectable dashboard; its dataset is vendored alongside questions.parquet
+# (public/data/protein-design.parquet) so it renders fully in-browser.
+title: Protein Design Explorer
+
+data:
+  tables:
+    proteins: { type: parquet, url: /data/protein-design.parquet }
+
+topology:
+  # Builder-authored menu filters land here.
+  filters:
+    type: filter-set
+    targets:
+      where: crossfilter
+  # The scatter's intervalXY brush publishes here (upstream `$query` brush).
+  scatter_brush:
+    type: single
+    label: Scatter selection
+    meta: { column: plddt_total }
+  # What every plot/table reads: menus + brush composed (upstream `$query`).
+  query:
+    type: compose
+    as: crossfilter
+    include: [filters.where, scatter_brush]
+
+# Upstream's four `input: menu ... as: $query` controls become builder facet
+# fields writing into `where` (⊂ query). Functionally they filter every plot;
+# they render in the filter-builder panel rather than inline above the plots.
+filters:
+  fields:
+    - id: partial_t
+      label: Partial t
+      column: partial_t
+      value_kind: facet
+      facet_table: proteins
+      placements:
+        - {
+            label: Partial t,
+            target: where,
+            kind: condition,
+            spec_id: menu:partial_t,
+          }
+    - id: noise
+      label: Noise
+      column: noise
+      value_kind: facet
+      facet_table: proteins
+      placements:
+        - { label: Noise, target: where, kind: condition, spec_id: menu:noise }
+    - id: gradient_decay_function
+      label: Gradient Decay
+      column: gradient_decay_function
+      value_kind: facet
+      facet_table: proteins
+      placements:
+        - {
+            label: Gradient Decay,
+            target: where,
+            kind: condition,
+            spec_id: menu:gradient_decay,
+          }
+    - id: gradient_scale
+      label: Gradient Scale
+      column: gradient_scale
+      value_kind: facet
+      facet_table: proteins
+      placements:
+        - {
+            label: Gradient Scale,
+            target: where,
+            kind: condition,
+            spec_id: menu:gradient_scale,
+          }
+
+widgets:
+  # Upstream plot 1: pLDDT histogram, colored/grouped by version.
+  plddt_hist:
+    renderer: vgplot
+    label: pLDDT distribution
+    plot:
+      marks:
+        - mark: rectY
+          data: { from: proteins, filter_by: query }
+          x: { bin: plddt_total }
+          y: { agg: count }
+          fill: version
+      x_domain: fixed
+      color_domain: fixed
+      x_label: pLDDT
+      y_label: null
+
+  # Upstream plot 2: the pLDDT × pAE scatter with an XY brush.
+  # NOTE: upstream uses a `raster` density mark plus a `frame`; neither exists
+  # in this DSL, so this approximates with a `dot` mark. The two marginal
+  # histograms (rectX) are dropped.
+  scatter:
+    renderer: vgplot
+    label: pLDDT vs pAE
+    expandable: true
+    plot:
+      marks:
+        - mark: dot
+          data: { from: proteins, filter_by: query }
+          x: plddt_total
+          y: pae_interaction
+          fill: version
+          r: 2
+          opacity: 0.3
+      selects:
+        - select: intervalXY
+          as: scatter_brush
+          brush: { stroke: '#3d71d9', fill: '#3d71d9', fill_opacity: 0.1 }
+      x_domain: fixed
+      y_domain: fixed
+      color_domain: fixed
+      x_label: pLDDT (total)
+      y_label: pAE (interaction)
+
+  # Upstream `input: table as $point filterBy $query`. The `$point` row-select
+  # round-trip is dropped (the data-table renderer displays + filters but does
+  # not publish a row selection).
+  table:
+    renderer: data-table
+    title: Designs
+    filter_by: query
+    page_size: 20
+    query:
+      type: select
+      from: proteins
+      select:
+        version: version
+        pae_interaction: pae_interaction
+        plddt_total: plddt_total
+        noise: noise
+        gradient_decay_function: gradient_decay_function
+        gradient_scale: gradient_scale
+        movement: movement
+    columns:
+      - { accessor_key: version, header: Version, size: 120 }
+      - { accessor_key: pae_interaction, header: pAE, size: 100 }
+      - { accessor_key: plddt_total, header: pLDDT, size: 100 }
+      - { accessor_key: noise, header: Noise, size: 100 }
+      - {
+          accessor_key: gradient_decay_function,
+          header: Gradient Decay,
+          size: 160,
+        }
+      - { accessor_key: gradient_scale, header: Gradient Scale, size: 140 }
+      - { accessor_key: movement, header: Movement, size: 120 }
+    bridge_columns:
+      version: { clause: in, label: Version }
+      movement: { clause: in, label: Movement }
+
+layout:
+  columns: 2
+  rows:
+    - widgets: [{ ref: scatter, span: 1 }, { ref: plddt_hist, span: 1 }]
+    - widgets: [{ ref: table, span: 2 }]
