@@ -1,0 +1,17 @@
+# zizmor configuration
+# https://docs.zizmor.sh/configuration/
+
+rules:
+  # TanStack/config/.github/setup is a composite action that only lives on the
+  # repo's `main` branch — it is not published under the `@tanstack/config` npm
+  # version tags (the latest, v0.16.3, predates the current action by 190+
+  # commits and a full rewrite). Upstream TanStack repos consume it the same way
+  # we do: SHA-pinned with a `# main` comment. `ref-version-mismatch` resolves
+  # that branch comment to main's moving tip and flags every fixed SHA as
+  # "mismatched", so it is fundamentally incompatible with these intentional
+  # branch-tracked pins. Our own tools/check-github-action-pins.mjs already
+  # enforces that these stay SHA-pinned, so we exempt only this one audit here.
+  ref-version-mismatch:
+    ignore:
+      - pr.yml
+      - release.yml
