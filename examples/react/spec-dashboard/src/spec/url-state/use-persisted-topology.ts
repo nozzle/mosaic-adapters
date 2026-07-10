@@ -7,7 +7,13 @@
  * Mosaic state is then authoritative for that topology lifetime and an effect
  * writes later FilterSet changes through the hook-provided navigator.
  */
-import { useCallback, useEffect, useRef } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import {
   useFilterSetState,
   useTopology,
@@ -23,6 +29,7 @@ import {
   createSelectionWriteState,
   hydratePersistedSelections,
 } from './selection-runtime';
+import { createSearchPatchCommitter } from './search-patch-committer';
 import type {
   ActiveClause,
   FilterSet,
@@ -98,6 +105,10 @@ function hydrateFilterSet(binding: FilterSetPersistenceBinding): void {
 export function usePersistedTopology(compiled: CompiledSpec): Topology {
   const search = useSearch();
   const navigateSearch = useNavigateSearch();
+  const searchCommitter = useMemo(
+    () => createSearchPatchCommitter(navigateSearch),
+    [navigateSearch],
+  );
 
   const initialize = useCallback(
     (topology: Topology) => {
@@ -134,6 +145,15 @@ export function usePersistedTopology(compiled: CompiledSpec): Topology {
     filterDirty: boolean;
     selections: ReturnType<typeof createSelectionWriteState>;
   } | null>(null);
+
+  // Never replay a queued patch from a stale topology/spec. The spec-param
+  // effect runs before the write effect below in the same commit.
+  useLayoutEffect(() => {
+    searchCommitter.cancel();
+    return () => {
+      searchCommitter.cancel();
+    };
+  }, [search.spec, searchCommitter, topology]);
 
   useEffect(() => {
     const previous = writeGuard.current;
@@ -188,8 +208,8 @@ export function usePersistedTopology(compiled: CompiledSpec): Topology {
     if (Object.keys(patch).length === 0) {
       return;
     }
-    navigateSearch(patch, { history: 'replace' });
-  }, [activeClauses, compiled, navigateSearch, specs, topology]);
+    searchCommitter.schedule(patch, filterChanged ? 'filter' : 'selection');
+  }, [activeClauses, compiled, searchCommitter, specs, topology]);
 
   return topology;
 }
