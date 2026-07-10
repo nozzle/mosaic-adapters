@@ -73,8 +73,12 @@ topology:
   volume_brush:
     type: single
     label: Search Volume
-    meta:
-      column: search_volume
+    persist:
+      type: url
+      value:
+        type: interval
+        column: search_volume
+        data_type: number
   # page = where + brush + EVERY card's memberships. Each card reads a
   # minus-self variant below so it is never filtered by its own membership.
   page:

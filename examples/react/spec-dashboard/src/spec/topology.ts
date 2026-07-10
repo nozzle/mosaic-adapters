@@ -27,19 +27,13 @@ export const FILTERS_ENTRY = 'filters';
 /**
  * Project the validated spec topology onto the library `TopologyConfig`. This is
  * almost a pass-through, EXCEPT it strips the app-only `persist` key from every
- * `filter-set` entry: `persist` is spec vocabulary (URL persistence) that the
- * library `TopologyConfig` does not model, so it must not reach `createTopology`.
- * The persister it declares is turned into a `Persister` on the entry's
- * `FilterSet` separately (see `applyFilterPersistence`), driven from the derived
- * codec registry the compile boundary carries on the {@link CompiledSpec}.
+ * declaration that accepts one. URL persistence is this application's spec
+ * vocabulary; the package `TopologyConfig` intentionally does not model it.
  */
 export function toTopologyConfig(topology: TopologySpec): TopologyConfig {
   const config: Record<string, TopologySpec[string]> = {};
   for (const [name, declaration] of Object.entries(topology)) {
-    if (
-      declaration.type === 'filter-set' &&
-      declaration.persist !== undefined
-    ) {
+    if ('persist' in declaration && declaration.persist !== undefined) {
       const { persist: _persist, ...rest } = declaration;
       config[name] = rest;
       continue;

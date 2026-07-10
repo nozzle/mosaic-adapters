@@ -53,7 +53,6 @@ import type {
   FilterSpec,
   OperatorDescriptor,
   Persister,
-  TopologyOptions,
 } from '@nozzleio/react-mosaic';
 import type {
   BridgeColumnSpec,
@@ -1182,54 +1181,11 @@ export function createDefaultsPersister(
   };
 }
 
-/** The persistence inputs the compile boundary carries for the app-side wiring. */
+/** FilterSet inputs carried by the compiled app-owned URL-state layer. */
 export interface FilterPersistWiring {
   registry: FilterUrlRegistry;
   persistConfig: FilterPersistConfig | null;
   defaults: ReadonlyArray<FilterSpec>;
-}
-
-/**
- * Merge the URL persister into the compiled (pure) {@link TopologyOptions},
- * given the injected router I/O. Called once per topology-construction render by
- * the app-side wiring hook. When `persist` is declared, the URL persister lands
- * on that entry; when only defaults exist, a synthetic read-only defaults
- * persister lands on the first filter-set entry so there is exactly one
- * hydration path. With neither, the base options pass through untouched.
- */
-export function applyFilterPersistence(
-  baseOptions: TopologyOptions,
-  wiring: FilterPersistWiring,
-  io: PersisterIo,
-): TopologyOptions {
-  const { registry, persistConfig, defaults } = wiring;
-  const filterSets = { ...(baseOptions.filterSets ?? {}) };
-
-  if (persistConfig !== null) {
-    const entry = filterSets[persistConfig.entryName];
-    if (entry !== undefined) {
-      filterSets[persistConfig.entryName] = {
-        ...entry,
-        persist: createUrlPersister(
-          registry,
-          persistConfig.prefix,
-          defaults,
-          io,
-        ),
-      };
-    }
-  } else if (defaults.length > 0) {
-    const firstName = Object.keys(filterSets)[0];
-    const first = firstName === undefined ? undefined : filterSets[firstName];
-    if (firstName !== undefined && first !== undefined) {
-      filterSets[firstName] = {
-        ...first,
-        persist: createDefaultsPersister(defaults),
-      };
-    }
-  }
-
-  return { ...baseOptions, filterSets };
 }
 
 // ── Popover info (reactive param classification for the URL-params panel) ─────

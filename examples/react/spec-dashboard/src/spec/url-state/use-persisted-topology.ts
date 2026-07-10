@@ -40,7 +40,7 @@ function filterSetPersistenceBinding(
   topology: Topology,
   io: PersisterIo,
 ): FilterSetPersistenceBinding | null {
-  const { registry, persistConfig, defaults } = compiled.filterPersist;
+  const { registry, persistConfig, defaults } = compiled.urlState.filterSet;
   if (persistConfig !== null) {
     const filterSet = topology.getFilterSet(persistConfig.entryName);
     if (filterSet === undefined) {
@@ -124,14 +124,14 @@ export function usePersistedTopology(compiled: CompiledSpec): Topology {
       return;
     }
     writeGuard.current = { topology, specs };
-    const persistConfig = compiled.filterPersist.persistConfig;
+    const persistConfig = compiled.urlState.filterSet.persistConfig;
     if (persistConfig === null) {
       return;
     }
     const persister = createUrlPersister(
-      compiled.filterPersist.registry,
+      compiled.urlState.filterSet.registry,
       persistConfig.prefix,
-      compiled.filterPersist.defaults,
+      compiled.urlState.filterSet.defaults,
       { search: {}, navigateSearch },
     );
     persister.write(specs.length === 0 ? null : specs, {
