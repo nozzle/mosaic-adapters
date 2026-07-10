@@ -8,9 +8,23 @@
  * writes later FilterSet changes through the hook-provided navigator.
  */
 import { useCallback, useEffect, useRef } from 'react';
-import { useFilterSetState, useTopology } from '@nozzleio/react-mosaic';
-import { createDefaultsPersister, createUrlPersister } from '../filter-url';
+import {
+  useFilterSetState,
+  useTopology,
+  useTopologyActiveClauses,
+} from '@nozzleio/react-mosaic';
+import {
+  buildFilterUrlPatch,
+  createDefaultsPersister,
+  createUrlPersister,
+} from '../filter-url';
+import {
+  buildSelectionUrlPatch,
+  createSelectionWriteState,
+  hydratePersistedSelections,
+} from './selection-runtime';
 import type {
+  ActiveClause,
   FilterSet,
   FilterSpec,
   Persister,
@@ -94,6 +108,11 @@ export function usePersistedTopology(compiled: CompiledSpec): Topology {
       if (binding !== null) {
         hydrateFilterSet(binding);
       }
+      hydratePersistedSelections(
+        topology,
+        compiled.urlState.selections,
+        search,
+      );
     },
     [compiled, navigateSearch, search],
   );
@@ -107,37 +126,70 @@ export function usePersistedTopology(compiled: CompiledSpec): Topology {
     throw new Error("spec-dashboard requires a 'filters' FilterSet entry.");
   }
   const { specs } = useFilterSetState(primaryFilterSet);
+  const activeClauses = useTopologyActiveClauses(topology);
   const writeGuard = useRef<{
     topology: Topology;
     specs: Array<FilterSpec>;
+    activeClauses: Array<ActiveClause>;
+    filterDirty: boolean;
+    selections: ReturnType<typeof createSelectionWriteState>;
   } | null>(null);
 
   useEffect(() => {
-    // The initializer has already replayed URL/default state. Suppress that
-    // hydration echo (including StrictMode's setup replay), then persist only a
-    // new store snapshot produced by a subsequent runtime change.
-    if (
-      writeGuard.current?.topology !== topology ||
-      writeGuard.current.specs === specs
-    ) {
-      writeGuard.current = { topology, specs };
+    const previous = writeGuard.current;
+    if (previous?.topology !== topology) {
+      const selections = createSelectionWriteState();
+      // Observe seeded valid values without echoing the initializer's URL read.
+      buildSelectionUrlPatch(
+        compiled.urlState.selections,
+        activeClauses,
+        selections,
+      );
+      writeGuard.current = {
+        topology,
+        specs,
+        activeClauses,
+        filterDirty: false,
+        selections,
+      };
       return;
     }
-    writeGuard.current = { topology, specs };
-    const persistConfig = compiled.urlState.filterSet.persistConfig;
-    if (persistConfig === null) {
+
+    const filterChanged = previous.specs !== specs;
+    const selectionsChanged = previous.activeClauses !== activeClauses;
+    if (!filterChanged && !selectionsChanged) {
       return;
     }
-    const persister = createUrlPersister(
-      compiled.urlState.filterSet.registry,
-      persistConfig.prefix,
-      compiled.urlState.filterSet.defaults,
-      { search: {}, navigateSearch },
+
+    const filterDirty = previous.filterDirty || filterChanged;
+    const patch = buildSelectionUrlPatch(
+      compiled.urlState.selections,
+      activeClauses,
+      previous.selections,
     );
-    persister.write(specs.length === 0 ? null : specs, {
-      reason: specs.length === 0 ? 'clear' : 'update',
-    });
-  }, [compiled, navigateSearch, specs, topology]);
+    const persistConfig = compiled.urlState.filterSet.persistConfig;
+    if (filterDirty && persistConfig !== null) {
+      Object.assign(
+        patch,
+        buildFilterUrlPatch(
+          compiled.urlState.filterSet.registry,
+          persistConfig.prefix,
+          specs.length === 0 ? null : specs,
+        ),
+      );
+    }
+    writeGuard.current = {
+      topology,
+      specs,
+      activeClauses,
+      filterDirty,
+      selections: previous.selections,
+    };
+    if (Object.keys(patch).length === 0) {
+      return;
+    }
+    navigateSearch(patch, { history: 'replace' });
+  }, [activeClauses, compiled, navigateSearch, specs, topology]);
 
   return topology;
 }
