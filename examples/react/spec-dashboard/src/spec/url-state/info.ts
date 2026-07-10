@@ -1,5 +1,5 @@
 /** URL-parameter ownership and display information for the dashboard chrome. */
-import { decodeNumericInterval } from './selection-url';
+import { decodeSelectionUrlValue } from './selection-url';
 import type { FilterUrlInfo } from '../filter-url';
 import type { SelectionUrlRegistry } from './selection-url';
 
@@ -28,11 +28,23 @@ export function buildDashboardUrlInfo(
       if (filterDescription !== null) {
         return filterDescription;
       }
-      if (selections.getByParam(name) === undefined) {
+      const descriptor = selections.getByParam(name);
+      if (descriptor === undefined) {
         return null;
       }
-      const interval = decodeNumericInterval(value);
-      return interval === null ? null : `${interval[0]} – ${interval[1]}`;
+      const interval = decodeSelectionUrlValue(descriptor, value);
+      if (interval === null) {
+        return null;
+      }
+      if (descriptor.dimensions === 1) {
+        const [lo, hi] = interval as [number, number];
+        return `${lo} – ${hi}`;
+      }
+      const [[xLo, xHi], [yLo, yHi]] = interval as [
+        [number, number],
+        [number, number],
+      ];
+      return `${descriptor.columns.x}: ${xLo} – ${xHi}; ${descriptor.columns.y}: ${yLo} – ${yHi}`;
     },
   };
 }

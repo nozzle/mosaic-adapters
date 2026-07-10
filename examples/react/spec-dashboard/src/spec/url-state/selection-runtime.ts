@@ -1,7 +1,11 @@
 /** Runtime bridge between app-owned selection URL descriptors and Mosaic. */
-import { clauseInterval } from '@uwdata/mosaic-core';
+import { clauseInterval, clauseIntervals } from '@uwdata/mosaic-core';
 import { SqlIdentifier, createStructAccess } from '@nozzleio/react-mosaic';
-import { decodeNumericInterval, encodeNumericInterval } from './selection-url';
+import {
+  decodeNumericInterval,
+  decodeNumericInterval2D,
+  encodeSelectionUrlValue,
+} from './selection-url';
 import type { ActiveClause, Topology } from '@nozzleio/react-mosaic';
 import type { Search } from '@/router';
 import type { SelectionUrlRegistry } from './selection-url';
@@ -30,21 +34,35 @@ export function hydratePersistedSelections(
     if (raw === undefined) {
       continue;
     }
-    const value = decodeNumericInterval(raw);
-    if (value === null) {
+    const selection = topology.resolve(descriptor.ref);
+    const source = {};
+    if (descriptor.dimensions === 1) {
+      const value = decodeNumericInterval(raw);
+      if (value !== null) {
+        selection.update(
+          clauseInterval(
+            createStructAccess(SqlIdentifier.from(descriptor.column)),
+            value,
+            { source },
+          ),
+        );
+      }
       continue;
     }
-    topology.resolve(descriptor.ref).update(
-      clauseInterval(
-        createStructAccess(SqlIdentifier.from(descriptor.column)),
-        value,
-        {
-          // One stable source object for this restored clause. A renderer may
-          // later displace it through the entry's `single` strategy.
-          source: {},
-        },
-      ),
-    );
+
+    const value = decodeNumericInterval2D(raw);
+    if (value !== null) {
+      selection.update(
+        clauseIntervals(
+          [
+            createStructAccess(SqlIdentifier.from(descriptor.columns.x)),
+            createStructAccess(SqlIdentifier.from(descriptor.columns.y)),
+          ],
+          value,
+          { source },
+        ),
+      );
+    }
   }
 }
 
@@ -65,7 +83,7 @@ export function buildSelectionUrlPatch(
     const active = activeClauses.find(
       (candidate) => candidate.ref === descriptor.ref,
     );
-    const encoded = encodeNumericInterval(active?.clause.value);
+    const encoded = encodeSelectionUrlValue(descriptor, active?.clause.value);
     if (encoded !== null) {
       state.activeEntries.add(descriptor.entry);
       patch[descriptor.param] = encoded;

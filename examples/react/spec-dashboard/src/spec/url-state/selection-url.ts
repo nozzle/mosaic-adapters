@@ -3,7 +3,7 @@
  *
  * The app owns this contract. Mosaic sees only the reconstructed clause; it does
  * not know about parameter names, codecs, trusted columns, or this dashboard's
- * YAML shape. v1 intentionally supports only finite numeric 1D intervals.
+ * YAML shape. It supports finite numeric 1D intervals and atomic 2D rectangles.
  */
 import type { FilterPersistConfig, FilterUrlRegistry } from '../filter-url';
 import type { TopologySpec } from '../schema';
@@ -15,18 +15,29 @@ const INTERVAL_GRAMMAR = new RegExp(
 );
 
 export type NumericInterval = [number, number];
+export type NumericInterval2D = [NumericInterval, NumericInterval];
 
-export interface SelectionUrlDescriptor {
+interface SelectionUrlDescriptorBase {
   /** Bare topology entry/ref receiving the restored clause. */
   entry: string;
   ref: string;
   /** Derived application-owned parameter name (`s.<entry>`). */
   param: string;
-  /** Trusted SQL column from the spec, never the URL. */
-  column: string;
   valueType: 'interval';
   dataType: 'number';
 }
+
+export type SelectionUrlDescriptor =
+  | (SelectionUrlDescriptorBase & {
+      dimensions: 1;
+      /** Trusted SQL column from the spec, never the URL. */
+      column: string;
+    })
+  | (SelectionUrlDescriptorBase & {
+      dimensions: 2;
+      /** Trusted rectangular axes from the spec, never the URL. */
+      columns: { x: string; y: string };
+    });
 
 export interface SelectionUrlRegistry {
   readonly entries: ReadonlyArray<SelectionUrlDescriptor>;
@@ -47,14 +58,18 @@ export function buildSelectionUrlRegistry(
     if (persist === undefined) {
       continue;
     }
-    entries.push({
+    const base: SelectionUrlDescriptorBase = {
       entry,
       ref: entry,
       param: `${PARAM_PREFIX}.${entry}`,
-      column: persist.value.column,
       valueType: persist.value.type,
       dataType: persist.value.data_type,
-    });
+    };
+    entries.push(
+      'column' in persist.value
+        ? { ...base, dimensions: 1, column: persist.value.column }
+        : { ...base, dimensions: 2, columns: persist.value.columns },
+    );
   }
   const byEntry = new Map(entries.map((entry) => [entry.entry, entry]));
   const byParam = new Map(entries.map((entry) => [entry.param, entry]));
@@ -93,6 +108,47 @@ export function decodeNumericInterval(raw: string): NumericInterval | null {
     return null;
   }
   return [lo, hi];
+}
+
+/** Encode one rectangular pair as `xlo..xhi,ylo..yhi`. */
+export function encodeNumericInterval2D(value: unknown): string | null {
+  if (!Array.isArray(value) || value.length !== 2) {
+    return null;
+  }
+  const x = encodeNumericInterval(value[0]);
+  const y = encodeNumericInterval(value[1]);
+  return x === null || y === null ? null : `${x},${y}`;
+}
+
+/** Decode exactly two strict numeric intervals separated by one comma. */
+export function decodeNumericInterval2D(raw: string): NumericInterval2D | null {
+  const parts = raw.split(',');
+  if (parts.length !== 2) {
+    return null;
+  }
+  const x = decodeNumericInterval(parts[0] ?? '');
+  const y = decodeNumericInterval(parts[1] ?? '');
+  return x === null || y === null ? null : [x, y];
+}
+
+/** Encode a live clause value according to its trusted descriptor shape. */
+export function encodeSelectionUrlValue(
+  descriptor: SelectionUrlDescriptor,
+  value: unknown,
+): string | null {
+  return descriptor.dimensions === 1
+    ? encodeNumericInterval(value)
+    : encodeNumericInterval2D(value);
+}
+
+/** Decode a URL value according to its trusted descriptor shape. */
+export function decodeSelectionUrlValue(
+  descriptor: SelectionUrlDescriptor,
+  raw: string,
+): NumericInterval | NumericInterval2D | null {
+  return descriptor.dimensions === 1
+    ? decodeNumericInterval(raw)
+    : decodeNumericInterval2D(raw);
 }
 
 /**

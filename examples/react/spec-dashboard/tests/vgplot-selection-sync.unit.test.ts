@@ -54,6 +54,63 @@ describe('vgplot selection visual sync', () => {
     expect(moveSilent).not.toHaveBeenCalled();
   });
 
+  test('seeds an intervalXY interactor before its first render', () => {
+    const target = selection();
+    const interactor: VgplotSelectionInteractor = {
+      selection: target,
+      xfield: {},
+      yfield: {},
+      reset: vi.fn(),
+    };
+    const value = [
+      [70, 90],
+      [0, 20],
+    ];
+
+    syncVgplotSelectionInteractors(
+      [interactor],
+      [binding(target, value, 'intervalXY')],
+    );
+
+    expect(interactor.value).toEqual(value);
+  });
+
+  test('moves a live intervalXY brush silently with descending y pixels', () => {
+    const target = selection();
+    const moveSilent = vi.fn();
+    const call = vi.fn();
+    const interactor: VgplotSelectionInteractor = {
+      selection: target,
+      xfield: {},
+      yfield: {},
+      reset: vi.fn(),
+      xscale: { apply: (value) => Number(value) },
+      yscale: { apply: (value) => 100 - Number(value) },
+      brush: { moveSilent },
+      g: { call },
+    };
+
+    syncVgplotSelectionInteractors(
+      [interactor],
+      [
+        binding(
+          target,
+          [
+            [70, 90],
+            [0, 20],
+          ],
+          'intervalXY',
+        ),
+      ],
+    );
+
+    expect(call).toHaveBeenCalledWith(moveSilent, [
+      [70, 80],
+      [90, 100],
+    ]);
+    expect(moveSilent).not.toHaveBeenCalled();
+  });
+
   test('resets a previously painted interactor after an external clear', () => {
     const target = selection();
     const reset = vi.fn();

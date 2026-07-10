@@ -123,6 +123,17 @@ function geometryFor(width: number, expanded: boolean): Required<PlotGeometry> {
 /** Format a committed selection value generically for the chrome strip. */
 function formatSelectValue(value: unknown): string {
   if (Array.isArray(value)) {
+    if (
+      value.length === 2 &&
+      value.every(
+        (interval) =>
+          Array.isArray(interval) &&
+          interval.length === 2 &&
+          interval.every((bound) => typeof bound === 'number'),
+      )
+    ) {
+      return value.map((interval) => formatSelectValue(interval)).join(' × ');
+    }
     if (value.length === 2 && value.every((n) => typeof n === 'number')) {
       const [lo, hi] = value as [number, number];
       const round = (n: number) => Math.round(n).toLocaleString('en-US');
@@ -398,7 +409,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
       const plot = plotInstance(element);
       if (plot !== undefined) {
         // The initial plot render is frame-scheduled by vgplot. Seed values now
-        // so Interval1D.init() paints URL-restored state on its first pass.
+        // so interval interactors paint URL-restored state on their first pass.
         syncVgplotSelectionInteractors(plot.interactors, selectionBindings);
       }
       plotElementRef.current = element;
