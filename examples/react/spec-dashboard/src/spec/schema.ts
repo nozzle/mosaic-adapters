@@ -116,11 +116,36 @@ const composeDeclarationSchema = z
   })
   .strict();
 
+/**
+ * Spec-declared URL persistence for a `filter-set` entry's specs. Object form
+ * only; `type` is a discriminator so future storage variants can be added
+ * without a breaking shape change (only `url` ships today).
+ *
+ * - `param_prefix` (optional): with `f` the persisted params are `f.<spec_id>`
+ *   (dot separator) and the persister owns EVERY param under that prefix.
+ *   Without a prefix the params are the bare spec ids and the persister owns
+ *   exactly the params whose names match a derivable spec id.
+ *
+ * This key is app-only: {@link toTopologyConfig} strips it before the section is
+ * handed to the library as a `TopologyConfig`, and {@link buildTopologyOptions}
+ * turns it into a `Persister` on the entry's `FilterSet`.
+ */
+export const filterSetPersistSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal('url'),
+      param_prefix: z.string().min(1).optional(),
+    })
+    .strict(),
+]);
+
 const filterSetDeclarationSchema = z
   .object({
     type: z.literal('filter-set'),
     targets: z.record(z.string(), selectionStrategySchema),
     context: z.string().optional(),
+    /** Spec-declared URL persistence for this entry's specs (app-only key). */
+    persist: filterSetPersistSchema.optional(),
     ...declarationBase,
   })
   .strict();
@@ -179,6 +204,27 @@ export const filterValueKindSchema = z.enum([
   'date',
 ]);
 
+/**
+ * One entry in the central `filters.defaults` list. It names a `spec_id`
+ * (resolved against the derived codec registry) and carries ONLY the dynamic
+ * parts of a {@link FilterSpec} — the static parts (column, kind, target, label)
+ * come from that registry — mirroring the URL grammar's split. Strict: a typo
+ * surfaces as a validation error rather than a silently-ignored key.
+ *
+ * The compile boundary collects the whole list into one internal `FilterSpec[]`
+ * and validates each by (a) resolving its `spec_id` in the registry and (b)
+ * round-tripping it through the codec's `encode`; an unknown id or a value that
+ * fails to encode is a spec compile error, not a silent no-op.
+ */
+export const filterDefaultSchema = z
+  .object({
+    spec_id: z.string().min(1),
+    operator: z.string().min(1).optional(),
+    value: z.unknown().optional(),
+    value_to: z.unknown().optional(),
+  })
+  .strict();
+
 export const filterPlacementSchema = z
   .object({
     label: z.string().min(1),
@@ -206,6 +252,12 @@ export const filterFieldSchema = z
 
 export const filtersSchema = z
   .object({
+    /**
+     * Central list of spec-declared filter defaults (replaces per-site colocated
+     * blocks). Each entry names a `spec_id` and its dynamic default parts;
+     * defaults hydrate on a bare URL and any owned param present wins wholesale.
+     */
+    defaults: z.array(filterDefaultSchema).optional(),
     fields: z.array(filterFieldSchema),
   })
   .strict();
@@ -552,7 +604,10 @@ export type AggregateThresholdConfig = z.infer<
 export type FilterKindDef = z.infer<typeof filterKindDefSchema>;
 export type FilterKindsSpec = z.infer<typeof filterKindsSchema>;
 
+export type FilterSetPersistSpec = z.infer<typeof filterSetPersistSchema>;
+
 export type FilterValueKind = z.infer<typeof filterValueKindSchema>;
+export type FilterDefaultSpec = z.infer<typeof filterDefaultSchema>;
 export type FilterPlacementSpec = z.infer<typeof filterPlacementSchema>;
 export type FilterFieldSpec = z.infer<typeof filterFieldSchema>;
 export type FiltersSpec = z.infer<typeof filtersSchema>;

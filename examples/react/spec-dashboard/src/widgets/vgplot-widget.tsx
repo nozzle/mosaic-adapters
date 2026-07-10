@@ -14,6 +14,22 @@
  * error plus a vgplot `exclusiveFacets` TypeError on undefined mark data). Until
  * enabled a lightweight loading shell renders.
  *
+ * ## Fixed-domain resolution (renderer-owned, unfiltered extent)
+ *
+ * A `fixed` axis in the DSL means the FULL UNFILTERED extent of its source
+ * column — frozen so brushing never rescales it. The interpreter cannot express
+ * that with vgplot's `Fixed` sentinel alone, because `Fixed` freezes to the
+ * FIRST rendered query, and filter hydration runs synchronously before that
+ * first query (zero flash). Any hydrated filter (a default, a shared link) would
+ * then freeze the axis to the FILTERED extent, so widening the filter squashes
+ * the visible bars flat. Instead, once data is loaded this renderer resolves the
+ * declared `fixed` axes to their unfiltered `[min, max]` via a one-off
+ * `SELECT min(col), max(col) FROM <base table>` (no `filterBy`) through the app
+ * coordinator, and hands the explicit domains to the interpreter. The plot is
+ * gated on that resolution so it never mounts against the poisoned `Fixed`
+ * domain. An axis whose channel is not a plain/binned column, or whose query
+ * fails, falls back to vgplot `Fixed`.
+ *
  * ## Geometry (renderer-owned)
  *
  * The DSL carries no size. A ResizeObserver measures the card's content box and
@@ -42,11 +58,19 @@ import {
   useMosaicCoordinator,
   useVgPlot,
 } from '@nozzleio/react-mosaic';
-import { PlotSpecError, buildPlotSpec } from '../spec/plot-interpreter';
+import {
+  PlotSpecError,
+  buildPlotSpec,
+  collectFixedDomainRequests,
+} from '../spec/plot-interpreter';
 import { resolveSelection } from '../spec/topology';
 import type { ReactElement } from 'react';
+import type { Coordinator } from '@uwdata/mosaic-core';
 import type { VgPlotElement } from '@nozzleio/react-mosaic';
 import type {
+  DomainBounds,
+  FixedDomainRequest,
+  FixedDomains,
   PlotApi,
   PlotDirective,
   PlotGeometry,
@@ -111,6 +135,111 @@ function plotInstance(element: VgPlotElement | null): PlotInstance | undefined {
   return (element as { value?: PlotInstance } | null)?.value ?? undefined;
 }
 
+/** Coerce a DuckDB min/max cell to a finite number or a Date, or `null`. */
+function toDomainBound(value: unknown): number | Date | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value;
+  }
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+/** The first row of a coordinator arrow result as a name-keyed record, or null. */
+function firstRow(result: unknown): Record<string, unknown> | null {
+  const table = result as { get?: (index: number) => unknown } | null;
+  const row = table?.get?.(0);
+  return row != null && typeof row === 'object'
+    ? (row as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * `min(col)` / `max(col)`, restricted to positive rows when the axis is
+ * log-scaled — mosaic's log binning drops rows ≤ 0, so the extent must match the
+ * rendered support or the domain stretches below it and degenerates the axis.
+ */
+function extentAggregate(
+  fn: 'min' | 'max',
+  column: string,
+  positiveOnly: boolean,
+): string {
+  if (!positiveOnly) {
+    return `${fn}(${column})`;
+  }
+  return `${fn}(${column}) FILTER (${column} > 0)`;
+}
+
+/**
+ * Resolve one `fixed` axis to its FULL unfiltered extent via an unfiltered
+ * min/max query (no `filterBy`) against the mark's base table. Returns `null`
+ * (→ fall back to vgplot `Fixed`) when a bound is missing/non-finite; an `xy`
+ * request unions its two column extents. The aggregate targets the raw column
+ * name, matching how the plot DSL feeds it to vgplot's `bin`; a log-scaled axis
+ * reads only positive rows (see {@link extentAggregate}).
+ */
+async function resolveFixedDomain(
+  coordinator: Coordinator,
+  request: FixedDomainRequest,
+): Promise<DomainBounds | null> {
+  const { positiveOnly } = request;
+  if (request.axis === 'xy') {
+    const [xColumn, yColumn] = request.columns;
+    if (xColumn === undefined || yColumn === undefined) {
+      return null;
+    }
+    const result = await coordinator.query(
+      `SELECT ${extentAggregate('min', xColumn, positiveOnly)} AS x_lo, ` +
+        `${extentAggregate('max', xColumn, positiveOnly)} AS x_hi, ` +
+        `${extentAggregate('min', yColumn, positiveOnly)} AS y_lo, ` +
+        `${extentAggregate('max', yColumn, positiveOnly)} AS y_hi ` +
+        `FROM ${request.table}`,
+      { type: 'arrow' },
+    );
+    const row = firstRow(result);
+    if (row === null) {
+      return null;
+    }
+    const bounds = [
+      toDomainBound(row.x_lo),
+      toDomainBound(row.x_hi),
+      toDomainBound(row.y_lo),
+      toDomainBound(row.y_hi),
+    ];
+    if (bounds.some((bound) => typeof bound !== 'number')) {
+      return null;
+    }
+    const [xLo, xHi, yLo, yHi] = bounds as [number, number, number, number];
+    return [Math.min(xLo, yLo), Math.max(xHi, yHi)];
+  }
+
+  const [column] = request.columns;
+  if (column === undefined) {
+    return null;
+  }
+  const result = await coordinator.query(
+    `SELECT ${extentAggregate('min', column, positiveOnly)} AS lo, ` +
+      `${extentAggregate('max', column, positiveOnly)} AS hi ` +
+      `FROM ${request.table}`,
+    { type: 'arrow' },
+  );
+  const row = firstRow(result);
+  if (row === null) {
+    return null;
+  }
+  const lo = toDomainBound(row.lo);
+  const hi = toDomainBound(row.hi);
+  if (lo === null || hi === null) {
+    return null;
+  }
+  return [lo, hi];
+}
+
 /**
  * Thin narrowing wrapper. Narrow to this renderer and hand the already-narrowed
  * widget to the inner figure so every hook runs unconditionally (rules-of-hooks).
@@ -135,6 +264,11 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
   const [expanded, setExpanded] = useState(false);
   const [plotWidth, setPlotWidth] = useState(MIN_WIDTH);
   const [specError, setSpecError] = useState<string | null>(null);
+  // Resolved unfiltered `fixed`-axis domains, or `null` until resolution runs.
+  // `{}` means resolution finished with nothing to pin (every `fixed` axis falls
+  // back to vgplot `Fixed`). The plot is gated on this being non-null so it never
+  // mounts against the first-render-frozen (poisoned) `Fixed` domain.
+  const [fixedDomains, setFixedDomains] = useState<FixedDomains | null>(null);
 
   // vgplot marks live on whatever coordinator the API context carries; the bare
   // `vg.*` namespace binds Mosaic's GLOBAL singleton, but this app owns an
@@ -145,6 +279,51 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
     () => vg.createAPIContext({ coordinator }) as unknown as PlotApiContext,
     [coordinator],
   );
+
+  // The `fixed` axes that need an unfiltered-extent query (none → the plot has
+  // no explicit domain to resolve and never waits on one).
+  const fixedRequests = useMemo(
+    () => collectFixedDomainRequests(widget.plot),
+    [widget.plot],
+  );
+
+  // Resolve the declared `fixed` axes to their FULL unfiltered extent once the
+  // data load finishes. Runs off the coordinator directly (no mark client, no
+  // `filterBy`), so it reads the whole base table regardless of the filters
+  // hydrated at mount. A failed query falls back to `Fixed` for every axis
+  // rather than blocking the plot. Reruns only on a coordinator / plot change.
+  useEffect(() => {
+    if (!enabled || fixedRequests.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      fixedRequests.map(async (request) => ({
+        axis: request.axis,
+        bounds: await resolveFixedDomain(coordinator, request),
+      })),
+    )
+      .then((results) => {
+        if (cancelled) {
+          return;
+        }
+        const resolved: FixedDomains = {};
+        for (const result of results) {
+          if (result.bounds !== null) {
+            resolved[result.axis] = result.bounds;
+          }
+        }
+        setFixedDomains(resolved);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFixedDomains({});
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, coordinator, fixedRequests]);
 
   // The built plot element, so the resize / reset effects can reach its `Plot`
   // instance (`element.value`) without rebuilding it.
@@ -195,6 +374,8 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
         api,
         resolveSelection: (name) => resolveSelection(topology, name),
         geometry: geometryRef.current,
+        // Non-null by mount time (the plot is gated on resolution below).
+        ...(fixedDomains !== null ? { fixedDomains } : {}),
       });
       const element = api.plot(...directives);
       plotElementRef.current = element;
@@ -210,7 +391,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
       // below swaps to the error card, unmounting it on the next commit.
       return document.createElement('div');
     }
-  }, [api, topology, widget.plot]);
+  }, [api, topology, widget.plot, fixedDomains]);
 
   // Clear the ref on detach so a stale (disconnected) plot is never mutated.
   const plotRef = useCallback(
@@ -302,6 +483,12 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
   }, [activeClauses, plotSelects]);
 
   const showChrome = resolvableSelects.length > 0;
+  // Mount the plot only once the data has loaded AND (if it declares resolvable
+  // `fixed` axes) their unfiltered domains have resolved, so it never comes up
+  // against the first-render-frozen `Fixed`. A plot with no resolvable fixed
+  // axis never waits.
+  const plotReady =
+    enabled && (fixedRequests.length === 0 || fixedDomains !== null);
 
   return (
     <figure
@@ -359,7 +546,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
           >
             Plot spec error: {specError}
           </div>
-        ) : enabled ? (
+        ) : plotReady ? (
           <div
             data-testid={`vgplot-${widget.id}-plot`}
             className="overflow-x-auto"

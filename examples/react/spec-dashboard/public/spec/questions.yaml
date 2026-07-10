@@ -9,7 +9,18 @@
 #
 # Spec keys are all lower_snake_case; author-chosen names (widget ids, topology
 # entries, filter-kind names) are snake_case too. Translation to the libraries'
-# camelCase types happens once at the compile boundary.
+# camelCase types happens once at the compile boundary (`value_to` → `valueTo`).
+#
+# URL persistence + defaults (this spec exercises the WITH-prefix mode):
+#   - The `filters` filter-set entry declares `persist: { type: url,
+#     param_prefix: f }`, so every active filter round-trips through
+#     `?f.<spec_id>=…` and any filtered view is a shareable link. The persister
+#     owns every `f.` param and never touches foreign ones (e.g. `?spec=`).
+#   - Defaults live in ONE central `filters.defaults` list (below), not scattered
+#     across the sites. Each entry names a `spec_id` and carries only the DYNAMIC
+#     parts (`operator` / `value` / `value_to`) — the static parts come from the
+#     derived codec registry. Defaults hydrate on a bare URL; any owned param
+#     present wins wholesale; a clear-all + reload restores the defaults.
 
 # Optional page title rendered in the header (falls back to a generic default if
 # absent — the domain string lives here, never in src/).
@@ -54,6 +65,11 @@ topology:
       'having:domain': crossfilter
       'members:domain': crossfilter
     context: page
+    # URL persistence for this entry's specs. `param_prefix: f` namespaces the
+    # persisted params as `f.<spec_id>`; the persister owns every `f.` param.
+    persist:
+      type: url
+      param_prefix: f
   volume_brush:
     type: single
     label: Search Volume
@@ -125,6 +141,12 @@ filter_kinds:
 # FilterSet `target` with the `kind` (and its operator vocabulary). The Search
 # Volume HAVING placement uses the instantiated `metric_threshold` kind.
 filters:
+  # Central defaults list: each entry names a `spec_id` (declared by a placement,
+  # publish, or metric_threshold below) plus the dynamic parts of its default.
+  # One default here: start focused on the major answer domains.
+  defaults:
+    - spec_id: facet:domain
+      value: [reddit.com, google.com, amazon.com, youtube.com, justanswer.com]
   fields:
     - id: phrase
       label: Phrase

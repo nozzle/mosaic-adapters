@@ -146,6 +146,22 @@ export interface PlotGeometry {
   yTicks?: number;
 }
 
+/** An explicit `[lo, hi]` axis domain (numeric or temporal bounds). */
+export type DomainBounds = readonly [number | Date, number | Date];
+
+/**
+ * Caller-resolved explicit domains for `fixed` axes — the FULL unfiltered
+ * extent of the axis's source column, computed once at build time (see
+ * {@link collectFixedDomainRequests}). An absent axis falls back to vgplot's
+ * `Fixed` sentinel (freeze-on-first-render), which is only correct when no
+ * filter is active at mount.
+ */
+export interface FixedDomains {
+  x?: DomainBounds;
+  y?: DomainBounds;
+  xy?: DomainBounds;
+}
+
 export interface PlotInterpreterDeps {
   /** The vgplot API context (`createAPIContext(...)`), narrowed to {@link PlotApi}. */
   api: PlotApi;
@@ -157,6 +173,11 @@ export interface PlotInterpreterDeps {
   resolveSelection: (name: string) => Selection | undefined;
   /** Renderer-owned geometry (width/height/margins/tick overrides). */
   geometry: PlotGeometry;
+  /**
+   * Explicit `fixed`-axis domains the caller resolved to the unfiltered extent.
+   * An axis absent here falls back to the vgplot `Fixed` sentinel.
+   */
+  fixedDomains?: FixedDomains;
 }
 
 /** Raised when the DSL contains vocabulary/refs validation should have caught. */
@@ -345,14 +366,19 @@ function buildSemanticAttributes(
   if (plot.y_scale !== undefined) {
     attrs.push(api.yScale(plot.y_scale));
   }
+  // A `fixed` axis takes the caller-resolved unfiltered domain when present;
+  // otherwise it falls back to vgplot's `Fixed` sentinel. The explicit domain is
+  // the correct interpretation of `fixed` — the full extent regardless of the
+  // filters active at mount — where `Fixed` freezes to the (possibly filtered)
+  // first render (see the module + widget docstrings).
   if (plot.x_domain === 'fixed') {
-    attrs.push(api.xDomain(api.Fixed));
+    attrs.push(api.xDomain(deps.fixedDomains?.x ?? api.Fixed));
   }
   if (plot.y_domain === 'fixed') {
-    attrs.push(api.yDomain(api.Fixed));
+    attrs.push(api.yDomain(deps.fixedDomains?.y ?? api.Fixed));
   }
   if (plot.xy_domain === 'fixed') {
-    attrs.push(api.xyDomain(api.Fixed));
+    attrs.push(api.xyDomain(deps.fixedDomains?.xy ?? api.Fixed));
   }
   if (plot.color_domain !== undefined) {
     attrs.push(
@@ -408,6 +434,113 @@ function buildGeometryAttributes(
     attrs.push(api.yTicks(geometry.yTicks));
   }
   return attrs;
+}
+
+// ── Fixed-domain resolution (pure request planning) ──────────────────────────
+
+/**
+ * A `fixed` axis that needs an explicit unfiltered domain, paired with the base
+ * table + source column(s) whose extent bounds it. `x`/`y` carry one column; an
+ * `xy` shared domain carries both (its bounds are the union of the two extents).
+ */
+export interface FixedDomainRequest {
+  axis: 'x' | 'y' | 'xy';
+  table: string;
+  columns: Array<string>;
+  /**
+   * The axis is log-scaled, so the extent must span POSITIVE values only:
+   * mosaic's log binning silently drops rows ≤ 0, so an extent that includes
+   * them would stretch the domain below the data's rendered support and
+   * degenerate the axis.
+   */
+  positiveOnly: boolean;
+}
+
+/**
+ * The source column a channel queries for its extent, or `null` when the channel
+ * is not a plain or binned column (a constant, an aggregate, or a temporal
+ * `date_bin` — none of which pins the axis to a single numeric column, so the
+ * axis falls back to vgplot `Fixed`).
+ */
+function channelColumn(channel: ChannelSpec | undefined): string | null {
+  if (channel === undefined || typeof channel === 'number') {
+    return null;
+  }
+  if (typeof channel === 'string') {
+    return channel;
+  }
+  if ('bin' in channel) {
+    return channel.bin;
+  }
+  return null;
+}
+
+/** The first mark whose channel (via `pick`) resolves to a plain/binned column. */
+function firstColumnMark(
+  plot: PlotSpec,
+  pick: (mark: PlotMarkSpec) => ChannelSpec | undefined,
+): { table: string; column: string } | null {
+  for (const mark of plot.marks) {
+    const column = channelColumn(pick(mark));
+    if (column !== null) {
+      return { table: mark.data.from, column };
+    }
+  }
+  return null;
+}
+
+/**
+ * Plan the extent queries a plot's `fixed` axes need: for each `fixed` axis
+ * whose channel(s) resolve to a plain/binned column, the base table + column(s)
+ * to read the FULL unfiltered extent from. An axis that cannot be pinned to a
+ * single source column is omitted, so the interpreter falls back to `Fixed` for
+ * it. Pure — the caller (which owns coordinator access) runs the queries.
+ */
+export function collectFixedDomainRequests(
+  plot: PlotSpec,
+): Array<FixedDomainRequest> {
+  const requests: Array<FixedDomainRequest> = [];
+  const xLog = plot.x_scale === 'log';
+  const yLog = plot.y_scale === 'log';
+  if (plot.x_domain === 'fixed') {
+    const found = firstColumnMark(plot, (mark) => mark.x);
+    if (found !== null) {
+      requests.push({
+        axis: 'x',
+        table: found.table,
+        columns: [found.column],
+        positiveOnly: xLog,
+      });
+    }
+  }
+  if (plot.y_domain === 'fixed') {
+    const found = firstColumnMark(plot, (mark) => mark.y);
+    if (found !== null) {
+      requests.push({
+        axis: 'y',
+        table: found.table,
+        columns: [found.column],
+        positiveOnly: yLog,
+      });
+    }
+  }
+  if (plot.xy_domain === 'fixed') {
+    for (const mark of plot.marks) {
+      const x = channelColumn(mark.x);
+      const y = channelColumn(mark.y);
+      if (x !== null && y !== null) {
+        requests.push({
+          axis: 'xy',
+          table: mark.data.from,
+          columns: [x, y],
+          // A shared domain must satisfy the stricter of the two scales.
+          positiveOnly: xLog || yLog,
+        });
+        break;
+      }
+    }
+  }
+  return requests;
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────

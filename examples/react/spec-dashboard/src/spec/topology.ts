@@ -25,11 +25,28 @@ import type { TopologySpec } from './schema';
 export const FILTERS_ENTRY = 'filters';
 
 /**
- * The spec topology IS a `TopologyConfig` once validated. This is a typed
- * pass-through — the schema guarantees the shape.
+ * Project the validated spec topology onto the library `TopologyConfig`. This is
+ * almost a pass-through, EXCEPT it strips the app-only `persist` key from every
+ * `filter-set` entry: `persist` is spec vocabulary (URL persistence) that the
+ * library `TopologyConfig` does not model, so it must not reach `createTopology`.
+ * The persister it declares is turned into a `Persister` on the entry's
+ * `FilterSet` separately (see `applyFilterPersistence`), driven from the derived
+ * codec registry the compile boundary carries on the {@link CompiledSpec}.
  */
 export function toTopologyConfig(topology: TopologySpec): TopologyConfig {
-  return topology;
+  const config: Record<string, TopologySpec[string]> = {};
+  for (const [name, declaration] of Object.entries(topology)) {
+    if (
+      declaration.type === 'filter-set' &&
+      declaration.persist !== undefined
+    ) {
+      const { persist: _persist, ...rest } = declaration;
+      config[name] = rest;
+      continue;
+    }
+    config[name] = declaration;
+  }
+  return config;
 }
 
 /** Every `filter-set` entry name declared in the topology. */

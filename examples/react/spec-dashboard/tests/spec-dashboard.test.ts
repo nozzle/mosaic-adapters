@@ -35,13 +35,33 @@ async function readCount(locator: Locator): Promise<number> {
 }
 
 /**
+ * The questions spec declares a URL-persisted filter DEFAULT (a `facet:domain`
+ * list of the five major answer domains), so a fresh load hydrates FILTERED.
+ * Clear it so the baseline is the full unfiltered dataset the exact-value
+ * assertions below expect. The
+ * opt-out KPI (`kpi_phrases_all`, no `filter_by`) is a dataset constant
+ * regardless of filters, so it proves the whole pipeline loaded before the
+ * clear; after the clear every owned filter is gone and the active bar empties.
+ */
+async function clearDefaultFilters(page: Page): Promise<void> {
+  await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
+    TOTAL_PHRASES,
+    { timeout: 90_000 },
+  );
+  await page.getByTestId('clear-all-filters').click();
+  await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+}
+
+/**
  * First paint waits on DuckDB-WASM instantiation, the proxied parquet download,
- * and the derived `questions_enriched` table. Wait on a KPI whose value is a
- * dataset constant so the whole pipeline (spec fetch → compile → topology →
- * load → query) is proven before any assertion.
+ * and the derived `questions_enriched` table. Clear the spec-declared defaults,
+ * then wait on a KPI whose value is a dataset constant so the whole pipeline
+ * (spec fetch → compile → topology → load → query) is proven, and the baseline
+ * is unfiltered, before any assertion.
  */
 async function gotoDashboard(page: Page): Promise<void> {
   await page.goto('/');
+  await clearDefaultFilters(page);
   await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
     TOTAL_QUESTIONS,
     { timeout: 90_000 },
@@ -294,6 +314,10 @@ test.describe('spec-driven dashboard', () => {
       { timeout: 90_000 },
     );
 
+    // The Apply remount re-hydrates the spec's defaults; clear them so the
+    // cross-filtered KPI returns to its unfiltered value for the assertions below.
+    await clearDefaultFilters(page);
+
     // A successful Apply remounts the editor (collapsed) — re-open it, then
     // apply an INVALID spec (a YAML parse error).
     await page.getByTestId('spec-editor-toggle').click();
@@ -492,8 +516,10 @@ test.describe('spec-driven dashboard', () => {
     // Options come only from the manifest (data), not from src/.
     await expect(select.locator('option')).toHaveCount(2);
 
-    // Loading with ?spec=questions is identical to loading with no param.
+    // Loading with ?spec=questions is identical to loading with no param
+    // (defaults hydrate, then we clear to the unfiltered baseline).
     await page.goto('/?spec=questions');
+    await clearDefaultFilters(page);
     await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
       TOTAL_QUESTIONS,
       { timeout: 90_000 },
@@ -538,11 +564,13 @@ test.describe('spec-driven dashboard', () => {
       )
       .toBeGreaterThan(0);
 
-    // Switching back restores the questions dashboard and its KPIs.
+    // Switching back restores the questions dashboard and its KPIs (defaults
+    // hydrate on the reload; clear to the unfiltered baseline before asserting).
     await page.getByTestId('spec-select').selectOption('questions');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('spec'))
       .toBe('questions');
+    await clearDefaultFilters(page);
     await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
       TOTAL_QUESTIONS,
       { timeout: 90_000 },
@@ -553,8 +581,9 @@ test.describe('spec-driven dashboard', () => {
     page,
   }) => {
     // Start on an explicit ?spec=questions entry (so the prior history entry
-    // carries the param), proven loaded by its KPI.
+    // carries the param), proven loaded by its KPI (defaults cleared first).
     await page.goto('/?spec=questions');
+    await clearDefaultFilters(page);
     await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
       TOTAL_QUESTIONS,
       { timeout: 90_000 },
@@ -581,6 +610,9 @@ test.describe('spec-driven dashboard', () => {
       .poll(() => new URL(page.url()).searchParams.get('spec'))
       .toBe('questions');
     await expect(page.getByTestId('spec-select')).toHaveValue('questions');
+    // The questions reload re-hydrates its defaults; clearing them is a no-op
+    // navigation (no owned params are written), so the forward entry survives.
+    await clearDefaultFilters(page);
     await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
       TOTAL_QUESTIONS,
       { timeout: 90_000 },
@@ -806,5 +838,266 @@ test.describe('spec-driven dashboard', () => {
     await expect(page.getByTestId('spec-editor-status')).not.toContainText(
       'Unsaved changes',
     );
+  });
+
+  test('(p1) confirming a builder filter writes its persisted param; removing it deletes the param', async ({
+    page,
+  }) => {
+    // Unfiltered baseline (defaults cleared) — no owned params on the URL yet.
+    await gotoDashboard(page);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('f.text:phrase'))
+      .toBe(false);
+
+    // With no params at all, the URL-params popover shows its empty state.
+    await page.getByTestId('url-params-button').click();
+    await expect(page.getByTestId('url-params-empty')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('url-params-panel')).toBeHidden();
+
+    // Build a Phrase filter (default operator `contains` → bare value form).
+    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
+    await page.getByTestId('filter-builder-confirm').click();
+    await page.getByTestId('filter-block-phrase-value').fill('stove');
+    await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible();
+
+    // The prefixed param is written with the encoded value.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('f.text:phrase'))
+      .toBe('stove');
+
+    // Removing the filter deletes its param (foreign/spec params untouched).
+    await page.getByTestId('filter-block-phrase-remove').click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('f.text:phrase'))
+      .toBe(false);
+  });
+
+  test('(p2) a shared link with filter params hydrates the dashboard filtered (URL wins over defaults)', async ({
+    page,
+  }) => {
+    // Load directly with an owned param: the URL wins wholesale, so the declared
+    // defaults are NOT merged in.
+    await page.goto('/?spec=questions&f.text:phrase=stove');
+
+    // The opt-out KPI proves the pipeline loaded; the cross-filtered KPI is a
+    // strict subset — the filter was hydrated before the first query (no flash
+    // back up to the full value is assertable here).
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
+      TOTAL_PHRASES,
+      { timeout: 90_000 },
+    );
+    await expect
+      .poll(async () => readCount(page.getByTestId('kpi-kpi_phrases-value')), {
+        timeout: 30_000,
+      })
+      .toBeLessThan(TOTAL_PHRASES_NUM);
+
+    // The active-filter chip renders, and the default was NOT merged in.
+    await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible();
+    await expect(page.getByTestId('filter-chip-facet-domain')).toHaveCount(0);
+  });
+
+  test('(p3) a bare URL hydrates the spec-declared defaults', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
+      TOTAL_PHRASES,
+      { timeout: 90_000 },
+    );
+
+    // The declared default surfaces its chip: the domain facet placement.
+    await expect(page.getByTestId('filter-chip-facet-domain')).toBeVisible();
+
+    // The default domain list cross-filters the phrase KPI below the total.
+    await expect
+      .poll(async () => readCount(page.getByTestId('kpi-kpi_phrases-value')), {
+        timeout: 30_000,
+      })
+      .toBeLessThan(TOTAL_PHRASES_NUM);
+
+    // The default hydrates from the bare URL, then materializes into it once
+    // the builder block re-registers the spec with its session-scoped
+    // self-exclusion clients — so the hydrated default view is itself a
+    // shareable link. The params popover badges it as an owned filter param.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('f.facet:domain'), {
+        timeout: 15_000,
+      })
+      .toBe(true);
+    await page.getByTestId('url-params-button').click();
+    await expect(page.getByTestId('url-param-f.facet:domain')).toHaveAttribute(
+      'data-ownership',
+      'filter',
+    );
+  });
+
+  test('(p4) clear-all removes the owned params and a reload restores the defaults', async ({
+    page,
+  }) => {
+    await page.goto('/?spec=questions&f.text:phrase=stove');
+    await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible({
+      timeout: 90_000,
+    });
+
+    // Clear-all removes the owned param (the app `spec` param is preserved).
+    await page.getByTestId('clear-all-filters').click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('f.text:phrase'))
+      .toBe(false);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('spec'))
+      .toBe('questions');
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+
+    // Reload the now-bare URL: the declared defaults hydrate again.
+    await page.reload();
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
+      TOTAL_PHRASES,
+      { timeout: 90_000 },
+    );
+    await expect(page.getByTestId('filter-chip-facet-domain')).toBeVisible();
+    await expect(page.getByTestId('filter-chip-text-phrase')).toHaveCount(0);
+  });
+
+  test('(p5) switching specs nukes every non-spec param', async ({ page }) => {
+    // Load questions with an owned filter param AND a foreign param.
+    await page.goto('/?spec=questions&f.text:phrase=stove&foo=bar');
+    await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible({
+      timeout: 90_000,
+    });
+
+    // Switching specs writes `?spec=<id>` and nulls every other current param.
+    await page.getByTestId('spec-select').selectOption('protein-design');
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('spec'))
+      .toBe('protein-design');
+    await expect
+      .poll(() => [...new URL(page.url()).searchParams.keys()].sort())
+      .toEqual(['spec']);
+  });
+
+  test('(p6) the URL-params popover lists params with ownership badges and copies the link', async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/?spec=questions&f.text:phrase=stove');
+    await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible({
+      timeout: 90_000,
+    });
+
+    await page.getByTestId('url-params-button').click();
+    await expect(page.getByTestId('url-params-panel')).toBeVisible();
+
+    // The `spec` param is badged as the app param; the persisted filter param is
+    // badged `filter` and its value decodes to the human-readable form.
+    await expect(page.getByTestId('url-param-spec')).toHaveAttribute(
+      'data-ownership',
+      'spec',
+    );
+    const filterRow = page.getByTestId('url-param-f.text:phrase');
+    await expect(filterRow).toHaveAttribute('data-ownership', 'filter');
+    await expect(filterRow).toContainText('stove');
+
+    // Copy link flips the button to its brief confirmation state.
+    await page.getByTestId('url-params-copy').click();
+    await expect(page.getByTestId('url-params-copy')).toHaveText('Copied');
+  });
+
+  test('(p7) clearing hydrated defaults restores the FULL unfiltered histogram domain, and brushing does not rescale it', async ({
+    page,
+  }) => {
+    // Repro of the poisoned `x_domain: fixed` bug: the defaults hydrate BEFORE
+    // the first histogram query, so a `Fixed` (freeze-on-first-render) domain
+    // would lock to the filtered (>=10k) extent. `gotoDashboard` loads with the
+    // defaults hydrated, then clears them — the exact reported reproduction.
+    await gotoDashboard(page);
+    const plot = page.getByTestId('vgplot-volume_brush-plot');
+    await expect
+      .poll(async () => plot.locator('rect').count(), { timeout: 30_000 })
+      .toBeGreaterThan(3);
+
+    // The tallest bar spans most of the plot height: the large low-volume bin is
+    // VISIBLE. Under the bug that bin fell outside the frozen >=10k domain, so
+    // every remaining bar was squashed into a flat strip (heights ~a dozen px
+    // against a y-axis inflated to ~30,000).
+    const tallestBar = async () =>
+      plot
+        .locator('rect')
+        .evaluateAll((rects) =>
+          rects.reduce(
+            (max, rect) =>
+              Math.max(max, Number(rect.getAttribute('height') ?? 0)),
+            0,
+          ),
+        );
+    await expect.poll(tallestBar, { timeout: 30_000 }).toBeGreaterThan(80);
+
+    // The x-axis exposes the LOW end of the range (a plain tick <= 100), proving
+    // the domain is the full unfiltered extent, not the filtered >=10k one.
+    const hasLowTick = async () =>
+      (await plot.locator('svg text').allTextContents()).some((text) => {
+        const trimmed = text.trim();
+        return /^\d+$/.test(trimmed) && Number(trimmed) <= 100;
+      });
+    await expect.poll(hasLowTick).toBe(true);
+
+    // Brushing still works with the explicit domain AND does not rescale it.
+    // Record the sorted axis tick labels, brush a sub-range with a real drag,
+    // then assert the brush committed (the strip leaves its placeholder) while
+    // the histogram's own tick labels are byte-for-byte unchanged.
+    const sortedTicks = async () =>
+      (await plot.locator('svg text').allTextContents())
+        .map((text) => text.trim())
+        .sort()
+        .join('|');
+
+    // The clear-all above can retrigger a plot rebuild (layout/scrollbar width
+    // shifts feed the widget's ResizeObserver), briefly detaching the svg and
+    // re-deriving ticks. Wait until the tick set is stable across consecutive
+    // reads before recording the baseline the no-rescale assertion compares to.
+    let lastTicks = '';
+    await expect
+      .poll(
+        async () => {
+          const now = await sortedTicks();
+          const stable = now !== '' && now === lastTicks;
+          lastTicks = now;
+          return stable;
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    const ticksBefore = lastTicks;
+
+    // The svg can detach mid-read during a rebuild; retry until a box resolves.
+    const resolveBox = async () => {
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const candidate = await plot.locator('svg').boundingBox();
+        if (candidate !== null) {
+          return candidate;
+        }
+        await page.waitForTimeout(500);
+      }
+      throw new Error('vgplot plot svg box not found');
+    };
+    const box = await resolveBox();
+    const midY = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width * 0.45, midY);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.7, midY, { steps: 10 });
+    await page.mouse.up();
+
+    // The brush published a committed range (the strip leaves its placeholder).
+    await expect(page.getByTestId('vgplot-volume_brush-range')).not.toHaveText(
+      'Full range — drag to brush',
+      { timeout: 15_000 },
+    );
+
+    // The fixed domain did not rescale under the brush (self-exclusion keeps the
+    // histogram unfiltered by its own brush, and the domain is frozen).
+    expect(await sortedTicks()).toBe(ticksBefore);
   });
 });
