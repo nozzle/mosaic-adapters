@@ -34,33 +34,18 @@ import type { Coordinator } from '@uwdata/mosaic-core';
 import type { CompiledSpec, SpecManifest } from './spec/compile';
 import type { DashboardSpec, LayoutSpec, WidgetSpec } from './spec/schema';
 import type { WidgetContext } from './widgets/registry';
+import { useNavigateSearch, useSearchParam } from '@/router';
 
-// The URL search param that selects the active spec id (plain URLSearchParams —
-// there is no router). Absent/unknown → the manifest `default`.
+// The URL search param that selects the active spec id. The URL is the source of
+// truth: `useSearchParam(SPEC_PARAM)` drives the load and `navigateSearch` writes
+// it (see the router in `@/router`). Absent/unknown → the manifest
+// `default`.
 const SPEC_PARAM = 'spec';
 
 // Generic, domain-blind header fallback. The spec supplies the real title
 // (`title` in the spec YAML); this renders only when it is absent, so no domain
 // vocabulary lives in src/.
 const DEFAULT_TITLE = 'Spec-driven Dashboard';
-
-/** The `?spec=` value from the current URL, or null when absent. */
-function readSpecParam(): string | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-  return new URLSearchParams(window.location.search).get(SPEC_PARAM);
-}
-
-/** Persist the active spec id to `?spec=<id>` without a navigation. */
-function writeSpecParam(id: string): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  const url = new URL(window.location.href);
-  url.searchParams.set(SPEC_PARAM, id);
-  window.history.replaceState(null, '', url);
-}
 
 // Tailwind cannot generate fully-dynamic class names, so map the spec's numeric
 // column count / per-widget span to static class strings.
@@ -104,53 +89,55 @@ type SpecState =
     };
 
 /**
- * Boot the dashboard: fetch the spec manifest, resolve the active spec id from
- * the `?spec=` URL param (falling back to the manifest `default`), fetch + compile
- * that spec's YAML, then hand a valid {@link CompiledSpec} to the connection-keyed
+ * Boot the dashboard with the URL as the source of truth. One effect fetches the
+ * spec manifest once (cached in state). A second flow — keyed on the `?spec=` URL
+ * search param — resolves the active spec id via {@link resolveSpecEntry} (absent
+ * or unknown → the manifest `default`), fetches + compiles that spec's YAML, and
+ * commits it, then hands a valid {@link CompiledSpec} to the connection-keyed
  * dashboard. An invalid INITIAL spec surfaces its errors without a dashboard; once
  * a dashboard is running, the editor's Apply flow keeps the last-good one alive on
  * a compile failure (the errors render in the editor panel, not here).
  *
- * The quick-load selector (rendered in the chrome) switches specs: it writes
- * `?spec=<id>`, fetches that spec fresh, and bumps the revision to remount —
- * intentionally discarding any unsaved editor edits (a SWITCH, not an Apply).
+ * The quick-load selector (rendered in the chrome) switches specs by writing
+ * `?spec=<id>` (a push navigation); the URL-driven flow below then loads it fresh
+ * and bumps the revision to remount — intentionally discarding any unsaved editor
+ * edits (a SWITCH, not an Apply). Because the URL drives the load, browser
+ * back/forward now switches specs too.
  */
 function Bootstrap() {
   const { coordinator, connectionId } = useConnector();
+  const specParam = useSearchParam(SPEC_PARAM);
+  const navigateSearch = useNavigateSearch();
   const [manifest, setManifest] = useState<SpecManifest | null>(null);
-  const [activeSpecId, setActiveSpecId] = useState<string | null>(null);
   const [state, setState] = useState<SpecState>({ status: 'loading' });
   // Guards against out-of-order fetches when specs are switched rapidly: only
   // the latest requested load is allowed to commit its result.
   const loadSeq = useRef(0);
+  // The spec id whose YAML is currently loaded. The load effect only refetches
+  // when the RESOLVED id actually changes; this is essential so the editor's
+  // Apply (which bumps `revision` without touching the URL, so `specParam` is
+  // unchanged and the effect does not re-run) is never clobbered by a refetch.
+  // Set only after a successful commit so a StrictMode double-invoke still loads.
+  const loadedSpecId = useRef<string | null>(null);
 
+  // The active spec id is derived from the URL param + manifest, so the URL is
+  // the single source of truth. Null until the manifest is known.
+  const activeSpecId =
+    manifest === null ? null : resolveSpecEntry(manifest, specParam ?? null).id;
+
+  // Fetch the manifest once; a fetch failure surfaces the fetch-error panel and
+  // leaves `manifest` null, so the load effect below stays inert.
   useEffect(() => {
     let cancelled = false;
-    const seq = (loadSeq.current += 1);
     fetchManifest()
-      .then(async (loadedManifest) => {
-        const entry = resolveSpecEntry(loadedManifest, readSpecParam());
-        const text = await fetchSpecText(entry.url);
-        if (cancelled || seq !== loadSeq.current) {
+      .then((loadedManifest) => {
+        if (cancelled) {
           return;
         }
         setManifest(loadedManifest);
-        setActiveSpecId(entry.id);
-        const result = compileSpec(text);
-        if (result.ok) {
-          setState({
-            status: 'ready',
-            compiled: result.compiled,
-            revision: 0,
-            text,
-            originalText: text,
-          });
-        } else {
-          setState({ status: 'invalid', errors: result.errors });
-        }
       })
       .catch((reason: unknown) => {
-        if (cancelled || seq !== loadSeq.current) {
+        if (cancelled) {
           return;
         }
         setState({
@@ -162,6 +149,58 @@ function Bootstrap() {
       cancelled = true;
     };
   }, []);
+
+  // Load the spec selected by the URL. Re-runs when the manifest arrives or the
+  // `?spec=` param changes; resolves the entry, then (only when the resolved id
+  // differs from the one already loaded) fetches + compiles it fresh and bumps
+  // the revision to remount the dashboard subtree.
+  useEffect(() => {
+    if (manifest === null) {
+      return;
+    }
+    const entry = resolveSpecEntry(manifest, specParam ?? null);
+    if (entry.id === loadedSpecId.current) {
+      return;
+    }
+    let cancelled = false;
+    const seq = (loadSeq.current += 1);
+    fetchSpecText(entry.url)
+      .then((text) => {
+        if (cancelled || seq !== loadSeq.current) {
+          return;
+        }
+        const result = compileSpec(text);
+        if (result.ok) {
+          loadedSpecId.current = entry.id;
+          setState((prev) => ({
+            status: 'ready',
+            compiled: result.compiled,
+            revision: prev.status === 'ready' ? prev.revision + 1 : 0,
+            text,
+            originalText: text,
+          }));
+        } else {
+          // Nothing valid is loaded anymore: clear the loaded id so navigating
+          // back to the previously-loaded spec refetches instead of hitting the
+          // "already loaded" early exit and staying stuck on the error panel.
+          loadedSpecId.current = null;
+          setState({ status: 'invalid', errors: result.errors });
+        }
+      })
+      .catch((reason: unknown) => {
+        if (cancelled || seq !== loadSeq.current) {
+          return;
+        }
+        loadedSpecId.current = null;
+        setState({
+          status: 'fetch-error',
+          message: reason instanceof Error ? reason.message : String(reason),
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [manifest, specParam]);
 
   // The editor hands up an already-compiled spec + its text; bump the revision
   // to remount the dashboard subtree (resetting all Selection state) and keep
@@ -179,50 +218,14 @@ function Bootstrap() {
     );
   }, []);
 
-  // Quick-load: switch to another manifest spec. Writes `?spec=<id>`, fetches the
-  // YAML fresh, and (on success) replaces the editor's text/originalText and bumps
-  // the revision to remount — discarding any unsaved editor edits by design.
+  // Quick-load: switch to another manifest spec by writing `?spec=<id>` (a push
+  // navigation). The URL-driven load effect above does the fetch + remount, and
+  // back/forward replays the switch.
   const selectSpec = useCallback(
     (id: string) => {
-      if (manifest === null) {
-        return;
-      }
-      const entry = manifest.specs.find((candidate) => candidate.id === id);
-      if (entry === undefined) {
-        return;
-      }
-      writeSpecParam(id);
-      setActiveSpecId(id);
-      const seq = (loadSeq.current += 1);
-      fetchSpecText(entry.url)
-        .then((text) => {
-          if (seq !== loadSeq.current) {
-            return;
-          }
-          const result = compileSpec(text);
-          if (result.ok) {
-            setState((prev) => ({
-              status: 'ready',
-              compiled: result.compiled,
-              revision: prev.status === 'ready' ? prev.revision + 1 : 0,
-              text,
-              originalText: text,
-            }));
-          } else {
-            setState({ status: 'invalid', errors: result.errors });
-          }
-        })
-        .catch((reason: unknown) => {
-          if (seq !== loadSeq.current) {
-            return;
-          }
-          setState({
-            status: 'fetch-error',
-            message: reason instanceof Error ? reason.message : String(reason),
-          });
-        });
+      navigateSearch({ [SPEC_PARAM]: id });
     },
-    [manifest],
+    [navigateSearch],
   );
 
   if (state.status === 'loading') {
