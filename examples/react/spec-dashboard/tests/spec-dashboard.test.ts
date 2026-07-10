@@ -69,18 +69,81 @@ async function gotoDashboard(page: Page): Promise<void> {
 }
 
 /** Commit a real interval selection against the dashboard's volume histogram. */
-async function brushVolumePlot(page: Page): Promise<void> {
-  const svg = page.getByTestId('vgplot-volume_brush-plot').locator('svg');
-  await expect(svg).toBeVisible({ timeout: 30_000 });
-  const box = await svg.boundingBox();
+async function brushVolumePlot(
+  page: Page,
+  widgetId = 'volume_brush',
+): Promise<void> {
+  const plot = page.getByTestId(`vgplot-${widgetId}-plot`);
+  await expect(plot.locator('svg')).toBeVisible({ timeout: 30_000 });
+  await plot.scrollIntoViewIfNeeded();
+  let box: { x: number; y: number; width: number; height: number } | null =
+    null;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    box = await plot.locator('svg').boundingBox();
+    if (box !== null) {
+      break;
+    }
+    await page.waitForTimeout(250);
+  }
   if (box === null) {
-    throw new Error('vgplot volume brush svg box not found');
+    throw new Error(`vgplot ${widgetId} brush svg box not found`);
   }
   const midY = box.y + box.height / 2;
   await page.mouse.move(box.x + box.width * 0.42, midY);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.7, midY, { steps: 10 });
   await page.mouse.up();
+}
+
+/** Width of the painted interval overlay, or zero when the brush is clear. */
+async function brushSelectionWidth(
+  page: Page,
+  widgetId: string,
+): Promise<number> {
+  const geometry = await page
+    .getByTestId(`vgplot-${widgetId}-plot`)
+    .locator('g.interval-x rect.selection')
+    .evaluateAll((rects) =>
+      rects.reduce(
+        (largest, rect) => {
+          const width = Number(rect.getAttribute('width') ?? 0);
+          return width > largest.width
+            ? { x: Number(rect.getAttribute('x') ?? 0), width }
+            : largest;
+        },
+        { x: 0, width: 0 },
+      ),
+    );
+  return geometry.width;
+}
+
+/** True when the two full-width plots paint the same brush geometry. */
+async function brushSelectionsMatch(page: Page): Promise<boolean> {
+  const geometry = async (widgetId: string) =>
+    page
+      .getByTestId(`vgplot-${widgetId}-plot`)
+      .locator('g.interval-x rect.selection')
+      .evaluateAll((rects) =>
+        rects.reduce(
+          (largest, rect) => {
+            const width = Number(rect.getAttribute('width') ?? 0);
+            return width > largest.width
+              ? { x: Number(rect.getAttribute('x') ?? 0), width }
+              : largest;
+          },
+          { x: 0, width: 0 },
+        ),
+      );
+  const [primary, mirror] = await Promise.all([
+    geometry('volume_brush'),
+    geometry('volume_brush_mirror'),
+  ]);
+  return (
+    primary.width > 0 &&
+    mirror.width > 0 &&
+    Math.abs(primary.x - mirror.x) < 1 &&
+    Math.abs(primary.width - mirror.width) < 1
+  );
 }
 
 function summaryRows(page: Page, id: string): Locator {
@@ -1160,6 +1223,16 @@ test.describe('spec-driven dashboard', () => {
       })
       .toBeLessThan(TOTAL_ROWS_NUM);
 
+    // Both renderer-local interactors adopt the topology value before their
+    // first paint, even though neither renderer owns persistence.
+    await expect
+      .poll(() => brushSelectionWidth(page, 'volume_brush'))
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() => brushSelectionWidth(page, 'volume_brush_mirror'))
+      .toBeGreaterThan(0);
+    await expect.poll(() => brushSelectionsMatch(page)).toBe(true);
+
     await page.getByTestId('url-params-button').click();
     const row = page.getByTestId('url-param-s.volume_brush');
     await expect(row).toHaveAttribute('data-ownership', 'selection');
@@ -1176,6 +1249,10 @@ test.describe('spec-driven dashboard', () => {
     await expect
       .poll(() => new URL(page.url()).searchParams.get('s.volume_brush'))
       .toMatch(/^-?\d+(?:\.\d+)?\.\.-?\d+(?:\.\d+)?$/);
+    await expect
+      .poll(() => brushSelectionWidth(page, 'volume_brush_mirror'))
+      .toBeGreaterThan(0);
+    await expect.poll(() => brushSelectionsMatch(page)).toBe(true);
 
     // A chip removal clears the live Mosaic source and then deletes its owned
     // selection parameter through the same hook-owned write boundary.
@@ -1188,10 +1265,20 @@ test.describe('spec-driven dashboard', () => {
       .poll(() => new URL(page.url()).searchParams.has('s.volume_brush'))
       .toBe(false);
 
-    // Recreate both URL domains, then clear them together. A single merged
-    // patch prevents adjacent Selection / FilterSet notification waves from
-    // restoring the other domain's stale parameter.
-    await brushVolumePlot(page);
+    await expect.poll(() => brushSelectionWidth(page, 'volume_brush')).toBe(0);
+    await expect
+      .poll(() => brushSelectionWidth(page, 'volume_brush_mirror'))
+      .toBe(0);
+
+    // Brush the mirror next: the primary plot adopts its sibling's value. Then
+    // recreate both URL domains and clear them together. A single merged patch
+    // prevents adjacent Selection / FilterSet notification waves from restoring
+    // the other domain's stale parameter.
+    await brushVolumePlot(page, 'volume_brush_mirror');
+    await expect
+      .poll(() => brushSelectionWidth(page, 'volume_brush'))
+      .toBeGreaterThan(0);
+    await expect.poll(() => brushSelectionsMatch(page)).toBe(true);
     await page.getByTestId('filter-builder-add-field').selectOption('phrase');
     await page.getByTestId('filter-builder-confirm').click();
     await page.getByTestId('filter-block-phrase-value').fill('stove');
@@ -1210,6 +1297,10 @@ test.describe('spec-driven dashboard', () => {
       })
       .toBe(true);
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+    await expect.poll(() => brushSelectionWidth(page, 'volume_brush')).toBe(0);
+    await expect
+      .poll(() => brushSelectionWidth(page, 'volume_brush_mirror'))
+      .toBe(0);
   });
 
   test('(p10) malformed selection state remains unclaimed during bootstrap writes', async ({

@@ -44,9 +44,10 @@
  *
  * If the plot declares `selects` whose `as` refs resolve in the topology, a
  * committed-value strip reads the active clauses (matching clause `ref` against
- * each select's `as`) and an effect resets a surviving interactor when its
- * committed clause disappears externally (chip ✕ / Clear All). A plot with no
- * (resolvable) selects renders none of this chrome.
+ * each select's `as`) and a narrow compatibility adapter makes each interactor
+ * adopt externally committed values (URL hydration or a sibling renderer) and
+ * clears it after chip ✕ / Clear All. A plot with no resolvable selects renders
+ * none of this chrome.
  *
  * `PlotSpecError` (or any build failure from unresolved refs) is caught and shown
  * as an inline error card rather than crashing the app.
@@ -64,6 +65,7 @@ import {
   collectFixedDomainRequests,
 } from '../spec/plot-interpreter';
 import { resolveSelection } from '../spec/topology';
+import { syncVgplotSelectionInteractors } from './vgplot-selection-sync';
 import type { ReactElement } from 'react';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type { VgPlotElement } from '@nozzleio/react-mosaic';
@@ -77,6 +79,10 @@ import type {
 } from '../spec/plot-interpreter';
 import type { VgplotWidgetSpec } from '../spec/schema';
 import type { WidgetComponentProps, WidgetContext } from './registry';
+import type {
+  VgplotSelectionBinding,
+  VgplotSelectionInteractor,
+} from './vgplot-selection-sync';
 
 /** Floor width so a narrow column never collapses the plot to nothing. */
 const MIN_WIDTH = 240;
@@ -97,7 +103,7 @@ type PlotApiContext = PlotApi & {
 interface PlotInstance {
   setAttribute: (name: string, value: unknown) => unknown;
   render: () => Promise<unknown>;
-  interactors: Array<{ value?: unknown; reset: () => void }>;
+  interactors: Array<VgplotSelectionInteractor>;
 }
 
 /** Fully-resolved geometry for the current width + expand state. */
@@ -363,6 +369,17 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
       entry.value != null &&
       !(Array.isArray(entry.value) && entry.value.length === 0),
   );
+  const selectionBindings = useMemo<Array<VgplotSelectionBinding>>(
+    () =>
+      resolvableSelects.map((select) => ({
+        selection: topology.resolve(select.as),
+        kind: select.select,
+        active: activeClauses.some((clause) => clause.ref === select.as),
+        value: activeClauses.find((clause) => clause.ref === select.as)?.clause
+          .value,
+      })),
+    [activeClauses, resolvableSelects, topology],
+  );
 
   // Build the plot from the spec's DSL. Held by latest-ref inside `useVgPlot`;
   // rebuilt only when the coordinator-bound `api` or the topology identity
@@ -378,6 +395,12 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
         ...(fixedDomains !== null ? { fixedDomains } : {}),
       });
       const element = api.plot(...directives);
+      const plot = plotInstance(element);
+      if (plot !== undefined) {
+        // The initial plot render is frame-scheduled by vgplot. Seed values now
+        // so Interval1D.init() paints URL-restored state on its first pass.
+        syncVgplotSelectionInteractors(plot.interactors, selectionBindings);
+      }
       plotElementRef.current = element;
       setSpecError((prev) => (prev === null ? prev : null));
       return element;
@@ -456,31 +479,16 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
     void plot.render();
   }, [plotWidth, expanded, specError]);
 
-  // An interactor never observes its Selection, so a clause cleared from outside
-  // leaves the brush painted. When a select's committed clause is absent, reset
-  // the matching interactor (index matches `plot.selects`, i.e. the DSL order)
-  // if it still holds a value. Idempotent — a no-op once the overlay is cleared —
-  // and it reads committed state, so it cannot fight an in-progress drag.
+  // Interactors publish but do not observe their Selection. Adopt any value
+  // committed by URL hydration or a sibling renderer, and reset on an external
+  // clear. Matching is by Selection identity, never fragile DSL-array position.
   useEffect(() => {
     const plot = plotInstance(plotElementRef.current);
     if (plot === undefined) {
       return;
     }
-    plotSelects.forEach((select, index) => {
-      const value = activeClauses.find((clause) => clause.ref === select.as)
-        ?.clause.value;
-      const isCommitted =
-        value != null && !(Array.isArray(value) && value.length === 0);
-      if (isCommitted) {
-        return;
-      }
-      const interactor = plot.interactors[index];
-      if (interactor === undefined || interactor.value == null) {
-        return;
-      }
-      interactor.reset();
-    });
-  }, [activeClauses, plotSelects]);
+    syncVgplotSelectionInteractors(plot.interactors, selectionBindings);
+  }, [selectionBindings]);
 
   const showChrome = resolvableSelects.length > 0;
   // Mount the plot only once the data has loaded AND (if it declares resolvable
