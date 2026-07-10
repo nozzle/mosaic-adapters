@@ -16,6 +16,13 @@ import { dashboardSpecSchema } from './schema';
 import { buildKindRegistry, buildSpecKinds } from './kinds';
 import { buildTopologyOptions, toTopologyConfig } from './topology';
 import { validateCrossReferences } from './validate';
+import {
+  buildFilterUrlInfo,
+  buildFilterUrlRegistry,
+  collectDefaultSpecs,
+  resolveFilterPersistConfig,
+  validateFilterUrl,
+} from './filter-url';
 import type {
   FilterKind,
   Topology,
@@ -23,6 +30,7 @@ import type {
   TopologyOptions,
 } from '@nozzleio/react-mosaic';
 import type { ZodError } from 'zod';
+import type { FilterPersistWiring, FilterUrlInfo } from './filter-url';
 import type { DashboardSpec, WidgetSpec } from './schema';
 
 /**
@@ -74,9 +82,22 @@ export type SpecManifest = z.infer<typeof specManifestSchema>;
 export interface CompiledSpec {
   spec: DashboardSpec;
   topologyConfig: TopologyConfig;
+  /**
+   * The PURE topology options (kinds only). The URL persister is merged in at
+   * render time by the app-side wiring hook, which injects the router I/O — the
+   * compile boundary never touches the router (see `filterPersist`).
+   */
   topologyOptions: TopologyOptions;
   /** Built-ins + kinds instantiated from `filter_kinds:` (for the filter builder). */
   kindRegistry: Record<string, FilterKind>;
+  /**
+   * Everything the app-side hook needs to build the URL persister with injected
+   * router I/O: the derived codec registry, the resolved persist config, and the
+   * central defaults list. Carried here so the compile boundary stays pure.
+   */
+  filterPersist: FilterPersistWiring;
+  /** Reactive param-classification view for the URL-params popover. */
+  filterUrl: FilterUrlInfo;
 }
 
 export type CompileResult =
@@ -177,6 +198,14 @@ export function compileSpec(text: string): CompileResult {
     buildSpecKinds(spec),
   );
 
+  // Derive the URL codec registry, resolve persistence config, and collect the
+  // central `filters.defaults` list. These are pure (no router access) and are
+  // carried on the CompiledSpec for the app-side wiring hook + the URL-params
+  // popover.
+  const filterUrlRegistry = buildFilterUrlRegistry(spec, kindRegistry);
+  const persistConfig = resolveFilterPersistConfig(spec.topology);
+  const defaultSpecs = collectDefaultSpecs(spec, filterUrlRegistry);
+
   // Build a throwaway topology purely to (a) run the library's structural
   // validation (bad include/context refs throw) and (b) read `validNames`.
   // The live topology the tree renders against is built separately by
@@ -195,12 +224,29 @@ export function compileSpec(text: string): CompileResult {
     validNames,
     kindRegistry,
   );
-  if (crossRefErrors.length > 0) {
-    return { ok: false, errors: crossRefErrors };
+  const filterUrlErrors = validateFilterUrl(
+    spec,
+    filterUrlRegistry,
+    persistConfig,
+  );
+  const errors = [...crossRefErrors, ...filterUrlErrors];
+  if (errors.length > 0) {
+    return { ok: false, errors };
   }
 
   return {
     ok: true,
-    compiled: { spec, topologyConfig, topologyOptions, kindRegistry },
+    compiled: {
+      spec,
+      topologyConfig,
+      topologyOptions,
+      kindRegistry,
+      filterPersist: {
+        registry: filterUrlRegistry,
+        persistConfig,
+        defaults: defaultSpecs,
+      },
+      filterUrl: buildFilterUrlInfo(filterUrlRegistry, persistConfig),
+    },
   };
 }

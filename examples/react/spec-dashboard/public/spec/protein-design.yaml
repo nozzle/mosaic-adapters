@@ -10,12 +10,21 @@ data:
   tables:
     proteins: { type: parquet, url: /data/protein-design.parquet }
 
+# URL persistence (this spec exercises the WITHOUT-prefix mode): the `filters`
+# entry declares `persist: { type: url }` with NO `param_prefix`, so persisted
+# filters use BARE param names equal to their spec ids (e.g. `?menu:partial_t=…`,
+# `?table:version=…`). The persister then owns exactly the params whose names
+# match a derivable spec id; `?spec=` and any other foreign param are left alone.
+# (Compile-time validation rejects a bare-prefix spec id equal to the reserved
+# `spec` param — none here collide.)
 topology:
   # Builder-authored menu filters land here.
   filters:
     type: filter-set
     targets:
       where: crossfilter
+    persist:
+      type: url
   # The scatter's intervalXY brush publishes here (upstream `$query` brush).
   scatter_brush:
     type: single
