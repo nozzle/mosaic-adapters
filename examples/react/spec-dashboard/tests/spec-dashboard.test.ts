@@ -146,6 +146,55 @@ async function brushSelectionsMatch(page: Page): Promise<boolean> {
   );
 }
 
+/** Painted rectangle geometry for the protein-design intervalXY brush. */
+async function scatterBrushGeometry(
+  page: Page,
+): Promise<{ width: number; height: number }> {
+  return page
+    .getByTestId('vgplot-scatter-plot')
+    .locator('g.interval-xy rect.selection')
+    .evaluateAll((rects) =>
+      rects.reduce(
+        (largest, rect) => {
+          const candidate = {
+            width: Number(rect.getAttribute('width') ?? 0),
+            height: Number(rect.getAttribute('height') ?? 0),
+          };
+          return candidate.width * candidate.height >
+            largest.width * largest.height
+            ? candidate
+            : largest;
+        },
+        { width: 0, height: 0 },
+      ),
+    );
+}
+
+/** Commit a real diagonal intervalXY selection on the protein scatter plot. */
+async function brushProteinScatter(page: Page): Promise<void> {
+  const plot = page.getByTestId('vgplot-scatter-plot');
+  await expect(plot.locator('svg')).toBeVisible({ timeout: 30_000 });
+  await plot.scrollIntoViewIfNeeded();
+  let box: { x: number; y: number; width: number; height: number } | null =
+    null;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    box = await plot.locator('svg').boundingBox();
+    if (box !== null) {
+      break;
+    }
+    await page.waitForTimeout(250);
+  }
+  if (box === null) {
+    throw new Error('protein scatter svg box not found');
+  }
+  await page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.35);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.7, {
+    steps: 30,
+  });
+  await page.mouse.up();
+}
+
 function summaryRows(page: Page, id: string): Locator {
   return page.getByTestId(id).locator('tbody tr');
 }
@@ -1391,5 +1440,79 @@ test.describe('spec-driven dashboard', () => {
     expect([...new URL(page.url()).searchParams.keys()].sort()).toEqual([
       'spec',
     ]);
+  });
+
+  test('(p13) protein intervalXY brush persists, restores, and clears atomically', async ({
+    page,
+  }) => {
+    await page.goto('/?spec=protein-design&s.scatter_brush=70..90,0..20');
+    await expect(page.getByTestId('detail-table-total')).toHaveText(
+      '3,721 rows match',
+      { timeout: 90_000 },
+    );
+    await expect(page.getByTestId('filter-chip-scatter_brush')).toBeVisible();
+    await expect
+      .poll(async () => {
+        const geometry = await scatterBrushGeometry(page);
+        return geometry.width > 0 && geometry.height > 0;
+      })
+      .toBe(true);
+
+    await page.getByTestId('url-params-button').click();
+    const urlRow = page.getByTestId('url-param-s.scatter_brush');
+    await expect(urlRow).toHaveAttribute('data-ownership', 'selection');
+    await expect(urlRow).toContainText('plddt_total: 70 – 90');
+    await expect(urlRow).toContainText('pae_interaction: 0 – 20');
+    await page.keyboard.press('Escape');
+
+    // Removing the hydrated chip deletes the one atomic rectangle parameter
+    // and clears the renderer-local 2D brush.
+    await page
+      .getByTestId('filter-chip-scatter_brush')
+      .getByRole('button')
+      .click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('s.scatter_brush'))
+      .toBe(false);
+    await expect
+      .poll(async () => {
+        const geometry = await scatterBrushGeometry(page);
+        return geometry.width === 0 && geometry.height === 0;
+      })
+      .toBe(true);
+
+    // A real diagonal drag writes the renderer-neutral nested grammar. Reload
+    // proves the URL reconstructs both the Mosaic clause and the 2D overlay.
+    await brushProteinScatter(page);
+    const token = '-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:e[+-]?\\d+)?';
+    const rectanglePattern = new RegExp(
+      `^${token}\\.\\.${token},${token}\\.\\.${token}$`,
+      'i',
+    );
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('s.scatter_brush'))
+      .toMatch(rectanglePattern);
+    const persisted = new URL(page.url()).searchParams.get('s.scatter_brush');
+    expect(persisted).not.toBeNull();
+
+    await page.reload();
+    await expect(page.getByTestId('filter-chip-scatter_brush')).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('s.scatter_brush'))
+      .toBe(persisted);
+    await expect
+      .poll(async () => {
+        const geometry = await scatterBrushGeometry(page);
+        return geometry.width > 0 && geometry.height > 0;
+      })
+      .toBe(true);
+
+    await page.getByTestId('clear-all-filters').click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('s.scatter_brush'))
+      .toBe(false);
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 });

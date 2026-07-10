@@ -103,34 +103,58 @@ const declarationBase = {
 
 /**
  * App-owned persistence contract for a standalone Selection's serializable
- * value. v1 is deliberately narrow: one finite numeric interval, reconstructed
- * against a trusted column declared in the spec (never supplied by the URL).
+ * value. The contract is deliberately narrow: a finite numeric interval on one
+ * trusted column, or one rectangular pair on trusted x/y columns. Columns are
+ * declared in the spec and are never supplied by the URL.
  */
-export const selectionPersistValueSchema = z
+const persistedSelectionColumnSchema = z
+  .string()
+  .min(1)
+  .refine((value) => value === value.trim(), {
+    message: 'persisted selection column must not have outer whitespace',
+  })
+  .superRefine((value, context) => {
+    try {
+      SqlIdentifier.from(value);
+    } catch (error) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'invalid persisted selection column',
+      });
+    }
+  });
+
+const selectionPersistInterval1DSchema = z
   .object({
     type: z.literal('interval'),
-    column: z
-      .string()
-      .min(1)
-      .refine((value) => value === value.trim(), {
-        message: 'persisted selection column must not have outer whitespace',
+    column: persistedSelectionColumnSchema,
+    data_type: z.literal('number'),
+  })
+  .strict();
+
+const selectionPersistInterval2DSchema = z
+  .object({
+    type: z.literal('interval'),
+    columns: z
+      .object({
+        x: persistedSelectionColumnSchema,
+        y: persistedSelectionColumnSchema,
       })
-      .superRefine((value, context) => {
-        try {
-          SqlIdentifier.from(value);
-        } catch (error) {
-          context.addIssue({
-            code: 'custom',
-            message:
-              error instanceof Error
-                ? error.message
-                : 'invalid persisted selection column',
-          });
-        }
+      .strict()
+      .refine((columns) => columns.x !== columns.y, {
+        message: 'persisted selection x/y columns must be distinct',
       }),
     data_type: z.literal('number'),
   })
   .strict();
+
+export const selectionPersistValueSchema = z.union([
+  selectionPersistInterval1DSchema,
+  selectionPersistInterval2DSchema,
+]);
 
 export const selectionPersistSchema = z
   .object({

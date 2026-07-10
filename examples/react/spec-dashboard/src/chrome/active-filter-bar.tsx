@@ -60,6 +60,17 @@ function readColumn(meta: unknown): string | undefined {
 /** Formats a foreign clause's value for display. */
 function formatForeignValue(value: unknown): string {
   if (Array.isArray(value)) {
+    if (
+      value.length === 2 &&
+      value.every(
+        (interval) =>
+          Array.isArray(interval) &&
+          interval.length === 2 &&
+          interval.every((bound) => typeof bound === 'number'),
+      )
+    ) {
+      return value.map((interval) => formatForeignValue(interval)).join(' × ');
+    }
     if (value.length === 2 && value.every((n) => typeof n === 'number')) {
       const [lo, hi] = value as [number, number];
       const round = (n: number) => Math.round(n).toLocaleString('en-US');

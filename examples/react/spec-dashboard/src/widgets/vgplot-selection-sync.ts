@@ -13,9 +13,13 @@ type Callable = (...args: Array<unknown>) => unknown;
 export interface VgplotSelectionInteractor {
   selection?: Selection;
   channel?: unknown;
+  xfield?: unknown;
+  yfield?: unknown;
   value?: unknown;
   reset?: () => void;
   scale?: { apply?: (value: unknown) => unknown };
+  xscale?: { apply?: (value: unknown) => unknown };
+  yscale?: { apply?: (value: unknown) => unknown };
   brush?: { moveSilent?: Callable };
   g?: { call?: (callback: Callable, ...args: Array<unknown>) => unknown };
 }
@@ -51,6 +55,57 @@ function sameInterval(current: unknown, next: [number, number]): boolean {
   );
 }
 
+function numericInterval2D(
+  value: unknown,
+): [[number, number], [number, number]] | null {
+  if (!Array.isArray(value) || value.length !== 2) {
+    return null;
+  }
+  const x = numericInterval(value[0]);
+  const y = numericInterval(value[1]);
+  return x === null || y === null ? null : [x, y];
+}
+
+function sameInterval2D(
+  current: unknown,
+  next: [[number, number], [number, number]],
+): boolean {
+  return (
+    Array.isArray(current) &&
+    current.length === 2 &&
+    sameInterval(current[0], next[0]) &&
+    sameInterval(current[1], next[1])
+  );
+}
+
+function finitePixel(
+  apply: ((value: unknown) => unknown) | undefined,
+  value: number,
+): number | null {
+  if (typeof apply !== 'function') {
+    return null;
+  }
+  const pixel = apply(value);
+  return typeof pixel === 'number' && Number.isFinite(pixel) ? pixel : null;
+}
+
+function moveSilently(
+  interactor: VgplotSelectionInteractor,
+  extent: unknown,
+): void {
+  const moveSilent = interactor.brush?.moveSilent;
+  const call = interactor.g?.call;
+  if (typeof moveSilent !== 'function' || typeof call !== 'function') {
+    return;
+  }
+  try {
+    call.call(interactor.g, moveSilent, extent);
+  } catch {
+    // Private shapes are deliberately not a hard app dependency. Keep the
+    // value for a later full render, which can still seed it.
+  }
+}
+
 /** Adopt active topology values into matching interactors without publishing. */
 export function syncVgplotSelectionInteractors(
   interactors: ReadonlyArray<VgplotSelectionInteractor>,
@@ -71,9 +126,34 @@ export function syncVgplotSelectionInteractors(
         continue;
       }
 
-      // This app currently persists only numeric intervalX values. Other
-      // interactors retain their own active renderer-local value; they still
-      // participate in the feature-detected external-clear path above.
+      if (
+        binding.kind === 'intervalXY' &&
+        interactor.xfield !== undefined &&
+        interactor.yfield !== undefined
+      ) {
+        const value = numericInterval2D(binding.value);
+        if (value === null || sameInterval2D(interactor.value, value)) {
+          continue;
+        }
+        interactor.value = value;
+        const [x, y] = value;
+        const x1 = finitePixel(interactor.xscale?.apply, x[0]);
+        const x2 = finitePixel(interactor.xscale?.apply, x[1]);
+        const y1 = finitePixel(interactor.yscale?.apply, y[0]);
+        const y2 = finitePixel(interactor.yscale?.apply, y[1]);
+        if (x1 !== null && x2 !== null && y1 !== null && y2 !== null) {
+          const [left, right] = [x1, x2].sort((a, b) => a - b);
+          const [top, bottom] = [y1, y2].sort((a, b) => a - b);
+          moveSilently(interactor, [
+            [left, top],
+            [right, bottom],
+          ]);
+        }
+        continue;
+      }
+
+      // Selection identity can be shared by heterogeneous interactors. Only a
+      // structural Interval1D x interactor may adopt an intervalX binding.
       if (binding.kind !== 'intervalX' || interactor.channel !== 'x') {
         continue;
       }
@@ -86,36 +166,13 @@ export function syncVgplotSelectionInteractors(
       // Interval1D.init() reads it and paints the brush. For a live plot, move
       // the existing brush silently when all private capabilities exist.
       interactor.value = value;
-      const apply = interactor.scale?.apply;
-      const moveSilent = interactor.brush?.moveSilent;
-      const call = interactor.g?.call;
-      if (
-        typeof apply !== 'function' ||
-        typeof moveSilent !== 'function' ||
-        typeof call !== 'function'
-      ) {
-        continue;
-      }
-      const lo = apply(value[0]);
-      const hi = apply(value[1]);
-      if (
-        typeof lo !== 'number' ||
-        typeof hi !== 'number' ||
-        !Number.isFinite(lo) ||
-        !Number.isFinite(hi)
-      ) {
-        continue;
-      }
-      const extent = [lo, hi];
-      try {
-        call.call(
-          interactor.g,
-          moveSilent,
-          extent.sort((a, b) => a - b),
+      const lo = finitePixel(interactor.scale?.apply, value[0]);
+      const hi = finitePixel(interactor.scale?.apply, value[1]);
+      if (lo !== null && hi !== null) {
+        moveSilently(
+          interactor,
+          [lo, hi].sort((a, b) => a - b),
         );
-      } catch {
-        // Private shapes are deliberately not a hard app dependency. Keep the
-        // value for a later full render, which can still seed it.
       }
     }
   }

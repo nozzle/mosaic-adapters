@@ -29,7 +29,12 @@ topology:
   scatter_brush:
     type: single
     label: Scatter selection
-    meta: { column: plddt_total }
+    persist:
+      type: url
+      value:
+        type: interval
+        columns: { x: plddt_total, y: pae_interaction }
+        data_type: number
   # What every plot/table reads: menus + brush composed (upstream `$query`).
   query:
     type: compose
