@@ -898,6 +898,28 @@ test.describe('spec-driven dashboard', () => {
     await expect(page.getByTestId('filter-chip-facet-domain')).toHaveCount(0);
   });
 
+  test('(p2b) StrictMode bootstrap does not delete an owned malformed parameter', async ({
+    page,
+  }) => {
+    // The empty value is owned by the filter registry but fails its text codec.
+    // Hydration ignores it and, importantly, the write-back effect's StrictMode
+    // setup replay must not mistake that ignored bootstrap for a runtime clear.
+    await page.goto('/?spec=questions&f.text%3Aphrase=');
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
+      TOTAL_PHRASES,
+      { timeout: 90_000 },
+    );
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+    await expect
+      .poll(() => {
+        const params = new URL(page.url()).searchParams;
+        return (
+          params.has('f.text:phrase') && params.get('f.text:phrase') === ''
+        );
+      })
+      .toBe(true);
+  });
+
   test('(p3) a bare URL hydrates the spec-declared defaults', async ({
     page,
   }) => {

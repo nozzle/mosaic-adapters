@@ -10,7 +10,6 @@ import {
   MosaicProvider,
   MosaicTopologyProvider,
   useMosaicTopology,
-  useTopology,
 } from '@nozzleio/react-mosaic';
 import { ConnectorProvider, useConnector } from './connector';
 import { useDataLoad } from './data-loader';
@@ -26,14 +25,13 @@ import {
   getPrimaryFilterSet,
   resolveSelection,
 } from './spec/topology';
-import { applyFilterPersistence } from './spec/filter-url';
+import { usePersistedTopology } from './spec/url-state/use-persisted-topology';
 import { widgetRegistry } from './widgets/registry';
 import { ActiveFilterBar } from './chrome/active-filter-bar';
 import { FilterBuilder } from './chrome/filter-builder';
 import { SpecEditorPanel, SpecEditorToggle } from './chrome/spec-editor';
 import { UrlParamsPopover } from './chrome/url-params-popover';
 import type { Coordinator } from '@uwdata/mosaic-core';
-import type { TopologyOptions } from '@nozzleio/react-mosaic';
 import type { CompiledSpec, SpecManifest } from './spec/compile';
 import type { FilterUrlInfo } from './spec/filter-url';
 import type { DashboardSpec, LayoutSpec, WidgetSpec } from './spec/schema';
@@ -275,40 +273,6 @@ function Bootstrap() {
   );
 }
 
-/**
- * Merge the URL filter persister into the compiled (pure) topology options,
- * injecting the router I/O. The memo keys on `compiled` ONLY: the persister's
- * `read` runs once, synchronously, during topology construction in THIS render,
- * so the `search` / `navigateSearch` captured here are the current URL at read
- * time. The topology is reconstructed only on a remount (a new `compiled`), so
- * the captured snapshot is never stale when read — while live URL changes still
- * re-render (via `useSearch`) without rebuilding the topology (which would wipe
- * Selection state). Hence the deliberate single dependency.
- */
-function useTopologyOptionsWithPersistence(
-  compiled: CompiledSpec,
-): TopologyOptions {
-  const search = useSearch();
-  const navigateSearch = useNavigateSearch();
-  // Capture the construction-render router snapshot ONCE, via a state initializer
-  // (this hook lives under a subtree that remounts on every spec change / editor
-  // Apply, so `compiled` is stable for the topology's lifetime and this captured
-  // `io` matches). The persister's `read` runs synchronously during the topology
-  // construction below, in the same render, so the captured `search` is the
-  // current URL at read time. A live rebuild on every URL change would recreate
-  // the topology and reset all Selection state — hence the deliberate capture.
-  const [io] = useState(() => ({ search, navigateSearch }));
-  return useMemo(
-    () =>
-      applyFilterPersistence(
-        compiled.topologyOptions,
-        compiled.filterPersist,
-        io,
-      ),
-    [compiled, io],
-  );
-}
-
 function SpecDashboard(props: {
   compiled: CompiledSpec;
   coordinator: Coordinator;
@@ -321,8 +285,7 @@ function SpecDashboard(props: {
 }) {
   const { compiled, coordinator } = props;
   const load = useDataLoad(coordinator, compiled.spec.data.tables);
-  const topologyOptions = useTopologyOptionsWithPersistence(compiled);
-  const topology = useTopology(compiled.topologyConfig, topologyOptions);
+  const topology = usePersistedTopology(compiled);
   const enabled = load.done && load.error === null;
 
   return (
