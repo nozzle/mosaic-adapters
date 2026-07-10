@@ -66,6 +66,7 @@ export {
 } from './use-topology-helpers';
 
 export { useTopology } from './use-topology';
+export type { TopologyInitializer, UseTopologyOptions } from './use-topology';
 
 export {
   MosaicTopologyProvider,

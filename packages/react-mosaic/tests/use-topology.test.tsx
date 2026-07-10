@@ -62,6 +62,93 @@ describe('useTopology', () => {
     await hook.unmount();
   });
 
+  test('runs application initialization before returning each new topology', async () => {
+    const configA: TopologyConfig = { a: { type: 'single' } };
+    const configB: TopologyConfig = { b: { type: 'single' } };
+    const initialized: Array<Topology> = [];
+    const source = {};
+    const hook = await renderHook(
+      ({ config }: { config: TopologyConfig }) =>
+        useTopology(config, {
+          initialize: (topology) => {
+            const ref = topology.validNames.has('a') ? 'a' : 'b';
+            publishForeign(topology.resolve(ref), 'value', ref, source);
+            initialized.push(topology);
+          },
+        }),
+      { initialProps: { config: configA } },
+    );
+
+    expect(initialized).toEqual([hook.result.current]);
+    expect(
+      hook.result.current.activeClauses.state.clauses[0]?.clause.value,
+    ).toBe('a');
+
+    await hook.rerender({ config: configA });
+    expect(initialized).toHaveLength(1);
+
+    await hook.rerender({ config: configB });
+    expect(initialized).toHaveLength(2);
+    expect(initialized[1]).toBe(hook.result.current);
+    expect(
+      hook.result.current.activeClauses.state.clauses[0]?.clause.value,
+    ).toBe('b');
+
+    await hook.unmount();
+  });
+
+  test('a fresh options bag each render does not recreate when its fields are stable', async () => {
+    const config: TopologyConfig = { a: { type: 'crossfilter' } };
+    // Stable field identities; the bag wrapper and initializer are rebuilt every
+    // render. Only config/selections/filterSets identities key recreation.
+    const selections = {};
+    const filterSets = {};
+    const hook = await renderHook(
+      () =>
+        useTopology(config, {
+          selections,
+          filterSets,
+          initialize: () => {},
+        }),
+      { initialProps: {} },
+    );
+
+    const first = hook.result.current;
+    await hook.rerender({});
+    await hook.rerender({});
+    // New bag identity + new initializer identity per render, but stable field
+    // identities → same live instance.
+    expect(hook.result.current).toBe(first);
+    expect(first.destroyed).toBe(false);
+
+    await hook.unmount();
+  });
+
+  test('destroys a new topology when application initialization throws', async () => {
+    const config: TopologyConfig = { a: { type: 'single' } };
+    let initialized: Topology | null = null;
+    let caught: unknown;
+
+    try {
+      await renderHook(
+        () =>
+          useTopology(config, {
+            initialize: (topology) => {
+              initialized = topology;
+              throw new Error('bootstrap failed');
+            },
+          }),
+        { initialProps: {} },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(String(caught)).toContain('bootstrap failed');
+    expect(initialized).not.toBeNull();
+    expect((initialized as Topology | null)?.destroyed).toBe(true);
+  });
+
   test('destroys the topology on unmount', async () => {
     const config: TopologyConfig = { a: { type: 'crossfilter' } };
     const hook = await renderHook(() => useTopology(config), {
