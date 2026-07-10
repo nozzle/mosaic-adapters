@@ -1,10 +1,16 @@
 import { describe, expect, test } from 'vitest';
+import { createTopology } from '@nozzleio/react-mosaic';
 import {
   buildSelectionUrlRegistry,
   decodeNumericInterval,
   encodeNumericInterval,
   validateSelectionUrl,
 } from '../src/spec/url-state/selection-url';
+import {
+  buildSelectionUrlPatch,
+  createSelectionWriteState,
+  hydratePersistedSelections,
+} from '../src/spec/url-state/selection-runtime';
 import { toTopologyConfig } from '../src/spec/topology';
 import { selectionPersistValueSchema } from '../src/spec/schema';
 import type {
@@ -134,5 +140,92 @@ describe('selection URL registry', () => {
         prefix: undefined,
       }),
     ).toHaveLength(1);
+  });
+});
+
+describe('selection URL runtime', () => {
+  test('hydrates a valid interval synchronously into its topology selection', () => {
+    const topologySpec = selectionTopology('single');
+    const registry = buildSelectionUrlRegistry(topologySpec);
+    const topology = createTopology(toTopologyConfig(topologySpec));
+
+    hydratePersistedSelections(topology, registry, {
+      's.brush': '100..500',
+    });
+
+    expect(topology.activeClauses.state.clauses).toHaveLength(1);
+    expect(topology.activeClauses.state.clauses[0]?.clause.value).toEqual([
+      100, 500,
+    ]);
+    expect(
+      String(topology.activeClauses.state.clauses[0]?.clause.predicate),
+    ).toContain('search_volume');
+    topology.destroy();
+  });
+
+  test('hydrates dotted persisted columns as struct paths', () => {
+    const topologySpec: TopologySpec = {
+      brush: {
+        type: 'single',
+        persist: {
+          type: 'url',
+          value: {
+            type: 'interval',
+            column: 'metrics.search_volume',
+            data_type: 'number',
+          },
+        },
+      },
+    };
+    const registry = buildSelectionUrlRegistry(topologySpec);
+    const topology = createTopology(toTopologyConfig(topologySpec));
+
+    hydratePersistedSelections(topology, registry, { 's.brush': '100..500' });
+
+    expect(
+      String(topology.activeClauses.state.clauses[0]?.clause.predicate),
+    ).toContain('"metrics"."search_volume"');
+    topology.destroy();
+  });
+
+  test('ignores malformed hydration without creating an active clause', () => {
+    const topologySpec = selectionTopology('single');
+    const registry = buildSelectionUrlRegistry(topologySpec);
+    const topology = createTopology(toTopologyConfig(topologySpec));
+
+    hydratePersistedSelections(topology, registry, {
+      's.brush': 'not-a-range',
+    });
+
+    expect(topology.activeClauses.state.clauses).toEqual([]);
+    topology.destroy();
+  });
+
+  test('sets a live value and deletes it after that entry becomes inactive', () => {
+    const registry = buildSelectionUrlRegistry(selectionTopology('single'));
+    const state = createSelectionWriteState();
+    const active = [
+      {
+        entry: 'brush',
+        ref: 'brush',
+        label: undefined,
+        meta: undefined,
+        clause: { source: {}, value: [10, 20], predicate: {} as never },
+      },
+    ];
+
+    expect(buildSelectionUrlPatch(registry, active, state)).toEqual({
+      's.brush': '10..20',
+    });
+    expect(buildSelectionUrlPatch(registry, [], state)).toEqual({
+      's.brush': null,
+    });
+  });
+
+  test('does not claim an absent entry that has never held a valid value', () => {
+    const registry = buildSelectionUrlRegistry(selectionTopology('single'));
+    expect(
+      buildSelectionUrlPatch(registry, [], createSelectionWriteState()),
+    ).toEqual({});
   });
 });

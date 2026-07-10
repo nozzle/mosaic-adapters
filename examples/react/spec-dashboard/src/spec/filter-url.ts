@@ -1099,6 +1099,39 @@ export interface PersisterIo {
 }
 
 /**
+ * Encode the complete app-owned FilterSet registry as one router patch.
+ *
+ * The caller decides when to navigate. Keeping this pure lets the dashboard's
+ * React URL boundary merge FilterSet and standalone-selection changes into a
+ * single navigation, which is important when `topology.reset()` clears both
+ * stores in adjacent notification waves.
+ */
+export function buildFilterUrlPatch(
+  registry: FilterUrlRegistry,
+  prefix: string | undefined,
+  specs: ReadonlyArray<FilterSpec> | null,
+): Record<string, string | null> {
+  const { paramFor } = ownershipHelpers(registry, prefix);
+  const active = new Map<string, FilterSpec>();
+  if (specs !== null) {
+    for (const spec of specs) {
+      active.set(spec.id, spec);
+    }
+  }
+
+  // Patch the full registry: encoded value where active, null (delete) where
+  // absent. Foreign params are never named, so they are never touched.
+  const patch: Record<string, string | null> = {};
+  for (const id of registry.ids) {
+    const codec = registry.get(id);
+    const spec = active.get(id);
+    patch[paramFor(id)] =
+      spec !== undefined && codec !== undefined ? codec.encode(spec) : null;
+  }
+  return patch;
+}
+
+/**
  * The URL {@link Persister} for a persisting filter-set entry, with router I/O
  * injected (never imported). Reads are synchronous against the captured `search`
  * snapshot (the FilterSet hydrates before its first query — zero flash); every
@@ -1117,7 +1150,7 @@ export function createUrlPersister(
   defaults: ReadonlyArray<FilterSpec>,
   io: PersisterIo,
 ): Persister<Array<FilterSpec>> {
-  const { owns, idFor, paramFor } = ownershipHelpers(registry, prefix);
+  const { owns, idFor } = ownershipHelpers(registry, prefix);
 
   return {
     read: () => {
@@ -1146,23 +1179,9 @@ export function createUrlPersister(
     },
 
     write: (specs) => {
-      const active = new Map<string, FilterSpec>();
-      if (specs !== null) {
-        for (const spec of specs) {
-          active.set(spec.id, spec);
-        }
-      }
-      // Patch the full registry: encoded value where active, null (delete) where
-      // absent. Foreign params are never named, so they are never touched.
-      const patch: Record<string, string | null> = {};
-      for (const id of registry.ids) {
-        const codec = registry.get(id);
-        const spec = active.get(id);
-        const value =
-          spec !== undefined && codec !== undefined ? codec.encode(spec) : null;
-        patch[paramFor(id)] = value;
-      }
-      io.navigateSearch(patch, { history: 'replace' });
+      io.navigateSearch(buildFilterUrlPatch(registry, prefix, specs), {
+        history: 'replace',
+      });
     },
   };
 }

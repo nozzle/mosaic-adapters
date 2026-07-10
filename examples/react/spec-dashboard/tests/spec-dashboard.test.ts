@@ -68,6 +68,21 @@ async function gotoDashboard(page: Page): Promise<void> {
   );
 }
 
+/** Commit a real interval selection against the dashboard's volume histogram. */
+async function brushVolumePlot(page: Page): Promise<void> {
+  const svg = page.getByTestId('vgplot-volume_brush-plot').locator('svg');
+  await expect(svg).toBeVisible({ timeout: 30_000 });
+  const box = await svg.boundingBox();
+  if (box === null) {
+    throw new Error('vgplot volume brush svg box not found');
+  }
+  const midY = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width * 0.42, midY);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.7, midY, { steps: 10 });
+  await page.mouse.up();
+}
+
 function summaryRows(page: Page, id: string): Locator {
   return page.getByTestId(id).locator('tbody tr');
 }
@@ -1121,5 +1136,97 @@ test.describe('spec-driven dashboard', () => {
     // The fixed domain did not rescale under the brush (self-exclusion keeps the
     // histogram unfiltered by its own brush, and the domain is frozen).
     expect(await sortedTicks()).toBe(ticksBefore);
+  });
+
+  test('(p8) a shared selection link hydrates before queries and is identified as selection state', async ({
+    page,
+  }) => {
+    // The malformed owned FilterSet value suppresses declared FilterSet
+    // defaults, isolating the persisted volume selection for this direct load.
+    await page.goto(
+      '/?spec=questions&f.text%3Aphrase=&s.volume_brush=10000..1000000',
+    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
+      TOTAL_PHRASES,
+      { timeout: 90_000 },
+    );
+
+    // The construction-time selection is already part of the topology read by
+    // the first query clients: it surfaces as a chip and filters the page.
+    await expect(page.getByTestId('filter-chip-volume_brush')).toBeVisible();
+    await expect
+      .poll(async () => readCount(page.getByTestId('detail-detail-total')), {
+        timeout: 30_000,
+      })
+      .toBeLessThan(TOTAL_ROWS_NUM);
+
+    await page.getByTestId('url-params-button').click();
+    const row = page.getByTestId('url-param-s.volume_brush');
+    await expect(row).toHaveAttribute('data-ownership', 'selection');
+    await expect(row).toContainText('10000 – 1000000');
+  });
+
+  test('(p9) selection writes use the React URL boundary and clear atomically with FilterSet state', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    await brushVolumePlot(page);
+
+    await expect(page.getByTestId('filter-chip-volume_brush')).toBeVisible();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('s.volume_brush'))
+      .toMatch(/^-?\d+(?:\.\d+)?\.\.-?\d+(?:\.\d+)?$/);
+
+    // A chip removal clears the live Mosaic source and then deletes its owned
+    // selection parameter through the same hook-owned write boundary.
+    await page
+      .getByTestId('filter-chip-volume_brush')
+      .getByRole('button')
+      .click();
+    await expect(page.getByTestId('filter-chip-volume_brush')).toHaveCount(0);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('s.volume_brush'))
+      .toBe(false);
+
+    // Recreate both URL domains, then clear them together. A single merged
+    // patch prevents adjacent Selection / FilterSet notification waves from
+    // restoring the other domain's stale parameter.
+    await brushVolumePlot(page);
+    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
+    await page.getByTestId('filter-builder-confirm').click();
+    await page.getByTestId('filter-block-phrase-value').fill('stove');
+    await expect
+      .poll(() => {
+        const params = new URL(page.url()).searchParams;
+        return params.has('s.volume_brush') && params.has('f.text:phrase');
+      })
+      .toBe(true);
+
+    await page.getByTestId('clear-all-filters').click();
+    await expect
+      .poll(() => {
+        const params = new URL(page.url()).searchParams;
+        return !params.has('s.volume_brush') && !params.has('f.text:phrase');
+      })
+      .toBe(true);
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+  });
+
+  test('(p10) malformed selection state remains unclaimed during bootstrap writes', async ({
+    page,
+  }) => {
+    await page.goto('/?spec=questions&s.volume_brush=not-a-range');
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
+      TOTAL_PHRASES,
+      { timeout: 90_000 },
+    );
+    await expect(page.getByTestId('filter-chip-volume_brush')).toHaveCount(0);
+
+    // FilterSet defaults may materialize their own URL state after mount. The
+    // merged selection patch still omits this never-valid entry, preserving the
+    // hand-edited malformed value rather than silently deleting it.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('s.volume_brush'))
+      .toBe('not-a-range');
   });
 });
