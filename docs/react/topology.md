@@ -6,7 +6,7 @@ The core object does all the work (construction, validation, reset, active-claus
 
 ## `useTopology`
 
-`useTopology(config, options?)` constructs a [`Topology`](../core/selection-topology.md) and owns its lifecycle inside React: lazy construction, teardown on unmount, and StrictMode-safe single-wiring.
+`useTopology(config, options?)` constructs a [`Topology`](../core/selection-topology.md) and owns its lifecycle inside React: lazy construction, teardown on unmount, and StrictMode-safe single-wiring. The `options` bag carries the code-only core fields (`selections`, `filterSets`) plus an optional `initialize(topology)` callback that runs once for each newly-created topology before the hook returns it. `initialize` is intended for application-owned bootstrap state that must be present before querying children mount; changing only the callback identity never recreates a live topology.
 
 ```tsx
 import { useTopology } from '@nozzleio/react-mosaic';
@@ -23,9 +23,9 @@ function Page() {
 }
 ```
 
-### Hoist or memoize the config and options
+### Hoist or memoize the config and options fields
 
-Recreation is keyed on the **identity** of `config` and `options`, not their structural contents. A change to either object reference tears the previous topology down and builds a fresh one. Keep both references stable — hoist to module scope (the common case, since a page's topology is static), or `useMemo` / a ref when the shape genuinely depends on props:
+Recreation is keyed on the **identities** of `config`, `options.selections`, and `options.filterSets` — not on the options bag object itself, and not on `initialize`. A change to any of those three references tears the previous topology down and builds a fresh one. The options bag itself may be built inline every render (e.g. `{ ...coreOptions, initialize }`), and `initialize`'s identity never recreates — only the config and the `selections` / `filterSets` fields need a stable identity. Keep those references stable — hoist to module scope (the common case, since a page's topology is static), or `useMemo` / a ref when the shape genuinely depends on props:
 
 ```tsx
 // Module scope — one stable identity for the page's lifetime.
@@ -44,7 +44,7 @@ function Page() {
 }
 ```
 
-An inline `useTopology({ … }, { … })` literal mints a new config identity every render, which would rebuild the topology (and re-wire every relay) on each render — the same contract the Phase-1 composition hooks (`useComposedSelection`, `useCascadingContexts`) document.
+An inline `useTopology({ … }, { selections: { … } })` literal mints a new `config` (and `selections`) identity every render, which would rebuild the topology (and re-wire every relay) on each render — the same contract the Phase-1 composition hooks (`useComposedSelection`, `useCascadingContexts`) document. The bag wrapper itself is exempt: `useTopology(config, { ...options, initialize })` with a stable `config` and stable `selections` / `filterSets` stays stable even though the bag is a fresh object each render.
 
 ## Provider and consumer hooks
 
