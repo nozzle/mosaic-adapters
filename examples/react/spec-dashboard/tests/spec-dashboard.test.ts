@@ -549,6 +549,55 @@ test.describe('spec-driven dashboard', () => {
     );
   });
 
+  test('(i2) browser back after a spec switch restores the previous spec (URL + rendered dashboard)', async ({
+    page,
+  }) => {
+    // Start on an explicit ?spec=questions entry (so the prior history entry
+    // carries the param), proven loaded by its KPI.
+    await page.goto('/?spec=questions');
+    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
+      TOTAL_QUESTIONS,
+      { timeout: 90_000 },
+    );
+    await expect(page.getByTestId('spec-select')).toHaveValue('questions');
+
+    // Switch to protein-design via the selector — a push navigation, so it lands
+    // as a new history entry over the questions entry.
+    await page.getByTestId('spec-select').selectOption('protein-design');
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('spec'))
+      .toBe('protein-design');
+    // protein-design carries NO kpi widgets and its own vgplot panels.
+    await expect(page.getByTestId('vgplot-plddt_hist')).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(page.locator('[data-testid^="kpi-"]')).toHaveCount(0);
+
+    // Browser back returns to the questions entry: the URL param drops back to
+    // questions AND the rendered dashboard is the questions one (its KPI, absent
+    // from protein-design, is the spec-distinguishing element).
+    await page.goBack();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('spec'))
+      .toBe('questions');
+    await expect(page.getByTestId('spec-select')).toHaveValue('questions');
+    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
+      TOTAL_QUESTIONS,
+      { timeout: 90_000 },
+    );
+
+    // Forward returns to protein-design, proving traversal drives both directions.
+    await page.goForward();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('spec'))
+      .toBe('protein-design');
+    await expect(page.getByTestId('spec-select')).toHaveValue('protein-design');
+    await expect(page.getByTestId('vgplot-plddt_hist')).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(page.locator('[data-testid^="kpi-"]')).toHaveCount(0);
+  });
+
   test('(ii) the detail table exports the current page as CSV whose header row matches the columns', async ({
     page,
   }) => {
