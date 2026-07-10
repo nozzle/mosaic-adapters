@@ -8,6 +8,7 @@ const command = `pnpm run build && pnpm run preview --port ${PORT}`;
 export default defineConfig({
   ...baseConfig,
   testDir: './tests',
+  testIgnore: '**/*.unit.test.ts',
   // First paint waits on DuckDB-WASM plus the proxied parquet download.
   timeout: 120_000,
   use: {

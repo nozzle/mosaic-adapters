@@ -312,6 +312,36 @@ widgets:
             fill_opacity: 0.15
             stroke: '#3d71d9'
 
+  # A second renderer bound to the SAME topology Selection. It intentionally
+  # duplicates the vgplot declaration while Observable Plot is deferred: the
+  # pair proves that the app can restore and synchronize renderer-local brush
+  # visuals through Mosaic without giving persistence to either renderer.
+  volume_brush_mirror:
+    renderer: vgplot
+    label: Search Volume (Mirror)
+    expandable: true
+    plot:
+      x_scale: log
+      x_domain: fixed
+      x_label: 'Search Volume →'
+      y_label: null
+      y_ticks: 3
+      marks:
+        - mark: rectY
+          data:
+            from: questions_enriched
+            filter_by: volume_brush_filter_by
+          x: { bin: search_volume }
+          y: { agg: count }
+          fill: '#73bf69'
+      selects:
+        - select: intervalX
+          as: volume_brush
+          brush:
+            fill: '#5794f2'
+            fill_opacity: 0.15
+            stroke: '#3d71d9'
+
   # Selection tables — grouped key/metric tables with row-select publishing.
   # The phrase and domain cards carry the metric-threshold header control and a
   # minus-self membership context; the rest read `page` directly.
@@ -469,6 +499,8 @@ layout:
         - { ref: kpi_phrases_all, span: 1 }
     - widgets:
         - { ref: volume_brush, span: 5 }
+    - widgets:
+        - { ref: volume_brush_mirror, span: 5 }
     - widgets:
         - { ref: by_phrase, span: 2 }
         - { ref: by_domain, span: 1 }
