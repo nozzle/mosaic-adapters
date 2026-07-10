@@ -17,7 +17,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { usePopoverDismiss } from './use-popover-dismiss';
 import type { ReactElement } from 'react';
-import type { FilterUrlInfo, ParamOwnership } from '../spec/filter-url';
+import type { DashboardUrlInfo, ParamOwnership } from '../spec/url-state/info';
 import { useSearch } from '@/router';
 
 /** Badge text + color classes per ownership class. */
@@ -30,13 +30,19 @@ const BADGE: Record<ParamOwnership, { label: string; className: string }> = {
     label: 'filter',
     className: 'bg-gf-blue/20 text-gf-blue',
   },
+  selection: {
+    label: 'selection',
+    className: 'bg-gf-purple/20 text-gf-purple',
+  },
   other: {
     label: 'other',
     className: 'bg-hover text-muted',
   },
 };
 
-export function UrlParamsPopover(props: { info: FilterUrlInfo }): ReactElement {
+export function UrlParamsPopover(props: {
+  info: DashboardUrlInfo;
+}): ReactElement {
   const { info } = props;
   const search = useSearch();
 
@@ -124,8 +130,7 @@ export function UrlParamsPopover(props: { info: FilterUrlInfo }): ReactElement {
             {names.map((name) => {
               const ownership = info.classify(name);
               const raw = search[name] ?? '';
-              const decoded =
-                ownership === 'filter' ? info.describe(name, raw) : null;
+              const decoded = info.describe(name, raw);
               const badge = BADGE[ownership];
               return (
                 <li

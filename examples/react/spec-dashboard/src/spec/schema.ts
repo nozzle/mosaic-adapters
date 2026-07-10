@@ -24,6 +24,7 @@
  * key.
  */
 import { z } from 'zod';
+import { SqlIdentifier } from '@nozzleio/react-mosaic';
 
 // ── Query forms ──────────────────────────────────────────────────────────────
 
@@ -100,9 +101,49 @@ const declarationBase = {
   reset: z.boolean().optional(),
 };
 
+/**
+ * App-owned persistence contract for a standalone Selection's serializable
+ * value. v1 is deliberately narrow: one finite numeric interval, reconstructed
+ * against a trusted column declared in the spec (never supplied by the URL).
+ */
+export const selectionPersistValueSchema = z
+  .object({
+    type: z.literal('interval'),
+    column: z
+      .string()
+      .min(1)
+      .refine((value) => value === value.trim(), {
+        message: 'persisted selection column must not have outer whitespace',
+      })
+      .superRefine((value, context) => {
+        try {
+          SqlIdentifier.from(value);
+        } catch (error) {
+          context.addIssue({
+            code: 'custom',
+            message:
+              error instanceof Error
+                ? error.message
+                : 'invalid persisted selection column',
+          });
+        }
+      }),
+    data_type: z.literal('number'),
+  })
+  .strict();
+
+export const selectionPersistSchema = z
+  .object({
+    type: z.literal('url'),
+    value: selectionPersistValueSchema,
+  })
+  .strict();
+
 const standaloneDeclarationSchema = z
   .object({
     type: selectionStrategySchema,
+    /** App-owned URL persistence; compile validation restricts it to `single`. */
+    persist: selectionPersistSchema.optional(),
     ...declarationBase,
   })
   .strict();
@@ -605,6 +646,10 @@ export type FilterKindDef = z.infer<typeof filterKindDefSchema>;
 export type FilterKindsSpec = z.infer<typeof filterKindsSchema>;
 
 export type FilterSetPersistSpec = z.infer<typeof filterSetPersistSchema>;
+export type SelectionPersistSpec = z.infer<typeof selectionPersistSchema>;
+export type SelectionPersistValueSpec = z.infer<
+  typeof selectionPersistValueSchema
+>;
 
 export type FilterValueKind = z.infer<typeof filterValueKindSchema>;
 export type FilterDefaultSpec = z.infer<typeof filterDefaultSchema>;

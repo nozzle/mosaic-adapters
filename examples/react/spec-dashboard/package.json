@@ -10,6 +10,7 @@
     "build": "pnpm run typecheck && vite build",
     "preview": "vite preview",
     "test:lint": "pnpm run lint",
+    "test:lib": "vitest tests/*.unit.test.ts",
     "test:e2e": "playwright test",
     "test:types": "pnpm run typecheck"
   },
@@ -38,6 +39,7 @@
     "eslint-plugin-react-hooks": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

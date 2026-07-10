@@ -23,6 +23,11 @@ import {
   resolveFilterPersistConfig,
   validateFilterUrl,
 } from './filter-url';
+import {
+  buildSelectionUrlRegistry,
+  validateSelectionUrl,
+} from './url-state/selection-url';
+import { buildDashboardUrlInfo } from './url-state/info';
 import type {
   FilterKind,
   Topology,
@@ -30,7 +35,9 @@ import type {
   TopologyOptions,
 } from '@nozzleio/react-mosaic';
 import type { ZodError } from 'zod';
-import type { FilterPersistWiring, FilterUrlInfo } from './filter-url';
+import type { FilterPersistWiring } from './filter-url';
+import type { DashboardUrlInfo } from './url-state/info';
+import type { SelectionUrlRegistry } from './url-state/selection-url';
 import type { DashboardSpec, WidgetSpec } from './schema';
 
 /**
@@ -85,7 +92,7 @@ export interface CompiledSpec {
   /**
    * The PURE topology options (kinds only). The URL persister is merged in at
    * render time by the app-side wiring hook, which injects the router I/O — the
-   * compile boundary never touches the router (see `filterPersist`).
+   * compile boundary never touches the router (see `urlState`).
    */
   topologyOptions: TopologyOptions;
   /** Built-ins + kinds instantiated from `filter_kinds:` (for the filter builder). */
@@ -95,9 +102,13 @@ export interface CompiledSpec {
    * router I/O: the derived codec registry, the resolved persist config, and the
    * central defaults list. Carried here so the compile boundary stays pure.
    */
-  filterPersist: FilterPersistWiring;
-  /** Reactive param-classification view for the URL-params popover. */
-  filterUrl: FilterUrlInfo;
+  /** Pure, compiled inputs for the app-owned React URL-state layer. */
+  urlState: {
+    filterSet: FilterPersistWiring;
+    selections: SelectionUrlRegistry;
+    /** Reactive param-classification view for the URL-params popover. */
+    info: DashboardUrlInfo;
+  };
 }
 
 export type CompileResult =
@@ -205,6 +216,7 @@ export function compileSpec(text: string): CompileResult {
   const filterUrlRegistry = buildFilterUrlRegistry(spec, kindRegistry);
   const persistConfig = resolveFilterPersistConfig(spec.topology);
   const defaultSpecs = collectDefaultSpecs(spec, filterUrlRegistry);
+  const selectionUrlRegistry = buildSelectionUrlRegistry(spec.topology);
 
   // Build a throwaway topology purely to (a) run the library's structural
   // validation (bad include/context refs throw) and (b) read `validNames`.
@@ -229,7 +241,13 @@ export function compileSpec(text: string): CompileResult {
     filterUrlRegistry,
     persistConfig,
   );
-  const errors = [...crossRefErrors, ...filterUrlErrors];
+  const selectionUrlErrors = validateSelectionUrl(
+    spec.topology,
+    selectionUrlRegistry,
+    filterUrlRegistry,
+    persistConfig,
+  );
+  const errors = [...crossRefErrors, ...filterUrlErrors, ...selectionUrlErrors];
   if (errors.length > 0) {
     return { ok: false, errors };
   }
@@ -241,12 +259,18 @@ export function compileSpec(text: string): CompileResult {
       topologyConfig,
       topologyOptions,
       kindRegistry,
-      filterPersist: {
-        registry: filterUrlRegistry,
-        persistConfig,
-        defaults: defaultSpecs,
+      urlState: {
+        filterSet: {
+          registry: filterUrlRegistry,
+          persistConfig,
+          defaults: defaultSpecs,
+        },
+        selections: selectionUrlRegistry,
+        info: buildDashboardUrlInfo(
+          buildFilterUrlInfo(filterUrlRegistry, persistConfig),
+          selectionUrlRegistry,
+        ),
       },
-      filterUrl: buildFilterUrlInfo(filterUrlRegistry, persistConfig),
     },
   };
 }

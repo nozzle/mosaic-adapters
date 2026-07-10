@@ -33,7 +33,7 @@ import { SpecEditorPanel, SpecEditorToggle } from './chrome/spec-editor';
 import { UrlParamsPopover } from './chrome/url-params-popover';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type { CompiledSpec, SpecManifest } from './spec/compile';
-import type { FilterUrlInfo } from './spec/filter-url';
+import type { DashboardUrlInfo } from './spec/url-state/info';
 import type { DashboardSpec, LayoutSpec, WidgetSpec } from './spec/schema';
 import type { WidgetContext } from './widgets/registry';
 import { useNavigateSearch, useSearch, useSearchParam } from '@/router';
@@ -293,7 +293,7 @@ function SpecDashboard(props: {
       <DashboardBody
         spec={compiled.spec}
         kindRegistry={compiled.kindRegistry}
-        filterUrl={compiled.filterUrl}
+        urlInfo={compiled.urlState.info}
         enabled={enabled}
         loadError={load.error}
         text={props.text}
@@ -322,7 +322,7 @@ function filterSetContextRef(spec: DashboardSpec): string | undefined {
 function DashboardBody(props: {
   spec: DashboardSpec;
   kindRegistry: CompiledSpec['kindRegistry'];
-  filterUrl: FilterUrlInfo;
+  urlInfo: DashboardUrlInfo;
   enabled: boolean;
   loadError: Error | null;
   text: string;
@@ -406,7 +406,7 @@ function DashboardBody(props: {
             activeSpecId={props.activeSpecId}
             onSelectSpec={props.onSelectSpec}
           />
-          <UrlParamsPopover info={props.filterUrl} />
+          <UrlParamsPopover info={props.urlInfo} />
           <SpecEditorToggle
             open={editorOpen}
             onToggle={() => setEditorOpen((prev) => !prev)}
