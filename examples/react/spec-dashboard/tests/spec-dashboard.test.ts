@@ -1242,6 +1242,12 @@ test.describe('spec-driven dashboard', () => {
   test('(p9) selection writes use the React URL boundary and clear atomically with FilterSet state', async ({
     page,
   }) => {
+    const navigationErrors: Array<string> = [];
+    page.on('pageerror', (error) => {
+      if (error.name === 'AbortError' || error.message.includes('aborted')) {
+        navigationErrors.push(error.message);
+      }
+    });
     await gotoDashboard(page);
     await brushVolumePlot(page);
 
@@ -1301,6 +1307,7 @@ test.describe('spec-driven dashboard', () => {
     await expect
       .poll(() => brushSelectionWidth(page, 'volume_brush_mirror'))
       .toBe(0);
+    expect(navigationErrors).toEqual([]);
   });
 
   test('(p10) malformed selection state remains unclaimed during bootstrap writes', async ({
@@ -1319,5 +1326,70 @@ test.describe('spec-driven dashboard', () => {
     await expect
       .poll(() => new URL(page.url()).searchParams.get('s.volume_brush'))
       .toBe('not-a-range');
+  });
+
+  test('(p11) detail filter typing keeps focus and debounces the final URL value', async ({
+    page,
+  }) => {
+    const navigationErrors: Array<string> = [];
+    page.on('pageerror', (error) => {
+      if (error.name === 'AbortError' || error.message.includes('aborted')) {
+        navigationErrors.push(error.message);
+      }
+    });
+    await gotoDashboard(page);
+
+    const input = page.getByTestId('detail-detail-filter-domain');
+    await input.click();
+    const original = await input.elementHandle();
+    if (original === null) {
+      throw new Error('detail domain filter input was not found');
+    }
+    let expected = '';
+    for (const character of 'stove') {
+      expected += character;
+      await page.keyboard.type(character);
+      await expect(input).toHaveValue(expected);
+      expect(
+        await input.evaluate((element) => document.activeElement === element),
+      ).toBe(true);
+      await page.waitForTimeout(60);
+    }
+
+    // The hook classifies FilterSet changes as debounced URL work: the final
+    // keystroke is visible in local/Mosaic state, but has not navigated yet.
+    expect(new URL(page.url()).searchParams.has('f.detail:domain')).toBe(false);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('f.detail:domain'))
+      .toBe('stove');
+    expect(
+      await input.evaluate((element) => document.activeElement === element),
+    ).toBe(true);
+    expect(
+      await input.evaluate((element, first) => element === first, original),
+    ).toBe(true);
+    expect(navigationErrors).toEqual([]);
+  });
+
+  test('(p12) switching specs cancels a queued filter URL commit', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+    const input = page.getByTestId('detail-detail-filter-domain');
+    await input.fill('stove');
+    await expect(input).toHaveValue('stove');
+    await page.waitForTimeout(50);
+    expect(new URL(page.url()).searchParams.has('f.detail:domain')).toBe(false);
+
+    // Switch inside the debounce window. Commit-phase cancellation must prevent
+    // the old topology's timer from merging its filter into the new spec URL.
+    await page.getByTestId('spec-select').selectOption('protein-design');
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('spec'))
+      .toBe('protein-design');
+    await page.waitForTimeout(500);
+    expect([...new URL(page.url()).searchParams.keys()].sort()).toEqual([
+      'spec',
+    ]);
   });
 });

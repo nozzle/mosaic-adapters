@@ -50,14 +50,27 @@ interface NavigateEventLike extends Event {
   readonly hashChange: boolean;
   readonly downloadRequest: string | null;
   readonly destination: { readonly url: string };
-  readonly intercept: (options?: { handler?: () => void }) => void;
+  readonly navigationType: 'push' | 'replace' | 'reload' | 'traverse';
+  readonly intercept: (options?: {
+    handler?: () => void;
+    focusReset?: 'after-transition' | 'manual';
+    scroll?: 'after-transition' | 'manual';
+  }) => void;
 }
+
+interface NavigationResultLike {
+  readonly committed: Promise<unknown>;
+  readonly finished: Promise<unknown>;
+}
+
+type NavigationType = NavigateEventLike['navigationType'];
+type InterceptOptions = Parameters<NavigateEventLike['intercept']>[0];
 
 interface NavigationLike {
   readonly navigate: (
     url: string,
     options?: { history?: 'auto' | 'push' | 'replace' },
-  ) => unknown;
+  ) => NavigationResultLike;
   // A single overload with a union event type: the 'currententrychange' handler
   // ignores its argument (a plain Event at runtime), and a zero-arg listener is
   // assignable to this, so both listeners register without a second signature.
@@ -152,8 +165,25 @@ function handleNavigate(event: NavigateEventLike): void {
   if (destination.pathname !== current.pathname) {
     return;
   }
-  // An empty intercept (no handler) is enough to keep this same-document.
+  // Persistence uses replace navigations as an in-place state reflection. It
+  // must not invoke the Navigation API's default focus/scroll reset (which
+  // otherwise moves a table-filter input's focus to <body> after each write).
+  // Push/traverse retain their accessible navigation defaults.
+  const options = interceptOptionsForNavigationType(event.navigationType);
+  if (options !== undefined) {
+    event.intercept(options);
+    return;
+  }
   event.intercept();
+}
+
+/** State-only replacements preserve the current interaction and viewport. */
+export function interceptOptionsForNavigationType(
+  navigationType: NavigationType,
+): InterceptOptions {
+  return navigationType === 'replace'
+    ? { focusReset: 'manual', scroll: 'manual' }
+    : undefined;
 }
 
 // Eager, guarded listener install (see the module docstring for the rationale).
@@ -176,6 +206,26 @@ export function subscribe(listener: () => void): () => void {
 // --- Writes -----------------------------------------------------------------
 
 let warnedUnsupported = false;
+
+function isAbortError(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'name' in error &&
+    error.name === 'AbortError'
+  );
+}
+
+/** Observe the two Navigation API promises owned by a fire-and-forget write. */
+export function observeNavigationResult(result: NavigationResultLike): void {
+  void Promise.all([result.committed, result.finished]).catch((error) => {
+    // A later navigation superseding this one is expected under rapid state
+    // updates. Consume that cancellation; report only genuine router failures.
+    if (!isAbortError(error)) {
+      console.error('router: search navigation failed.', error);
+    }
+  });
+}
 
 export function navigateSearch(
   updater: SearchUpdater,
@@ -214,5 +264,7 @@ export function navigateSearch(
 
   const url = new URL(window.location.href);
   url.search = nextString;
-  navigation.navigate(url.href, { history: options?.history ?? 'push' });
+  observeNavigationResult(
+    navigation.navigate(url.href, { history: options?.history ?? 'push' }),
+  );
 }
