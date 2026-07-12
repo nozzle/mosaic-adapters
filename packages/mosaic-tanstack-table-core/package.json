@@ -1,6 +1,6 @@
 {
   "name": "@nozzleio/mosaic-tanstack-table-core",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Framework-agnostic TanStack Table glue for the Mosaic data clients: state translators and the column-filter bridge.",
   "license": "MIT",
   "type": "module",
