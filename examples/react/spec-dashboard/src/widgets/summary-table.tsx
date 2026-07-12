@@ -414,6 +414,24 @@ function SummaryTableBody(props: {
     }
   }
 
+  // Warm the coordinator's query cache for the next page once the current
+  // page has loaded successfully, so a forward page turn resolves from
+  // cache instead of a fresh round trip. Guarded to only fire when a next
+  // page plausibly exists (totalRows known and the next offset is still
+  // in range); `client.prefetch` only reads current context and issues a
+  // low-priority cached query — it never patches this client's store, so
+  // this effect cannot re-trigger itself.
+  useEffect(() => {
+    if (!enabled || rows.status !== 'success' || rows.totalRows === undefined) {
+      return;
+    }
+    const nextOffset = pageIndex * PAGE_SIZE + PAGE_SIZE;
+    if (nextOffset >= rows.totalRows) {
+      return;
+    }
+    client.prefetch({ offset: nextOffset });
+  }, [enabled, rows.status, rows.totalRows, pageIndex, client]);
+
   // One batched sparkline client serves every cell on the visible page. Its
   // source is EXPLICIT (`table` + `key`) in the spec — no FROM-regex derivation.
   const sparkline = widget.sparkline;
