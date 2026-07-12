@@ -1,5 +1,22 @@
 # @nozzleio/react-mosaic
 
+## 0.5.0
+
+### Minor Changes
+
+- [#202](https://github.com/nozzle/mosaic-adapters/pull/202) [`bfd311c`](https://github.com/nozzle/mosaic-adapters/commit/bfd311ce04021cef18cf8d9cfc975933bd8384b4) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Histogram clients now accept `scale: 'linear' | 'log'`. Log-scaled histograms
+  discover a positive extent and produce multiplicative bin boundaries, allowing
+  custom renderers to align queried counts with a logarithmic visual axis.
+
+- [#199](https://github.com/nozzle/mosaic-adapters/pull/199) [`c07ceee`](https://github.com/nozzle/mosaic-adapters/commit/c07ceee82c1081dc488a47cf6baa65feef267fd8) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - `useTopology` now takes an optional construction initializer on its options bag as `UseTopologyOptions.initialize`, alongside the existing `selections` / `filterSets` fields, letting applications synchronously seed a newly-created topology before querying children receive it. If initialization throws, the partially-built topology is destroyed before the error propagates.
+
+  Recreation is now keyed on the identities of `config`, `options.selections`, and `options.filterSets` individually — no longer on the options bag object as a whole — so callers may build the bag inline each render (`useTopology(config, { ...options, initialize })`) without rebuilding the topology. `initialize`'s identity never keys recreation.
+
+### Patch Changes
+
+- Updated dependencies [[`bfd311c`](https://github.com/nozzle/mosaic-adapters/commit/bfd311ce04021cef18cf8d9cfc975933bd8384b4)]:
+  - @nozzleio/mosaic-core@0.3.0
+
 ## 0.4.1
 
 ### Patch Changes

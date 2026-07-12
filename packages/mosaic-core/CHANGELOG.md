@@ -1,5 +1,13 @@
 # @nozzleio/mosaic-core
 
+## 0.3.0
+
+### Minor Changes
+
+- [#202](https://github.com/nozzle/mosaic-adapters/pull/202) [`bfd311c`](https://github.com/nozzle/mosaic-adapters/commit/bfd311ce04021cef18cf8d9cfc975933bd8384b4) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Histogram clients now accept `scale: 'linear' | 'log'`. Log-scaled histograms
+  discover a positive extent and produce multiplicative bin boundaries, allowing
+  custom renderers to align queried counts with a logarithmic visual axis.
+
 ## 0.2.1
 
 ### Patch Changes
