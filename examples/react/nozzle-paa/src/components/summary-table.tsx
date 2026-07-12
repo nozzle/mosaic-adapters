@@ -222,6 +222,17 @@ export function SummaryTable(props: {
       ? null
       : Math.max(1, Math.ceil(rows.totalRows / PAGE_SIZE));
 
+  const goToFirstPage = () => {
+    setPageIndex(0);
+  };
+
+  const goToLastPage = () => {
+    if (pageCount === null) {
+      return;
+    }
+    setPageIndex(pageCount - 1);
+  };
+
   return (
     <div
       data-testid={`summary-table-${config.id}${props.promoted ? '-expanded' : ''}`}
@@ -360,7 +371,16 @@ export function SummaryTable(props: {
         </table>
       </div>
 
-      <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-1.5 text-xs text-slate-500">
+      <div className="flex items-center gap-1 border-t border-slate-100 px-2 py-1.5 text-xs text-slate-500">
+        <button
+          type="button"
+          className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40"
+          disabled={pageIndex === 0}
+          aria-label={`First ${config.title} page`}
+          onClick={goToFirstPage}
+        >
+          «
+        </button>
         <button
           type="button"
           className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40"
@@ -378,6 +398,15 @@ export function SummaryTable(props: {
           onClick={() => setPageIndex((index) => index + 1)}
         >
           Next
+        </button>
+        <button
+          type="button"
+          className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40"
+          disabled={pageCount === null || pageIndex + 1 >= pageCount}
+          aria-label={`Last ${config.title} page`}
+          onClick={goToLastPage}
+        >
+          »
         </button>
         <span>
           Page {pageIndex + 1}

@@ -632,6 +632,55 @@ test.describe('spec-driven dashboard', () => {
     await expandSelectCollapseAndAssert(page, 'summary-table-by_domain');
   });
 
+  test('(h2) first/last page buttons jump the by_phrase table to its boundary pages', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    const card = page.getByTestId('summary-table-by_phrase');
+    const firstButton = card.getByRole('button', {
+      name: 'First Keyword Phrase page',
+    });
+    const prevButton = card.getByRole('button', {
+      name: 'Previous Keyword Phrase page',
+    });
+    const nextButton = card.getByRole('button', {
+      name: 'Next Keyword Phrase page',
+    });
+    const lastButton = card.getByRole('button', {
+      name: 'Last Keyword Phrase page',
+    });
+
+    // Wait for the full first page to settle before reading button state.
+    await expect(summaryRows(page, 'summary-table-by_phrase')).toHaveCount(10);
+    await expect(firstButton).toBeDisabled();
+    await expect(prevButton).toBeDisabled();
+    await expect(nextButton).toBeEnabled();
+    await expect(lastButton).toBeEnabled();
+
+    // 2,681 phrases / 10 per page → page 269 (index 268) is a 1-row remainder.
+    const lastPage = Math.ceil(TOTAL_PHRASES_NUM / 10);
+    await lastButton.click();
+
+    await expect(
+      card.getByText(`Page ${lastPage} of ${lastPage}`),
+    ).toBeVisible();
+    await expect(summaryRows(page, 'summary-table-by_phrase')).toHaveCount(
+      TOTAL_PHRASES_NUM % 10,
+    );
+    await expect(nextButton).toBeDisabled();
+    await expect(lastButton).toBeDisabled();
+    await expect(firstButton).toBeEnabled();
+    await expect(prevButton).toBeEnabled();
+
+    await firstButton.click();
+
+    await expect(card.getByText(`Page 1 of ${lastPage}`)).toBeVisible();
+    await expect(summaryRows(page, 'summary-table-by_phrase')).toHaveCount(10);
+    await expect(firstButton).toBeDisabled();
+    await expect(prevButton).toBeDisabled();
+  });
+
   test('(i) the quick-load selector switches specs: ?spec= drives the active spec and reloads the dashboard', async ({
     page,
   }) => {
