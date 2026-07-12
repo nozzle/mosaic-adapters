@@ -26,7 +26,7 @@ import {
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { compileQuery } from '../spec/query-compiler';
 import { resolveSelection } from '../spec/topology';
-import { WidgetSqlDetails } from './widget-sql-details';
+import { WidgetSqlPopover } from './widget-sql-details';
 import type { ReactElement } from 'react';
 import type {
   Column,
@@ -184,8 +184,9 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
       className="flex h-full flex-col overflow-hidden rounded-gf border border-line bg-panel transition-colors hover:border-line-strong"
       data-testid={`detail-${widget.id}`}
     >
-      <div className="flex h-[30px] shrink-0 items-center border-b border-line px-3 text-xs font-medium text-ink">
-        {widget.title}
+      <div className="relative flex h-[30px] shrink-0 items-center justify-between gap-2 border-b border-line px-3 text-xs font-medium text-ink">
+        <span className="truncate">{widget.title}</span>
+        <WidgetSqlPopover store={details.client.store} label={widget.title} />
       </div>
       <div className="min-h-[400px] flex-1 overflow-auto">
         <table className="w-full text-xs">
@@ -265,7 +266,6 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
           </button>
         ) : null}
       </div>
-      <WidgetSqlDetails store={details.client.store} />
     </div>
   );
 }

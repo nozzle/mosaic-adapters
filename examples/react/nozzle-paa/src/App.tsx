@@ -311,12 +311,7 @@ function Dashboard(props: { status: BootstrapStatus; error: Error | null }) {
 
       <div className="min-h-[500px] flex-1 px-6">
         <div className="flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 bg-slate-50/50 p-4 font-semibold text-slate-800">
-            Detailed Breakdown
-          </div>
-          <div className="flex-1 overflow-auto p-0">
-            <DetailTable enabled={isReady} />
-          </div>
+          <DetailTable enabled={isReady} />
         </div>
       </div>
     </div>

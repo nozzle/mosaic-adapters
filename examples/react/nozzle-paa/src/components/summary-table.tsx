@@ -25,7 +25,7 @@ import {
 import { FILTERS_ENTRY, havingTarget, tableName } from '../page-context';
 import { usePageContexts, usePageFilterSet } from '../topology';
 import { Sparkline } from './sparkline';
-import { WidgetSqlDetails } from './widget-sql-details';
+import { WidgetSqlPopover } from './widget-sql-details';
 import type { SparklineX, SparklineY } from '@nozzleio/react-mosaic';
 import type { ExprNode } from '@uwdata/mosaic-sql';
 import type { SummaryTableId } from '../page-context';
@@ -238,7 +238,7 @@ export function SummaryTable(props: {
       data-testid={`summary-table-${config.id}${props.promoted ? '-expanded' : ''}`}
       className={`flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${props.heightClassName}`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="relative flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
         <div className="text-sm font-bold tracking-wide text-slate-700 uppercase">
           {config.title}
         </div>
@@ -248,6 +248,7 @@ export function SummaryTable(props: {
               Expanded view
             </span>
           ) : null}
+          <WidgetSqlPopover store={client.store} label={config.title} />
           {props.promotionButton}
         </div>
       </div>
@@ -418,8 +419,6 @@ export function SummaryTable(props: {
             : `${rows.totalRows.toLocaleString()} groups`}
         </span>
       </div>
-
-      <WidgetSqlDetails store={client.store} />
     </div>
   );
 }
