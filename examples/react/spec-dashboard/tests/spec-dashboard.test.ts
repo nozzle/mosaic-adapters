@@ -690,6 +690,66 @@ test.describe('spec-driven dashboard', () => {
     await expect(prevButton).toBeDisabled();
   });
 
+  test('(h2b) first/last page buttons jump the detail table to its boundary pages', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    const firstButton = page.getByRole('button', {
+      name: 'First Detailed Breakdown page',
+    });
+    const prevButton = page.getByTestId('detail-detail-prev');
+    const nextButton = page.getByTestId('detail-detail-next');
+    const lastButton = page.getByRole('button', {
+      name: 'Last Detailed Breakdown page',
+    });
+
+    // 203,556 rows / 20 per page → the last page (index 10,177) is a 16-row
+    // remainder.
+    const lastPage = Math.ceil(TOTAL_ROWS_NUM / 20);
+
+    // Assert the settled unfiltered total AND page count before reading
+    // button state: right after `gotoDashboard` clears the spec defaults, the
+    // indicator can still reflect an in-flight window whose page count has
+    // not caught up, and the Last button jumps to the last page of whatever
+    // count it currently knows.
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+    await expect(page.getByTestId('detail-detail-page')).toHaveText(
+      `Page 1 of ${lastPage}`,
+      { timeout: 30_000 },
+    );
+    await expect(firstButton).toBeDisabled();
+    await expect(prevButton).toBeDisabled();
+    await expect(nextButton).toBeEnabled();
+    await expect(lastButton).toBeEnabled();
+
+    await lastButton.click();
+
+    await expect(page.getByTestId('detail-detail-page')).toHaveText(
+      `Page ${lastPage} of ${lastPage}`,
+    );
+    await expect(
+      page.getByTestId('detail-detail-body').locator('tr'),
+    ).toHaveCount(TOTAL_ROWS_NUM % 20);
+    await expect(nextButton).toBeDisabled();
+    await expect(lastButton).toBeDisabled();
+    await expect(firstButton).toBeEnabled();
+    await expect(prevButton).toBeEnabled();
+
+    await firstButton.click();
+
+    await expect(page.getByTestId('detail-detail-page')).toHaveText(
+      `Page 1 of ${lastPage}`,
+    );
+    await expect(
+      page.getByTestId('detail-detail-body').locator('tr'),
+    ).toHaveCount(20);
+    await expect(firstButton).toBeDisabled();
+    await expect(prevButton).toBeDisabled();
+  });
+
   test('(h3) summary and detail tables expose their last-executed SQL via a header popover that dismisses', async ({
     page,
   }) => {

@@ -518,6 +518,62 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
+  test('first/last page buttons jump the detail table to its boundary pages', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    const firstButton = page.getByRole('button', {
+      name: 'First detail page',
+    });
+    const prevButton = page.getByTestId('detail-page-prev');
+    const nextButton = page.getByTestId('detail-page-next');
+    const lastButton = page.getByRole('button', { name: 'Last detail page' });
+
+    // 203,556 rows / 20 per page → the last page (index 10,177) is a 16-row
+    // remainder.
+    const lastPage = Math.ceil(TOTAL_ROWS_NUM / 20);
+
+    // Assert the settled unfiltered total AND page count before reading
+    // button state: right after load, the indicator can still reflect an
+    // in-flight window whose page count has not caught up, and the Last
+    // button jumps to the last page of whatever count it currently knows.
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+    );
+    await expect(page.getByTestId('detail-page-indicator')).toHaveText(
+      `Page 1 of ${lastPage}`,
+    );
+    await expect(firstButton).toBeDisabled();
+    await expect(prevButton).toBeDisabled();
+    await expect(nextButton).toBeEnabled();
+    await expect(lastButton).toBeEnabled();
+
+    await lastButton.click();
+
+    await expect(page.getByTestId('detail-page-indicator')).toHaveText(
+      `Page ${lastPage} of ${lastPage}`,
+    );
+    await expect(
+      page.getByTestId('detail-table-body').locator('tr'),
+    ).toHaveCount(TOTAL_ROWS_NUM % 20);
+    await expect(nextButton).toBeDisabled();
+    await expect(lastButton).toBeDisabled();
+    await expect(firstButton).toBeEnabled();
+    await expect(prevButton).toBeEnabled();
+
+    await firstButton.click();
+
+    await expect(page.getByTestId('detail-page-indicator')).toHaveText(
+      `Page 1 of ${lastPage}`,
+    );
+    await expect(
+      page.getByTestId('detail-table-body').locator('tr'),
+    ).toHaveCount(20);
+    await expect(firstButton).toBeDisabled();
+    await expect(prevButton).toBeDisabled();
+  });
+
   test('facet dropdowns cascade counts and publish into the page', async ({
     page,
   }) => {
