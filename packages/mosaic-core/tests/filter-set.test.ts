@@ -619,6 +619,74 @@ describe('subquery context rebuild', () => {
     $where.removeEventListener('value', listener);
     set.destroy();
   });
+
+  test('a context change toggling the emitted predicate null↔non-null clears and republishes exactly once each', async () => {
+    const $where = Selection.crossfilter();
+    const $context = Selection.crossfilter();
+
+    // Emits a membership subquery only while a sibling context predicate
+    // exists; opts out (null → the clause is cleared) when the context is
+    // empty. This drives the emitted predicate across the null↔non-null
+    // boundary purely via context rebuilds.
+    const gated = subqueryFilterKind((args) => {
+      const ctx = args.contextPredicate;
+      if (ctx == null) {
+        return null;
+      }
+      return Query.from('athletes').select('id').where(ctx);
+    });
+
+    const set = createFilterSet({
+      targets: { where: $where },
+      kinds: { gated },
+      context: $context,
+    });
+    set.set({ id: 'sq', column: 'id', kind: 'gated', value: null });
+
+    // Empty context → the kind opts out → nothing is published.
+    expect($where._resolved).toHaveLength(0);
+
+    const siblingClause = {
+      source: { id: 'sibling' },
+      value: 70,
+      predicate: gt(
+        { toString: () => '"weight"' } as never,
+        { toString: () => '70' } as never,
+      ),
+    };
+    const clearSibling = { ...siblingClause, value: null, predicate: null };
+
+    let updates = 0;
+    const listener = (): void => {
+      updates += 1;
+    };
+    $where.addEventListener('value', listener);
+
+    // null → non-null: context gains a sibling → the clause is published once.
+    $context.update(siblingClause);
+    await waitFor(() => {
+      expect($where._resolved).toHaveLength(1);
+    });
+    expect(predicateSql($where)).toContain('IN (SELECT');
+    expect(updates).toBe(1);
+
+    // non-null → null: context empties → the clause is cleared exactly once.
+    $context.update(clearSibling);
+    await waitFor(() => {
+      expect($where._resolved).toHaveLength(0);
+    });
+    expect(updates).toBe(2);
+
+    // Converged null: a further empty-context re-dispatch publishes nothing
+    // (the source has no active clause → the clear is suppressed).
+    await settle();
+    $context.update({ ...clearSibling });
+    await settle();
+    expect(updates).toBe(2);
+
+    $where.removeEventListener('value', listener);
+    set.destroy();
+  });
 });
 
 describe('persistence round-trip', () => {
