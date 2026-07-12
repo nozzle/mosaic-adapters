@@ -104,6 +104,53 @@ test.describe('people-also-ask dashboard', () => {
     }
   });
 
+  test('first/last page buttons jump the phrase table to its boundary pages', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    const card = page.getByTestId('summary-table-phrase');
+    const firstButton = card.getByRole('button', {
+      name: 'First Keyword Phrase page',
+    });
+    const prevButton = card.getByRole('button', {
+      name: 'Previous Keyword Phrase page',
+    });
+    const nextButton = card.getByRole('button', {
+      name: 'Next Keyword Phrase page',
+    });
+    const lastButton = card.getByRole('button', {
+      name: 'Last Keyword Phrase page',
+    });
+
+    // Wait for the full first page to settle before reading button state.
+    await expect(summaryRows(page, 'phrase')).toHaveCount(10);
+    await expect(firstButton).toBeDisabled();
+    await expect(prevButton).toBeDisabled();
+    await expect(nextButton).toBeEnabled();
+    await expect(lastButton).toBeEnabled();
+
+    // 2,681 phrases / 10 per page → page 269 (index 268) is a 1-row remainder.
+    const lastPage = Math.ceil(2_681 / 10);
+    await lastButton.click();
+
+    await expect(
+      card.getByText(`Page ${lastPage} of ${lastPage}`),
+    ).toBeVisible();
+    await expect(summaryRows(page, 'phrase')).toHaveCount(2_681 % 10);
+    await expect(nextButton).toBeDisabled();
+    await expect(lastButton).toBeDisabled();
+    await expect(firstButton).toBeEnabled();
+    await expect(prevButton).toBeEnabled();
+
+    await firstButton.click();
+
+    await expect(card.getByText(`Page 1 of ${lastPage}`)).toBeVisible();
+    await expect(summaryRows(page, 'phrase')).toHaveCount(10);
+    await expect(firstButton).toBeDisabled();
+    await expect(prevButton).toBeDisabled();
+  });
+
   test('one batched sparkline client feeds the phrase table', async ({
     page,
   }) => {

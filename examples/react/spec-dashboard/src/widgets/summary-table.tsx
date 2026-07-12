@@ -470,6 +470,17 @@ function SummaryTableBody(props: {
       ? null
       : Math.max(1, Math.ceil(rows.totalRows / PAGE_SIZE));
 
+  const goToFirstPage = () => {
+    setPageIndex(0);
+  };
+
+  const goToLastPage = () => {
+    if (pageCount === null) {
+      return;
+    }
+    setPageIndex(pageCount - 1);
+  };
+
   const hasSparkline = widget.sparkline !== undefined;
   const columnCount = hasSparkline ? 4 : 3;
   const heightClass = promoted ? 'h-[640px]' : 'h-[460px]';
@@ -635,7 +646,16 @@ function SummaryTableBody(props: {
         </table>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-1.5 text-[11px] text-muted">
+      <div className="flex shrink-0 items-center gap-1 border-t border-line px-2 py-1.5 text-[11px] text-muted">
+        <button
+          type="button"
+          className="rounded-gf border border-line px-2 py-0.5 hover:border-line-strong disabled:opacity-40"
+          disabled={pageIndex === 0}
+          aria-label={`First ${widget.title} page`}
+          onClick={goToFirstPage}
+        >
+          «
+        </button>
         <button
           type="button"
           className="rounded-gf border border-line px-2 py-0.5 hover:border-line-strong disabled:opacity-40"
@@ -653,6 +673,15 @@ function SummaryTableBody(props: {
           onClick={() => setPageIndex((index) => index + 1)}
         >
           Next
+        </button>
+        <button
+          type="button"
+          className="rounded-gf border border-line px-2 py-0.5 hover:border-line-strong disabled:opacity-40"
+          disabled={pageCount === null || pageIndex + 1 >= pageCount}
+          aria-label={`Last ${widget.title} page`}
+          onClick={goToLastPage}
+        >
+          »
         </button>
         <span>
           Page {pageIndex + 1}
