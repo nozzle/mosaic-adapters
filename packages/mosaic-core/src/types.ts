@@ -382,6 +382,12 @@ export interface HistogramClientOptions extends DataClientOptions<HistogramInput
   /** Numeric column to bin. */
   column: string;
   /**
+   * Scale transform used to space bin boundaries. `log` bins uniformly in log
+   * space and ignores non-positive values during extent discovery/querying.
+   * Defaults to `linear`.
+   */
+  scale?: 'linear' | 'log';
+  /**
    * Fixed [min, max] domain for bin boundaries. When omitted, the client
    * discovers it once from the unfiltered base relation during `prepare`,
    * so bin boundaries stay stable while filters change the counts.

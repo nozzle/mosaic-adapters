@@ -28,7 +28,7 @@ export type UseMosaicHistogramResult = HistogramClientState & {
 /**
  * Controlled binding over `createHistogramClient`. Same identity rules as
  * `useMosaicRows`: everything without a core setter is structural (including
- * the fixed `extent`, which pins the bin domain), `from` is latest-ref,
+ * `scale` and the fixed `extent`, which pin bin spacing/domain), `from` is latest-ref,
  * `inputs` (step/bins) value-diffed.
  *
  * `persist` is structural (no core setter): a new persister identity is a
@@ -60,6 +60,7 @@ export function useMosaicHistogram(
       options.inputMode,
       options.filterStable,
       options.column,
+      options.scale,
       options.extent?.[0],
       options.extent?.[1],
       ...publishKey,

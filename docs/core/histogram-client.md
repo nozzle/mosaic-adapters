@@ -20,7 +20,8 @@ weight.setRange([60, 70]); // clauseInterval into $page; null clears
 Binning rides on mosaic-sql's `binHistogram` over a **fixed extent**, so filters change the counts, never the boundaries:
 
 - `extent: [min, max]` pins the domain explicitly; otherwise the client discovers it once from the **unfiltered** base relation during `prepare` (before the first query).
-- `inputs.step` sets an exact bin width; `inputs.bins` is a step-count hint (default 25). Boundaries snap to nice numbers either way.
+- `scale: 'log'` spaces boundaries uniformly in log space and ignores non-positive values during discovery and bin queries. The default is `'linear'`.
+- `inputs.step` sets an exact bin width (in transformed space for log scales); `inputs.bins` is a step-count hint (default 25). Linear boundaries snap to nice numbers; log boundaries stay pinned to the positive extent.
 - `bins` on the store is contiguous across the whole extent — empty bins carry `count: 0`, so bar charts render gaps correctly.
 
 ## Publishing
