@@ -62,6 +62,15 @@ class RowsDataClient<TRow>
   #writingToSet = false;
 
   #countGeneration = 0;
+  /**
+   * Stringified SQL of the last count query actually issued in `'query'` mode.
+   * The count query strips orderBy/limit/offset, so its SQL string changes only
+   * when the WHERE/HAVING/base predicate does — never on a page turn or sort
+   * change. `#materialize` calls `afterQueryBuilt` on every main-query build, so
+   * this memo lets us skip re-issuing an unchanged count. `undefined` forces the
+   * next build to issue (initial state, and after `refetch()` / a failed count).
+   */
+  #lastCountQuerySql: string | undefined;
   #warnedGroupedFilterStable = false;
 
   constructor(options: RowsClientOptions<TRow>) {
@@ -235,6 +244,16 @@ class RowsDataClient<TRow>
       [ROW_COUNT_COLUMN]: count(),
     });
 
+    // Skip the round trip when the predicate (and thus the count SQL) is
+    // unchanged: page turns and sort changes cannot alter the count, so
+    // state.totalRows stays valid without re-issuing. `refetch()` clears this
+    // memo (see `onRefetch`) to force a fresh count when data may have changed.
+    const countSql = String(countQuery);
+    if (countSql === this.#lastCountQuerySql) {
+      return;
+    }
+    this.#lastCountQuerySql = countSql;
+
     this.#countGeneration += 1;
     const generation = this.#countGeneration;
     this.#options.coordinator
@@ -251,8 +270,18 @@ class RowsDataClient<TRow>
       })
       .catch(() => {
         // The main query surfaces errors on the store; a failed count query
-        // leaves totalRows untouched.
+        // leaves totalRows untouched. Drop the memo so a later build retries
+        // rather than skipping against a count that never landed.
+        if (this.destroyed || generation !== this.#countGeneration) {
+          return;
+        }
+        this.#lastCountQuerySql = undefined;
       });
+  }
+
+  /** Force the next build to re-issue the count query (see `#lastCountQuerySql`). */
+  protected onRefetch(): void {
+    this.#lastCountQuerySql = undefined;
   }
 
   protected onResult(data: unknown): Partial<RowsClientState<TRow>> {

@@ -1,6 +1,6 @@
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
 import { createRowsClient } from '../src/index';
@@ -190,6 +190,117 @@ describe('rowCount: "query"', () => {
       expect(client.store.state.totalRows).toBe(2);
     });
 
+    client.destroy();
+  });
+
+  test('memoizes the count across page turns and sort changes, issuing it once', async () => {
+    // Spy on the coordinator: the count query is issued directly through
+    // `coordinator.query`, so counting count-shaped calls proves the gate
+    // (the SQL-string cache would otherwise hide duplicate issuances).
+    const querySpy = vi.spyOn(db.coordinator, 'query');
+    const countCalls = () =>
+      querySpy.mock.calls.filter(([q]) => /__total_rows__/.test(String(q)))
+        .length;
+
+    const client = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: ({ where }) => athleteQuery().where(where),
+      inputs: { orderBy: [{ column: 'id' }], limit: 2, offset: 0 },
+      rowCount: 'query',
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.totalRows).toBe(6);
+    });
+    expect(countCalls()).toBe(1);
+
+    client.setInputs({ offset: 2 });
+    await waitFor(() => {
+      expect(client.store.state.rows.map((r) => r.id)).toEqual([3, 4]);
+    });
+    client.setInputs({ offset: 4 });
+    await waitFor(() => {
+      expect(client.store.state.rows.map((r) => r.id)).toEqual([5, 6]);
+    });
+    client.setInputs({ orderBy: [{ column: 'id', desc: true }], offset: 0 });
+    await waitFor(() => {
+      expect(client.store.state.rows.map((r) => r.id)).toEqual([6, 5]);
+    });
+
+    // No new count query for page turns or sort changes; the total holds.
+    expect(countCalls()).toBe(1);
+    expect(client.store.state.totalRows).toBe(6);
+
+    querySpy.mockRestore();
+    client.destroy();
+  });
+
+  test('re-issues the count when the WHERE predicate changes', async () => {
+    const querySpy = vi.spyOn(db.coordinator, 'query');
+    const countCalls = () =>
+      querySpy.mock.calls.filter(([q]) => /__total_rows__/.test(String(q)))
+        .length;
+
+    const $page = Selection.crossfilter();
+    const client = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: ({ where }) => athleteQuery().where(where),
+      filterBy: $page,
+      inputs: { orderBy: [{ column: 'id' }], limit: 2, offset: 0 },
+      rowCount: 'query',
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.totalRows).toBe(6);
+    });
+    expect(countCalls()).toBe(1);
+
+    const facet: ClauseSource = {};
+    $page.update(clausePoint('sport', 'run', { source: facet }));
+
+    await waitFor(() => {
+      expect(client.store.state.totalRows).toBe(2);
+    });
+    expect(countCalls()).toBe(2);
+
+    querySpy.mockRestore();
+    client.destroy();
+  });
+
+  test('refetch forces a fresh count even when the predicate is unchanged', async () => {
+    const querySpy = vi.spyOn(db.coordinator, 'query');
+    const countCalls = () =>
+      querySpy.mock.calls.filter(([q]) => /__total_rows__/.test(String(q)))
+        .length;
+
+    const client = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: ({ where }) => athleteQuery().where(where),
+      inputs: { orderBy: [{ column: 'id' }], limit: 2, offset: 0 },
+      rowCount: 'query',
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.totalRows).toBe(6);
+    });
+    expect(countCalls()).toBe(1);
+
+    // A page turn alone must not re-count (the memo holds)...
+    client.setInputs({ offset: 2 });
+    await waitFor(() => {
+      expect(client.store.state.rows.map((r) => r.id)).toEqual([3, 4]);
+    });
+    expect(countCalls()).toBe(1);
+
+    // ...but an explicit refetch invalidates the memo and re-issues the count,
+    // since the underlying data may have changed even with the same predicate.
+    await client.refetch();
+    await waitFor(() => {
+      expect(countCalls()).toBe(2);
+    });
+    expect(client.store.state.totalRows).toBe(6);
+
+    querySpy.mockRestore();
     client.destroy();
   });
 });

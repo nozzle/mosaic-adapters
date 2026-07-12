@@ -154,6 +154,7 @@ export abstract class BaseDataClient<
     if (this.#destroyed) {
       return;
     }
+    this.onRefetch();
     const request = this.#client.requestQuery();
     if (request) {
       await request;
@@ -189,6 +190,14 @@ export abstract class BaseDataClient<
    * their side-channel count query here).
    */
   protected afterQueryBuilt(_ctx: QueryContext<TInputs>): void {}
+
+  /**
+   * Hook invoked at the start of `refetch()`, before the forced re-query.
+   * Lets a specialization invalidate any query-derived memo so an explicit
+   * refetch re-runs work it would otherwise skip when the predicate is
+   * unchanged (the underlying data may have changed). Default no-op.
+   */
+  protected onRefetch(): void {}
 
   /** Register cleanup that runs once on `destroy()`. */
   protected onDestroy(dispose: () => void): void {
