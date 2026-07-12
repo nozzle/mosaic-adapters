@@ -115,9 +115,9 @@ navigation — see [`docs/react/router-persistence.md`](../../../docs/react/rout
 
 - **Row-select cross-filtering** — click summary rows: siblings, the detail
   table, and the KPIs narrow; the table's own rows stay put, non-matching rows
-  dim via a consumer-side
-  `max(CASE WHEN <own-selection> THEN 1 ELSE 0 END) AS __is_highlighted`
-  column. In-widget chips and the chip bar both narrow single values.
+  dim client-side from the card's selected values (no SQL highlight column,
+  no refetch on selection change). In-widget chips and the chip bar both
+  narrow single values.
 - **Enlarge / return** — selection state lives on the module-scope set and
   survives the remount: the rows client republishes the same `select:<card>`
   spec, and the bridge/set keep the clause stable.
@@ -146,7 +146,7 @@ pnpm --filter example-react-nozzle-paa test:e2e
 
 `tests/questions.test.ts` ports the legacy assertions (selection cascade with
 dataset literals, enlarge/return state survival, chip clearing, KPI reactions,
-highlight dimming) plus the metric/min-domains membership filters, the bridge
+client-side selection dimming) plus the metric/min-domains membership filters, the bridge
 external-clear behavior, facet count cascading, and the SQL footers.
 `tests/share-loop.test.ts` covers the URL persistence loop: UI edits writing
 per-entry params, links hydrating to pinned table/KPI values, a summary

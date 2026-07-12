@@ -5,14 +5,15 @@
  * points spec) consumed by every sibling widget.
  *
  * The set is the single source of truth for selection state: the in-widget
- * chips, the row checkmarks, and the highlight column all derive from the
+ * chips, the row checkmarks, and the row dimming all derive from the
  * `select:` spec value (read back from the store), so external removals — chip
  * bar, global reset — and the enlarge/collapse remount (stable spec id +
- * `#adoptFromSet`) need no extra wiring.
+ * `#adoptFromSet`) need no extra wiring. Dimming is computed client-side from
+ * the selected values (no `__is_highlighted` SQL column, hence no refetch when
+ * the selection changes).
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as mSql from '@uwdata/mosaic-sql';
-import { clausePoints } from '@uwdata/mosaic-core';
 import {
   SqlIdentifier,
   createStructAccess,
@@ -59,7 +60,6 @@ const SELECT_LABELS: Record<SummaryTableId, string> = {
 interface GroupRow {
   key: string | number | null;
   metric: number | null;
-  __is_highlighted: number;
 }
 
 /** The select spec id a summary card publishes into (page-context targets). */
@@ -98,27 +98,12 @@ export function SummaryTable(props: {
   );
 
   // The card's own selected values, read back from its `select:` spec — chips,
-  // checkmarks, and the highlight column all derive from this.
+  // checkmarks, and the row dimming all derive from this.
   const selectedValues = useSelectedValues(config.id);
 
   const rows = useMosaicRows<GroupRow>({
     query: ({ where, having }) => {
       const groupKey = createStructAccess(SqlIdentifier.from(config.groupBy));
-
-      // Highlight column: rows matching the card's own selected values keep 1,
-      // everything else drops to 0 and dims. Built from the selected values
-      // directly (the clause is self-excluded from this card's own context).
-      const highlightPredicate =
-        selectedValues.length > 0
-          ? clausePoints(
-              [groupKey],
-              selectedValues.map((value) => [value]),
-              { source: {} },
-            ).predicate
-          : null;
-      const highlight = highlightPredicate
-        ? mSql.max(mSql.sql`CASE WHEN ${highlightPredicate} THEN 1 ELSE 0 END`)
-        : mSql.literal(1);
 
       const query = mSql.Query.from(tableName)
         .select({
@@ -127,7 +112,6 @@ export function SummaryTable(props: {
             config.metric.agg === 'count'
               ? mSql.count()
               : mSql.max(config.metric.column),
-          __is_highlighted: highlight,
         })
         .groupby(groupKey)
         .where(where)
@@ -145,7 +129,7 @@ export function SummaryTable(props: {
     // Mosaic's pre-aggregation assumptions do not hold.
     filterStable: false,
     rowCount: 'window',
-    coerce: { metric: 'number', __is_highlighted: 'number' },
+    coerce: { metric: 'number' },
     inputs: {
       orderBy: [
         { column: 'metric', desc: true },
@@ -168,18 +152,6 @@ export function SummaryTable(props: {
     enabled,
   });
   const { client } = rows;
-
-  // The card's own selection clause is self-excluded from its own context, so a
-  // publish never re-queries this client natively — refetch the highlight
-  // column when the selected values actually change.
-  const lastSelectedRef = useRef(selectedValues);
-  useEffect(() => {
-    if (lastSelectedRef.current === selectedValues) {
-      return;
-    }
-    lastSelectedRef.current = selectedValues;
-    void client.refetch();
-  }, [selectedValues, client]);
 
   // Clamp the page when a narrowed context shrinks the group count below
   // the current offset.
@@ -213,7 +185,6 @@ export function SummaryTable(props: {
       values.map((value) => ({
         key: value,
         metric: null,
-        __is_highlighted: 1,
       })),
     );
   };
@@ -316,8 +287,7 @@ export function SummaryTable(props: {
               const isSelected = selectedValues.some((value) =>
                 Object.is(value, row.key),
               );
-              const dimmed =
-                selectedValues.length > 0 && row.__is_highlighted === 0;
+              const dimmed = selectedValues.length > 0 && !isSelected;
               return (
                 <tr
                   key={String(row.key)}
