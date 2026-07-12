@@ -113,6 +113,92 @@ describe('setInputs diffing', () => {
   });
 });
 
+describe('input-driven coalescing', () => {
+  test('a synchronous burst of setInputs collapses to exactly one query build', async () => {
+    const client = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: ({ where }) => athleteQuery().where(where),
+      inputs: { orderBy: [{ column: 'id' }] },
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.status).toBe('success');
+      expect(client.store.state.rows).toHaveLength(6);
+    });
+    const queriesAfterInit = db.clientQueries.length;
+    const connectorAfterInit = db.connectorQueries.length;
+
+    // Five distinct input changes in a single synchronous tick.
+    client.setInputs({ limit: 5 });
+    client.setInputs({ limit: 4 });
+    client.setInputs({ limit: 3 });
+    client.setInputs({ limit: 2 });
+    client.setInputs({ limit: 1 });
+
+    // Loading state reflects synchronously even though the query is deferred to
+    // the coalescing frame — no query has run yet.
+    expect(client.store.state.status).toBe('pending');
+    expect(db.clientQueries.length).toBe(queriesAfterInit);
+
+    await waitFor(() => {
+      expect(client.store.state.status).toBe('success');
+      expect(client.store.state.rows).toHaveLength(1);
+    });
+
+    // The whole burst built and ran exactly one query.
+    expect(db.clientQueries.length).toBe(queriesAfterInit + 1);
+    expect(db.connectorQueries.length).toBe(connectorAfterInit + 1);
+
+    client.destroy();
+  });
+
+  test('the last inputs in a synchronous burst win', async () => {
+    const client = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: ({ where }) => athleteQuery().where(where),
+      inputs: { orderBy: [{ column: 'id' }] },
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.rows).toHaveLength(6);
+    });
+
+    client.setInputs({ limit: 4 });
+    client.setInputs({ limit: 3 });
+    client.setInputs({ limit: 2 });
+
+    await waitFor(() => {
+      expect(client.store.state.rows.map((r) => r.id)).toEqual([1, 2]);
+    });
+    expect(client.store.state.inputs).toEqual({
+      orderBy: [{ column: 'id' }],
+      limit: 2,
+    });
+
+    client.destroy();
+  });
+
+  test('refetch() bypasses coalescing and queries immediately', async () => {
+    const client = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: ({ where }) => athleteQuery().where(where),
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.rows).toHaveLength(6);
+    });
+    const queriesAfterInit = db.clientQueries.length;
+
+    // The awaited request resolves against a query that already ran — no
+    // coalescing frame elapsed between the call and the completed round trip.
+    await client.refetch();
+    expect(db.clientQueries.length).toBe(queriesAfterInit + 1);
+    expect(client.store.state.status).toBe('success');
+
+    client.destroy();
+  });
+});
+
 describe('param wiring', () => {
   test('param.update() triggers exactly one re-query', async () => {
     const $minWeight = Param.value(0);

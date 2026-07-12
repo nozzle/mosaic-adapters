@@ -33,6 +33,8 @@ Exactly four things trigger a query:
 3. **Param change** — every Param in `params` re-queries the client on its `'value'` event (upstream never does this automatically).
 4. **`refetch()`** — force a query with current state.
 
+The input-driven triggers (`setInputs`, Param and `havingBy` `'value'` events) are **coalesced**: a burst of synchronous changes in one tick collapses into a single query build (the last state wins) instead of one query per event. In browsers this rides upstream `requestUpdate()`, which throttles on an animation frame; in environments without `requestAnimationFrame` (Node, workers) the client falls back to a macrotask flush with the same one-build-per-tick semantics. `status` still flips to `'pending'` synchronously so loading stays responsive. `refetch()` bypasses coalescing and queries immediately.
+
 ## The store
 
 Every client exposes a `@tanstack/store` `Store`. The base shape:
