@@ -176,14 +176,36 @@ export abstract class BaseDataClient<
 
   /**
    * Build the full main query for the given context (specializations append
-   * their input-derived SQL here).
+   * their input-derived SQL here). Returning `null` signals "nothing to
+   * fetch" — `#materialize` publishes the specialization's `onEmpty()`
+   * payload and skips the round trip instead of issuing a query.
+   *
+   * CONTRACT: returning `null` is only safe for clients WITHOUT a `filterBy`
+   * Selection. Every trigger this base class owns (initialize, `setInputs`,
+   * `refetch`, Params, `havingBy`) flows through upstream
+   * `MosaicClient.requestQuery()`, which null-guards the query — but
+   * upstream `Coordinator.updateSelection` (the `filterBy` 'value' listener)
+   * calls `client.query(filter)` and submits the result to the connector
+   * with NO null guard, so a `null` query would reach the database as the
+   * SQL string "null" and fail to parse. Cross-filtered clients must always
+   * return a real (if trivial) query.
    */
   protected abstract buildQuery(
     ctx: QueryContext<TInputs>,
-  ): MosaicQuery | string;
+  ): MosaicQuery | string | null;
 
   /** Map a query result to the specialization's store payload. */
   protected abstract onResult(data: unknown): Partial<TState>;
+
+  /**
+   * Payload published when `buildQuery` returns `null` instead of a query
+   * (e.g. a batched client with nothing selected). Defaults to no extra
+   * fields — specializations whose `buildQuery` never returns `null` never
+   * need to override this.
+   */
+  protected onEmpty(): Partial<TState> {
+    return {};
+  }
 
   /**
    * Hook invoked after the main query is materialized (rows clients issue
@@ -320,9 +342,23 @@ export abstract class BaseDataClient<
     return filterBy.predicate(this.#client, true) ?? [];
   }
 
-  #materialize(where: FilterExpr): MosaicQuery | string {
+  #materialize(where: FilterExpr): MosaicQuery | string | null {
     const ctx = this.createContext(where);
     const query = this.buildQuery(ctx);
+    if (query === null) {
+      // No query issued this round: `lastQuery` is explicitly `null` rather
+      // than left as whatever the prior query was, since a stale SQL string
+      // would misrepresent the current (empty, unqueried) state.
+      this.patchState({
+        inputs: this.inputs,
+        lastQuery: null,
+        status: 'success',
+        error: null,
+        ...this.onEmpty(),
+      });
+      this.afterQueryBuilt(ctx);
+      return null;
+    }
     this.patchState({
       inputs: this.inputs,
       lastQuery: String(query),

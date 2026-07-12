@@ -77,7 +77,7 @@ describe('sparkline batching', () => {
     spark.destroy();
   });
 
-  test('empty keys resolve to an empty series', async () => {
+  test('empty keys resolve to an empty series without issuing a query', async () => {
     const spark = createSparklineClient({
       coordinator: db.coordinator,
       from: 'athletes',
@@ -90,6 +90,49 @@ describe('sparkline batching', () => {
       expect(spark.store.state.status).toBe('success');
     });
     expect(spark.store.state.series.size).toBe(0);
+    expect(spark.store.state.error).toBeNull();
+    expect(spark.store.state.lastQuery).toBeNull();
+    expect(db.clientQueries).toHaveLength(0);
+
+    spark.destroy();
+  });
+
+  test('keys becoming empty skips the round trip; keys becoming non-empty re-queries', async () => {
+    const spark = createSparklineClient({
+      coordinator: db.coordinator,
+      from: 'athletes',
+      key: 'sport',
+      x: { column: 'weight', step: 10 },
+      y: { agg: 'count' },
+      inputs: { keys: ['swim'] },
+    });
+
+    await waitFor(() => {
+      expect(spark.store.state.series.size).toBe(1);
+    });
+    const queriesAfterInit = db.clientQueries.length;
+    expect(queriesAfterInit).toBe(1);
+
+    spark.setInputs({ keys: [] });
+    await waitFor(() => {
+      expect(spark.store.state.series.size).toBe(0);
+    });
+    expect(spark.store.state.status).toBe('success');
+    expect(spark.store.state.error).toBeNull();
+    expect(spark.store.state.lastQuery).toBeNull();
+    // No additional query was issued for the empty-keys transition.
+    expect(db.clientQueries.length).toBe(queriesAfterInit);
+
+    spark.setInputs({ keys: ['run'] });
+    await waitFor(() => {
+      expect(spark.store.state.series.size).toBe(1);
+      expect(spark.store.state.series.get('run')).toEqual([
+        { x: 50, y: 1 },
+        { x: 60, y: 1 },
+      ]);
+    });
+    expect(spark.store.state.lastQuery).not.toBeNull();
+    expect(db.clientQueries.length).toBe(queriesAfterInit + 1);
 
     spark.destroy();
   });
@@ -192,6 +235,42 @@ describe('sparkline filtering', () => {
       expect(spark.store.state.series.size).toBe(1);
       expect(spark.store.state.series.get('swim')).toEqual([{ x: 60, y: 1 }]);
     });
+
+    spark.destroy();
+  });
+
+  test('empty keys with a cross-filter survive selection updates', async () => {
+    // Regression: upstream Coordinator.updateSelection calls client.query()
+    // without a null guard, so a cross-filtered client must return a real
+    // (trivial WHERE FALSE) query for empty keys — never null. Otherwise a
+    // peer clause publish would submit "null" SQL and error the client.
+    const $page = Selection.crossfilter();
+    const spark = createSparklineClient({
+      coordinator: db.coordinator,
+      from: 'athletes',
+      key: 'sport',
+      x: { column: 'weight', step: 10 },
+      y: { agg: 'count' },
+      filterBy: $page,
+      inputs: { keys: [] },
+    });
+
+    await waitFor(() => {
+      expect(spark.store.state.status).toBe('success');
+    });
+    expect(spark.store.state.series.size).toBe(0);
+
+    $page.update(
+      clausePoint('name', 'Ada', { source: { peer: true } as object }),
+    );
+    await settle();
+
+    expect(spark.store.state.status).toBe('success');
+    expect(spark.store.state.error).toBeNull();
+    expect(spark.store.state.series.size).toBe(0);
+    // No null query ever reached the coordinator or the database.
+    expect(db.clientQueries).not.toContain('null');
+    expect(db.connectorQueries).not.toContain('null');
 
     spark.destroy();
   });
