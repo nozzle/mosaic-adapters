@@ -50,7 +50,7 @@ const SPEC_PARAM = 'spec';
 const DEFAULT_TITLE = 'Spec-driven Dashboard';
 
 // Tailwind cannot generate fully-dynamic class names, so map the spec's numeric
-// column count / per-widget span to static class strings.
+// column count / per-widget column span to static class strings.
 const GRID_COLS: Record<number, string> = {
   1: 'grid-cols-1',
   2: 'grid-cols-1 sm:grid-cols-2',
@@ -59,7 +59,7 @@ const GRID_COLS: Record<number, string> = {
   5: 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-5',
 };
 
-const SPAN_CLASS: Record<number, string> = {
+const COL_SPAN_CLASS: Record<number, string> = {
   1: '',
   2: 'xl:col-span-2',
   3: 'xl:col-span-3',
@@ -501,7 +501,7 @@ function LayoutRow(props: {
             return null;
           }
           const Component = widgetRegistry[widget.renderer];
-          const spanClass = SPAN_CLASS[entry.span] ?? '';
+          const spanClass = COL_SPAN_CLASS[entry.col_span] ?? '';
           const mode =
             entry.ref === context.expandedId ? 'placeholder' : 'default';
           return (

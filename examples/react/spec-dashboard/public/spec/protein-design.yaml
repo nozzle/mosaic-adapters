@@ -172,5 +172,5 @@ widgets:
 layout:
   columns: 2
   rows:
-    - widgets: [{ ref: scatter, span: 1 }, { ref: plddt_hist, span: 1 }]
-    - widgets: [{ ref: table, span: 2 }]
+    - widgets: [{ ref: scatter, col_span: 1 }, { ref: plddt_hist, col_span: 1 }]
+    - widgets: [{ ref: table, col_span: 2 }]

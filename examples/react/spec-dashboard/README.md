@@ -151,9 +151,9 @@ widgets: # a map keyed by widget id; `renderer` selects the widget registry entr
   kpi_phrases:
     { renderer: kpi-card, filter_by: page, query: { type: sql, statement: … } }
 
-layout: # a CSS grid: rows of { ref, span } widgets
+layout: # a CSS grid: rows of { ref, col_span } widgets
   columns: 5
-  rows: [{ widgets: [{ ref: kpi_phrases, span: 1 }, …] }, …]
+  rows: [{ widgets: [{ ref: kpi_phrases, col_span: 1 }, …] }, …]
 ```
 
 - **`data`** — record insertion order is load order, so a derived `type: sql`
@@ -172,7 +172,7 @@ layout: # a CSS grid: rows of { ref, span } widgets
   discriminator into the widget registry. `filter_by` / `having_by` name topology
   Selections by ref; **omitting `filter_by` opts a widget out of the topology
   entirely** (the opt-out KPI).
-- **`layout`** — a widget's `span` maps to a static Tailwind `col-span` class.
+- **`layout`** — a widget's `col_span` maps to a static Tailwind `col-span` class.
 
 `compile.ts` builds a throwaway topology purely to read `validNames` + run the
 library's structural validation, then `validate.ts` (`src/spec/validate.ts`)

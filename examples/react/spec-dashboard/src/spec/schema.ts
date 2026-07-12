@@ -618,7 +618,7 @@ export const widgetsSchema = z
 export const layoutWidgetSchema = z
   .object({
     ref: z.string().min(1),
-    span: z.number().int().min(1),
+    col_span: z.number().int().min(1),
   })
   .strict();
 
