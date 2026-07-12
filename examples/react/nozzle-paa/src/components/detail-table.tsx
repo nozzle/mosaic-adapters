@@ -126,6 +126,27 @@ export function DetailTable(props: { enabled: boolean }) {
     manualPagination: true,
   });
 
+  // Own page-count bookkeeping (rather than `table.getPageCount()`, which
+  // falls back to counting the current page's rows while `totalRows` is
+  // still resolving): unknown until the count settles, so the last-page jump
+  // can early-return instead of landing on a stale page derived from the
+  // in-flight window.
+  const pageCount =
+    details.totalRows === undefined
+      ? null
+      : Math.max(1, Math.ceil(details.totalRows / PAGE_SIZE));
+
+  const goToFirstPage = (): void => {
+    table.setPageIndex(0);
+  };
+
+  const goToLastPage = (): void => {
+    if (pageCount === null) {
+      return;
+    }
+    table.setPageIndex(pageCount - 1);
+  };
+
   return (
     <div className="flex h-full flex-col" data-testid="detail-table">
       <div className="relative flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/50 p-4 font-semibold text-slate-800">
@@ -179,6 +200,16 @@ export function DetailTable(props: { enabled: boolean }) {
         <button
           type="button"
           className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40"
+          data-testid="detail-page-first"
+          disabled={!table.getCanPreviousPage()}
+          aria-label="First detail page"
+          onClick={goToFirstPage}
+        >
+          «
+        </button>
+        <button
+          type="button"
+          className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40"
           data-testid="detail-page-prev"
           disabled={!table.getCanPreviousPage()}
           onClick={() => table.previousPage()}
@@ -194,6 +225,20 @@ export function DetailTable(props: { enabled: boolean }) {
         >
           Next
         </button>
+        <button
+          type="button"
+          className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40"
+          data-testid="detail-page-last"
+          disabled={pageCount === null || pagination.pageIndex + 1 >= pageCount}
+          aria-label="Last detail page"
+          onClick={goToLastPage}
+        >
+          »
+        </button>
+        <span data-testid="detail-page-indicator">
+          Page {pagination.pageIndex + 1}
+          {pageCount === null ? '' : ` of ${pageCount}`}
+        </span>
         <span data-testid="detail-total-rows">
           {details.totalRows === undefined
             ? 'Counting…'

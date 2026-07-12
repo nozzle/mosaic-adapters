@@ -160,6 +160,27 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
     manualPagination: true,
   });
 
+  // Own page-count bookkeeping (rather than `table.getPageCount()`, which
+  // falls back to counting the current page's rows while `totalRows` is
+  // still resolving): unknown until the count settles, so the last-page jump
+  // can early-return instead of landing on a stale page derived from the
+  // in-flight window.
+  const pageCount =
+    details.totalRows === undefined
+      ? null
+      : Math.max(1, Math.ceil(details.totalRows / widget.page_size));
+
+  const goToFirstPage = (): void => {
+    table.setPageIndex(0);
+  };
+
+  const goToLastPage = (): void => {
+    if (pageCount === null) {
+      return;
+    }
+    table.setPageIndex(pageCount - 1);
+  };
+
   // Free-form widget `meta`, interpreted defensively: this renderer honors only
   // `exportable: true`; any other keys are ignored, and absent/unknown meta is a
   // no-op (never throw on meta contents). When set, an Export button downloads
@@ -235,6 +256,16 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
         <button
           type="button"
           className="rounded-gf border border-line px-2 py-0.5 hover:border-line-strong disabled:opacity-40"
+          data-testid={`detail-${widget.id}-first`}
+          disabled={!table.getCanPreviousPage()}
+          aria-label={`First ${widget.title} page`}
+          onClick={goToFirstPage}
+        >
+          «
+        </button>
+        <button
+          type="button"
+          className="rounded-gf border border-line px-2 py-0.5 hover:border-line-strong disabled:opacity-40"
           data-testid={`detail-${widget.id}-prev`}
           disabled={!table.getCanPreviousPage()}
           onClick={() => table.previousPage()}
@@ -250,6 +281,20 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
         >
           Next
         </button>
+        <button
+          type="button"
+          className="rounded-gf border border-line px-2 py-0.5 hover:border-line-strong disabled:opacity-40"
+          data-testid={`detail-${widget.id}-last`}
+          disabled={pageCount === null || pagination.pageIndex + 1 >= pageCount}
+          aria-label={`Last ${widget.title} page`}
+          onClick={goToLastPage}
+        >
+          »
+        </button>
+        <span data-testid={`detail-${widget.id}-page`}>
+          Page {pagination.pageIndex + 1}
+          {pageCount === null ? '' : ` of ${pageCount}`}
+        </span>
         <span data-testid={`detail-${widget.id}-total`}>
           {details.totalRows === undefined
             ? 'Counting…'
