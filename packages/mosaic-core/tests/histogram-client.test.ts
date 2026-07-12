@@ -75,6 +75,44 @@ describe('histogram bins', () => {
     hist.destroy();
   });
 
+  test('log scale produces multiplicative bins with correct counts', async () => {
+    const hist = createHistogramClient({
+      coordinator: db.coordinator,
+      from: 'athletes',
+      column: 'weight',
+      scale: 'log',
+      inputs: { bins: 4 },
+    });
+
+    await waitFor(() => {
+      expect(hist.store.state.status).toBe('success');
+    });
+
+    const bins = hist.store.state.bins;
+    expect(bins).toHaveLength(4);
+    expect(bins.map((bin) => bin.count)).toEqual([2, 2, 0, 2]);
+    const ratios = bins.map((bin) => bin.x1 / bin.x0);
+    for (const ratio of ratios) {
+      expect(ratio).toBeCloseTo(ratios[0]!, 10);
+    }
+    expect(bins[0]!.x0).toBeCloseTo(55, 10);
+    expect(bins[3]!.x1).toBeCloseTo(90, 10);
+
+    hist.destroy();
+  });
+
+  test('log scale rejects a non-positive fixed extent', () => {
+    expect(() =>
+      createHistogramClient({
+        coordinator: db.coordinator,
+        from: 'athletes',
+        column: 'weight',
+        scale: 'log',
+        extent: [0, 100],
+      }),
+    ).toThrow('Histogram log scale requires a positive extent.');
+  });
+
   test('a step change is one re-query; bin boundaries stay stable under peer filters', async () => {
     const $page = Selection.crossfilter();
     const hist = createHistogramClient({

@@ -1,21 +1,24 @@
 import { clauseInterval } from '@uwdata/mosaic-core';
 import {
   Query,
+  and,
   asc,
   binHistogram,
   binSpec,
   column,
   count,
+  gt,
   isNotNull,
   max,
   min,
+  scaleTransform,
 } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
 import { PersisterLifecycle } from './persistence';
 import { isFilterSetPublishTarget } from './types';
 import { toResultRows } from './utils';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
-import type { SelectQuery } from '@uwdata/mosaic-sql';
+import type { Scale, SelectQuery } from '@uwdata/mosaic-sql';
 import type { FilterSpec } from './filter-set/types';
 import type {
   FilterSetPublishTarget,
@@ -40,6 +43,13 @@ import type {
 export function createHistogramClient(
   options: HistogramClientOptions,
 ): HistogramClient {
+  if (
+    options.scale === 'log' &&
+    options.extent !== undefined &&
+    (options.extent[0] <= 0 || options.extent[1] <= 0)
+  ) {
+    throw new Error('Histogram log scale requires a positive extent.');
+  }
   return new HistogramDataClient(options);
 }
 
@@ -48,6 +58,7 @@ class HistogramDataClient
   implements HistogramClient
 {
   readonly #options: HistogramClientOptions;
+  readonly #scale: Scale<number>;
   readonly #source: ClauseSource = {};
   #extent: [number, number] | null;
   /** Bin spec of the last built query — pairs result rows with boundaries. */
@@ -70,6 +81,7 @@ class HistogramDataClient
       { prepare: () => this.#prepareAndHydrate() },
     );
     this.#options = options;
+    this.#scale = scaleTransform({ type: options.scale ?? 'linear' });
     this.#extent = options.extent ?? null;
     this.#persist = this.#resolvePersist();
     this.#wireExternalClear();
@@ -118,16 +130,29 @@ class HistogramDataClient
     const binOptions = {
       step: ctx.inputs.step,
       steps: ctx.inputs.bins ?? 25,
+      // Nice log boundaries can extend below a positive discovered extent and
+      // produce an off-domain partial bar. Keep log bins pinned to the exact
+      // fixed extent; preserve existing nice linear behavior.
+      nice: this.#options.scale === 'log' ? false : undefined,
     };
-    this.#spec = binSpec(extent[0], extent[1], binOptions);
+    this.#spec = binSpec(
+      this.#scale.apply(extent[0]),
+      this.#scale.apply(extent[1]),
+      binOptions,
+    );
 
     const field = column(this.#options.column);
     return Query.from(this.resolveBase(ctx))
       .select({
-        x0: binHistogram(field, extent, binOptions),
+        x0: binHistogram(field, extent, binOptions, this.#scale),
         count: count(),
       })
-      .where(isNotNull(field))
+      .where(
+        and(
+          isNotNull(field),
+          this.#options.scale === 'log' ? gt(field, 0) : [],
+        ),
+      )
       .groupby('x0')
       .orderby(asc('x0'));
   }
@@ -142,8 +167,8 @@ class HistogramDataClient
     const bins: Array<HistogramBin> = Array.from(
       { length: spec.steps },
       (_, index) => ({
-        x0: spec.min + index * step,
-        x1: spec.min + (index + 1) * step,
+        x0: this.#scale.invert(spec.min + index * step),
+        x1: this.#scale.invert(spec.min + (index + 1) * step),
         count: 0,
       }),
     );
@@ -152,9 +177,10 @@ class HistogramDataClient
     for (const row of toResultRows(data)) {
       const x0 = Number(row.x0);
       const binCount = Number(row.count);
+      const transformedX0 = this.#scale.apply(x0);
       const index = Math.min(
         bins.length - 1,
-        Math.max(0, Math.round((x0 - spec.min) / step)),
+        Math.max(0, Math.round((transformedX0 - spec.min) / step)),
       );
       const bin = bins[index];
       if (bin === undefined) {
@@ -237,10 +263,12 @@ class HistogramDataClient
       having: [],
       inputs: this.store.state.inputs,
     });
-    const query = Query.from(base).select({
-      min: min(field),
-      max: max(field),
-    });
+    const query = Query.from(base)
+      .select({
+        min: min(field),
+        max: max(field),
+      })
+      .where(this.#options.scale === 'log' ? gt(field, 0) : []);
     const rows = toResultRows(await this.#options.coordinator.query(query));
     const first = rows[0];
     if (first === undefined || first.min == null || first.max == null) {
