@@ -60,6 +60,8 @@ class RollupDataClient<TRow>
   protected buildQuery(ctx: QueryContext<RollupInputs>): SelectQuery {
     const refs = this.#groupBy.map((name) => String(column(name)));
     const list = refs.join(', ');
+    const groupCount = this.#groupBy.length;
+    const mask = column(GROUPING_COLUMN);
 
     const query = this.resolveBase(ctx).clone();
     query.select(...this.#groupBy);
@@ -67,10 +69,13 @@ class RollupDataClient<TRow>
     query.groupby(sql`ROLLUP(${list})`);
     // Pre-order the tree: each level's subtotal (GROUPING = 1) precedes its
     // children, real NULL group values sort with the children — the tag
-    // disambiguates them from rolled-up NULLs.
+    // disambiguates them from rolled-up NULLs. GROUPING(a, b, ...) already
+    // packs one bit per column into __rollup_grouping__ (the first column is
+    // the highest bit), so each column's own flag is read back off that mask
+    // instead of issuing a redundant per-column GROUPING() call.
     query.orderby(
       this.#groupBy.flatMap((name, index) => [
-        desc(sql`GROUPING(${refs[index]!})`),
+        desc(sql`(${mask} >> ${groupCount - 1 - index}) & 1`),
         asc(column(name)),
       ]),
     );

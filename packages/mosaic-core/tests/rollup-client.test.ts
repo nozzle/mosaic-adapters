@@ -40,6 +40,10 @@ describe('rollup client', () => {
     });
     // 1 grand total + 2 sport subtotals + 6 leaves, in one query.
     expect(db.clientQueries).toHaveLength(1);
+    // The mask is computed once and reused (via bit extraction) for the
+    // per-column ORDER BY terms, instead of calling GROUPING() again per
+    // groupBy column.
+    expect(db.clientQueries[0]!.match(/GROUPING\(/g)).toHaveLength(1);
     const rows = rollup.store.state.rows;
     expect(rows).toHaveLength(9);
 
@@ -76,6 +80,65 @@ describe('rollup client', () => {
     expect(ed.groupPath).toEqual(['run', 'Ed']);
     expect(ed.isLeaf).toBe(true);
     expect(Number(ed.data.athletes)).toBe(1);
+
+    rollup.destroy();
+  });
+
+  test('three groupBy columns stay pre-ordered with a single GROUPING call', async () => {
+    // The athletes fixture only offers two natural levels, so build a
+    // three-level hierarchy (region > sport > name) with multi-child nodes
+    // at every level to exercise the per-column bit-shift math.
+    await db.exec(`
+      CREATE TABLE squads(region TEXT, sport TEXT, name TEXT);
+      INSERT INTO squads VALUES
+        ('eu', 'run', 'Ed'),
+        ('eu', 'swim', 'Di'),
+        ('us', 'run', 'Cy'),
+        ('us', 'swim', 'Ada'),
+        ('us', 'swim', 'Bo');
+    `);
+    const rollup = createRollupClient<{
+      region: string | null;
+      sport: string | null;
+      name: string | null;
+      members: number | bigint;
+    }>({
+      coordinator: db.coordinator,
+      query: ({ where }) =>
+        Query.from('squads').select({ members: count() }).where(where),
+      groupBy: ['region', 'sport', 'name'],
+    });
+
+    await waitFor(() => {
+      expect(rollup.store.state.status).toBe('success');
+    });
+    expect(db.clientQueries).toHaveLength(1);
+    expect(db.clientQueries[0]!.match(/GROUPING\(/g)).toHaveLength(1);
+
+    // Exact pre-order: grand total, then each region subtotal followed by
+    // its sport subtotals, each followed by its own leaves.
+    expect(
+      rollup.store.state.rows.map((r) => [
+        r.level,
+        r.data.region,
+        r.data.sport,
+        r.data.name,
+        Number(r.data.members),
+      ]),
+    ).toEqual([
+      [0, null, null, null, 5],
+      [1, 'eu', null, null, 2],
+      [2, 'eu', 'run', null, 1],
+      [3, 'eu', 'run', 'Ed', 1],
+      [2, 'eu', 'swim', null, 1],
+      [3, 'eu', 'swim', 'Di', 1],
+      [1, 'us', null, null, 3],
+      [2, 'us', 'run', null, 1],
+      [3, 'us', 'run', 'Cy', 1],
+      [2, 'us', 'swim', null, 2],
+      [3, 'us', 'swim', 'Ada', 1],
+      [3, 'us', 'swim', 'Bo', 1],
+    ]);
 
     rollup.destroy();
   });
