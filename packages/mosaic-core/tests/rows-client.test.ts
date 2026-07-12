@@ -72,6 +72,78 @@ describe('rowCount: "window"', () => {
     client.destroy();
   });
 
+  test('wraps the base in a subquery rather than appending the window in-scope', async () => {
+    const client = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: ({ where }) => athleteQuery().where(where),
+      inputs: { orderBy: [{ column: 'id' }], limit: 2, offset: 0 },
+      rowCount: 'window',
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.status).toBe('success');
+    });
+
+    const sql = client.store.state.lastQuery!;
+    // Outer SELECT * over a subquery carrying the base, with the window count
+    // added at the outer scope — not appended alongside the base's columns.
+    expect(sql).toMatch(/FROM \(\s*SELECT/i);
+    expect(sql).toMatch(/count\(\*\) OVER \(\)/i);
+    // ORDER BY / LIMIT / OFFSET live on the outer wrapper, after the subquery.
+    const subqueryEnd = sql.lastIndexOf(')');
+    expect(sql.slice(subqueryEnd)).toMatch(/ORDER BY/i);
+    expect(sql.slice(subqueryEnd)).toMatch(/LIMIT 2/i);
+
+    client.destroy();
+  });
+
+  test('ORDER BY binds at the outer scope, so sort columns must be projected by the base', async () => {
+    // The wrapper's `SELECT *` re-exposes only what the base projects: an
+    // alias projected by the base is orderable through the wrapper, while an
+    // unprojected column would be a binder error. Pin the shape — the ORDER BY
+    // reference lives outside the subquery, against the projected alias.
+    const client = createRowsClient<{ id: number; kg: number }>({
+      coordinator: db.coordinator,
+      query: ({ where }) =>
+        Query.from('athletes').select('id', { kg: 'weight' }).where(where),
+      inputs: { orderBy: [{ column: 'kg', desc: true }], limit: 2, offset: 0 },
+      rowCount: 'window',
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.status).toBe('success');
+    });
+    expect(client.store.state.rows.map((r) => r.kg)).toEqual([90, 80]);
+
+    const sql = client.store.state.lastQuery!;
+    const subqueryEnd = sql.lastIndexOf(')');
+    expect(sql.slice(subqueryEnd)).toMatch(/ORDER BY "kg" DESC/i);
+
+    client.destroy();
+  });
+
+  test('counts the fully-resolved relation for a DISTINCT base', async () => {
+    // Six athletes across two sports. A DISTINCT base yields two rows; the
+    // wrapped window must count those two, not the six pre-dedup rows an
+    // in-scope `count(*) OVER ()` would have seen.
+    const client = createRowsClient<{ sport: string }>({
+      coordinator: db.coordinator,
+      query: ({ where }) =>
+        Query.from('athletes').select('sport').distinct().where(where),
+      inputs: { orderBy: [{ column: 'sport' }], limit: 1, offset: 0 },
+      rowCount: 'window',
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.status).toBe('success');
+    });
+    expect(client.store.state.rows).toHaveLength(1);
+    expect(client.store.state.totalRows).toBe(2);
+    expect(Object.keys(client.store.state.rows[0]!)).toEqual(['sport']);
+
+    client.destroy();
+  });
+
   test('pagination beyond the first page keeps the filtered total', async () => {
     const $page = Selection.crossfilter();
 

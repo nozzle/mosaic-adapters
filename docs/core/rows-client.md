@@ -25,9 +25,11 @@ const athletes = createRowsClient<AthleteRow>({
 
 `rowCount` controls `store.state.totalRows`:
 
-- `'window'` — appends `count(*) OVER ()` to the main query: the **filtered** total in one round trip. Requires `inputMode: 'append'` (the client must own the LIMIT wrapper); combining it with `'manual'` throws. Caveat: a page offset past the end returns zero rows, so the total reads 0.
+- `'window'` — wraps the base in a subquery and adds `count(*) OVER ()` at the outer scope (`SELECT *, count(*) OVER () FROM (<base>)`, with `ORDER BY`/`LIMIT`/`OFFSET` on the wrapper): the **filtered** total in one round trip. Wrapping keeps the count correct over a `DISTINCT` or set-operation base — an in-scope `count(*) OVER ()` alongside the base's own columns would count pre-dedup rows (or fail to attach at all). Requires `inputMode: 'append'` (the client must own the LIMIT wrapper); combining it with `'manual'` throws. Because `ORDER BY` binds against the wrapper's `SELECT *`, sort columns must be projected by the base query in window mode — ordering by an unprojected column is a binder error. Caveat: a page offset past the end returns zero rows, so the total reads 0.
 - `'query'` — a separate `COUNT(*)` query sharing the same WHERE/HAVING (built from the factory with `orderBy`/`limit`/`offset` stripped from inputs). Use this with `inputMode: 'manual'`.
 - `'none'` (default) — `totalRows` stays `undefined`.
+
+**Cost.** The `'window'` count re-executes over the full filtered relation on every page (benchmarks on a 5M-row table showed roughly 4× a plain page query on large ungrouped tables; grouped queries are cheap). `'query'` issues a second round trip but its SQL string is stable across pages, so the coordinator cache serves repeat counts — prefer `'query'` for large ungrouped tables and reserve `'window'` for grouped or modestly sized relations where the single round trip wins.
 
 ## Publishing
 

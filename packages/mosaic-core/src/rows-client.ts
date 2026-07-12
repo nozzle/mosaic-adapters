@@ -187,10 +187,22 @@ class RowsDataClient<TRow>
       return base;
     }
 
-    const query = base.clone();
-    if (this.#rowCount === 'window') {
-      query.select({ [ROW_COUNT_COLUMN]: sql`count(*) OVER ()` });
-    }
+    // 'window' wraps the resolved base in a subquery so `count(*) OVER ()`
+    // counts the fully-materialized base relation. Appending it in-scope
+    // instead would miscount a DISTINCT base (the window sees pre-dedup rows)
+    // and cannot attach to a set-operation base at all. Wrapping also mirrors
+    // the 'query' count path's shape (see `afterQueryBuilt`). Other modes
+    // append to a clone of the base. In every case ORDER BY / LIMIT / OFFSET
+    // apply to the returned query — for 'window' that is the outer wrapper,
+    // whose `SELECT *` re-exposes only the columns and aliases the base
+    // projects: order-by refs resolve for projected columns, while ordering
+    // by a column the base does not project fails to bind in window mode.
+    const query =
+      this.#rowCount === 'window'
+        ? Query.from(base).select('*', {
+            [ROW_COUNT_COLUMN]: sql`count(*) OVER ()`,
+          })
+        : base.clone();
     const { orderBy, limit, offset } = ctx.inputs;
     if (orderBy !== undefined && orderBy.length > 0) {
       query.orderby(orderBy.map(toOrderByNode));
