@@ -24,7 +24,7 @@ import {
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { tableName } from '../page-context';
 import { usePageContexts, usePageFilterSet } from '../topology';
-import { WidgetSqlDetails } from './widget-sql-details';
+import { WidgetSqlPopover } from './widget-sql-details';
 import type {
   Column,
   ColumnDef,
@@ -128,6 +128,13 @@ export function DetailTable(props: { enabled: boolean }) {
 
   return (
     <div className="flex h-full flex-col" data-testid="detail-table">
+      <div className="relative flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/50 p-4 font-semibold text-slate-800">
+        <span>Detailed Breakdown</span>
+        <WidgetSqlPopover
+          store={details.client.store}
+          label="Detailed Breakdown"
+        />
+      </div>
       <div className="flex-1 overflow-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left">
@@ -193,7 +200,6 @@ export function DetailTable(props: { enabled: boolean }) {
             : `${details.totalRows.toLocaleString()} rows match`}
         </span>
       </div>
-      <WidgetSqlDetails store={details.client.store} />
     </div>
   );
 }

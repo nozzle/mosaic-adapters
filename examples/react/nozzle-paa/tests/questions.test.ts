@@ -1237,16 +1237,28 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
-  test('every widget exposes the SQL it last executed', async ({ page }) => {
+  test('every widget exposes the SQL it last executed via its header button', async ({
+    page,
+  }) => {
     await gotoDashboard(page);
 
-    // 4 summary tables + the detail table each render a SQL footer. The vgplot
-    // volume-brush panel is not a data-client store (no `lastQuery`), so it adds
-    // no footer — the count stays 5.
-    await expect(page.getByTestId('widget-sql')).toHaveCount(5);
-    const first = page.getByTestId('widget-sql').first();
-    await first.locator('summary').click();
-    await expect(first.locator('pre')).toContainText('SELECT');
+    // 4 summary tables + the detail table each expose their last-executed SQL
+    // behind a header button. The vgplot volume-brush panel is not a data-client
+    // store (no `lastQuery`), so it has no SQL button — the count stays 5.
+    await expect(page.getByTestId('widget-sql-trigger')).toHaveCount(5);
+
+    // The panel stays mounted (hidden) until the header button opens it.
+    const trigger = page.getByTestId('widget-sql-trigger').first();
+    const panel = page.getByTestId('widget-sql').first();
+    await expect(panel).toBeHidden();
+
+    await trigger.click();
+    await expect(panel).toBeVisible();
+    await expect(panel.locator('pre')).toContainText('SELECT');
+
+    // Escape closes the popover.
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
   });
 
   // The vgplot brush publishes a search-volume range into the foreign

@@ -22,7 +22,7 @@ import { compileQuery } from '../spec/query-compiler';
 import { resolveSelection } from '../spec/topology';
 import { usePopoverDismiss } from '../chrome/use-popover-dismiss';
 import { Sparkline } from './sparkline';
-import { WidgetSqlDetails } from './widget-sql-details';
+import { WidgetSqlPopover } from './widget-sql-details';
 import type { ReactElement } from 'react';
 import type { FilterSet, RowsInputs } from '@nozzleio/react-mosaic';
 import type {
@@ -491,7 +491,7 @@ function SummaryTableBody(props: {
       data-mode={promoted ? 'promoted' : 'default'}
       className={`flex flex-col overflow-hidden rounded-gf border border-line bg-panel transition-colors hover:border-line-strong ${heightClass}`}
     >
-      <div className="flex h-[30px] shrink-0 items-center justify-between gap-2 border-b border-line px-3">
+      <div className="relative flex h-[30px] shrink-0 items-center justify-between gap-2 border-b border-line px-3">
         <div className="truncate text-xs font-medium text-ink">
           {widget.title}
         </div>
@@ -501,6 +501,7 @@ function SummaryTableBody(props: {
               Expanded
             </span>
           ) : null}
+          <WidgetSqlPopover store={client.store} label={widget.title} />
           {widget.expandable ? (
             <button
               type="button"
@@ -693,8 +694,6 @@ function SummaryTableBody(props: {
             : `${rows.totalRows.toLocaleString()} groups`}
         </span>
       </div>
-
-      <WidgetSqlDetails store={client.store} />
     </div>
   );
 }

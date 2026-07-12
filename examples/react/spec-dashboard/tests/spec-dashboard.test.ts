@@ -651,15 +651,24 @@ test.describe('spec-driven dashboard', () => {
       name: 'Last Keyword Phrase page',
     });
 
-    // Wait for the full first page to settle before reading button state.
+    // 2,681 phrases / 10 per page → page 269 (index 268) is a 1-row remainder.
+    const lastPage = Math.ceil(TOTAL_PHRASES_NUM / 10);
+
+    // Wait for the full first page AND the settled unfiltered page count before
+    // reading button state. The count matters: right after `gotoDashboard`
+    // clears the spec defaults, the table can still hold the default-filtered
+    // total (1,801 groups → 181 pages) while its unfiltered re-count is in
+    // flight, and the Last button jumps to the last page of whatever count it
+    // currently knows — landing on page 181 instead of 269.
     await expect(summaryRows(page, 'summary-table-by_phrase')).toHaveCount(10);
+    await expect(card.getByText(`Page 1 of ${lastPage}`)).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(firstButton).toBeDisabled();
     await expect(prevButton).toBeDisabled();
     await expect(nextButton).toBeEnabled();
     await expect(lastButton).toBeEnabled();
 
-    // 2,681 phrases / 10 per page → page 269 (index 268) is a 1-row remainder.
-    const lastPage = Math.ceil(TOTAL_PHRASES_NUM / 10);
     await lastButton.click();
 
     await expect(
@@ -679,6 +688,34 @@ test.describe('spec-driven dashboard', () => {
     await expect(summaryRows(page, 'summary-table-by_phrase')).toHaveCount(10);
     await expect(firstButton).toBeDisabled();
     await expect(prevButton).toBeDisabled();
+  });
+
+  test('(h3) summary and detail tables expose their last-executed SQL via a header popover that dismisses', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // A summary table: the panel stays mounted (hidden) until the header button
+    // opens it; Escape closes it.
+    const summary = page.getByTestId('summary-table-by_phrase');
+    const summaryPanel = summary.getByTestId('widget-sql');
+    await expect(summaryPanel).toBeHidden();
+    await summary.getByTestId('widget-sql-trigger').click();
+    await expect(summaryPanel).toBeVisible();
+    await expect(summaryPanel.locator('pre')).toContainText('SELECT');
+    await page.keyboard.press('Escape');
+    await expect(summaryPanel).toBeHidden();
+
+    // The detail table exposes its own last query the same way; an outside
+    // mousedown (a KPI value is inert) closes it.
+    const detail = page.getByTestId('detail-detail');
+    const detailPanel = detail.getByTestId('widget-sql');
+    await expect(detailPanel).toBeHidden();
+    await detail.getByTestId('widget-sql-trigger').click();
+    await expect(detailPanel).toBeVisible();
+    await expect(detailPanel.locator('pre')).toContainText('SELECT');
+    await page.getByTestId('kpi-kpi_phrases_all-value').click();
+    await expect(detailPanel).toBeHidden();
   });
 
   test('(i) the quick-load selector switches specs: ?spec= drives the active spec and reloads the dashboard', async ({
