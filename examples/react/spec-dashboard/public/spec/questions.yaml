@@ -486,25 +486,25 @@ widgets:
         label: Answer Description
 
 # ── Layout ──────────────────────────────────────────────────────────────────
-# CSS grid: each row is its own `columns`-wide grid; a widget's `span` maps to a
+# CSS grid: each row is its own `columns`-wide grid; a widget's `col_span` maps to a
 # static Tailwind col-span class.
 layout:
   columns: 5
   rows:
     - widgets:
-        - { ref: kpi_phrases, span: 1 }
-        - { ref: kpi_questions, span: 1 }
-        - { ref: kpi_days, span: 1 }
-        - { ref: kpi_devices, span: 1 }
-        - { ref: kpi_phrases_all, span: 1 }
+        - { ref: kpi_phrases, col_span: 1 }
+        - { ref: kpi_questions, col_span: 1 }
+        - { ref: kpi_days, col_span: 1 }
+        - { ref: kpi_devices, col_span: 1 }
+        - { ref: kpi_phrases_all, col_span: 1 }
     - widgets:
-        - { ref: volume_brush, span: 5 }
+        - { ref: volume_brush, col_span: 5 }
     - widgets:
-        - { ref: volume_brush_mirror, span: 5 }
+        - { ref: volume_brush_mirror, col_span: 5 }
     - widgets:
-        - { ref: by_phrase, span: 2 }
-        - { ref: by_domain, span: 1 }
-        - { ref: by_device, span: 1 }
-        - { ref: by_bucket, span: 1 }
+        - { ref: by_phrase, col_span: 2 }
+        - { ref: by_domain, col_span: 1 }
+        - { ref: by_device, col_span: 1 }
+        - { ref: by_bucket, col_span: 1 }
     - widgets:
-        - { ref: detail, span: 5 }
+        - { ref: detail, col_span: 5 }
