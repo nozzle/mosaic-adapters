@@ -7,7 +7,11 @@
  * - **Options + counts** come from {@link useMosaicFacet} in read-only mode (no
  *   `publish`), cascaded by the page context (`$page`) — so the list narrows as
  *   other filters change, exactly like the old dropdown, but it never owns the
- *   selection.
+ *   selection. The search box's displayed value is immediate, but the value
+ *   fed into `inputs.search` (and thus the option query) is debounced by
+ *   `SEARCH_DEBOUNCE_MS` — every distinct search string is a fresh,
+ *   never-cache-hitting `ILIKE` query, so querying on every keystroke would
+ *   flood the connector.
  * - **The current selection + trigger label** are DERIVED from the committed
  *   `condition` spec in the {@link filterSet} store (read via
  *   `useFilterSetState`), NOT from the facet client's `selected` (which is empty
@@ -27,8 +31,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { useFilterSetState, useMosaicFacet } from '@nozzleio/react-mosaic';
 import { tableName } from '../page-context';
 import { usePageContexts, usePageFilterSet } from '../topology';
-import { facetTriggerLabel, useSelectedValues } from '../filter-controls';
+import {
+  facetTriggerLabel,
+  useDebouncedRun,
+  useSelectedValues,
+} from '../filter-controls';
 import type { FilterSpec } from '@nozzleio/react-mosaic';
+
+/**
+ * How long a keystroke in the search box waits before it reaches the facet
+ * client's `inputs.search` and issues a new `ILIKE` option query. Every
+ * distinct search string is a fresh, never-cache-hitting query, so an
+ * undebounced control fires one query per keystroke; 400ms collapses a
+ * normal typing burst into (typically) one query for the settled string,
+ * mirroring embedding-atlas's debounced facet search.
+ */
+const SEARCH_DEBOUNCE_MS = 400;
 
 /**
  * Multi-value operators whose value list is a set of EXCLUSIONS rather than
@@ -81,7 +99,11 @@ export interface FacetMultiSelectProps {
 
 export function FacetMultiSelect(props: FacetMultiSelectProps) {
   const { specId, column, label, operator } = props;
+  // `search` is the input's displayed value (immediate); `debouncedSearch` is
+  // what reaches the facet client's `inputs` (see `SEARCH_DEBOUNCE_MS`).
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchDebounce = useDebouncedRun(SEARCH_DEBOUNCE_MS);
   const filterSet = usePageFilterSet();
   const { page } = usePageContexts();
 
@@ -93,7 +115,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
     select: 'multi',
     sort: props.sort,
     filterBy: page,
-    inputs: { search, limit: props.limit },
+    inputs: { search: debouncedSearch, limit: props.limit },
     enabled: props.enabled,
   });
 
@@ -213,8 +235,13 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
     writeSpec(next, nextOperator);
   };
 
+  // The ✕ button is a deliberate reset, not a keystroke: apply it immediately
+  // (both the displayed and query-triggering value) and drop any pending
+  // debounced search so a stale in-flight keystroke can't resurrect it.
   const clear = () => {
+    searchDebounce.cancel();
     setSearch('');
+    setDebouncedSearch('');
     filterSet.remove(specId);
   };
 
@@ -226,7 +253,14 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
           className="h-9 w-full rounded border border-slate-200 bg-white px-3 text-sm"
           placeholder={facetTriggerLabel(selected)}
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            const value = event.target.value;
+            // Displayed value updates immediately; the query-triggering value
+            // (including clearing back to '') is debounced consistently so a
+            // burst of deletions doesn't re-fire the option query mid-way.
+            setSearch(value);
+            searchDebounce.run(() => setDebouncedSearch(value));
+          }}
         />
         {selected.length > 0 ? (
           <button
