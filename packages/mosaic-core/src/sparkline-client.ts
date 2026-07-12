@@ -61,8 +61,18 @@ class SparklineDataClient
     this.#options = options;
   }
 
-  protected buildQuery(ctx: QueryContext<SparklineInputs>): SelectQuery {
+  protected buildQuery(ctx: QueryContext<SparklineInputs>): SelectQuery | null {
     const keys = ctx.inputs.keys ?? [];
+    if (keys.length === 0 && this.#options.filterBy === undefined) {
+      // No series requested and no cross-filter wired: skip the round trip
+      // entirely — the answer (no series) is already known without asking
+      // the database. `#materialize` publishes `onEmpty()` and elides the
+      // query. With a `filterBy` Selection this shortcut is unsafe (see the
+      // `buildQuery` contract in base-client), so cross-filtered clients
+      // keep the trivial `WHERE FALSE` query below.
+      return null;
+    }
+
     const query = Query.from(this.resolveBase(ctx))
       .select({
         [KEY_COLUMN]: column(this.#options.key),
@@ -73,8 +83,9 @@ class SparklineDataClient
       .orderby(asc(KEY_COLUMN), asc(X_COLUMN));
 
     if (keys.length === 0) {
-      // No series requested: keep the contract of one (trivial) query per
-      // inputs change without scanning the relation.
+      // Cross-filtered with no series requested: keep the contract of one
+      // (trivial) query per trigger, because upstream selection updates
+      // never null-guard `client.query()`.
       query.where(literal(false));
     } else {
       query.where(
@@ -102,6 +113,10 @@ class SparklineDataClient
       });
     }
     return { series };
+  }
+
+  protected onEmpty(): Partial<SparklineClientState> {
+    return { series: new Map() };
   }
 
   #xExpression(): ExprNode {

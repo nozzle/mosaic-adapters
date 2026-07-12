@@ -17,7 +17,7 @@ const sparklines = createSparklineClient({
 
 ## Keys
 
-`inputs.keys` is the serializable list of series to fetch — typically derived from a rows client's visible page (`[...new Set(rows.map((r) => r.sport))]`). It is value-diffed: re-rendering with the same keys never re-queries; a change re-queries exactly once. Empty/absent keys resolve to an empty series map (via a trivial `WHERE FALSE` query).
+`inputs.keys` is the serializable list of series to fetch — typically derived from a rows client's visible page (`[...new Set(rows.map((r) => r.sport))]`). It is value-diffed: re-rendering with the same keys never re-queries; a change re-queries exactly once. Empty/absent keys resolve to an empty series map. Without a `filterBy` selection the round trip is skipped entirely — no query is issued; a cross-filtered sparkline instead falls back to a trivial `WHERE FALSE` query, because upstream selection updates always expect a real query.
 
 Dependent clients compose in userland through this input — there is no host coupling; the sparkline is just a client whose inputs happen to come from another client's store.
 
