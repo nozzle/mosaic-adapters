@@ -38,7 +38,9 @@ test('loads the dashboard: table, KPIs, and vgplot scatter from one DuckDB', asy
   );
   await expect(page.getByTestId('kpi-medals')).toHaveText('666'); // sum(gold)
   // The dot mark renders one circle per (weight, height) row.
-  expect(await scatterDots(page).count()).toBeGreaterThan(1_000);
+  await expect
+    .poll(async () => scatterDots(page).count())
+    .toBeGreaterThan(1_000);
 });
 
 test('sorting executes in SQL across the whole dataset', async ({ page }) => {
@@ -105,6 +107,11 @@ test('brushing the scatter filters the table and KPIs, but not the scatter itsel
 }) => {
   await gotoDashboard(page);
 
+  // Wait for the scatter's initial vgplot render to finish (same invariant
+  // as above) before taking the baseline count.
+  await expect
+    .poll(async () => scatterDots(page).count())
+    .toBeGreaterThan(1_000);
   const dotsBefore = await scatterDots(page).count();
   const box = await page
     .locator('[data-testid="scatter-plot"] svg')
@@ -132,7 +139,7 @@ test('brushing the scatter filters the table and KPIs, but not the scatter itsel
   expect(filtered).toBeLessThan(11_538);
 
   // …while crossfilter self-exclusion keeps the scatter itself unfiltered.
-  expect(await scatterDots(page).count()).toBe(dotsBefore);
+  await expect.poll(async () => scatterDots(page).count()).toBe(dotsBefore);
 });
 
 test('a Param change re-queries the KPI values client', async ({ page }) => {
