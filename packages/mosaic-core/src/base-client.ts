@@ -24,6 +24,14 @@ import type {
  *
  * Re-query triggers are exactly: inputs change, Selection activation,
  * Param change, `refetch()`.
+ *
+ * Input-driven triggers (`setInputs`, Param `'value'`, `havingBy` `'value'`)
+ * are coalesced — a burst of synchronous changes in one tick collapses into a
+ * single query build instead of one full query per event. In browsers this
+ * rides upstream `MosaicClient.requestUpdate()` (animation-frame throttle);
+ * elsewhere a core-owned macrotask fallback coalesces (see
+ * `#requestCoalescedUpdate`). `refetch()` (and any user-explicit re-query)
+ * stays immediate via `requestQuery()`.
  */
 export abstract class BaseDataClient<
   TInputs extends object,
@@ -38,6 +46,8 @@ export abstract class BaseDataClient<
   #client: MosaicClient;
   #destroyed = false;
   #teardown: Array<() => void> = [];
+  /** Pending macrotask flush for the non-browser coalescing fallback. */
+  #coalesceHandle: ReturnType<typeof setTimeout> | null = null;
 
   protected constructor(
     options: DataClientOptions<TInputs>,
@@ -140,7 +150,7 @@ export abstract class BaseDataClient<
       return;
     }
     this.inputs = next;
-    this.#client.requestQuery();
+    this.#requestCoalescedUpdate();
   }
 
   setEnabled(enabled: boolean): void {
@@ -155,10 +165,69 @@ export abstract class BaseDataClient<
       return;
     }
     this.onRefetch();
+    // An explicit refetch queries with the latest state immediately; a
+    // pending coalesced flush would only issue the same query again.
+    this.#cancelCoalescedUpdate();
     const request = this.#client.requestQuery();
     if (request) {
       await request;
     }
+  }
+
+  /**
+   * Coalesce an input-driven re-query so a burst of synchronous triggers in
+   * one tick (page-spam, dragged slider Params) collapses into a single query
+   * build, rather than one full query per event as `requestQuery()` would
+   * issue.
+   *
+   * The coordinator only calls `queryPending()` when the coalesced query
+   * actually runs (a beat later, once the flush fires), so patch a local
+   * `'pending'` status synchronously here to keep loading indicators
+   * responsive — preserving the same-tick pending signal that the previous
+   * immediate `requestQuery()` produced via `updateClient`. Skipped while the
+   * client is disabled: upstream defers the request until re-enable and never
+   * marks it pending, so the store must not strand itself in `'pending'`.
+   *
+   * In browsers this delegates to upstream `MosaicClient.requestUpdate()`,
+   * whose throttle debounces on `requestAnimationFrame`. Upstream's throttle
+   * calls `requestAnimationFrame` unconditionally with no fallback (it is a
+   * browser view-layer entry point), so in non-browser environments this
+   * class owns a macrotask fallback instead: one `setTimeout` flush per tick,
+   * with the flush reading the latest state (last inputs win). The fallback
+   * handle is cancelled by `refetch()` (an explicit refetch already queries
+   * with the latest state, so the pending flush would only duplicate it) and
+   * by `destroy()`. In the browser path an interleaved `refetch()` plus a
+   * pending throttle flush can still produce one redundant query — upstream's
+   * throttle exposes no cancel — which is accepted as low severity: results
+   * stay correct, one extra query at most.
+   */
+  #requestCoalescedUpdate(): void {
+    if (this.#client.enabled) {
+      this.patchState({ status: 'pending' } as Partial<TState>);
+    }
+    if (typeof requestAnimationFrame === 'function') {
+      this.#client.requestUpdate();
+      return;
+    }
+    if (this.#coalesceHandle !== null) {
+      return;
+    }
+    this.#coalesceHandle = setTimeout(() => {
+      this.#coalesceHandle = null;
+      if (this.#destroyed) {
+        return;
+      }
+      this.#client.requestQuery();
+    });
+  }
+
+  /** Cancel a pending non-browser coalescing flush, if any. */
+  #cancelCoalescedUpdate(): void {
+    if (this.#coalesceHandle === null) {
+      return;
+    }
+    clearTimeout(this.#coalesceHandle);
+    this.#coalesceHandle = null;
   }
 
   destroy(): void {
@@ -166,6 +235,7 @@ export abstract class BaseDataClient<
       return;
     }
     this.#destroyed = true;
+    this.#cancelCoalescedUpdate();
     const teardown = this.#teardown;
     this.#teardown = [];
     for (const dispose of teardown) {
@@ -385,7 +455,7 @@ export abstract class BaseDataClient<
         if (this.#destroyed) {
           return;
         }
-        this.#client.requestQuery();
+        this.#requestCoalescedUpdate();
       };
       param.addEventListener('value', listener);
       this.onDestroy(() => param.removeEventListener('value', listener));
@@ -414,7 +484,7 @@ export abstract class BaseDataClient<
       if (havingBy.predicate(this.#client) === undefined) {
         return;
       }
-      this.#client.requestQuery();
+      this.#requestCoalescedUpdate();
     };
     havingBy.addEventListener('value', listener);
     this.onDestroy(() => havingBy.removeEventListener('value', listener));
