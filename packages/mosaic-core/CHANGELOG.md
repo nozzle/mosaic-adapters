@@ -1,5 +1,27 @@
 # @nozzleio/mosaic-core
 
+## 0.3.1
+
+### Patch Changes
+
+- [#203](https://github.com/nozzle/mosaic-adapters/pull/203) [`870c794`](https://github.com/nozzle/mosaic-adapters/commit/870c794ad58c1a62f8472dced2ee265c26c27525) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Coalesce input-driven re-queries. `setInputs`, Param `'value'`, and `havingBy` `'value'` no longer issue an immediate `requestQuery()` per event: a burst of synchronous changes in one tick — page-spam, a dragged slider Param — collapses into a single query build with the last state winning. In browsers this rides upstream `MosaicClient.requestUpdate()` (animation-frame throttle); in environments without `requestAnimationFrame` the client uses a built-in macrotask fallback with the same one-build-per-tick semantics. `status` still flips to `'pending'` synchronously so loading indicators stay responsive, and `refetch()` remains immediate and un-coalesced (it also cancels a pending fallback flush). No API surface change; only re-query timing.
+
+- [#203](https://github.com/nozzle/mosaic-adapters/pull/203) [`74ef2a7`](https://github.com/nozzle/mosaic-adapters/commit/74ef2a73d3349430a224c30cee9d06586301542f) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Rollup client: the pre-order `ORDER BY` now reads each groupBy column's
+  subtotal flag as a bit off the already-selected `GROUPING()` mask instead of
+  issuing a redundant `GROUPING()` call per column. Emitted SQL and row
+  ordering are unchanged.
+
+- [#203](https://github.com/nozzle/mosaic-adapters/pull/203) [`07aae12`](https://github.com/nozzle/mosaic-adapters/commit/07aae12f262b044e6d30ddc04f7e9ba7a7093f3c) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Sparkline clients without a `filterBy` selection no longer issue a trivial `WHERE FALSE` query when `inputs.keys` is empty — they publish the empty series state directly and skip the database round trip entirely, with `store.state.lastQuery` as `null` for the skipped case. Cross-filtered sparklines keep the trivial `WHERE FALSE` query for empty keys, since upstream selection updates always expect a real query.
+
+- [#203](https://github.com/nozzle/mosaic-adapters/pull/203) [`b7d6a27`](https://github.com/nozzle/mosaic-adapters/commit/b7d6a273092525fb83d2a9fde5b1a96062c4d66c) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Rows clients with `rowCount: 'query'` now memoize the standing count query and re-issue it only when the WHERE/HAVING/base predicate changes (and on an explicit `refetch()`). Page turns and sort changes strip `orderBy`/`limit`/`offset` from the count SQL, so they no longer enqueue a redundant count request/promise round trip; `totalRows` holds its previous value. `refetch()` forces a fresh count in case the underlying data changed with an unchanged predicate.
+
+- [#203](https://github.com/nozzle/mosaic-adapters/pull/203) [`c6cc739`](https://github.com/nozzle/mosaic-adapters/commit/c6cc7397c36f8e4e360d1ec5bdbe60f515b812c2) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Rows client `rowCount: 'window'` now wraps the base query in a subquery
+  (`SELECT *, count(*) OVER () FROM (<base>)`) instead of appending the window
+  expression alongside the base's own columns. Appending in-scope silently
+  miscounted a `DISTINCT` base — the window saw pre-dedup rows — and could not
+  attach to a set-operation base at all. Ordering, limit, and offset now apply to
+  the outer wrapper, matching the shape the `'query'` count path already produces.
+
 ## 0.3.0
 
 ### Minor Changes

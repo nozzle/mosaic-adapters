@@ -15,8 +15,8 @@
     "test:types": "pnpm run typecheck"
   },
   "dependencies": {
-    "@nozzleio/mosaic-tanstack-react-table": "^0.10.2",
-    "@nozzleio/react-mosaic": "^0.5.0",
+    "@nozzleio/mosaic-tanstack-react-table": "^0.10.3",
+    "@nozzleio/react-mosaic": "^0.5.1",
     "@tanstack/react-table": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
