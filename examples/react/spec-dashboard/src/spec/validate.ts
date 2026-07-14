@@ -19,6 +19,9 @@
  * - every filter placement `kind` is in the kind registry, and its `target`
  *   resolves under a declared `filter-set` entry;
  * - every `metric_threshold.kind` is in the kind registry;
+ * - every widget / plot-mark `exclude` has a `filter_by` to exclude from, names
+ *   only declared filter spec ids (list form), and — on a vgplot mark — uses
+ *   only the `'all'` form (a native mark cannot apply a partial `skipSources`);
  * - every layout `ref` names a declared widget.
  */
 import { formatterRegistry } from '../widgets/formatters';
@@ -30,7 +33,7 @@ import {
 import { isKnownBehavior } from './kinds';
 import { filterSetEntryNames } from './topology';
 import type { FilterKind } from '@nozzleio/react-mosaic';
-import type { DashboardSpec, WidgetSpec } from './schema';
+import type { DashboardSpec, ExcludeSpec, WidgetSpec } from './schema';
 
 /** Validate the placeholder rules for a raw-template widget. */
 function validatePlaceholders(
@@ -99,11 +102,66 @@ function requireTable(
   }
 }
 
+/**
+ * Validate an `exclude` field (widget-level or on a plot mark). It requires a
+ * `filter_by` (nothing to exclude from otherwise); its list ids must all be
+ * declared filter spec ids; and on a vgplot mark only the `'all'` form is
+ * supported — a native vgplot mark resolves its `filterBy` Selection wholesale,
+ * so it cannot apply a per-clause `skipSources`, and a list exclusion is
+ * rejected with guidance.
+ */
+function validateExclude(options: {
+  widgetId: string;
+  /** Empty for a widget-level `exclude`, or a `plot mark '<mark>' ` prefix. */
+  site: string;
+  exclude: ExcludeSpec | undefined;
+  filterByPresent: boolean;
+  vgplotMark: boolean;
+  filterSpecIds: Set<string>;
+  errors: Array<string>;
+}): void {
+  const {
+    widgetId,
+    site,
+    exclude,
+    filterByPresent,
+    vgplotMark,
+    filterSpecIds,
+  } = options;
+  const { errors } = options;
+  if (exclude === undefined) {
+    return;
+  }
+  if (!filterByPresent) {
+    errors.push(
+      `widget '${widgetId}' ${site}declares an 'exclude' but no 'filter_by' — there is nothing to exclude from.`,
+    );
+    return;
+  }
+  if (exclude === 'all') {
+    return;
+  }
+  if (vgplotMark) {
+    errors.push(
+      `widget '${widgetId}' ${site}uses a list 'exclude', which a vgplot mark cannot apply (its native filterBy resolves wholesale); use 'exclude: all', or a table renderer for a partial exclusion.`,
+    );
+    return;
+  }
+  for (const id of exclude) {
+    if (!filterSpecIds.has(id)) {
+      errors.push(
+        `widget '${widgetId}' ${site}exclude id '${id}' is not a declared filter spec id.`,
+      );
+    }
+  }
+}
+
 function validateWidget(
   widget: WidgetSpec,
   validNames: Set<string>,
   tables: Set<string>,
   kindRegistry: Record<string, FilterKind>,
+  filterSpecIds: Set<string>,
   errors: Array<string>,
 ): void {
   if (!(widget.renderer in widgetRegistry)) {
@@ -126,6 +184,15 @@ function validateWidget(
           `widget '${widget.id}' format '${widget.format}' is not in the formatter registry.`,
         );
       }
+      validateExclude({
+        widgetId: widget.id,
+        site: '',
+        exclude: widget.exclude,
+        filterByPresent: widget.filter_by !== undefined,
+        vgplotMark: false,
+        filterSpecIds,
+        errors,
+      });
       validatePlaceholders(widget, errors);
       break;
     }
@@ -161,6 +228,16 @@ function validateWidget(
           errors,
         );
       }
+      validateExclude({
+        widgetId: widget.id,
+        site: '',
+        exclude: widget.exclude,
+        // `filter_by` is required on a selection-table.
+        filterByPresent: true,
+        vgplotMark: false,
+        filterSpecIds,
+        errors,
+      });
       validatePlaceholders(widget, errors);
       break;
     }
@@ -173,6 +250,16 @@ function validateWidget(
         errors,
       );
       requireTable(widget.query.from, 'query.from', widget.id, tables, errors);
+      validateExclude({
+        widgetId: widget.id,
+        site: '',
+        exclude: widget.exclude,
+        // `filter_by` is required on a data-table.
+        filterByPresent: true,
+        vgplotMark: false,
+        filterSpecIds,
+        errors,
+      });
       break;
     }
     case 'vgplot': {
@@ -191,6 +278,15 @@ function validateWidget(
           validNames,
           errors,
         );
+        validateExclude({
+          widgetId: widget.id,
+          site: `plot mark '${mark.mark}' `,
+          exclude: mark.data.exclude,
+          filterByPresent: mark.data.filter_by !== undefined,
+          vgplotMark: true,
+          filterSpecIds,
+          errors,
+        });
       }
       for (const select of widget.plot.selects ?? []) {
         requireValidName(
@@ -253,20 +349,29 @@ function validateFilterKinds(
 
 /**
  * Run every cross-reference check against a spec whose topology has already been
- * built (so `validNames` is available) and whose kind registry has been built.
- * Returns all violations.
+ * built (so `validNames` is available), whose kind registry has been built, and
+ * whose derived filter spec ids (`filterSpecIds` — the ids a widget `exclude`
+ * list may name) have been collected. Returns all violations.
  */
 export function validateCrossReferences(
   spec: DashboardSpec,
   validNames: Set<string>,
   kindRegistry: Record<string, FilterKind>,
+  filterSpecIds: Set<string>,
 ): Array<string> {
   const errors: Array<string> = [];
 
   const tables = new Set(Object.keys(spec.data.tables));
   const widgetIds = new Set(Object.keys(spec.widgets));
   for (const widget of Object.values(spec.widgets)) {
-    validateWidget(widget, validNames, tables, kindRegistry, errors);
+    validateWidget(
+      widget,
+      validNames,
+      tables,
+      kindRegistry,
+      filterSpecIds,
+      errors,
+    );
   }
 
   const filterSetEntries = filterSetEntryNames(spec.topology);

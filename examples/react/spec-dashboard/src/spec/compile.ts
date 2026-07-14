@@ -235,6 +235,7 @@ export function compileSpec(text: string): CompileResult {
     spec,
     validNames,
     kindRegistry,
+    new Set(filterUrlRegistry.ids),
   );
   const filterUrlErrors = validateFilterUrl(
     spec,

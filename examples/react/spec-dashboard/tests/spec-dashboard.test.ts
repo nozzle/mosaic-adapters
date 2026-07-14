@@ -1661,4 +1661,82 @@ test.describe('spec-driven dashboard', () => {
       .toBe(false);
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
+
+  test('(x1) a per-widget `exclude` ignores the domain filter but still honors the others', async ({
+    page,
+  }) => {
+    // Load a BARE url (no `clearDefaultFilters`) so the spec-declared
+    // `facet:domain` default hydrates ACTIVE — the five major answer domains.
+    // That hydrated default IS the `facet:domain` spec that
+    // `kpi_phrases_no_domain` names in its `exclude`, so it is the real filter
+    // whose exclusion we prove — NOT the `select:domain` a summary-row click
+    // publishes (test (c)), which no widget excludes.
+    await page.goto('/');
+
+    const fullyFiltered = page.getByTestId('kpi-kpi_phrases-value'); // honors every filter
+    const noDomain = page.getByTestId('kpi-kpi_phrases_no_domain-value'); // excludes facet:domain only
+    const optOut = page.getByTestId('kpi-kpi_phrases_all-value'); // no filter_by at all
+
+    // The opt-out KPI (no `filter_by`) is a dataset constant, so its full value
+    // proves the whole pipeline (spec fetch → compile → topology → load → query)
+    // is up before any assertion; the chip proves the domain default hydrated.
+    await expect(optOut).toHaveText(TOTAL_PHRASES, { timeout: 90_000 });
+    await expect(page.getByTestId('filter-chip-facet-domain')).toBeVisible();
+
+    // ── Semantic 1: with ONLY the domain filter active, the fully-filtered KPI
+    // drops to a strict subset (its count(DISTINCT phrase) is scoped to the five
+    // domains) while the exclude-domain KPI IGNORES `facet:domain` and reads the
+    // full total — byte-for-byte identical to the true opt-out card. This is the
+    // partial-vs-full contrast: excluding one filter leaves the widget unfiltered
+    // here precisely because domain is the only active filter.
+    await expect
+      .poll(async () => readCount(fullyFiltered), { timeout: 30_000 })
+      .toBeLessThan(TOTAL_PHRASES_NUM);
+    expect(await readCount(fullyFiltered)).toBeGreaterThan(0);
+    await expect(noDomain).toHaveText(TOTAL_PHRASES);
+    await expect(optOut).toHaveText(TOTAL_PHRASES);
+
+    // Baseline for the drop-below assertion: with domain excluded and no other
+    // filter yet, the exclude-domain KPI sits at the full unfiltered total.
+    const noDomainBefore = await readCount(noDomain);
+    expect(noDomainBefore).toBe(TOTAL_PHRASES_NUM);
+
+    // ── Add a NON-domain filter (phrase contains 'stove') ON TOP of the domain
+    // default — same builder path as test (b): pick the field, confirm to add
+    // its button + editor, then type the term (defaults to `contains`).
+    await page.getByTestId('filter-builder-add-field').selectOption('phrase');
+    await page.getByTestId('filter-builder-confirm').click();
+    await expect(page.getByTestId('filter-popover-phrase')).toBeVisible();
+    await page.getByTestId('filter-block-phrase-value').fill('stove');
+    await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible();
+
+    // ── Semantic 2: the exclude-domain KPI HONORS the phrase filter, so it drops
+    // strictly below its full-total baseline — this is what distinguishes
+    // exclude-ONE (`exclude: [facet:domain]`) from exclude-ALL (no `filter_by`).
+    // Its post value is count(DISTINCT phrase) of `contains 'stove'` across ALL
+    // domains — the exact quantity test (b) asserts is a nonzero strict subset.
+    await expect
+      .poll(async () => readCount(noDomain), { timeout: 30_000 })
+      .toBeLessThan(noDomainBefore);
+    expect(await readCount(noDomain)).toBeGreaterThan(0);
+
+    // …while the true opt-out KPI (no `filter_by`) stays pinned to the full
+    // total, honoring nothing — the exclude-domain card is NOT this.
+    await expect(optOut).toHaveText(TOTAL_PHRASES);
+
+    // The fully-filtered KPI honors BOTH the domain default AND the phrase
+    // filter, so its phrase-matching phrases are constrained to the five domains
+    // — a subset of the exclude-domain KPI's all-domain phrase matches.
+    expect(await readCount(fullyFiltered)).toBeLessThanOrEqual(
+      await readCount(noDomain),
+    );
+
+    // ── Semantic 3: clearing every filter (domain default + phrase) restores all
+    // three KPIs to the full unfiltered total and empties the active-filter bar.
+    await page.getByTestId('clear-all-filters').click();
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+    await expect(fullyFiltered).toHaveText(TOTAL_PHRASES);
+    await expect(noDomain).toHaveText(TOTAL_PHRASES);
+    await expect(optOut).toHaveText(TOTAL_PHRASES);
+  });
 });

@@ -281,6 +281,31 @@ widgets:
         SELECT count(DISTINCT phrase) AS value
         FROM questions_enriched
 
+  # Demonstrates the per-widget `exclude` field (GitHub issue #206). This card
+  # reads the SAME count(DISTINCT phrase) as `kpi_phrases` and DOES join the page
+  # cross-filter (`filter_by: page`), but EXCLUDES one named filter — the domain
+  # facet (`facet:domain`) — via `exclude`. It therefore honors EVERY active
+  # filter EXCEPT domain: it compiles to a `skipSources` that drops only the
+  # `facet:domain` clause while the rest of the page filter still applies.
+  #
+  # Visible contrast: `facet:domain` ships as a hydrated default, so on load
+  # `kpi_phrases` (honors it) reads a subset while THIS card ignores it and reads
+  # the full 2,681 — matching the opt-out `kpi_phrases_all`. Unlike that opt-out
+  # card, though, this one still reacts to a phrase/device/volume filter, since
+  # only the domain filter is excluded.
+  kpi_phrases_no_domain:
+    renderer: kpi-card
+    label: Phrases (ignoring domain)
+    format: number
+    filter_by: page
+    exclude: [facet:domain]
+    query:
+      type: sql
+      statement: |
+        SELECT count(DISTINCT phrase) AS value
+        FROM questions_enriched
+        WHERE {{where}}
+
   # Search-volume histogram — a generic vgplot widget whose plot is DECLARED in
   # the spec's plot DSL. A rectY bar mark (binned x, counted y) reads the
   # self-excluding `volume_brush_filter_by` context; an intervalX select
@@ -497,6 +522,7 @@ layout:
         - { ref: kpi_days, col_span: 1 }
         - { ref: kpi_devices, col_span: 1 }
         - { ref: kpi_phrases_all, col_span: 1 }
+        - { ref: kpi_phrases_no_domain, col_span: 1 }
     - widgets:
         - { ref: volume_brush, col_span: 5 }
     - widgets:

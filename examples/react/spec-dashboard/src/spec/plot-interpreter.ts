@@ -268,8 +268,19 @@ function buildMark(
   deps: PlotInterpreterDeps,
 ): PlotDirective {
   const { api } = deps;
+  // A vgplot mark binds its `filterBy` Selection natively and resolves it
+  // wholesale, so `exclude` supports only the opt-out form here: `'all'` drops
+  // the Selection entirely (identical to omitting `filter_by`). A list exclusion
+  // has no per-clause hook on a native mark — validation rejects it ahead of
+  // build, so its arrival is a spec error.
+  const { exclude } = mark.data;
+  if (Array.isArray(exclude)) {
+    throw new PlotSpecError(
+      `mark data.exclude list is not supported on a vgplot mark; use 'exclude: all' or a table renderer for a partial exclusion.`,
+    );
+  }
   let filterBy: Selection | undefined;
-  if (mark.data.filter_by !== undefined) {
+  if (mark.data.filter_by !== undefined && exclude !== 'all') {
     filterBy = deps.resolveSelection(mark.data.filter_by);
     if (filterBy === undefined) {
       throw new PlotSpecError(
