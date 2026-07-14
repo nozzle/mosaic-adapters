@@ -107,6 +107,21 @@ export interface DataClientOptions<TInputs extends object> {
   inputMode?: 'append' | 'manual';
   /** Passed through to MosaicClient; gates pre-aggregation. Default true. */
   filterStable?: boolean;
+  /**
+   * Clause sources to ignore when resolving `filterBy` (WHERE) and `havingBy`
+   * (HAVING), matched against each clause's `source.id`. Lets a consumer opt
+   * out of specific filters in a shared Selection while honoring the rest.
+   *
+   * Crossfilter self-exclusion still applies on top of this. Clauses whose
+   * source carries no string `id` are never skipped. A multi-target
+   * {@link FilterSet} spec mints one clause per target but keys them all to
+   * the spec id, so skipping an id drops every clause that spec published into
+   * the Selection being resolved. Absent or empty → behavior identical to
+   * today; a non-empty set forces `filterStable: false` so pre-aggregation
+   * (which re-applies the active clause independent of this resolution) cannot
+   * leak a skipped clause back in.
+   */
+  skipSources?: ReadonlySet<string>;
   enabled?: boolean;
 }
 
