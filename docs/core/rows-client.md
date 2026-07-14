@@ -53,7 +53,7 @@ Two extras cover grouped/remounting widgets:
 
 ## Grouped queries and `filterStable`
 
-`filterStable` (default `true`, upstream parity) tells Mosaic's optimizer the filtered domain is stable enough for pre-aggregation. A factory that `GROUP BY`s a key almost never qualifies — filtering changes which groups exist — and the wrong optimizer path can hang on pre-aggregated tables with no error. **Pass `filterStable: false` on grouped rows clients.** The client warns once at query time when it sees a GROUP BY under a defaulted `filterStable`. (The facet/rollup/pivot clients already default or force `false` for the same reason.)
+`filterStable` (default `true`, upstream parity) tells Mosaic's optimizer the filtered domain is stable enough for pre-aggregation. A factory that `GROUP BY`s a key almost never qualifies — filtering changes which groups exist — and the wrong optimizer path can hang on pre-aggregated tables with no error. **Pass `filterStable: false` on grouped rows clients.** The client warns once at query time when it sees a GROUP BY under a defaulted `filterStable`. (The facet/rollup/pivot clients already default or force `false` for the same reason.) A non-empty [`skipSources`](./concepts.md#per-widget-filter-scoping) also forces `filterStable: false` regardless of this option, so a skipped clause cannot be re-applied by the pre-aggregation optimizer outside the client's query callback.
 
 ## Other
 
