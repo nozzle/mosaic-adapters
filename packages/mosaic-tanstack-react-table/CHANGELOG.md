@@ -1,5 +1,13 @@
 # @nozzleio/mosaic-tanstack-react-table
 
+## 0.10.4
+
+### Patch Changes
+
+- Updated dependencies [[`72d551d`](https://github.com/nozzle/mosaic-adapters/commit/72d551dce5b0c47f5f7625595521918a69c70581)]:
+  - @nozzleio/mosaic-core@0.4.0
+  - @nozzleio/mosaic-tanstack-table-core@0.9.4
+
 ## 0.10.3
 
 ### Patch Changes
