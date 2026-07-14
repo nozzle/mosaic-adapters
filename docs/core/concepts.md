@@ -56,6 +56,30 @@ A whole page typically runs on **one** `Selection.crossfilter()`. Every filter U
 
 To name a page's whole Selection graph as data — so widgets reference selections by name and a dashboard spec is serializable — see [Selection topology](./selection-topology.md); it resolves a declarative config to these same Selection instances at mount.
 
+## Per-widget filter scoping
+
+A widget consuming a shared Selection can opt out of _specific_ clauses in it while honoring the rest, via `skipSources` — a `ReadonlySet<string>` of clause source ids to ignore when resolving `filterBy` into WHERE **and** `havingBy` into HAVING:
+
+```ts
+// Every other widget honors the page's date range; this one ignores it —
+// e.g. an all-time total shown alongside the date-filtered views.
+const allTime = createValuesClient({
+  coordinator,
+  query: ({ where }) =>
+    Query.from('events').select({ total: count() }).where(where),
+  filterBy: $page,
+  skipSources: new Set(['date_range']),
+});
+```
+
+Matching is by the stable id a clause's source carries (`clause.source.id`) — the same id a [filter set](./filter-set.md) spec is keyed by. One spec can fan out to several clauses (an aggregate-threshold emits a `having:` clause plus `members:` clauses); skipping the id drops **all** of that spec's clauses from the Selection being resolved. A clause whose source carries no string `id` is never skipped.
+
+Skipping composes on top of everything else the Selection's resolver does: crossfilter self-exclusion still applies, and union / intersect / `empty` semantics are preserved — resolution delegates to the Selection's own resolver rather than a hand-rolled one. An absent or empty set is byte-identical to not passing the option.
+
+A non-empty set forces `filterStable: false` (pre-aggregation off): Mosaic's pre-aggregation optimizer re-applies the active clause _outside_ the client's query callback, which would otherwise leak a skipped clause back in.
+
+To render a widget **fully unfiltered**, omit `filterBy` — do not enumerate every source in `skipSources`.
+
 Publishing (clause emission) is per-client, built on shared clause utilities (`createValueClause`, `createSubqueryClause`, `createClearClause`). The rows client publishes row selection and hover; there is no generic publish slot in the base contract. External publishers (like the [TanStack Table filter bridge](../tanstack-table/integration.md)) build on the same utilities; `deepEqual` — the value-equality the core diffs inputs with — is exported for them to diff with the same semantics.
 
 ## Persistence
