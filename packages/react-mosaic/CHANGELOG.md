@@ -1,5 +1,16 @@
 # @nozzleio/react-mosaic
 
+## 0.6.0
+
+### Minor Changes
+
+- [#207](https://github.com/nozzle/mosaic-adapters/pull/207) [`a07e42e`](https://github.com/nozzle/mosaic-adapters/commit/a07e42e40b8b55f79f6106c219bda96d9fe0b553) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - The data hooks (`useMosaicRows`, `useMosaicFacet`, `useMosaicHistogram`, `useMosaicSparkline`, `useMosaicRollup`, `useMosaicPivot`, `useMosaicValues`) now pass through the new `skipSources` option and fold it into their structural identity via `skipSourcesKey`, so changing the excluded-source set rebinds the client while an equal set does not trigger a rebind. `skipSourcesKey` is exported from `use-data-client` alongside `paramsKey`.
+
+### Patch Changes
+
+- Updated dependencies [[`72d551d`](https://github.com/nozzle/mosaic-adapters/commit/72d551dce5b0c47f5f7625595521918a69c70581)]:
+  - @nozzleio/mosaic-core@0.4.0
+
 ## 0.5.1
 
 ### Patch Changes
