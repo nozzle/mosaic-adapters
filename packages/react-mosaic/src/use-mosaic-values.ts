@@ -1,6 +1,11 @@
 import { useSelector } from '@tanstack/react-store';
 import { createValuesClient } from '@nozzleio/mosaic-core';
-import { deriveStatus, paramsKey, useBoundClient } from './use-data-client';
+import {
+  deriveStatus,
+  paramsKey,
+  skipSourcesKey,
+  useBoundClient,
+} from './use-data-client';
 import { useMosaicCoordinator } from './context';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type {
@@ -41,6 +46,7 @@ export function useMosaicValues<TValues extends Record<string, unknown>>(
       coordinator,
       options.filterBy,
       options.havingBy,
+      skipSourcesKey(options.skipSources),
       options.inputMode,
       options.filterStable,
       ...paramsKey(options.params),

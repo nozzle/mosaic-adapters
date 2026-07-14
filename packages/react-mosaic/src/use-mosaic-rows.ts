@@ -3,7 +3,12 @@ import {
   createRowsClient,
   isFilterSetPublishTarget,
 } from '@nozzleio/mosaic-core';
-import { deriveStatus, paramsKey, useBoundClient } from './use-data-client';
+import {
+  deriveStatus,
+  paramsKey,
+  skipSourcesKey,
+  useBoundClient,
+} from './use-data-client';
 import { useMosaicCoordinator } from './context';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type {
@@ -28,9 +33,9 @@ export type UseMosaicRowsResult<TRow> = RowsClientState<TRow> & {
 /**
  * Controlled binding over `createRowsClient`. Identity rules:
  *
- * - `coordinator`, `filterBy`, `havingBy`, `params`, `publish`, `inputMode`,
- *   `filterStable`, `rowCount` are structural — changing any of them
- *   destroys and recreates the client.
+ * - `coordinator`, `filterBy`, `havingBy`, `skipSources`, `params`, `publish`,
+ *   `inputMode`, `filterStable`, `rowCount` are structural — changing any of
+ *   them destroys and recreates the client.
  * - `query` and `coerce` are held by latest-ref — new function identities
  *   never recreate and never re-query.
  * - `inputs` is value-diffed into `setInputs`; `enabled` into `setEnabled`.
@@ -64,6 +69,7 @@ export function useMosaicRows<TRow>(
       coordinator,
       options.filterBy,
       options.havingBy,
+      skipSourcesKey(options.skipSources),
       options.inputMode,
       options.filterStable,
       options.rowCount,
