@@ -108,6 +108,16 @@ export function paramsKey(
   return keys.flatMap((key) => [key, params[key]]);
 }
 
+/** Structural-key entry for the `skipSources` option (order-insensitive). */
+export function skipSourcesKey(
+  skipSources: ReadonlySet<string> | undefined,
+): string | undefined {
+  if (!skipSources || skipSources.size === 0) {
+    return undefined;
+  }
+  return [...skipSources].sort().join('\u0000');
+}
+
 function sameKey(
   a: ReadonlyArray<unknown> | null,
   b: ReadonlyArray<unknown>,
