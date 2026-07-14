@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 
@@ -6,6 +6,11 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   resolve: {
     tsconfigPaths: true,
+  },
+  test: {
+    watch: false,
+    testTimeout: 30_000,
+    typecheck: { enabled: true },
   },
   plugins: [react(), tailwindcss()],
 });
