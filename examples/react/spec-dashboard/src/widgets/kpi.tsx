@@ -12,6 +12,7 @@
 import { useMemo } from 'react';
 import { useMosaicValues } from '@nozzleio/react-mosaic';
 import { compileQuery } from '../spec/query-compiler';
+import { compileExclude } from '../spec/exclude';
 import { resolveSelection } from '../spec/topology';
 import { getFormatter } from './formatters';
 import type { ReactElement } from 'react';
@@ -54,11 +55,22 @@ function KpiCard({ widget, context }: KpiCardProps): ReactElement {
     () => compileQuery<ValuesInputs>(widget.query),
     [widget.query],
   );
+  // `exclude` (see spec/exclude.ts): `'all'` drops filterBy (full opt-out); a
+  // list yields a stable `skipSources` set dropping just those clauses.
+  const exclude = useMemo(
+    () => compileExclude(widget.exclude),
+    [widget.exclude],
+  );
+  const applyFilterBy = filterBy !== undefined && !exclude.omitFilterBy;
 
   const result = useMosaicValues<KpiValues>({
     query,
-    // Honor the opt-out contract: no `filterBy` key at all when absent.
-    ...(filterBy !== undefined ? { filterBy } : {}),
+    // Honor the opt-out contract: no `filterBy` key at all when absent or when
+    // `exclude: all` drops it.
+    ...(applyFilterBy ? { filterBy } : {}),
+    ...(exclude.skipSources !== undefined
+      ? { skipSources: exclude.skipSources }
+      : {}),
     enabled,
   });
 

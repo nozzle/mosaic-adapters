@@ -19,6 +19,7 @@ import {
   useMosaicSparkline,
 } from '@nozzleio/react-mosaic';
 import { compileQuery } from '../spec/query-compiler';
+import { compileExclude } from '../spec/exclude';
 import { resolveSelection } from '../spec/topology';
 import { usePopoverDismiss } from '../chrome/use-popover-dismiss';
 import { Sparkline } from './sparkline';
@@ -356,6 +357,15 @@ function SummaryTableBody(props: {
     () => compileQuery<RowsInputs>(widget.query),
     [widget.query],
   );
+  // `exclude` (see spec/exclude.ts): `'all'` drops BOTH the WHERE (`filter_by`)
+  // and HAVING (`having_by`) selections; a list yields a stable `skipSources`
+  // the core applies to both automatically.
+  const exclude = useMemo(
+    () => compileExclude(widget.exclude),
+    [widget.exclude],
+  );
+  const rowsFilterBy = exclude.omitFilterBy ? undefined : filterBy;
+  const rowsHavingBy = exclude.omitFilterBy ? undefined : havingBy;
 
   const metric = useMetricThreshold({
     filterSet,
@@ -366,8 +376,11 @@ function SummaryTableBody(props: {
 
   const rows = useMosaicRows<GroupRow>({
     query,
-    filterBy,
-    havingBy,
+    filterBy: rowsFilterBy,
+    havingBy: rowsHavingBy,
+    ...(exclude.skipSources !== undefined
+      ? { skipSources: exclude.skipSources }
+      : {}),
     // The factory GROUP BYs a key whose domain changes under filtering, so the
     // pre-aggregation assumptions do not hold.
     filterStable: false,
@@ -442,7 +455,10 @@ function SummaryTableBody(props: {
     key: sparklineKey,
     x: sparkline?.x ?? { column: sparklineKey },
     y: sparkline?.y ?? { agg: 'count' },
-    filterBy,
+    filterBy: rowsFilterBy,
+    ...(exclude.skipSources !== undefined
+      ? { skipSources: exclude.skipSources }
+      : {}),
     inputs: {
       keys: sparkline
         ? rows.rows.map((row) => row.key).filter((key) => key != null)

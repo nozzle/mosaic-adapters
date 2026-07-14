@@ -25,6 +25,7 @@ import {
   useTanStackTableFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { compileQuery } from '../spec/query-compiler';
+import { compileExclude } from '../spec/exclude';
 import { resolveSelection } from '../spec/topology';
 import { WidgetSqlPopover } from './widget-sql-details';
 import type { ReactElement } from 'react';
@@ -99,6 +100,15 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
   const { topology, filterSet, enabled } = context;
 
   const filterBy = resolveSelection(topology, widget.filter_by);
+  // `exclude` (see spec/exclude.ts): `'all'` drops filterBy; a list yields a
+  // stable `skipSources` set dropping just those clauses. The bridged column
+  // filters this table publishes still land in the page (they are not resolved
+  // through this client's own filterBy).
+  const exclude = useMemo(
+    () => compileExclude(widget.exclude),
+    [widget.exclude],
+  );
+  const detailFilterBy = exclude.omitFilterBy ? undefined : filterBy;
   const query = useMemo(
     () => compileQuery<RowsInputs>(widget.query),
     [widget.query],
@@ -137,7 +147,10 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
 
   const details = useMosaicRows<DetailRow>({
     query,
-    filterBy,
+    filterBy: detailFilterBy,
+    ...(exclude.skipSources !== undefined
+      ? { skipSources: exclude.skipSources }
+      : {}),
     inputs: paginationToWindow(pagination),
     rowCount: 'window',
     enabled,

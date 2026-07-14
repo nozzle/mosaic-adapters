@@ -369,11 +369,33 @@ export const channelSchema = z.union([
  */
 export const colorChannelSchema = z.string().min(1);
 
+/**
+ * Per-widget filter exclusion: opt a widget out of specific named filters while
+ * honoring every other active one. Two shapes:
+ *
+ * - a non-empty list of filter spec ids to skip (`[date:requested]`) — compiles
+ *   to the data hook's `skipSources`, dropping those clauses from the resolved
+ *   WHERE (`filter_by`) and HAVING (`having_by`) while keeping the rest;
+ * - the literal `'all'` — drops `filter_by` (and `having_by`) entirely, the same
+ *   opt-out as omitting `filter_by`.
+ *
+ * `exclude` REQUIRES `filter_by` (there is nothing to exclude from without it),
+ * and each listed id must be a filter spec id the spec declares (a placement,
+ * publish, metric_threshold, or bridge column). Both rules are enforced at the
+ * compile boundary (see `validate.ts`).
+ */
+export const excludeSchema = z.union([
+  z.array(z.string().min(1)).min(1),
+  z.literal('all'),
+]);
+
 /** Per-mark data source: a base table, optionally cascaded by a topology ref. */
 export const plotMarkDataSchema = z
   .object({
     from: z.string().min(1),
     filter_by: z.string().min(1).optional(),
+    /** Filter exclusion (see {@link excludeSchema}); requires `filter_by`. */
+    exclude: excludeSchema.optional(),
   })
   .strict();
 
@@ -548,6 +570,8 @@ export const kpiCardWidgetSchema = z
     format: z.string().min(1),
     /** Omitting `filter_by` opts the widget out of the cross-filter topology. */
     filter_by: z.string().optional(),
+    /** Filter exclusion (see {@link excludeSchema}); requires `filter_by`. */
+    exclude: excludeSchema.optional(),
     query: rawTemplateQuerySchema,
     ...widgetMeta,
   })
@@ -560,6 +584,8 @@ export const selectionTableWidgetSchema = z
     metric_label: z.string().min(1),
     filter_by: z.string().min(1),
     having_by: z.string().optional(),
+    /** Filter exclusion (see {@link excludeSchema}); requires `filter_by`. */
+    exclude: excludeSchema.optional(),
     expandable: z.boolean().optional().default(false),
     query: rawTemplateQuerySchema,
     publish: selectionPublishSchema,
@@ -574,6 +600,8 @@ export const dataTableWidgetSchema = z
     renderer: z.literal('data-table'),
     title: z.string().min(1),
     filter_by: z.string().min(1),
+    /** Filter exclusion (see {@link excludeSchema}); requires `filter_by`. */
+    exclude: excludeSchema.optional(),
     page_size: z.number().optional().default(20),
     query: structuredQuerySchema,
     columns: z.array(dataColumnSchema).min(1),
@@ -681,6 +709,7 @@ export type FilterPlacementSpec = z.infer<typeof filterPlacementSchema>;
 export type FilterFieldSpec = z.infer<typeof filterFieldSchema>;
 export type FiltersSpec = z.infer<typeof filtersSchema>;
 
+export type ExcludeSpec = z.infer<typeof excludeSchema>;
 export type FieldEncodingSpec = z.infer<typeof fieldEncodingSchema>;
 export type ChannelSpec = z.infer<typeof channelSchema>;
 export type PlotMarkDataSpec = z.infer<typeof plotMarkDataSchema>;
