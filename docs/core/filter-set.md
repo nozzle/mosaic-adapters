@@ -241,13 +241,14 @@ Multi-target kinds return several emissions — e.g. a metric threshold emitting
 ```ts
 const kind: FilterKind = {
   emit: ({ spec, column, contextPredicate }) => [
-    { target: 'having', clause: { predicate: havingPredicate } },
+    // `havingPredicate` is an aggregate test (no input column) → `fields: []`.
+    { target: 'having', clause: { predicate: havingPredicate, fields: [] } },
     { target: 'where', clause: { predicate: membershipPredicate } },
   ],
 };
 ```
 
-Subquery predicates never carry clause metadata (Mosaic's pre-aggregator only understands point/interval shapes).
+An emission's `clause.fields` (Mosaic 0.29+) lists the input expressions its predicate filters over; it defaults to the resolved `column` node, so a kind that tests that single column directly can omit it (as the `where` emission above does). Set it explicitly when the predicate references different or no columns, using the exact node instances the predicate holds. Subquery predicates never carry clause metadata (Mosaic's pre-aggregator only understands point/interval shapes).
 
 ## Publishing into the set
 

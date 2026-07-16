@@ -118,7 +118,7 @@ export function useVgPlot(
  * A vgplot `plot()` element exposes its `Plot` instance as `element.value`
  * (`Object.assign(this.element, { value: this })` in @uwdata/mosaic-plot),
  * and `plot.marks` are the MosaicClients the plot connected. Verified against
- * @uwdata/mosaic-plot v0.27 source.
+ * @uwdata/mosaic-plot v0.29 source.
  */
 function disconnectPlotClients(element: VgPlotElement): void {
   const plot = (element as { value?: { marks?: unknown } }).value;

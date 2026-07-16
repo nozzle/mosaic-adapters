@@ -15,6 +15,7 @@
  *   (e.g. `col IN (SELECT ...)`). These must NEVER carry `meta`; without it
  *   Mosaic safely falls back to the standard (non pre-aggregated) query path.
  */
+import { clauseNone } from '@uwdata/mosaic-core';
 import type {
   ClauseMetadata,
   ClauseSource,
@@ -22,6 +23,7 @@ import type {
   Selection,
   SelectionClause,
 } from '@uwdata/mosaic-core';
+import type { ExprNode } from '@uwdata/mosaic-sql';
 
 export interface ValueClauseSpec {
   /** Unique identity for the clause (object equality). One clause per source. */
@@ -32,6 +34,14 @@ export interface ValueClauseSpec {
   value: unknown;
   /** SQL predicate; `null` removes the source's clause from the Selection. */
   predicate: SelectionClause['predicate'];
+  /**
+   * Input field expressions this clause filters over (Mosaic 0.29+). Every
+   * field reference inside `predicate` must be one of these exact node
+   * instances — the PreAggregator maps predicate nodes to fields by object
+   * identity, so a structurally-equal-but-distinct node silently disables
+   * pre-aggregation. Use `[]` when the predicate references no column.
+   */
+  fields: Array<ExprNode>;
   /**
    * Optional optimizer hints. Only valid for predicates built from literal
    * values; never attach `meta` to subquery-bearing predicates.
@@ -48,6 +58,7 @@ export function createValueClause(spec: ValueClauseSpec): SelectionClause {
     clients: spec.clients,
     value: spec.value,
     predicate: spec.predicate,
+    fields: spec.fields,
     meta: spec.meta,
   };
 }
@@ -74,21 +85,29 @@ export function createSubqueryClause(
     clients: spec.clients,
     value: spec.value,
     predicate: spec.predicate,
+    fields: spec.fields,
   };
 }
 
 /**
  * Builds a clause that removes the source's active clause from a Selection.
+ * Delegates to upstream `clauseNone`, except when the clear clause must carry
+ * `clients` (cross-filter self-exclusion), which `clauseNone` does not
+ * accept — that path keeps a literal with `fields: []`.
  */
 export function createClearClause(
   source: ClauseSource,
   clients?: Set<MosaicClient>,
 ): SelectionClause {
+  if (clients === undefined) {
+    return clauseNone(source);
+  }
   return {
     source,
     clients,
     value: null,
     predicate: null,
+    fields: [],
   };
 }
 

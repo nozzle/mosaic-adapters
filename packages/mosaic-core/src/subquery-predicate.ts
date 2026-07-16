@@ -38,22 +38,37 @@ export interface BuildSubqueryPredicateOptions {
 }
 
 /**
- * Builds a `column [NOT] IN (SELECT ...)` membership predicate.
+ * Builds a `column [NOT] IN (SELECT ...)` membership predicate together with
+ * the outer column node it references. Callers emitting a Selection clause
+ * should use `field` as the clause's `fields` entry so it is the same node
+ * instance embedded in the predicate (Mosaic 0.29 field-identity requirement).
  */
-export function buildSubqueryPredicate(
+export function buildSubqueryClauseParts(
   options: BuildSubqueryPredicateOptions,
-): ExprNode {
+): { predicate: ExprNode; field: ExprNode } {
   const { column, query, negate = false } = options;
   const columnAccessor =
     typeof column === 'string' ? SqlIdentifier.from(column) : column;
   const columnExpr = createStructAccess(columnAccessor);
 
-  const predicate = new mSql.InOpNode(
+  const inPredicate = new mSql.InOpNode(
     columnExpr,
     new mSql.ScalarSubqueryNode(query),
   );
 
-  return negate ? mSql.not(predicate) : predicate;
+  return {
+    predicate: negate ? mSql.not(inPredicate) : inPredicate,
+    field: columnExpr,
+  };
+}
+
+/**
+ * Builds a `column [NOT] IN (SELECT ...)` membership predicate.
+ */
+export function buildSubqueryPredicate(
+  options: BuildSubqueryPredicateOptions,
+): ExprNode {
+  return buildSubqueryClauseParts(options).predicate;
 }
 
 /**

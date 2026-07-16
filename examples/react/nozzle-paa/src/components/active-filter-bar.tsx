@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { clauseNone } from '@uwdata/mosaic-core';
 import {
   useFilterSetChips,
   useMosaicActiveClauses,
@@ -121,16 +122,12 @@ function useActiveFilters(): Array<ActiveFilterChip> {
         target: active.ref,
         operator: undefined,
         foreign: true,
-        // Clear the WHOLE clause: publish a null-predicate clause from its own
-        // source onto its owning Selection. Per-value narrowing stays a
+        // Clear the WHOLE clause: publish the canonical empty clause from its
+        // own source onto its owning Selection. Per-value narrowing stays a
         // FilterSet concern. (A null-predicate publish clears every resolution
         // type, including `single`, where `Selection.remove(source)` does not.)
         remove: () => {
-          topology.resolve(active.ref).update({
-            source: active.clause.source,
-            value: null,
-            predicate: null,
-          });
+          topology.resolve(active.ref).update(clauseNone(active.clause.source));
         },
       });
     }

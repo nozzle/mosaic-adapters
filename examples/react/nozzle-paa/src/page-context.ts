@@ -49,7 +49,7 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import {
   SqlIdentifier,
-  buildSubqueryPredicate,
+  buildSubqueryClauseParts,
   builtinFilterKinds,
   createStructAccess,
   subqueryFilterKind,
@@ -184,19 +184,30 @@ export const metricThresholdKind: FilterKind = {
       subquery.where(contextPredicate);
     }
 
+    // The membership predicate references its own `column IN (...)` node, not
+    // the spec's resolved `args.column`, so the emission's default `fields`
+    // would carry the wrong node identity. Take `field` from the builder so
+    // `fields: [field]` is the exact node embedded in the predicate (0.29
+    // pre-aggregation identity requirement).
+    const members = buildSubqueryClauseParts({
+      column: card.groupBy,
+      query: subquery,
+    });
+
     return [
       {
         target: havingTarget(cardId),
-        clause: { value, predicate: havingPredicate },
+        // The HAVING predicate filters over an aggregate expression, not
+        // `args.column`, so there is no raw input field to match — `[]`
+        // overrides the (wrong) default of the spec's resolved column node.
+        clause: { value, predicate: havingPredicate, fields: [] },
       },
       {
         target: membersTarget(cardId),
         clause: {
           value,
-          predicate: buildSubqueryPredicate({
-            column: card.groupBy,
-            query: subquery,
-          }),
+          predicate: members.predicate,
+          fields: [members.field],
         },
       },
     ];

@@ -280,6 +280,9 @@ class FacetDataClient
           selected.length > 0
             ? listHasAny(field, selected as Array<ExprValue>)
             : null,
+        // `field` is the exact node the predicate references (identity matters
+        // for pre-aggregation); an empty selection has a null predicate.
+        fields: selected.length > 0 ? [field] : [],
       });
     }
     if ((this.#options.select ?? 'single') === 'multi') {

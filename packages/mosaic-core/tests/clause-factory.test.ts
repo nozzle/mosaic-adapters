@@ -28,6 +28,7 @@ describe('updateClauseIfChanged', () => {
         source,
         value: `> ${n}`,
         predicate: gt(count(), literal(n)),
+        fields: [],
       });
 
     expect(updateClauseIfChanged(selection, clause(5))).toBe(true);
@@ -63,6 +64,7 @@ describe('updateClauseIfChanged', () => {
         source,
         value: 'x',
         predicate: eq(literal(1), literal(1)),
+        fields: [],
       }),
     );
     expect(resolved(selection)).toHaveLength(1);

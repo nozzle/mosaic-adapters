@@ -28,6 +28,7 @@ export {
 } from './sql-access';
 
 export {
+  buildSubqueryClauseParts,
   buildSubqueryPredicate,
   normalizeSubqueryFilterQuery,
 } from './subquery-predicate';

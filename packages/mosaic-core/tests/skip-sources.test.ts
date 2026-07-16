@@ -60,11 +60,13 @@ describe('skipSources', () => {
     $where.update({
       source: sourceId('w'),
       value: 'swim',
+      fields: [],
       predicate: eq('sport', literal('swim')),
     });
     $having.update({
       source: sourceId('h'),
       value: 3,
+      fields: [],
       predicate: gte('total', literal(3)),
     });
 
@@ -101,11 +103,13 @@ describe('skipSources', () => {
     $sel.update({
       source: sourceId('a'),
       value: 'swim',
+      fields: [],
       predicate: eq('sport', literal('swim')),
     });
     $sel.update({
       source: sourceId('b'),
       value: 60,
+      fields: [],
       predicate: gte('weight', literal(60)),
     });
 
@@ -133,16 +137,19 @@ describe('skipSources', () => {
     $sel.update({
       source: sourceId('a'),
       value: 'run',
+      fields: [],
       predicate: eq('sport', literal('run')),
     });
     $sel.update({
       source: sourceId('b'),
       value: 80,
+      fields: [],
       predicate: gte('weight', literal(80)),
     });
     $sel.update({
       source: sourceId('c'),
       value: 'Ada',
+      fields: [],
       predicate: eq('name', literal('Ada')),
     });
 
@@ -169,6 +176,7 @@ describe('skipSources', () => {
     $sel.update({
       source: sourceId('a'),
       value: 'swim',
+      fields: [],
       predicate: eq('sport', literal('swim')),
     });
 
@@ -209,17 +217,20 @@ describe('skipSources', () => {
     $xf.update({
       source: sourceId('own'),
       value: 'swim',
+      fields: [],
       predicate: eq('sport', literal('swim')),
       clients: new Set([client.mosaicClient]),
     });
     $xf.update({
       source: sourceId('keep'),
       value: 60,
+      fields: [],
       predicate: gte('weight', literal(60)),
     });
     $xf.update({
       source: sourceId('skip'),
       value: 'run',
+      fields: [],
       predicate: eq('sport', literal('run')),
     });
 
@@ -240,11 +251,13 @@ describe('skipSources', () => {
     $having.update({
       source: sourceId('keep'),
       value: 3,
+      fields: [],
       predicate: gte('total', literal(3)),
     });
     $having.update({
       source: sourceId('skip'),
       value: 2,
+      fields: [],
       predicate: lte('total', literal(2)),
     });
 
@@ -273,6 +286,7 @@ describe('skipSources', () => {
     $sel.update({
       source: sourceId('x'),
       value: 'swim',
+      fields: [],
       predicate: eq('sport', literal('swim')),
     });
 
@@ -302,6 +316,7 @@ describe('skipSources', () => {
     $sel.update({
       source: sourceId('keep'),
       value: 70,
+      fields: [],
       predicate: gte('weight', literal(70)),
     });
 
@@ -324,6 +339,7 @@ describe('skipSources', () => {
     $sel.update({
       source: sourceId('skip'),
       value: 'run',
+      fields: [],
       predicate: eq('sport', literal('run')),
     });
 
@@ -343,6 +359,7 @@ describe('skipSources', () => {
     $sel.update({
       source: {},
       value: 'swim',
+      fields: [],
       predicate: eq('sport', literal('swim')),
     });
 

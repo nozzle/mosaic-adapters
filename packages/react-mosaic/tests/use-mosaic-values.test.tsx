@@ -64,6 +64,7 @@ describe('useMosaicValues', () => {
       $page.update({
         source: {},
         value: 'run',
+        fields: [],
         predicate: eq('sport', literal('run')),
       });
     });

@@ -16,9 +16,9 @@ catalog:
   '@testing-library/react': '^16.3.0'
   '@types/node': ^26.0.1
   '@uwdata/flechette': ^2.5.0
-  '@uwdata/mosaic-core': ^0.28.1
-  '@uwdata/mosaic-sql': ^0.28.1
-  '@uwdata/vgplot': ^0.28.1
+  '@uwdata/mosaic-core': ^0.29.1
+  '@uwdata/mosaic-sql': ^0.29.0
+  '@uwdata/vgplot': ^0.29.1
   '@vitejs/plugin-react': ^6.0.3
   eslint: ^10.5.0
   eslint-plugin-react-hooks: ^7.1.1

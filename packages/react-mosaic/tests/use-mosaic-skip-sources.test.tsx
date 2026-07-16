@@ -161,11 +161,13 @@ describe('skipSources resolution through the binding', () => {
     $sel.update({
       source: sourceId('a'),
       value: 'swim',
+      fields: [],
       predicate: eq('sport', literal('swim')),
     });
     $sel.update({
       source: sourceId('b'),
       value: 60,
+      fields: [],
       predicate: gte('weight', literal(60)),
     });
 

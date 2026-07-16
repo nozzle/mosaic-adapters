@@ -11,6 +11,7 @@
  * destroyed handle leaves no residue on the derived Selection and stops
  * propagating.
  */
+import { clauseNone } from '@uwdata/mosaic-core';
 import type { Selection } from '@uwdata/mosaic-core';
 
 /** Register `derived` to receive relayed clauses from `source`. */
@@ -56,11 +57,7 @@ export function clearSeededClauses(
 ): void {
   sources.forEach((selection) => {
     selection.clauses.forEach((clause) => {
-      context.update({
-        source: clause.source,
-        value: null,
-        predicate: null,
-      });
+      context.update(clauseNone(clause.source));
     });
   });
 }

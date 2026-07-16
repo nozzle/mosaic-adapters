@@ -52,8 +52,8 @@
     "@tanstack/react-store": "catalog:"
   },
   "peerDependencies": {
-    "@uwdata/mosaic-core": ">=0.24.3 <1",
-    "@uwdata/mosaic-sql": ">=0.24.3 <1",
+    "@uwdata/mosaic-core": ">=0.29.0 <1",
+    "@uwdata/mosaic-sql": ">=0.29.0 <1",
     "react": ">=19.2.0"
   },
   "devDependencies": {

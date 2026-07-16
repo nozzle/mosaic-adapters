@@ -21,6 +21,8 @@ concepts:
 pnpm add @uwdata/mosaic-core @uwdata/mosaic-sql @uwdata/vgplot @tanstack/react-table@beta
 ```
 
+These packages declare `@uwdata/mosaic-core` and `@uwdata/mosaic-sql` as peers at `>=0.29.0` — install Mosaic 0.29 or newer.
+
 ## 1. A coordinator and a table
 
 Mosaic's coordinator brokers every query. Point the global one at an

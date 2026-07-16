@@ -202,6 +202,7 @@ describe('structural identity', () => {
       selB.update({
         source: {},
         value: 'run',
+        fields: [],
         predicate: eq('sport', literal('run')),
       });
     });
@@ -244,6 +245,7 @@ describe('structural identity', () => {
       $page.update({
         source: {},
         value: 'swim',
+        fields: [],
         predicate: eq('sport', literal('swim')),
       });
     });
