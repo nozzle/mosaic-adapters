@@ -256,6 +256,7 @@ describe('havingBy routing', () => {
     $agg.update({
       source: {},
       value: 3,
+      fields: [],
       predicate: gte('total', literal(3)),
     });
 
@@ -292,6 +293,7 @@ describe('havingBy routing', () => {
     $sel.update({
       source: {},
       value: 'swim',
+      fields: [],
       predicate: eq('sport', literal('swim')),
     });
 

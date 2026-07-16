@@ -4,7 +4,7 @@ Utilities for `column [NOT] IN (SELECT …)` predicates — the shape behind "ke
 
 ```ts
 import {
-  buildSubqueryPredicate,
+  buildSubqueryClauseParts,
   createSubqueryClause,
   updateClauseIfChanged,
 } from '@nozzleio/react-mosaic'; // re-exported from @nozzleio/mosaic-core
@@ -14,23 +14,28 @@ const subquery = Query.select({ question: sql`"related_phrase"."phrase"` })
   .groupby(sql`"related_phrase"."phrase"`)
   .having(gt(count(), literal(5)));
 
+// `predicate` and `field` share the same column node instance, which the
+// clause's `fields` must reference (Mosaic 0.29 field-identity requirement).
+const { predicate, field } = buildSubqueryClauseParts({
+  column: 'related_phrase.phrase', // dotted paths become struct access
+  query: subquery,
+});
+
 updateClauseIfChanged(
   $members,
   createSubqueryClause({
     source: MEMBERS_SOURCE, // stable identity, one clause per source
     value: '> 5', // app-level display value (chips)
-    predicate: buildSubqueryPredicate({
-      column: 'related_phrase.phrase', // dotted paths become struct access
-      query: subquery,
-    }),
+    fields: [field], // input expressions the predicate filters over
+    predicate,
   }),
 );
 ```
 
 ## The pieces
 
-- `buildSubqueryPredicate({ column, query, negate? })` — builds `column [NOT] IN (<query>)` on mosaic-sql's `InOpNode` + `ScalarSubqueryNode`. `column` accepts dotted struct paths.
-- `createSubqueryClause(spec)` — a Selection clause for subquery-bearing predicates. Structurally identical to `createValueClause` except `meta` is forbidden: Mosaic's PreAggregator assumes `point`/`interval` clauses have simple value-test shapes, and a subquery predicate tagged that way produces incorrect optimized queries. Without `meta`, Mosaic uses the standard query path.
+- `buildSubqueryClauseParts({ column, query, negate? })` — builds `{ predicate, field }`: the `column [NOT] IN (<query>)` predicate (on mosaic-sql's `InOpNode` + `ScalarSubqueryNode`) plus the outer column node it references, for the clause's `fields`. `column` accepts dotted struct paths. `buildSubqueryPredicate(...)` returns just the predicate when you don't need the field.
+- `createSubqueryClause(spec)` — a Selection clause for subquery-bearing predicates. Requires `fields` (the input column nodes the predicate references, from `buildSubqueryClauseParts`). Structurally identical to `createValueClause` except `meta` is forbidden: Mosaic's PreAggregator assumes `point`/`interval` clauses have simple value-test shapes, and a subquery predicate tagged that way produces incorrect optimized queries. Without `meta`, Mosaic uses the standard query path.
 - `updateClauseIfChanged(selection, clause)` — `selection.update` with change suppression: skips when the source's existing clause has an equal predicate (compared by generated SQL) or when clearing a source with no active clause. Every suppressed update avoids a Selection value event — and with it a re-query of every consumer. The comparison is predicate-only: a clause whose `value` changed with an unchanged predicate is also suppressed.
 
 ## Embedding sibling context (and converging)

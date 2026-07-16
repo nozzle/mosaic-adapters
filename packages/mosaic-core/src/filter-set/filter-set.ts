@@ -386,6 +386,7 @@ class FilterSetImpl implements FilterSet {
       {
         predicate: ExprNode | null;
         value: unknown;
+        fields: Array<ExprNode>;
         meta: SelectionClause['meta'] | undefined;
       }
     >();
@@ -399,6 +400,10 @@ class FilterSetImpl implements FilterSet {
       byTarget.set(target, {
         predicate: emission.clause.predicate,
         value: emission.clause.value ?? spec.value ?? null,
+        // Default to the resolved column node — the exact instance kinds that
+        // test a single column build their predicate from, so field identity
+        // holds for pre-aggregation without every kind restating it.
+        fields: emission.clause.fields ?? [columnExpr],
         meta: emission.clause.meta,
       });
     }
@@ -451,6 +456,7 @@ class FilterSetImpl implements FilterSet {
                 clients,
                 value: resolved.value,
                 predicate: resolved.predicate,
+                fields: resolved.fields,
                 meta: resolved.meta,
               })
             : createSubqueryClause({
@@ -458,6 +464,7 @@ class FilterSetImpl implements FilterSet {
                 clients,
                 value: resolved.value,
                 predicate: resolved.predicate,
+                fields: resolved.fields,
               });
 
         // Mark active BEFORE the update so the external-clear listener never

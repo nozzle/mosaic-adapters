@@ -19,7 +19,7 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import {
   SqlIdentifier,
-  buildSubqueryPredicate,
+  buildSubqueryClauseParts,
   builtinFilterKinds,
   createStructAccess,
 } from '@nozzleio/react-mosaic';
@@ -113,20 +113,25 @@ export function aggregateThresholdBehavior(
         subquery.where(contextPredicate);
       }
 
+      // `field` is the exact group_by node embedded in the IN-subquery
+      // predicate, so `fields: [field]` satisfies Mosaic 0.29 field identity
+      // for pre-aggregation on the members target.
+      const { predicate: membersPredicate, field } = buildSubqueryClauseParts({
+        column: config.group_by,
+        query: subquery,
+      });
+
       return [
         {
+          // The HAVING predicate tests a post-aggregate expression, not the
+          // spec's resolved column, so the default `fields` would be wrong;
+          // an aggregate has no scannable input field, so `fields` is empty.
           target: config.having_target,
-          clause: { value, predicate: havingPredicate },
+          clause: { value, predicate: havingPredicate, fields: [] },
         },
         {
           target: config.members_target,
-          clause: {
-            value,
-            predicate: buildSubqueryPredicate({
-              column: config.group_by,
-              query: subquery,
-            }),
-          },
+          clause: { value, predicate: membersPredicate, fields: [field] },
         },
       ];
     },

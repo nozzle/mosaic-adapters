@@ -584,6 +584,7 @@ describe('subquery context rebuild', () => {
     const siblingClause = {
       source: { id: 'sibling' },
       value: 70,
+      fields: [],
       predicate: gt(
         { toString: () => '"weight"' } as never,
         { toString: () => '70' } as never,
@@ -649,6 +650,7 @@ describe('subquery context rebuild', () => {
     const siblingClause = {
       source: { id: 'sibling' },
       value: 70,
+      fields: [],
       predicate: gt(
         { toString: () => '"weight"' } as never,
         { toString: () => '70' } as never,

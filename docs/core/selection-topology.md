@@ -256,12 +256,12 @@ Two more properties of the store worth knowing when building a chip recipe over 
 **Clearing a foreign clause clears the _whole_ clause** — publish a null predicate from the clause's own source. Per-value narrowing / write-back stays app-side (a FilterSet concern). Note that Mosaic's `Selection.remove(source)` does **not** clear a `single` Selection's clause, so the null-predicate publish is the reliable form across every resolution type:
 
 ```ts
-topology.resolve(active.ref).update({
-  source: active.clause.source,
-  value: null,
-  predicate: null,
-});
+import { clauseNone } from '@uwdata/mosaic-core';
+
+topology.resolve(active.ref).update(clauseNone(active.clause.source));
 ```
+
+`clauseNone(source)` (Mosaic 0.29+) is the canonical clear clause — `{ source, value: null, predicate: null, fields: [] }`. Hand-roll that literal only when the clear clause must also carry `clients`, which `clauseNone` does not accept.
 
 There is **no chip model in the package** — no chip shapes, groups, or label maps. That union of FilterSet chips and foreign clauses is a few lines of app code over two subscribable sources, and its shape is exactly where apps differ, so it lives in the [recipes](../react/topology-recipes.md) and example apps only.
 

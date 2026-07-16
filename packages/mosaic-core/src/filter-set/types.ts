@@ -77,6 +77,14 @@ export interface FilterKindEmission {
     /** SQL predicate; `null` → inactive (the clause is cleared on that target). */
     predicate: ExprNode | null;
     /**
+     * Input field expressions the predicate filters over (Mosaic 0.29+). Each
+     * must be an exact node instance referenced inside `predicate` (identity
+     * matters for pre-aggregation). Omit to default to the spec's resolved
+     * column expression (`args.column`), correct for kinds whose predicate
+     * tests that single column directly.
+     */
+    fields?: Array<ExprNode>;
+    /**
      * Optimizer hints. ONLY valid for `point`/`interval`-shaped predicates;
      * NEVER attach to subquery-bearing predicates (see clause-factory.ts).
      */

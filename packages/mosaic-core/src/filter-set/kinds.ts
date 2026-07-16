@@ -22,7 +22,7 @@ import {
   escapeSqlLikePattern,
 } from '../sql-access';
 import {
-  buildSubqueryPredicate,
+  buildSubqueryClauseParts,
   normalizeSubqueryFilterQuery,
 } from '../subquery-predicate';
 import { formatRange } from './format';
@@ -46,12 +46,24 @@ const SCRATCH_SOURCE: ClauseSource = {};
  */
 function extractClause(clause: {
   predicate: ExprNode | null;
+  fields: Array<ExprNode>;
   meta?: ClauseMetadata;
-}): { predicate: ExprNode; meta?: ClauseMetadata } | null {
+}): {
+  predicate: ExprNode;
+  fields: Array<ExprNode>;
+  meta?: ClauseMetadata;
+} | null {
   if (clause.predicate == null) {
     return null;
   }
-  return { predicate: clause.predicate, meta: clause.meta };
+  // Carry `fields` through verbatim: the upstream factory populated it with
+  // the exact node instances referenced in `predicate`, which the
+  // PreAggregator matches by identity.
+  return {
+    predicate: clause.predicate,
+    fields: clause.fields,
+    meta: clause.meta,
+  };
 }
 
 /**
@@ -74,6 +86,7 @@ export const pointFilterKind: FilterKind = {
         clause: {
           value: args.spec.value,
           predicate: extracted.predicate,
+          fields: extracted.fields,
           meta: extracted.meta,
         },
       },
@@ -125,6 +138,7 @@ export const pointsFilterKind: FilterKind = {
           clause: {
             value: spec.value,
             predicate: extracted.predicate,
+            fields: extracted.fields,
             meta: extracted.meta,
           },
         },
@@ -149,6 +163,7 @@ export const pointsFilterKind: FilterKind = {
         clause: {
           value: spec.value,
           predicate: extracted.predicate,
+          fields: extracted.fields,
           meta: extracted.meta,
         },
       },
@@ -188,6 +203,9 @@ export const intervalFilterKind: FilterKind = {
               mSql.literal(lo),
               mSql.literal(hi),
             ]),
+            // `args.column` is the exact node the BETWEEN predicate references,
+            // so the PreAggregator can match this interval clause by identity.
+            fields: [args.column],
             meta: { type: 'interval' },
           },
         },
@@ -708,12 +726,14 @@ export function subqueryFilterKind(
       if (normalized === null) {
         return [];
       }
-      const predicate = buildSubqueryPredicate({
+      const { predicate, field } = buildSubqueryClauseParts({
         column: args.spec.column,
         query: normalized.query,
         negate: normalized.negate,
       });
-      return [{ clause: { value: args.spec.value, predicate } }];
+      return [
+        { clause: { value: args.spec.value, predicate, fields: [field] } },
+      ];
     },
   };
 }

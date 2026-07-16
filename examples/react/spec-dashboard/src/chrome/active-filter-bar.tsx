@@ -21,6 +21,7 @@
  * `filter-chip-range_select`); Clear All is `clear-all-filters`.
  */
 import { useMemo } from 'react';
+import { clauseNone } from '@uwdata/mosaic-core';
 import {
   useFilterSetChips,
   useMosaicActiveClauses,
@@ -141,11 +142,7 @@ export function ActiveFilterBar(props: ActiveFilterBarProps) {
         operator: undefined,
         foreign: true,
         remove: () => {
-          topology.resolve(active.ref).update({
-            source: active.clause.source,
-            value: null,
-            predicate: null,
-          });
+          topology.resolve(active.ref).update(clauseNone(active.clause.source));
         },
       });
     }

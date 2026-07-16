@@ -270,7 +270,9 @@ describe('useTopologyActiveClauses / useMosaicActiveClauses', () => {
     // Clearing the clause (a null-predicate publish for the same source
     // reference) empties the subscription.
     await interact(() => {
-      topology.resolve('a').update({ source, value: null, predicate: null });
+      topology
+        .resolve('a')
+        .update({ source, value: null, predicate: null, fields: [] });
     });
     await settle();
     expect(hook.result.current).toEqual([]);
