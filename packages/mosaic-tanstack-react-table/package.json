@@ -1,6 +1,6 @@
 {
   "name": "@nozzleio/mosaic-tanstack-react-table",
-  "version": "0.10.4",
+  "version": "0.11.0",
   "description": "React bindings for the Mosaic TanStack Table glue: the column-filter bridge hook plus the full glue-core re-export.",
   "license": "MIT",
   "type": "module",
