@@ -64,10 +64,11 @@ import {
   buildPlotSpec,
   collectFixedDomainRequests,
 } from '../spec/plot-interpreter';
-import { resolveSelection } from '../spec/topology';
+import { resolveSelection, resolveVariable } from '../spec/topology';
 import { syncVgplotSelectionInteractors } from './vgplot-selection-sync';
 import type { ReactElement } from 'react';
 import type { Coordinator } from '@uwdata/mosaic-core';
+import type { ParamLike } from '@uwdata/mosaic-sql';
 import type { VgPlotElement } from '@nozzleio/react-mosaic';
 import type {
   DomainBounds,
@@ -401,6 +402,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
       const directives = buildPlotSpec(widget.plot, {
         api,
         resolveSelection: (name) => resolveSelection(topology, name),
+        resolveVariable: (name) => resolveVariable(topology, name) as ParamLike,
         geometry: geometryRef.current,
         // Non-null by mount time (the plot is gated on resolution below).
         ...(fixedDomains !== null ? { fixedDomains } : {}),

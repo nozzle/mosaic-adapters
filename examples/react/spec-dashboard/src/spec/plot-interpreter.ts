@@ -39,7 +39,10 @@
  * resolves a valid CSS color as a constant and any other string as a categorical
  * field. The interpreter never inspects the string (domain-blindness).
  */
+import { column } from '@uwdata/mosaic-sql';
+import { parseVariableRef } from './query-compiler';
 import type { Selection } from '@uwdata/mosaic-core';
+import type { ParamLike } from '@uwdata/mosaic-sql';
 import type {
   BrushStyleSpec,
   ChannelSpec,
@@ -171,6 +174,15 @@ export interface PlotInterpreterDeps {
    * treats it as a spec error).
    */
   resolveSelection: (name: string) => Selection | undefined;
+  /**
+   * Resolve a declared variable NAME to its live Mosaic `Param` (a `ParamLike`).
+   * A `$name` channel compiles to `column(param)` — the variable's value names
+   * the encoded column, and vgplot's mark collects the param and re-initializes
+   * on change (no client `params` needed on the vgplot path). Validation admits a
+   * `$name` channel only for a declared variable, so a correct resolver never
+   * fails here.
+   */
+  resolveVariable: (name: string) => ParamLike;
   /** Renderer-owned geometry (width/height/margins/tick overrides). */
   geometry: PlotGeometry;
   /**
@@ -191,9 +203,22 @@ function isFieldEncoding(value: ChannelSpec): value is FieldEncodingSpec {
 }
 
 /** Compile one channel value (bare column, constant, or encoding) to vgplot. */
-function buildChannel(api: PlotApi, value: ChannelSpec): PlotEncoding {
+function buildChannel(
+  api: PlotApi,
+  value: ChannelSpec,
+  deps: PlotInterpreterDeps,
+): PlotEncoding {
   if (!isFieldEncoding(value)) {
-    // A bare column name (string) or a constant number — pass through.
+    // A bare `$name` variable ref → `column(param)` (a `ColumnParamNode`): the
+    // variable's value names the encoded column, and the vgplot mark collects the
+    // param and re-initializes on change. A non-ref string / constant number
+    // passes through unchanged.
+    if (typeof value === 'string') {
+      const variable = parseVariableRef(value);
+      if (variable !== null) {
+        return column(deps.resolveVariable(variable));
+      }
+    }
     return value;
   }
   if ('bin' in value) {
@@ -225,27 +250,46 @@ function buildChannel(api: PlotApi, value: ChannelSpec): PlotEncoding {
   }
 }
 
+/**
+ * A color channel value: a bare `$name` variable ref → `column(param)` (color by
+ * the variable-named column); any other string passes through verbatim (vgplot
+ * resolves a CSS color as a constant, any other string as a field).
+ */
+function buildColorChannel(
+  value: string,
+  deps: PlotInterpreterDeps,
+): PlotEncoding {
+  const variable = parseVariableRef(value);
+  if (variable !== null) {
+    return column(deps.resolveVariable(variable));
+  }
+  return value;
+}
+
 /** Assemble the mark's channel object from every present encoding. */
-function buildChannels(api: PlotApi, mark: PlotMarkSpec): PlotChannels {
+function buildChannels(
+  mark: PlotMarkSpec,
+  deps: PlotInterpreterDeps,
+): PlotChannels {
+  const { api } = deps;
   const channels: PlotChannels = {};
   if (mark.x !== undefined) {
-    channels.x = buildChannel(api, mark.x);
+    channels.x = buildChannel(api, mark.x, deps);
   }
   if (mark.y !== undefined) {
-    channels.y = buildChannel(api, mark.y);
+    channels.y = buildChannel(api, mark.y, deps);
   }
   if (mark.r !== undefined) {
-    channels.r = buildChannel(api, mark.r);
+    channels.r = buildChannel(api, mark.r, deps);
   }
   if (mark.opacity !== undefined) {
-    channels.opacity = buildChannel(api, mark.opacity);
+    channels.opacity = buildChannel(api, mark.opacity, deps);
   }
-  // Color channels pass through verbatim (vgplot resolves color vs. field).
   if (mark.fill !== undefined) {
-    channels.fill = mark.fill;
+    channels.fill = buildColorChannel(mark.fill, deps);
   }
   if (mark.stroke !== undefined) {
-    channels.stroke = mark.stroke;
+    channels.stroke = buildColorChannel(mark.stroke, deps);
   }
   return channels;
 }
@@ -293,7 +337,7 @@ function buildMark(
     filterBy !== undefined ? { filterBy } : undefined,
   );
   // MARK_BUILDERS is keyed by the full mark union, so this is always defined.
-  return MARK_BUILDERS[mark.mark](api, data, buildChannels(api, mark));
+  return MARK_BUILDERS[mark.mark](api, data, buildChannels(mark, deps));
 }
 
 // ── Selects (interactors) ─────────────────────────────────────────────────────

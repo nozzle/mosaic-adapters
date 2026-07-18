@@ -27,13 +27,122 @@
 import { formatterRegistry } from '../widgets/formatters';
 import { widgetRegistry } from '../widgets/registry';
 import {
+  parseVariableRef,
   statementHasHavingPlaceholder,
   statementHasWherePlaceholder,
 } from './query-compiler';
 import { isKnownBehavior } from './kinds';
 import { filterSetEntryNames } from './topology';
 import type { FilterKind } from '@nozzleio/react-mosaic';
-import type { DashboardSpec, ExcludeSpec, WidgetSpec } from './schema';
+import type {
+  ChannelSpec,
+  DashboardSpec,
+  ExcludeSpec,
+  WidgetSpec,
+} from './schema';
+
+/** Every `$identifier` token in a string (raw-SQL variable-binding scan). */
+const VARIABLE_TOKEN = /\$([A-Za-z_][A-Za-z0-9_]*)/g;
+
+/**
+ * Validate a `$name` variable ref found in a binding position: it must name a
+ * declared VARIABLE. A ref that resolves to a Selection (a `validName` that is
+ * not a variable) is rejected with a precise message; anything else is an unknown
+ * variable. Mirrors {@link requireVariableName} for the `$name` sites.
+ */
+function validateVariableRef(
+  name: string,
+  site: string,
+  widgetId: string,
+  validNames: Set<string>,
+  variableNames: Set<string>,
+  errors: Array<string>,
+): void {
+  if (variableNames.has(name)) {
+    return;
+  }
+  if (validNames.has(name)) {
+    errors.push(
+      `widget '${widgetId}' ${site} references '$${name}', which is a topology selection, not a variable.`,
+    );
+    return;
+  }
+  errors.push(
+    `widget '${widgetId}' ${site} references '$${name}', which is not a declared variable.`,
+  );
+}
+
+/**
+ * Pin the raw-SQL boundary: a raw-template statement cannot bind a variable (its
+ * text is opaque, substituted only for the `{{where}}` / `{{having}}`
+ * predicates). A `$name` token matching a DECLARED variable is therefore almost
+ * certainly a mistaken binding attempt — rejected with guidance. A `$` that does
+ * not name a declared variable (a positional `$1`, dollar-quoting) is left alone.
+ */
+function validateRawTemplateVariables(
+  statement: string,
+  widgetId: string,
+  variableNames: Set<string>,
+  errors: Array<string>,
+): void {
+  const seen = new Set<string>();
+  for (const match of statement.matchAll(VARIABLE_TOKEN)) {
+    const name = match[1]!;
+    if (variableNames.has(name) && !seen.has(name)) {
+      seen.add(name);
+      errors.push(
+        `widget '${widgetId}' raw SQL references '$${name}', but a raw (type: sql) query cannot bind a variable; use a structured (type: select) column, or a vgplot channel.`,
+      );
+    }
+  }
+}
+
+/**
+ * Validate the variable refs in one vgplot channel. A bare-string channel that
+ * is a `$name` ref is a supported binding position (validated as a variable
+ * ref). A `$name` inside a `bin` / `date_bin` / aggregate `column` sub-position
+ * is NOT supported (the encoding takes a literal column) and is rejected with
+ * guidance. Constants and non-ref strings are ignored.
+ */
+function validateChannelVariables(
+  channel: ChannelSpec | undefined,
+  site: string,
+  widgetId: string,
+  validNames: Set<string>,
+  variableNames: Set<string>,
+  errors: Array<string>,
+): void {
+  if (channel === undefined || typeof channel === 'number') {
+    return;
+  }
+  if (typeof channel === 'string') {
+    const name = parseVariableRef(channel);
+    if (name !== null) {
+      validateVariableRef(
+        name,
+        site,
+        widgetId,
+        validNames,
+        variableNames,
+        errors,
+      );
+    }
+    return;
+  }
+  // A field-encoding object: the inner column is a literal position — a `$name`
+  // there is an unsupported binding, flagged so it never silently mis-binds.
+  const innerColumn =
+    'bin' in channel
+      ? channel.bin
+      : 'date_bin' in channel
+        ? channel.date_bin
+        : channel.column;
+  if (innerColumn !== undefined && parseVariableRef(innerColumn) !== null) {
+    errors.push(
+      `widget '${widgetId}' ${site} references a variable inside a bin/date_bin/aggregate column, which is not supported; bind a variable in a bare channel (e.g. x: $var) instead.`,
+    );
+  }
+}
 
 /** Validate the placeholder rules for a raw-template widget. */
 function validatePlaceholders(
@@ -69,15 +178,29 @@ function validatePlaceholders(
   }
 }
 
-/** Check a topology ref is resolvable, recording an error if not. */
+/**
+ * Check a topology ref resolves to a SELECTION, recording an error if not.
+ *
+ * `validNames` conflates selections and variables (a topology-owned Mosaic Param
+ * is a resolvable name too), so a bare variable name is rejected explicitly
+ * here: the `filter_by` / `having_by` / `as` sites all consume Selections, and a
+ * variable is not one.
+ */
 function requireValidName(
   ref: string | undefined,
   role: string,
   widgetId: string,
   validNames: Set<string>,
+  variableNames: Set<string>,
   errors: Array<string>,
 ): void {
   if (ref === undefined) {
+    return;
+  }
+  if (variableNames.has(ref)) {
+    errors.push(
+      `widget '${widgetId}' ${role} '${ref}' is a variable, not a topology selection ref.`,
+    );
     return;
   }
   if (!validNames.has(ref)) {
@@ -85,6 +208,37 @@ function requireValidName(
       `widget '${widgetId}' ${role} '${ref}' is not a topology selection ref.`,
     );
   }
+}
+
+/**
+ * Check a ref names a declared VARIABLE (a topology-owned Mosaic Param),
+ * recording an error if not — the inverse of {@link requireValidName}.
+ *
+ * `variableNames` is the authoritative set of declared variable names. A ref that
+ * is a `validName` but not a variable is a Selection used where a variable is
+ * expected (rejected with that precise message); anything else is an unknown
+ * name. `variable-select`'s `variable` field is required, so `ref` is always a
+ * string here.
+ */
+function requireVariableName(
+  ref: string,
+  widgetId: string,
+  validNames: Set<string>,
+  variableNames: Set<string>,
+  errors: Array<string>,
+): void {
+  if (variableNames.has(ref)) {
+    return;
+  }
+  if (validNames.has(ref)) {
+    errors.push(
+      `widget '${widgetId}' variable '${ref}' is a topology selection, not a variable.`,
+    );
+    return;
+  }
+  errors.push(
+    `widget '${widgetId}' variable '${ref}' is not a declared variable.`,
+  );
 }
 
 /** Check a referenced table exists in `data.tables`. */
@@ -159,6 +313,7 @@ function validateExclude(options: {
 function validateWidget(
   widget: WidgetSpec,
   validNames: Set<string>,
+  variableNames: Set<string>,
   tables: Set<string>,
   kindRegistry: Record<string, FilterKind>,
   filterSpecIds: Set<string>,
@@ -177,6 +332,7 @@ function validateWidget(
         'filter_by',
         widget.id,
         validNames,
+        variableNames,
         errors,
       );
       if (!(widget.format in formatterRegistry)) {
@@ -194,6 +350,12 @@ function validateWidget(
         errors,
       });
       validatePlaceholders(widget, errors);
+      validateRawTemplateVariables(
+        widget.query.statement,
+        widget.id,
+        variableNames,
+        errors,
+      );
       break;
     }
     case 'selection-table': {
@@ -202,6 +364,7 @@ function validateWidget(
         'filter_by',
         widget.id,
         validNames,
+        variableNames,
         errors,
       );
       requireValidName(
@@ -209,6 +372,7 @@ function validateWidget(
         'having_by',
         widget.id,
         validNames,
+        variableNames,
         errors,
       );
       if (
@@ -239,6 +403,12 @@ function validateWidget(
         errors,
       });
       validatePlaceholders(widget, errors);
+      validateRawTemplateVariables(
+        widget.query.statement,
+        widget.id,
+        variableNames,
+        errors,
+      );
       break;
     }
     case 'data-table': {
@@ -247,6 +417,7 @@ function validateWidget(
         'filter_by',
         widget.id,
         validNames,
+        variableNames,
         errors,
       );
       requireTable(widget.query.from, 'query.from', widget.id, tables, errors);
@@ -260,6 +431,21 @@ function validateWidget(
         filterSpecIds,
         errors,
       });
+      // A `$name` structured-select expression binds a declared variable
+      // (compiled to a `column(param)`); validate each ref.
+      for (const [alias, expr] of Object.entries(widget.query.select)) {
+        const name = parseVariableRef(expr);
+        if (name !== null) {
+          validateVariableRef(
+            name,
+            `query.select '${alias}'`,
+            widget.id,
+            validNames,
+            variableNames,
+            errors,
+          );
+        }
+      }
       break;
     }
     case 'vgplot': {
@@ -276,6 +462,7 @@ function validateWidget(
           `plot mark '${mark.mark}' data.filter_by`,
           widget.id,
           validNames,
+          variableNames,
           errors,
         );
         validateExclude({
@@ -287,6 +474,26 @@ function validateWidget(
           filterSpecIds,
           errors,
         });
+        // A `$name` channel binds a declared variable (compiled to a
+        // `column(param)` the vgplot mark collects). Validate every channel ref;
+        // a ref inside a bin/aggregate column is an unsupported position.
+        for (const [name, channel] of [
+          ['x', mark.x],
+          ['y', mark.y],
+          ['r', mark.r],
+          ['opacity', mark.opacity],
+          ['fill', mark.fill],
+          ['stroke', mark.stroke],
+        ] as const) {
+          validateChannelVariables(
+            channel,
+            `plot mark '${mark.mark}' channel '${name}'`,
+            widget.id,
+            validNames,
+            variableNames,
+            errors,
+          );
+        }
       }
       for (const select of widget.plot.selects ?? []) {
         requireValidName(
@@ -294,6 +501,7 @@ function validateWidget(
           `plot select '${select.select}' as`,
           widget.id,
           validNames,
+          variableNames,
           errors,
         );
         if (
@@ -305,6 +513,18 @@ function validateWidget(
           );
         }
       }
+      break;
+    }
+    case 'variable-select': {
+      // The one selection-inverse site: `variable` must name a declared
+      // variable, never a Selection ref.
+      requireVariableName(
+        widget.variable,
+        widget.id,
+        validNames,
+        variableNames,
+        errors,
+      );
       break;
     }
   }
@@ -351,11 +571,15 @@ function validateFilterKinds(
  * Run every cross-reference check against a spec whose topology has already been
  * built (so `validNames` is available), whose kind registry has been built, and
  * whose derived filter spec ids (`filterSpecIds` — the ids a widget `exclude`
- * list may name) have been collected. Returns all violations.
+ * list may name) have been collected. `variableNames` is the set of declared
+ * `variable` (topology-owned Param) names, kept distinct from `validNames` so a
+ * selection-consuming site can reject a variable ref with a precise message.
+ * Returns all violations.
  */
 export function validateCrossReferences(
   spec: DashboardSpec,
   validNames: Set<string>,
+  variableNames: Set<string>,
   kindRegistry: Record<string, FilterKind>,
   filterSpecIds: Set<string>,
 ): Array<string> {
@@ -367,6 +591,7 @@ export function validateCrossReferences(
     validateWidget(
       widget,
       validNames,
+      variableNames,
       tables,
       kindRegistry,
       filterSpecIds,

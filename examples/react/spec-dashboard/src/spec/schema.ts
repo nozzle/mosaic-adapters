@@ -32,6 +32,11 @@ import { SqlIdentifier } from '@nozzleio/react-mosaic';
  * Raw-template query (the primary idiom): a SQL statement with `{{where}}` /
  * `{{having}}` placeholders the query compiler substitutes with the stringified
  * cross-filter predicates. Used by kpi-card and selection-table renderers.
+ *
+ * A raw statement CANNOT bind a variable: its text is opaque, substituted only
+ * for the predicate placeholders. A `$name` token matching a declared variable
+ * is rejected at compile time (see `validate.ts`) — bind variables in a
+ * structured (`type: select`) column or a vgplot channel instead.
  */
 export const rawTemplateQuerySchema = z
   .object({
@@ -46,6 +51,12 @@ export const rawTemplateQuerySchema = z
  * compiler routes simple column names / dotted struct paths through the
  * library's `SqlIdentifier` + `createStructAccess`; anything else is treated as
  * a raw SQL expression. Used by the data-table renderer.
+ *
+ * A select expression that is exactly `$name` (a bare variable ref, matching
+ * upstream Mosaic's spec convention) binds the declared variable `name`: it
+ * compiles to a `column(param)` whose value NAMES the column — the metric-switch
+ * case. The compiler records the dependency so the widget re-queries when the
+ * variable changes. An unknown / selection ref is a compile error.
  */
 export const structuredQuerySchema = z
   .object({
@@ -215,10 +226,77 @@ const filterSetDeclarationSchema = z
   })
   .strict();
 
+/**
+ * A single spec-level "variable" default value. Mirrors core's `ParamValue`
+ * value domain: a scalar (`string | number | boolean | null`) or a FLAT array of
+ * those scalars — the JSON-serializable shape a Mosaic `Param` carries. Nested
+ * arrays and objects are rejected (an array element must itself be a scalar).
+ */
+const variableScalarSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+]);
+
+export const variableDefaultSchema = z.union([
+  variableScalarSchema,
+  z.array(variableScalarSchema),
+]);
+
+/**
+ * Spec-declared URL persistence for a `variable`'s live value. Object form only;
+ * `type` is a discriminator so future storage variants can be added without a
+ * breaking shape change (only `url` ships today).
+ *
+ * - `param` (optional): overrides the URL search-param name for this variable.
+ *   Without it the param defaults to the house convention `v.<entry>` (the same
+ *   `<class>.<name>` family as selection persist's `s.<entry>` and filter-set
+ *   persist's `f.<spec_id>`).
+ *
+ * This key is app-only: {@link toTopologyConfig} strips it before the section is
+ * handed to the library as a `TopologyConfig`, and the app-owned URL-state layer
+ * turns it into a `Persister<ParamValue>` on the entry's owned Param.
+ */
+export const variablePersistSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal('url'),
+      param: z
+        .string()
+        .min(1)
+        .refine((value) => value === value.trim(), {
+          message: 'persisted variable param must not have outer whitespace',
+        })
+        .optional(),
+    })
+    .strict(),
+]);
+
+/**
+ * A spec-level "variable" — the example's vocabulary for a topology-owned Mosaic
+ * `Param`. The spec never says "param": in this app "param" means URL search
+ * param (see `url-state/`), so a Mosaic Param is a "variable" everywhere in the
+ * spec. {@link toTopologyConfig} maps `{ type: 'variable', default }` onto the
+ * library's `{ type: 'param', default }` at the compile boundary. `default` is
+ * required and validated against the `ParamValue` value domain. The optional
+ * app-only `persist` key round-trips the live value through one URL search param.
+ */
+const variableDeclarationSchema = z
+  .object({
+    type: z.literal('variable'),
+    default: variableDefaultSchema,
+    /** Spec-declared URL persistence for this variable's value (app-only key). */
+    persist: variablePersistSchema.optional(),
+    ...declarationBase,
+  })
+  .strict();
+
 export const topologyDeclarationSchema = z.discriminatedUnion('type', [
   standaloneDeclarationSchema,
   composeDeclarationSchema,
   filterSetDeclarationSchema,
+  variableDeclarationSchema,
 ]);
 
 export const topologySchema = z.record(z.string(), topologyDeclarationSchema);
@@ -354,6 +432,12 @@ export const fieldEncodingSchema = z.union([
 /**
  * A positional/size channel value: a bare column name (string), a constant
  * number, or a field encoding object.
+ *
+ * A bare-string channel that is exactly `$name` binds the declared variable
+ * `name`: it compiles to a `column(param)` the vgplot mark collects, so the
+ * mark re-initializes when the variable changes (no client `params` on the
+ * vgplot path). A `$name` INSIDE a `bin` / `date_bin` / aggregate column is not
+ * a binding position and is a compile error (see `validate.ts`).
  */
 export const channelSchema = z.union([
   z.string().min(1),
@@ -620,11 +704,43 @@ export const vgplotWidgetSchema = z
   })
   .strict();
 
+/**
+ * One `variable-select` option: a scalar `value` (the SAME scalar domain a
+ * variable default allows — no array here, a select picks ONE scalar) plus an
+ * optional human `label`. When `label` is absent the renderer falls back to
+ * `String(value)`. Strict, so a typo surfaces as a validation error.
+ */
+export const variableOptionSchema = z
+  .object({
+    value: variableScalarSchema,
+    label: z.string().min(1).optional(),
+  })
+  .strict();
+
+/**
+ * A control widget that drives a topology-owned `variable` (a Mosaic Param) from
+ * a `<select>`. `variable` names a declared `variable` topology entry (validated
+ * at the compile boundary — a selection ref or an unknown name is a compile
+ * error); `options` is a non-empty list of scalar choices. It renders and updates
+ * the variable; a sibling widget that references the variable (a structured
+ * `$name` column, or a vgplot `$name` channel) re-computes when it changes.
+ */
+export const variableSelectWidgetSchema = z
+  .object({
+    renderer: z.literal('variable-select'),
+    label: z.string().min(1),
+    variable: z.string().min(1),
+    options: z.array(variableOptionSchema).min(1),
+    ...widgetMeta,
+  })
+  .strict();
+
 export const widgetSchema = z.discriminatedUnion('renderer', [
   kpiCardWidgetSchema,
   selectionTableWidgetSchema,
   dataTableWidgetSchema,
   vgplotWidgetSchema,
+  variableSelectWidgetSchema,
 ]);
 
 /**
@@ -689,6 +805,7 @@ export type DataSpec = z.infer<typeof dataSchema>;
 
 export type TopologyDeclarationSpec = z.infer<typeof topologyDeclarationSchema>;
 export type TopologySpec = z.infer<typeof topologySchema>;
+export type VariableDefaultSpec = z.infer<typeof variableDefaultSchema>;
 
 export type ThresholdOperator = z.infer<typeof thresholdOperatorSchema>;
 export type AggregateThresholdConfig = z.infer<
@@ -698,6 +815,7 @@ export type FilterKindDef = z.infer<typeof filterKindDefSchema>;
 export type FilterKindsSpec = z.infer<typeof filterKindsSchema>;
 
 export type FilterSetPersistSpec = z.infer<typeof filterSetPersistSchema>;
+export type VariablePersistSpec = z.infer<typeof variablePersistSchema>;
 export type SelectionPersistSpec = z.infer<typeof selectionPersistSchema>;
 export type SelectionPersistValueSpec = z.infer<
   typeof selectionPersistValueSchema
@@ -740,11 +858,16 @@ export type DataTableWidgetSpec = z.infer<typeof dataTableWidgetSchema> & {
 export type VgplotWidgetSpec = z.infer<typeof vgplotWidgetSchema> & {
   id: string;
 };
+export type VariableOptionSpec = z.infer<typeof variableOptionSchema>;
+export type VariableSelectWidgetSpec = z.infer<
+  typeof variableSelectWidgetSchema
+> & { id: string };
 export type WidgetSpec =
   | KpiCardWidgetSpec
   | SelectionTableWidgetSpec
   | DataTableWidgetSpec
-  | VgplotWidgetSpec;
+  | VgplotWidgetSpec
+  | VariableSelectWidgetSpec;
 export type RendererName = WidgetSpec['renderer'];
 
 export type LayoutWidgetSpec = z.infer<typeof layoutWidgetSchema>;

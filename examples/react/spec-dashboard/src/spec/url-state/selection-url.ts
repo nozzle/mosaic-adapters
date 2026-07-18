@@ -51,7 +51,11 @@ export function buildSelectionUrlRegistry(
 ): SelectionUrlRegistry {
   const entries: Array<SelectionUrlDescriptor> = [];
   for (const [entry, declaration] of Object.entries(topology)) {
-    if (declaration.type === 'filter-set' || declaration.type === 'compose') {
+    if (
+      declaration.type === 'filter-set' ||
+      declaration.type === 'compose' ||
+      declaration.type === 'variable'
+    ) {
       continue;
     }
     const persist = declaration.persist;

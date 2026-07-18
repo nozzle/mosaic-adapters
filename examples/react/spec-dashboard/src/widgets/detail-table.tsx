@@ -26,9 +26,11 @@ import {
 } from '@nozzleio/mosaic-tanstack-react-table';
 import { compileQuery } from '../spec/query-compiler';
 import { compileExclude } from '../spec/exclude';
-import { resolveSelection } from '../spec/topology';
+import { resolveSelection, resolveVariable } from '../spec/topology';
 import { WidgetSqlPopover } from './widget-sql-details';
 import type { ReactElement } from 'react';
+import type { Param } from '@uwdata/mosaic-core';
+import type { ParamLike } from '@uwdata/mosaic-sql';
 import type {
   Column,
   ColumnDef,
@@ -109,10 +111,26 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
     [widget.exclude],
   );
   const detailFilterBy = exclude.omitFilterBy ? undefined : filterBy;
-  const query = useMemo(
-    () => compileQuery<RowsInputs>(widget.query),
-    [widget.query],
+  // A structured column may be a `$variable` ref — compiled to a `column(param)`
+  // named by the variable's value. The compiler stays pure by taking a resolver
+  // (topology access is the widget's), and reports back which variables it bound
+  // so we hand them to the client as `params` (a variable change then re-queries).
+  const compiled = useMemo(
+    () =>
+      compileQuery<RowsInputs>(
+        widget.query,
+        (name) => resolveVariable(topology, name) as ParamLike,
+      ),
+    [widget.query, topology],
   );
+  const query = compiled.source;
+  const params = useMemo(() => {
+    const bound: Record<string, Param<unknown>> = {};
+    for (const name of compiled.variables) {
+      bound[name] = resolveVariable(topology, name) as Param<unknown>;
+    }
+    return bound;
+  }, [compiled, topology]);
 
   const columns = useMemo<Array<ColumnDef<typeof features, DetailRow>>>(
     () =>
@@ -151,6 +169,7 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
     ...(exclude.skipSources !== undefined
       ? { skipSources: exclude.skipSources }
       : {}),
+    ...(compiled.variables.length > 0 ? { params } : {}),
     inputs: paginationToWindow(pagination),
     rowCount: 'window',
     enabled,

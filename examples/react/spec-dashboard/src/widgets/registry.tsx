@@ -2,15 +2,18 @@
  * The widget component registry, keyed by the spec widget `renderer`. The
  * cross-reference validator checks every widget `renderer` against these keys.
  *
- * There are exactly four generic, domain-blind renderers. Each entry accepts the
- * union {@link WidgetSpec} and narrows on `widget.renderer` (returning `null` on
- * a mismatch, which never happens because `App` looks the component up by that
- * same `renderer`). Every widget resolves its own `filter_by` / `having_by`
- * Selections from `context.topology` and publishes into `context.filterSet`.
+ * There are five generic, domain-blind renderers. Each entry accepts the union
+ * {@link WidgetSpec} and narrows on `widget.renderer` (returning `null` on a
+ * mismatch, which never happens because `App` looks the component up by that same
+ * `renderer`). Data widgets resolve their own `filter_by` / `having_by`
+ * Selections from `context.topology` and publish into `context.filterSet`; the
+ * `variable-select` control resolves a topology-owned variable (Param) from that
+ * same `context.topology` and drives it.
  */
 import { DataTableWidget } from './detail-table';
 import { KpiWidget } from './kpi';
 import { SelectionTableWidget } from './summary-table';
+import { VariableSelectWidget } from './variable-select';
 import { VgplotWidget } from './vgplot-widget';
 import type { ReactElement } from 'react';
 import type { FilterSet, Topology } from '@nozzleio/react-mosaic';
@@ -59,6 +62,7 @@ export const widgetRegistry: Record<RendererName, WidgetComponent> = {
   'selection-table': SelectionTableWidget,
   'data-table': DataTableWidget,
   vgplot: VgplotWidget,
+  'variable-select': VariableSelectWidget,
 };
 
 /** The registered renderer keys — consumed by cross-reference validation. */

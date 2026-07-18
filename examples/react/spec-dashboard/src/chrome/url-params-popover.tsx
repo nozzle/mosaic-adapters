@@ -3,10 +3,12 @@
  * shareable-link surface is inspectable at a glance. Each row shows the param
  * name, a decoded value, and an ownership badge:
  *
- * - `spec`   — the reserved app param that selects the active dashboard.
- * - `filter` — a param owned by the active spec's persist registry (a persisted
- *   filter value; the decoded value renders its operator + value where known).
- * - `other`  — any foreign param (left untouched by the persister).
+ * - `spec`      — the reserved app param that selects the active dashboard.
+ * - `filter`    — a param owned by the active spec's persist registry (a
+ *   persisted filter value; the decoded value renders its operator + value).
+ * - `selection` — a persisted standalone-Selection param (a decoded interval).
+ * - `variable`  — a persisted `variable` param (the decoded scalar / array).
+ * - `other`     — any foreign param (left untouched by the persisters).
  *
  * A "Copy link" button copies `window.location.href` with brief confirmation.
  * The panel is an in-flow, absolutely-positioned element inside the trigger's
@@ -33,6 +35,10 @@ const BADGE: Record<ParamOwnership, { label: string; className: string }> = {
   selection: {
     label: 'selection',
     className: 'bg-gf-purple/20 text-gf-purple',
+  },
+  variable: {
+    label: 'variable',
+    className: 'bg-gf-green/20 text-gf-green',
   },
   other: {
     label: 'other',

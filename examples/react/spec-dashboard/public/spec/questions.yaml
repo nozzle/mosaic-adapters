@@ -21,6 +21,9 @@
 #     parts (`operator` / `value` / `value_to`) — the static parts come from the
 #     derived codec registry. Defaults hydrate on a bare URL; any owned param
 #     present wins wholesale; a clear-all + reload restores the defaults.
+#   - The `answer_field` variable declares `persist: { type: url }`, so its value
+#     round-trips through `?v.answer_field=…`; a shared link with it set hydrates
+#     the control and the bound detail-table column over the declared default.
 
 # Optional page title rendered in the header (falls back to a generic default if
 # absent — the domain string lives here, never in src/).
@@ -113,6 +116,28 @@ topology:
       - filters.where
       - volume_brush
       - 'filters.members:phrase'
+  # A `variable` is this spec's vocabulary for a topology-owned Mosaic Param —
+  # a scalar (or flat array of scalars) leaf, never a selection. ("param" is
+  # reserved here for URL search params.) `default` is required; `label`/`meta`/
+  # `reset` behave as on any declaration. At the compile boundary a variable maps
+  # onto the library's `param`.
+  #
+  # `answer_field` picks WHICH answer column the detail table's "Answer" column
+  # shows. Its value NAMES a column: the detail table's structured query selects
+  # `answer: $answer_field`, which compiles to a `column(param)`; the
+  # `answer_field_select` widget below drives it, and the detail table re-queries
+  # on change (the value flows in as the client's `params`).
+  answer_field:
+    type: variable
+    default: title
+    label: Answer field
+    # URL persistence for this variable's value. With no `param` override the
+    # owned search param is the house-convention `v.answer_field`; the value
+    # round-trips through the type-tagged codec (a string encodes as `s<value>`,
+    # so `title` → `v.answer_field=stitle`). A shared link with the param set
+    # hydrates the control (and the bound detail-table column) over the default.
+    persist:
+      type: url
 
 # ── Filter kinds ─────────────────────────────────────────────────────────────
 # Generic behavior factories instantiated with config. The `aggregate-threshold`
@@ -463,8 +488,22 @@ widgets:
       columns: [key]
       fields: [volume_bucket]
 
+  # Drives the `answer_field` variable: picks which answer column the detail
+  # table's "Answer" column shows. Updating it re-queries the detail table (the
+  # variable flows in as the client's `params`), the query-binding path in action.
+  answer_field_select:
+    renderer: variable-select
+    label: Answer field
+    variable: answer_field
+    options:
+      - { value: title, label: Answer Title }
+      - { value: description, label: Answer Description }
+
   # Detail table — the one structured-query widget; TanStack Table v9 with column
-  # filters bridged into the `filters` set via bridge_columns.
+  # filters bridged into the `filters` set via bridge_columns. Its "Answer"
+  # column is variable-bound: `answer: $answer_field` compiles to a
+  # `column(param)` named by the `answer_field` variable's value, so the
+  # answer_field_select control switches the column between title and description.
   detail:
     renderer: data-table
     title: Detailed Breakdown
@@ -480,8 +519,7 @@ widgets:
       select:
         domain: domain
         question: related_phrase.phrase
-        title: title
-        description: description
+        answer: $answer_field
     columns:
       - accessor_key: domain
         header: Domain
@@ -489,12 +527,11 @@ widgets:
       - accessor_key: question
         header: PAA Question
         size: 350
-      - accessor_key: title
-        header: Answer Title
-        size: 300
-      - accessor_key: description
-        header: Answer Description
-        size: 400
+      - accessor_key: answer
+        header: Answer
+        size: 500
+    # The variable-bound `answer` column is not bridged: its source column shifts
+    # with the variable, so it is not a stable filter target.
     bridge_columns:
       domain:
         clause: ilike
@@ -503,12 +540,6 @@ widgets:
         column: related_phrase.phrase
         clause: ilike
         label: PAA Question
-      title:
-        clause: ilike
-        label: Answer Title
-      description:
-        clause: ilike
-        label: Answer Description
 
 # ── Layout ──────────────────────────────────────────────────────────────────
 # CSS grid: each row is its own `columns`-wide grid; a widget's `col_span` maps to a
@@ -532,5 +563,7 @@ layout:
         - { ref: by_domain, col_span: 1 }
         - { ref: by_device, col_span: 1 }
         - { ref: by_bucket, col_span: 1 }
+    - widgets:
+        - { ref: answer_field_select, col_span: 1 }
     - widgets:
         - { ref: detail, col_span: 5 }

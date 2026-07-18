@@ -16,6 +16,7 @@ import {
 import { toTopologyConfig } from '../src/spec/topology';
 import { selectionPersistValueSchema } from '../src/spec/schema';
 import { buildDashboardUrlInfo } from '../src/spec/url-state/info';
+import { buildVariableUrlRegistry } from '../src/spec/url-state/variable-url';
 import type {
   FilterPersistConfig,
   FilterUrlRegistry,
@@ -397,6 +398,7 @@ describe('selection URL runtime', () => {
         describe: () => null,
       },
       buildSelectionUrlRegistry(selection2DTopology()),
+      buildVariableUrlRegistry({}),
     );
     expect(info.describe('s.scatter', '70..90,0..20')).toBe(
       'plddt_total: 70 – 90; pae_interaction: 0 – 20',
