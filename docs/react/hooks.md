@@ -82,3 +82,28 @@ When widgets need to reference selections **by name** (spec-driven pages, hand-e
 
 - `useMosaicSelectionValue<T>(selection, { source? })` — reactively read a Selection's clause value: the read-back half of clause publishing. Scope by `source` (e.g. a rows client's stable `publish.select.source`) on multi-publisher Selections; returns `null` when no matching clause is active. This is how a widget renders its own published selection (in-widget chips, checkmarks) from the same Selection its siblings consume.
 - `useFilterSetState(filterSet)` / `useFilterSetChips(filterSet)` — subscribe to a [filter set](../core/filter-set.md)'s specs/chips. The set itself is a long-lived page-scope object created next to the Selections; components only subscribe and call its setters (`set`, `remove`, `removeChip`, `reset`).
+
+## Param read-back
+
+- `useMosaicParamValue<T>(param)` — reactively read a [`Param`](../core/selection-topology.md#params)'s current value: the read-back half of param publishing, mirroring `useMosaicSelectionValue`. A control that drives a topology-owned Param (a threshold slider, a mode toggle) renders its own live value from the same Param its siblings consume, so an external change (another control, a page reset) is reflected without extra wiring. Returns `undefined` when the param has never been given a value; re-subscribes when a different Param instance is passed.
+
+Like `useMosaicSelectionValue`, it takes an **instance**, not a ref — so it serves a hand-built `Param.value(...)` outside any topology as readily as one resolved from a topology. Inside a topology, resolve the Param first with [`useMosaicParamRef`](./topology.md#usemosaicparamref):
+
+```tsx
+import { useMosaicParamRef, useMosaicParamValue } from '@nozzleio/react-mosaic';
+
+function MetricToggle() {
+  const $metric = useMosaicParamRef('metric');
+  const metric = useMosaicParamValue<string>($metric);
+  return (
+    <select
+      value={metric ?? 'gold'}
+      onChange={(e) => $metric.update(e.target.value)}
+    >
+      <option value="gold">Gold</option>
+      <option value="silver">Silver</option>
+      <option value="bronze">Bronze</option>
+    </select>
+  );
+}
+```

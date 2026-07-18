@@ -50,6 +50,8 @@ const topology = createTopology(config, {
 
 The config is a `Record<string, TopologyDeclaration>`. The declaration set is **closed** — there are no pluggable types; anything exotic goes through the `external` escape hatch. Every declaration is discriminated on `type`, so TypeScript owns structural validation with no schema library.
 
+Most declarations resolve to a **Selection** — a set of clauses deciding _which rows pass_. Two of them, [`param` and `external-param`](#params), instead resolve to a Mosaic **Param** — a named reactive scalar deciding _which knobs exist_ (the metric a KPI aggregates, the grain a trend bins by). They are members of the same closed union, declared in the same JSON config, but resolve through a parallel accessor so `resolve` stays honestly typed `=> Selection`. See [Params](#params).
+
 ### Standalone
 
 A single Selection of a fixed resolution strategy.
@@ -191,7 +193,7 @@ topology.resolve('wehre'); // throws: lists validNames
 
 ### `validNames` is for the app layer
 
-`validNames` is a `Set<string>` of every resolvable ref — every bare simple entry plus every dotted child. The library validates the topology fragment; the **app** validates its own widget references into it. A spec loader checks each widget's `filterBy` ref against `topology.validNames` before mount, so a typo in a hand-edited spec is caught at the app boundary with the app's own error, not deep inside a query.
+`validNames` is a `Set<string>` of every resolvable ref — every bare simple entry plus every dotted child, **including every [`param` / `external-param`](#params) entry**, so the app validates knob refs exactly as it validates filter refs. The library validates the topology fragment; the **app** validates its own widget references into it. A spec loader checks each widget's `filterBy` ref against `topology.validNames` before mount, so a typo in a hand-edited spec is caught at the app boundary with the app's own error, not deep inside a query.
 
 ```ts
 for (const widget of dashboardSpec.widgets) {
@@ -211,6 +213,7 @@ for (const widget of dashboardSpec.widgets) {
 - `standalone` and `external` entries have their clauses cleared (each clause is cleared by publishing a null-predicate clause from its own source).
 - `filter-set` entries delegate to `filterSet.reset()`, so specs and chips stay consistent.
 - `compose` and `cascading` are **skipped** — they are derived; resetting their inputs is both sufficient and the only correct semantics.
+- `param` entries are restored to their declared `default`; `external-param` entries are **skipped** (the topology holds no baseline for a caller-owned instance). See [Params](#params).
 
 Any declaration with `reset: false` is skipped, whatever its type — e.g. a scope selection that must survive a "clear all", or a derived `external` read-context that holds no clauses of its own.
 
@@ -228,7 +231,7 @@ See the [page-wide reset recipe](../react/topology-recipes.md#page-wide-reset).
 
 ## Active clauses
 
-`topology.activeClauses` is a subscribable [`@tanstack/store`](https://tanstack.com/store) `Store` of the **foreign** active clauses across the topology's Selections, each annotated with its owning entry. It is the observation half of the topology object (`reset()` is the action half). Read `state.clauses`, subscribe via `subscribe`, or in React use [`useTopologyActiveClauses` / `useMosaicActiveClauses`](../react/topology.md#active-clause-hooks).
+`topology.activeClauses` is a subscribable [`@tanstack/store`](https://tanstack.com/store) `Store` of the **foreign** active clauses across the topology's Selections, each annotated with its owning entry. It is the observation half of the topology object (`reset()` is the action half). Read `state.clauses`, subscribe via `subscribe`, or in React use [`useTopologyActiveClauses` / `useMosaicActiveClauses`](../react/topology.md#active-clause-hooks). [Params](#params) never appear here — a param carries a value, not clauses, so there is nothing to annotate.
 
 Each entry is an `ActiveClause`:
 
@@ -268,6 +271,136 @@ There is **no chip model in the package** — no chip shapes, groups, or label m
 ## `destroy()`
 
 `topology.destroy()` tears down every composition and FilterSet the topology created and unsubscribes all its clause listeners. **`external` instances are never destroyed** — the topology does not own them. Idempotent; `topology.destroyed` reports it (the React binding uses this for StrictMode remount detection). Calling `reset()` or reading `activeClauses` after `destroy()` is a safe no-op.
+
+## Params
+
+The topology models a second axis of page state alongside **which rows pass** (Selections and their clauses): **which knobs exist** — the named reactive scalars that shape _what a query computes_ rather than _which rows survive it_: the metric column a KPI aggregates, the date grain a trend bins by, the top-N a bar chart cuts at. In Mosaic those are `Param`s, not `Selection`s. A param enters a query by **value interpolation** — its current value is spliced into the SQL as a literal at codegen — never as a `WHERE` / `HAVING` predicate.
+
+`param` and `external-param` are two more members of the same closed [declaration vocabulary](#declaration-vocabulary), declared in the same JSON config and validated the same way. They resolve through a **parallel** accessor (`resolveParam` / `params`) that returns a `Param`, leaving `resolve` honest as `=> Selection`.
+
+> Mosaic's `Selection extends Param`: a Selection _is_ a Param whose value is its clauses' predicate. The topology already builds the specialized subclass; params simply add the base class. Because of that inheritance a Selection would type-check as a Param, but `resolveParam` still rejects selection refs (below) so `params` means "the scalar knobs," not "every node."
+
+### Declaring a param
+
+A **`param`** is topology-owned — constructed as `Param.value(default)` and torn down by [`destroy()`](#destroy). `default` is **required** and must be JSON-serialisable: it is to a param what a target's resolution strategy is to a [`filter-set`](#filter-set) target — a fixed, hand-authorable property of the node, not its live contents — which is what keeps the config a pure JSON document.
+
+```json
+{ "metric": { "type": "param", "default": "gold" } }
+```
+
+`default` (and every value the param later holds) ranges over `ParamValue` — a JSON scalar or a flat array of them:
+
+```ts
+type ParamValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<string | number | boolean | null>;
+```
+
+That is exactly the set Mosaic interpolates: a metric name, a grain string, an N, a boolean toggle, a multi-select of scalars.
+
+An **`external-param`** is the escape hatch — the exact mirror of [`external`](#external) for selections. The instance is supplied in `options.params`, keyed by entry name; the library never owns it (never reset, never destroyed):
+
+```json
+{ "grain": { "type": "external-param" } }
+```
+
+```ts
+import { Param } from '@uwdata/mosaic-core';
+
+createTopology(config, { params: { grain: Param.value('day') } });
+```
+
+The symmetry is **strict both ways**, byte-for-byte the checks [`external`](#external) runs: an `external-param` declaration with no supplied instance throws, and an instance in `options.params` with no matching `external-param` declaration throws.
+
+> `options.params` here is the topology options bag — unrelated to a client's `DataClientOptions.params`. A topology-owned `param` never appears in `options.params` (the topology built it); it flows to a client through `resolveParam`. See [handing a param to a client](#handing-a-param-to-a-client).
+
+### Resolving params
+
+`resolveParam<T>(ref)` returns the `Param<T>` for a bare entry, and `topology.params` is the eager `name → Param` record — the exact mirror of [`getFilterSet` / `filterSets`](#filter-set). Param entries also appear in [`validNames`](#validnames-is-for-the-app-layer). The `T` type parameter defaults to `any`, so `resolveParam<MedalMetric>('metric')` types the result at the call site without a cast (a caller-side assertion — the heterogeneous `params` record is not verified against it).
+
+```ts
+const topology = createTopology({
+  where: { type: 'crossfilter' },
+  metric: { type: 'param', default: 'gold' },
+});
+
+topology.resolveParam('metric'); // → Param
+topology.params.metric; // → the same Param
+topology.validNames; // Set { 'where', 'metric' }
+```
+
+The two resolvers are **guarded against each other**, so each keeps an honest return type instead of a widened `Param | Selection` the caller must narrow:
+
+- `resolve('metric')` throws, naming `resolveParam` as the correct call;
+- `resolveParam('where')` throws, pointing back at `resolve`.
+
+Param refs are **bare entries only** — a param is a leaf with no children, so `entry.child` is never a valid param ref (`resolveParam('metric.foo')` throws).
+
+### Params are leaves
+
+A param carries a value, not clauses, so it cannot sit on any clause-composition edge. Construction rejects a param ref (validation-is-construction) wherever a clause source is expected, naming the offending edge:
+
+- in a [`compose`](#compose) `include` — a composite mirrors _clauses_; a param has none;
+- in [`cascading`](#cascading) `keys` or `externals` — same reason;
+- in a [`filter-set`](#filter-set) `context` — a context is a subquery-predicate source.
+
+Two consequences fall out of leaf-ness:
+
+- **Excluded from [`activeClauses`](#active-clauses).** That store enumerates Selection clauses; a param has none to annotate.
+- **No relay wiring.** Params never allocate a relay edge, so they take no part in the two-phase compose construction.
+
+### Param `reset()` and `reset: false`
+
+[`reset()`](#reset-semantics) restores each owned **`param`** entry to its declared `default` — the param equivalent of clearing a standalone selection's clauses. **`external-param`** entries are **skipped**: the topology holds no baseline for a caller-owned instance (a plain clear is baseline-agnostic, but "reset to default" needs a default the topology does not have). `reset: false` opts any param out of the sweep, whatever its type — same as every other entry.
+
+### Persisting a param's value
+
+The declared `default` is _structure_; the live value is _state_, and it persists through the existing [`Persister<T>`](./filter-set.md) contract — no new mechanism — supplied per owned entry in `options.paramOptions[entry].persist`:
+
+```ts
+const topology = createTopology(
+  { metric: { type: 'param', default: 'gold' } },
+  { paramOptions: { metric: { persist: metricParamPersister } } },
+);
+```
+
+The hydration rule is identical to filter defaults: at construction a **non-nullish persisted value hydrates the param and wins over `default`**; a nullish read leaves the param at `default`. Every subsequent value change — including `reset()`'s restore-to-default — writes through the param's `'value'` event, and the hydration echo is suppressed by the same `PersisterLifecycle` guard filter clients use.
+
+Persistence applies to **topology-owned `param` entries only**. Supplying `paramOptions` for any other entry — including an `external-param`, whose live value is the caller's to persist — is a construction error.
+
+### Handing a param to a client
+
+A declared param reaches a query by being handed to a client in that client's own `params` map (`DataClientOptions.params`) — the re-query wiring that fires exactly one coalesced re-query on a param's `'value'` event (upstream Mosaic never re-queries on a param change; that is first-class here). The topology _declares and owns_ the param; the client _subscribes_ to it. Look it up by name and pass it through, end to end:
+
+```ts
+import { createTopology, createValuesClient } from '@nozzleio/mosaic-core';
+import { Query, column, sum } from '@uwdata/mosaic-sql';
+
+const topology = createTopology({
+  where: { type: 'crossfilter' },
+  metric: { type: 'param', default: 'gold' },
+});
+
+const $where = topology.resolve('where');
+const $metric = topology.resolveParam('metric');
+
+const kpis = createValuesClient<{ medals: number }>({
+  coordinator,
+  query: ({ where }) =>
+    Query.from('athletes')
+      .select({ medals: sum(column($metric.value!)) })
+      .where(where),
+  filterBy: $where,
+  params: { metric: $metric }, // re-queries whenever the param's value changes
+});
+```
+
+The two `params` surfaces stay separate: `options.params` on `createTopology` binds `external-param` _instances_; `params` on a client lists the Params that client's query _reads_. The topology declares and owns the param; the client subscribes to it; the responsibilities never merge.
+
+In React, resolve the param off the provider with [`useMosaicParamRef`](../react/topology.md#usemosaicparamref) and read its live value with [`useMosaicParamValue`](../react/hooks.md#param-read-back). A widget that _publishes_ into a param (an input) and then _mints a clause_ from it is app code the packages deliberately do not ship — see the [param → selection bridge recipe](../react/topology-recipes.md#param--selection-bridge).
 
 ## Composite strategies and the escape hatch
 
