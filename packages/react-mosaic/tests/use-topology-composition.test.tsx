@@ -147,9 +147,7 @@ describe('useComposedSelection', () => {
       ({ as }: { as: 'intersect' | 'crossfilter' }) =>
         useComposedSelection([$a], { as }),
       {
-        initialProps: { as: 'intersect' } as {
-          as: 'intersect' | 'crossfilter';
-        },
+        initialProps: { as: 'intersect' },
       },
     );
 

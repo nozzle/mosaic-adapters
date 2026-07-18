@@ -24,10 +24,10 @@ export interface UseTopologyOptions extends TopologyOptions {
 }
 
 // A stable per-object id so that a memoized/hoisted config (and the
-// `selections`/`filterSets` fields of the options bag) yields a stable topology
-// across renders, while a new object identity recreates it. Mirrors the
-// `getSelectionId` scheme in use-topology-helpers.ts — identity, not structural
-// equality, is the recreation contract (documented below).
+// `selections`/`filterSets`/`params`/`paramOptions` fields of the options bag)
+// yields a stable topology across renders, while a new object identity recreates
+// it. Mirrors the `getSelectionId` scheme in use-topology-helpers.ts — identity,
+// not structural equality, is the recreation contract (documented below).
 const OBJECT_IDS = new WeakMap<object, number>();
 let nextObjectId = 1;
 
@@ -50,22 +50,22 @@ function getObjectId(value: object): number {
  * `destroyed` flag and recreated).
  *
  * Recreation is keyed on the **identities** of `config`, `options.selections`,
- * and `options.filterSets` (each treated as `0` when absent) — not on the
- * options bag itself, and not on `initialize`. A change to any of those three
- * references tears the previous topology down and builds a fresh one, but the
- * caller may rebuild the options bag inline every render (e.g.
- * `{ ...coreOptions, initialize }`) without recreating the topology. Consumers
- * should therefore memoize or hoist the config and the `selections` /
- * `filterSets` fields (module scope, `useMemo`, or a ref) so the topology stays
- * stable across re-renders — the same contract the Phase 1 composition hooks
- * document.
+ * `options.filterSets`, `options.params`, and `options.paramOptions` (each
+ * treated as `0` when absent) — not on the options bag itself, and not on
+ * `initialize`. A change to any of those references tears the previous topology
+ * down and builds a fresh one, but the caller may rebuild the options bag inline
+ * every render (e.g. `{ ...coreOptions, initialize }`) without recreating the
+ * topology. Consumers should therefore memoize or hoist the config and the
+ * `selections` / `filterSets` / `params` / `paramOptions` fields (module scope,
+ * `useMemo`, or a ref) so the topology stays stable across re-renders — the same
+ * contract the Phase 1 composition hooks document.
  *
  * @param config - The declarative topology config (a stable object reference).
  * @param options - The options bag: the code-only core fields (`selections`,
- *   `filterSets`, external instances and FilterSet kinds/persist keyed by config
- *   names) whose identities key recreation, plus an optional `initialize`
- *   callback whose identity never recreates. The bag object itself may be
- *   created inline every render.
+ *   `filterSets`, `params`, `paramOptions` — external instances, FilterSet
+ *   kinds/persist, and param persist keyed by config names) whose identities key
+ *   recreation, plus an optional `initialize` callback whose identity never
+ *   recreates. The bag object itself may be created inline every render.
  * @returns A live {@link Topology} instance, stable across re-renders.
  */
 export function useTopology(
@@ -77,7 +77,11 @@ export function useTopology(
     options?.selections === undefined ? 0 : getObjectId(options.selections);
   const filterSetsId =
     options?.filterSets === undefined ? 0 : getObjectId(options.filterSets);
-  const key = `${configId}::${selectionsId}::${filterSetsId}`;
+  const paramsId =
+    options?.params === undefined ? 0 : getObjectId(options.params);
+  const paramOptionsId =
+    options?.paramOptions === undefined ? 0 : getObjectId(options.paramOptions);
+  const key = `${configId}::${selectionsId}::${filterSetsId}::${paramsId}::${paramOptionsId}`;
 
   const handle = useCompositionHandle<Topology>(() => {
     const topology = createTopology(config, options);
