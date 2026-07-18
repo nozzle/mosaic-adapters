@@ -402,21 +402,25 @@ function HeaderSection(props: { enabled: boolean }) {
             label="# of Tracked Phrases"
             testId="kpi-phrases"
             value={kpis.values?.phrases}
+            status={kpis.status}
           />
           <KpiCard
             label="# of Unique Questions"
             testId="kpi-questions"
             value={kpis.values?.questions}
+            status={kpis.status}
           />
           <KpiCard
             label="# of Days"
             testId="kpi-days"
             value={kpis.values?.days}
+            status={kpis.status}
           />
           <KpiCard
             label="# of Devices"
             testId="kpi-devices"
             value={kpis.values?.devices}
+            status={kpis.status}
           />
         </div>
       </div>
@@ -428,13 +432,23 @@ function KpiCard(props: {
   label: string;
   testId: string;
   value: number | undefined;
+  // The shared values client's status ('pending' while a re-query is in
+  // flight, 'success' once it settles). Surfaced as `data-status` so e2e can
+  // gate a baseline capture on a *settled* KPI rather than a transient value
+  // painted mid-requery — a burst-of-clauses interaction (the volume brush)
+  // paints several intermediate counts before the final query lands.
+  status?: string;
 }) {
   return (
     <div className="text-center md:text-right">
       <div className="mb-1 text-xs font-semibold tracking-wider text-cyan-200 uppercase">
         {props.label}
       </div>
-      <div className="text-3xl font-bold" data-testid={props.testId}>
+      <div
+        className="text-3xl font-bold"
+        data-testid={props.testId}
+        data-status={props.status}
+      >
         {props.value === undefined ? '…' : Number(props.value).toLocaleString()}
       </div>
     </div>

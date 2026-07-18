@@ -55,6 +55,49 @@ async function waitForStableCount(
   return previous;
 }
 
+/**
+ * Polls a KPI card until its values client is *settled* — TWO consecutive
+ * `data-status="success"` reads that agree on the value (optionally inside an
+ * open `(greaterThan, lessThan)` interval) — and returns that settled value.
+ *
+ * `waitForStableCount` gates on value stability alone, which is enough for a
+ * single-clause interaction (one `pending` → `success` transition). The volume
+ * brush is different: its 12-step drag publishes a burst of interval clauses,
+ * and each intermediate range's query resolves to a narrower count that the KPI
+ * paints transiently while the client flips back to `pending` for the next
+ * coalesced query. On a slow runner a count-only check can lock onto one of
+ * those transient plateaus — and even a `pending` value can hold across two
+ * reads — capturing a count below the true settled value; the final query then
+ * lands and the post-toggle equality assertion sees the KPI "change". Requiring
+ * two consecutive *success* reads (never a mid-requery `pending`) with the same
+ * value skips every transient and returns the final count.
+ */
+async function waitForSettledCount(
+  locator: Locator,
+  bounds: { greaterThan?: number; lessThan?: number } = {},
+): Promise<number> {
+  let lastSuccess = Number.NaN;
+  await expect
+    .poll(
+      async () => {
+        const status = await locator.getAttribute('data-status');
+        const current = await readCount(locator);
+        const withinBounds =
+          (bounds.greaterThan === undefined || current > bounds.greaterThan) &&
+          (bounds.lessThan === undefined || current < bounds.lessThan);
+        if (status !== 'success' || !withinBounds) {
+          return false;
+        }
+        const settled = current === lastSuccess;
+        lastSuccess = current;
+        return settled;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  return lastSuccess;
+}
+
 async function gotoDashboard(page: Page): Promise<void> {
   await page.goto('/');
   // First paint waits on DuckDB-WASM instantiation + the proxied parquet.
@@ -1326,7 +1369,7 @@ test.describe('people-also-ask dashboard', () => {
    * total. The plot's SVG has a fixed 900×300 coordinate space but is scaled to
    * its container, so the drag operates on the on-screen box.
    */
-  async function brushVolumeRange(page: Page): Promise<void> {
+  async function brushVolumeRange(page: Page): Promise<number> {
     await page.getByTestId('volume-brush-toggle').click();
     await expect(page.getByTestId('volume-brush-panel')).toHaveAttribute(
       'data-expanded',
@@ -1366,7 +1409,9 @@ test.describe('people-also-ask dashboard', () => {
       'Full range',
     );
     // The brushed range narrows the page: the questions KPI settles above zero.
-    await waitForStableCount(page.getByTestId('kpi-questions'), {
+    // Return the SETTLED value (two agreeing `success` reads) so callers that
+    // pin an exact post-interaction count never capture a mid-drag transient.
+    return waitForSettledCount(page.getByTestId('kpi-questions'), {
       greaterThan: 0,
       lessThan: TOTAL_QUESTIONS_NUM,
     });
@@ -1439,9 +1484,9 @@ test.describe('people-also-ask dashboard', () => {
   }) => {
     await gotoDashboard(page);
 
-    // Brush the high-volume tail in the expanded plot.
-    await brushVolumeRange(page);
-    const brushedQuestions = await readCount(page.getByTestId('kpi-questions'));
+    // Brush the high-volume tail in the expanded plot, capturing the SETTLED
+    // questions count (not a mid-drag transient — see waitForSettledCount).
+    const brushedQuestions = await brushVolumeRange(page);
     expect(brushedQuestions).toBeGreaterThan(0);
     expect(brushedQuestions).toBeLessThan(TOTAL_QUESTIONS_NUM);
 
