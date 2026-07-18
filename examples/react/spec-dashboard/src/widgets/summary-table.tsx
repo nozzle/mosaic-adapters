@@ -1,7 +1,7 @@
 /**
  * A grouped summary table driven by the spec: one rows client whose compiled
- * raw-template query owns the GROUP BY (so `filterStable: false` — the group
- * domain changes under filtering), with row-select publishing into the page
+ * query (raw-template or structured) owns the GROUP BY (so `filterStable: false`
+ * — the group domain changes under filtering), with row-select publishing into the page
  * FilterSet (a `select:<card>` points spec) consumed by every sibling widget.
  *
  * The FilterSet is the single source of truth for selection state: the in-widget
@@ -20,11 +20,13 @@ import {
 } from '@nozzleio/react-mosaic';
 import { compileQuery } from '../spec/query-compiler';
 import { compileExclude } from '../spec/exclude';
-import { resolveSelection } from '../spec/topology';
+import { resolveSelection, resolveVariable } from '../spec/topology';
 import { usePopoverDismiss } from '../chrome/use-popover-dismiss';
 import { Sparkline } from './sparkline';
 import { WidgetSqlPopover } from './widget-sql-details';
 import type { ReactElement } from 'react';
+import type { Param } from '@uwdata/mosaic-core';
+import type { ParamLike } from '@uwdata/mosaic-sql';
 import type { FilterSet, RowsInputs } from '@nozzleio/react-mosaic';
 import type {
   MetricThresholdSpec,
@@ -353,12 +355,27 @@ function SummaryTableBody(props: {
 
   const filterBy = resolveSelection(topology, widget.filter_by);
   const havingBy = resolveSelection(topology, widget.having_by);
-  // Raw-template only (selection-table queries are `type: sql`), so the compile
-  // binds no variables; take just the source factory.
-  const query = useMemo(
-    () => compileQuery<RowsInputs>(widget.query).source,
-    [widget.query],
+  // The query may be raw-template (`type: sql`) or structured (`type: select`).
+  // A structured `$name` select column compiles to a `column(param)` named by
+  // the variable's value — the compiler stays pure by taking a resolver, and
+  // reports back which variables it bound, so we hand them to the client as
+  // `params` (a variable change then re-queries). The raw path binds none.
+  const compiled = useMemo(
+    () =>
+      compileQuery<RowsInputs>(
+        widget.query,
+        (name) => resolveVariable(topology, name) as ParamLike,
+      ),
+    [widget.query, topology],
   );
+  const query = compiled.source;
+  const params = useMemo(() => {
+    const bound: Record<string, Param<unknown>> = {};
+    for (const name of compiled.variables) {
+      bound[name] = resolveVariable(topology, name) as Param<unknown>;
+    }
+    return bound;
+  }, [compiled, topology]);
   // `exclude` (see spec/exclude.ts): `'all'` drops BOTH the WHERE (`filter_by`)
   // and HAVING (`having_by`) selections; a list yields a stable `skipSources`
   // the core applies to both automatically.
@@ -383,6 +400,7 @@ function SummaryTableBody(props: {
     ...(exclude.skipSources !== undefined
       ? { skipSources: exclude.skipSources }
       : {}),
+    ...(compiled.variables.length > 0 ? { params } : {}),
     // The factory GROUP BYs a key whose domain changes under filtering, so the
     // pre-aggregation assumptions do not hold.
     filterStable: false,
