@@ -14,8 +14,9 @@
  * teardown, page reset, and foreign-clause enumeration.
  */
 import { Store } from '@tanstack/store';
-import { Selection } from '@uwdata/mosaic-core';
+import { Param, Selection } from '@uwdata/mosaic-core';
 import { createFilterSet } from '../filter-set/filter-set';
+import { PersisterLifecycle } from '../persistence';
 import { createCascadingContexts } from './cascading';
 import {
   attachIncludedSelection,
@@ -24,13 +25,17 @@ import {
   seedContext,
 } from './wiring';
 import type { FilterSet } from '../filter-set/types';
+import type { Persister } from '../persistence';
 import type { CascadingContextsHandle } from './cascading';
 import type {
   ActiveClause,
   CascadingDeclaration,
   ComposeDeclaration,
   ExternalDeclaration,
+  ExternalParamDeclaration,
   FilterSetDeclaration,
+  ParamDeclaration,
+  ParamValue,
   StandaloneDeclaration,
   StandaloneSelectionType,
   Topology,
@@ -53,6 +58,8 @@ const KNOWN_TYPES: ReadonlySet<string> = new Set([
   'cascading',
   'filter-set',
   'external',
+  'param',
+  'external-param',
 ]);
 
 function createStandaloneSelection(type: StandaloneSelectionType): Selection {
@@ -87,6 +94,8 @@ interface EntryNode {
   declaration: TopologyDeclaration;
   bareSelection: Selection | undefined;
   children: Map<string, Selection>;
+  /** The Param for a `param` / `external-param` entry; undefined otherwise. */
+  param: Param<any> | undefined;
 }
 
 export function createTopology(
@@ -94,7 +103,9 @@ export function createTopology(
   options: TopologyOptions = {},
 ): Topology {
   const suppliedSelections = options.selections ?? {};
+  const suppliedParams = options.params ?? {};
   const filterSetOptions = options.filterSets ?? {};
+  const paramOptions = options.paramOptions ?? {};
 
   // --- Structural validation over entry names (before any wiring). ---
   const entryNames = Object.keys(config);
@@ -146,6 +157,104 @@ export function createTopology(
         `[mosaic-core] createTopology: entry '${name}' is declared 'external' ` +
           `but no instance was supplied in options.selections['${name}'].`,
       );
+    }
+  }
+
+  // Strict param escape hatch, mirroring selections: every supplied Param must
+  // have an `external-param` declaration, and every `external-param`
+  // declaration must have a supplied instance.
+  for (const name of Object.keys(suppliedParams)) {
+    const declaration = config[name];
+    if (declaration === undefined) {
+      throw new Error(
+        `[mosaic-core] createTopology: options.params['${name}'] was ` +
+          `supplied but no entry '${name}' is declared in the config.`,
+      );
+    }
+    if (declaration.type !== 'external-param') {
+      throw new Error(
+        `[mosaic-core] createTopology: options.params['${name}'] was ` +
+          `supplied but entry '${name}' is declared as '${declaration.type}', ` +
+          `not 'external-param'.`,
+      );
+    }
+  }
+  for (const name of entryNames) {
+    const declaration = config[name];
+    if (
+      declaration?.type === 'external-param' &&
+      suppliedParams[name] === undefined
+    ) {
+      throw new Error(
+        `[mosaic-core] createTopology: entry '${name}' is declared ` +
+          `'external-param' but no instance was supplied in ` +
+          `options.params['${name}'].`,
+      );
+    }
+  }
+
+  // Per-param options apply only to topology-owned `param` entries. Every
+  // key must name a declared entry, and that entry must be a `param` (an
+  // `external-param` is caller-owned — its live value is the caller's to
+  // persist, so the topology refuses to manage it).
+  for (const name of Object.keys(paramOptions)) {
+    const declaration = config[name];
+    if (declaration === undefined) {
+      throw new Error(
+        `[mosaic-core] createTopology: options.paramOptions['${name}'] was ` +
+          `supplied but no entry '${name}' is declared in the config.`,
+      );
+    }
+    if (declaration.type !== 'param') {
+      throw new Error(
+        `[mosaic-core] createTopology: options.paramOptions['${name}'] was ` +
+          `supplied but entry '${name}' is declared as '${declaration.type}', ` +
+          `not 'param'; param persistence applies only to topology-owned ` +
+          `params.`,
+      );
+    }
+  }
+
+  // Params are leaves: they can never be composed, cascaded, or used as a
+  // filter-set context. Reject any structural/context ref that points at a
+  // param entry, naming the offending ref and site.
+  function assertNotParamRef(ref: string, site: string, verb: string): void {
+    const { entry } = parseRef(ref);
+    const declaration = config[entry];
+    if (
+      declaration?.type === 'param' ||
+      declaration?.type === 'external-param'
+    ) {
+      throw new Error(
+        `[mosaic-core] createTopology: ${site} references param entry ` +
+          `'${entry}' (ref '${ref}'); params are leaves and cannot be ${verb}.`,
+      );
+    }
+  }
+  for (const name of entryNames) {
+    const declaration = config[name];
+    if (declaration === undefined) {
+      continue;
+    }
+    if (declaration.type === 'compose') {
+      for (const ref of declaration.include) {
+        assertNotParamRef(ref, `compose entry '${name}'`, 'composed');
+      }
+    } else if (declaration.type === 'cascading') {
+      for (const ref of declaration.keys) {
+        assertNotParamRef(ref, `cascading entry '${name}'`, 'cascaded');
+      }
+      for (const ref of declaration.externals ?? []) {
+        assertNotParamRef(ref, `cascading entry '${name}'`, 'cascaded');
+      }
+    } else if (declaration.type === 'filter-set') {
+      if (declaration.context !== undefined) {
+        assertNotParamRef(
+          declaration.context,
+          `filter-set entry '${name}'`,
+          'used as a filter-set context',
+        );
+      }
     }
   }
 
@@ -220,6 +329,8 @@ export function createTopology(
   const composeHandles: Array<{ destroy: () => void }> = [];
   const cascadingHandles: Array<CascadingContextsHandle> = [];
   const filterSets: Record<string, FilterSet> = {};
+  // Detachers for the `value` listeners wired for owned-param persistence.
+  const paramPersistDetachers: Array<() => void> = [];
 
   // Cycle detection: `resolving` is the "currently resolving" set for the
   // recursive walk; `resolved` memoises finished entries.
@@ -239,6 +350,13 @@ export function createTopology(
       throw new Error(
         `[mosaic-core] createTopology: ref '${ref}' points at undeclared ` +
           `entry '${entry}'.`,
+      );
+    }
+    if (declaration.type === 'param' || declaration.type === 'external-param') {
+      throw new Error(
+        `[mosaic-core] createTopology: ref '${ref}' points at param entry ` +
+          `'${entry}' (type '${declaration.type}'); resolve it with ` +
+          `resolveParam('${ref}').`,
       );
     }
     ensureBuilt(entry);
@@ -318,6 +436,10 @@ export function createTopology(
         return buildCascading(declaration);
       case 'filter-set':
         return buildFilterSet(entry, declaration);
+      case 'param':
+        return buildParam(entry, declaration);
+      case 'external-param':
+        return buildExternalParam(entry, declaration);
     }
   }
 
@@ -326,6 +448,81 @@ export function createTopology(
       declaration,
       bareSelection: createStandaloneSelection(declaration.type),
       children: new Map(),
+      param: undefined,
+    };
+  }
+
+  function buildParam(entry: string, declaration: ParamDeclaration): EntryNode {
+    // Params are cheap leaves: constructed immediately, no relay wiring, no
+    // participation in the two-phase compose construction.
+    const param = Param.value<ParamValue>(declaration.default);
+    const persister = paramOptions[entry]?.persist;
+    if (persister !== undefined) {
+      wireParamPersistence(param, persister);
+    }
+    return {
+      declaration,
+      bareSelection: undefined,
+      children: new Map(),
+      param,
+    };
+  }
+
+  /**
+   * Wires live-value persistence onto an owned param. Mirrors the filter-set
+   * consumption of {@link PersisterLifecycle}: write-through goes through the
+   * lifecycle (which suppresses the hydration echo and cancels a stale async
+   * hydration once a real write lands), and hydration replays through the same
+   * `value` path as a user update.
+   */
+  function wireParamPersistence(
+    param: Param<ParamValue>,
+    persister: Persister<ParamValue>,
+  ): void {
+    const lifecycle = new PersisterLifecycle<ParamValue>(
+      persister,
+      () => destroyed,
+    );
+    // Write-through: forward every value change to the persister. The listener
+    // is attached before hydrate so a synchronous hydration update still routes
+    // here, where the lifecycle no-ops it (echo suppression). reset()'s
+    // restore-to-default is an ordinary value change and flows through here
+    // too — never special-cased.
+    const listener = (): void => {
+      lifecycle.write(param.value ?? null, 'update');
+    };
+    param.addEventListener('value', listener);
+    paramPersistDetachers.push(() =>
+      param.removeEventListener('value', listener),
+    );
+    // Hydrate: a non-nullish persisted value wins over the declared default. A
+    // synchronous read applies immediately; a thenable applies later (detached)
+    // and is dropped if the topology is destroyed first, per the lifecycle's
+    // isDestroyed guard. `null`/`undefined` reads are no-ops — the param keeps
+    // its default.
+    lifecycle.hydrate((value) => {
+      param.update(value);
+    });
+  }
+
+  function buildExternalParam(
+    entry: string,
+    declaration: ExternalParamDeclaration,
+  ): EntryNode {
+    // Presence was asserted above; read it back here.
+    const instance = suppliedParams[entry];
+    if (instance === undefined) {
+      throw new Error(
+        `[mosaic-core] createTopology: entry '${entry}' is declared ` +
+          `'external-param' but no instance was supplied in ` +
+          `options.params['${entry}'].`,
+      );
+    }
+    return {
+      declaration,
+      bareSelection: undefined,
+      children: new Map(),
+      param: instance,
     };
   }
 
@@ -341,7 +538,12 @@ export function createTopology(
           `but no instance was supplied in options.selections['${entry}'].`,
       );
     }
-    return { declaration, bareSelection: instance, children: new Map() };
+    return {
+      declaration,
+      bareSelection: instance,
+      children: new Map(),
+      param: undefined,
+    };
   }
 
   function buildCompose(declaration: ComposeDeclaration): EntryNode {
@@ -360,6 +562,7 @@ export function createTopology(
       declaration,
       bareSelection,
       children: new Map(),
+      param: undefined,
     };
   }
 
@@ -390,7 +593,12 @@ export function createTopology(
       }
     }
     // Compound entry: no bare Selection — its bare ref is a parse error.
-    return { declaration, bareSelection: undefined, children };
+    return {
+      declaration,
+      bareSelection: undefined,
+      children,
+      param: undefined,
+    };
   }
 
   function buildFilterSet(
@@ -422,7 +630,12 @@ export function createTopology(
     filterSets[entry] = filterSet;
 
     // Compound entry: bare ref is a parse error; children are the targets.
-    return { declaration, bareSelection: undefined, children };
+    return {
+      declaration,
+      bareSelection: undefined,
+      children,
+      param: undefined,
+    };
   }
 
   // --- Eager construction: build every entry now so validation is eager. ---
@@ -495,15 +708,60 @@ export function createTopology(
     });
   }
 
-  // --- validNames: every bare simple entry + every dotted child. ---
+  // --- validNames: every bare simple entry + every dotted child + params. ---
   const validNames = new Set<string>();
   for (const [entry, node] of nodes) {
-    if (node.bareSelection !== undefined) {
+    if (node.bareSelection !== undefined || node.param !== undefined) {
       validNames.add(entry);
     }
     for (const childName of node.children.keys()) {
       validNames.add(`${entry}.${childName}`);
     }
+  }
+
+  // --- params: every `param` / `external-param` entry, keyed by name. ---
+  const params: Record<string, Param<any>> = {};
+  for (const [entry, node] of nodes) {
+    if (node.param !== undefined) {
+      params[entry] = node.param;
+    }
+  }
+
+  /**
+   * Resolves a bare *ref* to a Param. Rejects an undeclared entry, a ref to a
+   * selection-flavored entry (directing to `resolve`), and a dotted ref
+   * (params have no children).
+   */
+  function resolveParamRef(ref: string): Param<any> {
+    const { entry, child } = parseRef(ref);
+    const declaration = config[entry];
+    if (declaration === undefined) {
+      throw new Error(
+        `[mosaic-core] createTopology: ref '${ref}' points at undeclared ` +
+          `entry '${entry}'.`,
+      );
+    }
+    if (declaration.type !== 'param' && declaration.type !== 'external-param') {
+      throw new Error(
+        `[mosaic-core] createTopology: ref '${ref}' points at entry ` +
+          `'${entry}' (type '${declaration.type}'), which is not a param; ` +
+          `resolve it with resolve('${ref}').`,
+      );
+    }
+    if (child !== undefined) {
+      throw new Error(
+        `[mosaic-core] createTopology: ref '${ref}' addresses a child of ` +
+          `param entry '${entry}', but params have no children.`,
+      );
+    }
+    const param = params[entry];
+    if (param === undefined) {
+      // Unreachable once the entry built, but keeps the type narrow.
+      throw new Error(
+        `[mosaic-core] createTopology: param entry '${entry}' failed to build.`,
+      );
+    }
+    return param;
   }
 
   // --- Active-clause enumeration: the annotated, deduped foreign clause set. ---
@@ -528,6 +786,10 @@ export function createTopology(
   for (const [entry, node] of nodes) {
     const { declaration } = node;
     if (declaration.type === 'compose' || declaration.type === 'cascading') {
+      continue;
+    }
+    // Params are not Selections and carry no clauses — never observed.
+    if (declaration.type === 'param' || declaration.type === 'external-param') {
       continue;
     }
     if (node.bareSelection !== undefined) {
@@ -639,6 +901,17 @@ export function createTopology(
           // Delegate to the FilterSet so specs/chips stay consistent.
           break;
         }
+        case 'param': {
+          // Owned param: restore its declared default.
+          const param = node.param;
+          if (param !== undefined) {
+            param.update(declaration.default);
+          }
+          break;
+        }
+        case 'external-param':
+          // Not owned — never reset.
+          break;
         case 'compose':
         case 'cascading':
           // Derived — resetting the inputs is sufficient and the only correct
@@ -676,6 +949,14 @@ export function createTopology(
       detach();
     }
     clauseDetachers.length = 0;
+    // Stop owned-param write-through. Marking `destroyed` above also finalizes
+    // each param's PersisterLifecycle: a still-pending async hydration is
+    // dropped by its isDestroyed guard, exactly as filter-set teardown relies
+    // on. Never writes to the persister on teardown.
+    for (const detach of paramPersistDetachers) {
+      detach();
+    }
+    paramPersistDetachers.length = 0;
     for (const handle of composeHandles) {
       handle.destroy();
     }
@@ -691,6 +972,8 @@ export function createTopology(
   return {
     validNames,
     resolve: resolveRef,
+    resolveParam: resolveParamRef,
+    params,
     getFilterSet: (entry) => filterSets[entry],
     filterSets,
     reset,

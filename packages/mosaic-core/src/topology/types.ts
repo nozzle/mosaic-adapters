@@ -13,7 +13,7 @@
  */
 import type { FilterKind, FilterSet, FilterSpec } from '../filter-set/types';
 import type { Persister } from '../persistence';
-import type { ClauseSource, Selection } from '@uwdata/mosaic-core';
+import type { ClauseSource, Param, Selection } from '@uwdata/mosaic-core';
 import type { ExprNode } from '@uwdata/mosaic-sql';
 import type { Store } from '@tanstack/store';
 
@@ -23,6 +23,17 @@ export type StandaloneSelectionType =
   | 'union'
   | 'single'
   | 'crossfilter';
+
+/**
+ * The value a `param` entry holds and resets to. A scalar or a flat array of
+ * scalars — the JSON-serialisable shape a Mosaic `Param` carries.
+ */
+export type ParamValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<string | number | boolean | null>;
 
 /**
  * Fields every declaration accepts. `label` and `meta` are opaque passthrough
@@ -106,13 +117,35 @@ export interface ExternalDeclaration extends DeclarationBase {
   type: 'external';
 }
 
+/**
+ * A topology-owned Mosaic `Param`, constructed as `Param.value(default)`. A
+ * param is a leaf: it is never composed, cascaded, or used as a filter-set
+ * context, and it carries no clauses. {@link Topology.reset} restores `default`.
+ */
+export interface ParamDeclaration extends DeclarationBase {
+  type: 'param';
+  /** The initial value, and the value {@link Topology.reset} restores. */
+  default: ParamValue;
+}
+
+/**
+ * An escape hatch: the Param instance is supplied in
+ * {@link TopologyOptions.params}, keyed by entry name. The library does not own
+ * it (never reset, never destroyed) and does not care where it came from.
+ */
+export interface ExternalParamDeclaration extends DeclarationBase {
+  type: 'external-param';
+}
+
 /** The closed declaration vocabulary. Discriminated on `type`. */
 export type TopologyDeclaration =
   | StandaloneDeclaration
   | ComposeDeclaration
   | CascadingDeclaration
   | FilterSetDeclaration
-  | ExternalDeclaration;
+  | ExternalDeclaration
+  | ParamDeclaration
+  | ExternalParamDeclaration;
 
 /** A topology config: a map of entry name → declaration. Pure JSON. */
 export type TopologyConfig = Record<string, TopologyDeclaration>;
@@ -125,12 +158,31 @@ export interface FilterSetEntryOptions {
   persist?: Persister<Array<FilterSpec>>;
 }
 
+/** Code-only options for one topology-owned `param` entry, keyed by entry name. */
+export interface ParamEntryOptions {
+  /**
+   * Live-value persistence for this owned param. A non-nullish persisted value
+   * hydrates the param at construction and wins over the declared `default`;
+   * every subsequent value change (including a {@link Topology.reset}) writes
+   * through.
+   */
+  persist?: Persister<ParamValue>;
+}
+
 /** The options bag: everything that is code, keyed by config names. */
 export interface TopologyOptions {
   /** Instances for every `external` declaration, keyed by entry name. */
   selections?: Record<string, Selection>;
+  /** Instances for every `external-param` declaration, keyed by entry name. */
+  params?: Record<string, Param<any>>;
   /** Code-only FilterSet options, keyed by `filter-set` entry name. */
   filterSets?: Record<string, FilterSetEntryOptions>;
+  /**
+   * Code-only per-param options, keyed by `param` entry name. Applies to
+   * topology-OWNED `param` entries only; supplying it for any other entry
+   * (including an `external-param`) is a construction error.
+   */
+  paramOptions?: Record<string, ParamEntryOptions>;
 }
 
 /**
@@ -175,14 +227,32 @@ export interface Topology {
    * entry.
    */
   resolve: (ref: string) => Selection;
+  /**
+   * Resolve a bare entry ref to its Param. Throws (listing `validNames`) on an
+   * undeclared ref, on a dotted ref (params have no children), and on a ref to
+   * a selection-flavored entry (directing to `resolve`).
+   *
+   * The `TParamValue` type parameter (default `any`) lets a caller assert the
+   * value type at the call site — `resolveParam<MedalMetric>('metric')` — instead
+   * of casting the result. It is a caller-side assertion only: the topology
+   * stores a heterogeneous `Record<string, Param<any>>` and does not verify it.
+   */
+  resolveParam: <TParamValue = any>(ref: string) => Param<TParamValue>;
+  /**
+   * Every `param` / `external-param` entry keyed by name. Built eagerly at
+   * construction; owned params are `Param.value(default)`, external params are
+   * the supplied instances.
+   */
+  readonly params: Record<string, Param<any>>;
   /** The FilterSet constructed for a `filter-set` entry, or undefined. */
   getFilterSet: (entry: string) => FilterSet | undefined;
   /** Every constructed FilterSet, keyed by entry name. */
   readonly filterSets: Record<string, FilterSet>;
   /**
    * Type-aware page reset: clear clauses on `standalone` and `external`
-   * entries (respecting `reset: false`), delegate `filter-set` entries to
-   * `filterSet.reset()`, skip `compose`/`cascading` (derived).
+   * entries (respecting `reset: false`), restore owned `param` entries to their
+   * `default`, delegate `filter-set` entries to `filterSet.reset()`, skip
+   * `compose`/`cascading` (derived) and `external-param` (not owned).
    */
   reset: () => void;
   /**
