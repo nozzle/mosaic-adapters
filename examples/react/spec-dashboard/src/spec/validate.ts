@@ -24,7 +24,7 @@
  */
 import { formatterRegistry } from '../widgets/formatters';
 import { widgetRegistry } from '../widgets/registry';
-import { parseVariableRef } from './query-compiler';
+import { parseVariableRef, scanFragmentTokens } from './query-compiler';
 import { isKnownBehavior } from './kinds';
 import { filterSetEntryNames } from './topology';
 import type { FilterKind } from '@nozzleio/react-mosaic';
@@ -37,13 +37,16 @@ import type {
 } from './schema';
 
 /**
- * Validate a `$name` variable ref found in a binding position: it must name a
- * declared VARIABLE. A ref that resolves to a Selection (a `validName` that is
- * not a variable) is rejected with a precise message; anything else is an unknown
- * variable. Mirrors {@link requireVariableName} for the `$name` sites.
+ * Validate a variable ref (a `$name` column ref or a `:name` value placeholder)
+ * found in a binding position: it must name a declared VARIABLE. A ref that
+ * resolves to a Selection (a `validName` that is not a variable) is rejected with
+ * a precise message; anything else is an unknown variable. `display` is the ref
+ * as written (`$name` or `:name`) so the message names the exact token. Mirrors
+ * {@link requireVariableName} for the `$name` sites.
  */
 function validateVariableRef(
   name: string,
+  display: string,
   site: string,
   widgetId: string,
   validNames: Set<string>,
@@ -55,12 +58,12 @@ function validateVariableRef(
   }
   if (validNames.has(name)) {
     errors.push(
-      `widget '${widgetId}' ${site} references '$${name}', which is a topology selection, not a variable.`,
+      `widget '${widgetId}' ${site} references '${display}', which is a topology selection, not a variable.`,
     );
     return;
   }
   errors.push(
-    `widget '${widgetId}' ${site} references '$${name}', which is not a declared variable.`,
+    `widget '${widgetId}' ${site} references '${display}', which is not a declared variable.`,
   );
 }
 
@@ -87,6 +90,7 @@ function validateChannelVariables(
     if (name !== null) {
       validateVariableRef(
         name,
+        `$${name}`,
         site,
         widgetId,
         validNames,
@@ -111,11 +115,52 @@ function validateChannelVariables(
   }
 }
 
+/** The ref as written for an error message: `$name` (column) or `:name` (value). */
+function tokenDisplay(kind: 'column' | 'value', name: string): string {
+  return `${kind === 'column' ? '$' : ':'}${name}`;
+}
+
 /**
- * Validate the `$name` variable refs in a structured (`type: select`) query. A
- * bare `$name` select expression binds a declared variable (compiled to a
- * `column(param)`); each ref must name a declared variable, not a selection. The
- * kpi-card, selection-table, and data-table renderers all share this check.
+ * Validate the `$name` / `:name` variable refs in ONE raw fragment position (a
+ * `where` / `having` entry, a non-simple `select` expression, or a `group_by`
+ * entry). Scanned against `knownNames` (declared variables PLUS topology
+ * selections) so a token naming a selection is caught with a precise message; a
+ * token naming a declared variable is accepted. Tokens matching NO known name are
+ * never produced by the scanner, so incidental `$` / `:` in trusted SQL is left
+ * alone (only known-name matches are claimed by the grammar).
+ */
+function validateFragmentVariables(
+  fragment: string,
+  site: string,
+  widgetId: string,
+  validNames: Set<string>,
+  variableNames: Set<string>,
+  knownNames: Set<string>,
+  errors: Array<string>,
+): void {
+  for (const token of scanFragmentTokens(fragment, knownNames)) {
+    validateVariableRef(
+      token.name,
+      tokenDisplay(token.kind, token.name),
+      site,
+      widgetId,
+      validNames,
+      variableNames,
+      errors,
+    );
+  }
+}
+
+/**
+ * Validate the `$name` / `:name` variable refs across every bindable position of
+ * a structured (`type: select`) query — the SAME positions the compiler binds:
+ * `select` expressions (whole-expression `$name` and fragment tokens), `group_by`
+ * entries, and `where` / `having` fragments. A whole-expression `$name` compiles
+ * to a `column(param)`; a fragment `$name` splices a `column(param)` and a `:name`
+ * an escaped-literal `ParamNode`. Each ref must name a declared variable, not a
+ * selection. The `from` clause is NOT a binding position: a `$name` / `:name`
+ * there naming a declared variable is an explicit error (table switching is out
+ * of scope). The kpi-card, selection-table, and data-table renderers share this.
  */
 function validateStructuredQueryVariables(
   query: StructuredQuery,
@@ -124,18 +169,92 @@ function validateStructuredQueryVariables(
   variableNames: Set<string>,
   errors: Array<string>,
 ): void {
+  // Fragment tokens are matched against declared variables AND selections, so a
+  // selection ref in a fragment is caught (the compiler binds variables only).
+  const knownNames = new Set([...validNames, ...variableNames]);
+
   for (const [alias, expr] of Object.entries(query.select)) {
-    const name = parseVariableRef(expr);
-    if (name !== null) {
+    const site = `query.select '${alias}'`;
+    const whole = parseVariableRef(expr);
+    if (whole !== null) {
       validateVariableRef(
-        name,
-        `query.select '${alias}'`,
+        whole,
+        `$${whole}`,
+        site,
         widgetId,
         validNames,
         variableNames,
         errors,
       );
+      continue;
     }
+    validateFragmentVariables(
+      expr,
+      site,
+      widgetId,
+      validNames,
+      variableNames,
+      knownNames,
+      errors,
+    );
+  }
+
+  for (const [index, expr] of (query.group_by ?? []).entries()) {
+    const site = `query.group_by[${index}]`;
+    const whole = parseVariableRef(expr);
+    if (whole !== null) {
+      validateVariableRef(
+        whole,
+        `$${whole}`,
+        site,
+        widgetId,
+        validNames,
+        variableNames,
+        errors,
+      );
+      continue;
+    }
+    validateFragmentVariables(
+      expr,
+      site,
+      widgetId,
+      validNames,
+      variableNames,
+      knownNames,
+      errors,
+    );
+  }
+
+  for (const [index, fragment] of (query.where ?? []).entries()) {
+    validateFragmentVariables(
+      fragment,
+      `query.where[${index}]`,
+      widgetId,
+      validNames,
+      variableNames,
+      knownNames,
+      errors,
+    );
+  }
+
+  for (const [index, fragment] of (query.having ?? []).entries()) {
+    validateFragmentVariables(
+      fragment,
+      `query.having[${index}]`,
+      widgetId,
+      validNames,
+      variableNames,
+      knownNames,
+      errors,
+    );
+  }
+
+  // The `from` clause is a table name, not a binding position: a token there
+  // naming a declared variable is table switching, which is out of scope.
+  for (const token of scanFragmentTokens(query.from, variableNames)) {
+    errors.push(
+      `widget '${widgetId}' query.from references '${tokenDisplay(token.kind, token.name)}', which is a declared variable; a variable cannot switch the query table (not supported).`,
+    );
   }
 }
 

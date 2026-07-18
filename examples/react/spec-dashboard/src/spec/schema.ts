@@ -41,6 +41,22 @@ import { SqlIdentifier } from '@nozzleio/react-mosaic';
  * compiles to a `column(param)` whose value NAMES the column — the metric-switch
  * case. The compiler records the dependency so the widget re-queries when the
  * variable changes. An unknown / selection ref is a compile error.
+ *
+ * Inside a raw SQL fragment (a non-simple `select` expression, a `where` /
+ * `having` entry, or a `group_by` entry) two tokens bind a declared variable,
+ * matched ONLY against the declared-variable NAME set (an incidental `$` / `:` in
+ * trusted SQL is never a token):
+ *
+ * - `$name` — a COLUMN reference: the variable's value NAMES a column (quoted
+ *   identifier), the whole-expression `$name` semantics extended into fragments;
+ * - `:name` — a VALUE placeholder: the variable's value interpolates as an
+ *   escaped SQL literal.
+ *
+ * Both re-query the widget on a variable change (the ref is recorded as a
+ * dependency). A `$name` / `:name` token in the `from` clause is a compile error
+ * (a variable cannot switch the query table). A fragment `$name` / `:name` naming
+ * a selection is a compile error; a token matching NO declared variable is left
+ * as verbatim SQL (unclaimed by the grammar).
  */
 export const structuredQuerySchema = z
   .object({

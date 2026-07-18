@@ -5,6 +5,7 @@ import { collectParams, isColumnParam } from '@uwdata/mosaic-sql';
 import {
   compileStructuredQuery,
   parseVariableRef,
+  scanFragmentTokens,
 } from '../src/spec/query-compiler';
 import { buildPlotSpec } from '../src/spec/plot-interpreter';
 import { compileSpec } from '../src/spec/compile';
@@ -117,6 +118,202 @@ describe('compileStructuredQuery variable binding', () => {
     expect(String(source({ where: [], having: [], inputs: {} }))).toContain(
       '"title" AS "value"',
     );
+  });
+});
+
+// ── Fragment token scanner (the single grammar source) ───────────────────────
+
+/** The tokens a scan finds, rendered as `$name` / `:name` for readable asserts. */
+function scannedTokens(fragment: string, declared: Set<string>): Array<string> {
+  return scanFragmentTokens(fragment, declared).map(
+    (token) => `${token.kind === 'column' ? '$' : ':'}${token.name}`,
+  );
+}
+
+describe('scanFragmentTokens', () => {
+  const declared = new Set(['min', 'metric', 'x', 'int', 'tag']);
+
+  test('finds $name (column) and :name (value) for declared names', () => {
+    expect(scannedTokens('count(DISTINCT $metric)', declared)).toEqual([
+      '$metric',
+    ]);
+    expect(scannedTokens('search_volume >= :min', declared)).toEqual([':min']);
+    expect(scannedTokens('sum($x) FILTER (rank > :min)', declared)).toEqual([
+      '$x',
+      ':min',
+    ]);
+    // A `:name` at index 0 (no char before) still binds.
+    expect(scannedTokens(':min > 0', declared)).toEqual([':min']);
+  });
+
+  test('records the token span so the fragment can be split on it', () => {
+    // `count(DISTINCT $metric)` — `$metric` starts at index 15, spans 7 chars.
+    expect(scanFragmentTokens('count(DISTINCT $metric)', declared)).toEqual([
+      { kind: 'column', name: 'metric', start: 15, end: 22 },
+    ]);
+  });
+
+  test('immunizes a ::cast beside a declared name', () => {
+    // `::int` is a cast, not a `:int` value token (char before the sigil is `:`).
+    expect(scannedTokens('rank::int >= :min', declared)).toEqual([':min']);
+  });
+
+  test('immunizes $$ dollar-quotes and word-adjacent sigils', () => {
+    expect(scannedTokens('$$tag$$', declared)).toEqual([]);
+    expect(scannedTokens('a$x', declared)).toEqual([]);
+    // A positional `$1` never starts an identifier.
+    expect(scannedTokens('id = $1', declared)).toEqual([]);
+  });
+
+  test('leaves tokens whose name is not declared alone', () => {
+    // `:minute` captures the whole word (greedy) — `minute` is not declared.
+    expect(scannedTokens(':minute', declared)).toEqual([]);
+    expect(scannedTokens('answer > :threshold', declared)).toEqual([]);
+    expect(scannedTokens('$unknown', declared)).toEqual([]);
+  });
+
+  test('an empty declared set finds nothing', () => {
+    expect(scannedTokens('count(DISTINCT $metric) >= :min', new Set())).toEqual(
+      [],
+    );
+  });
+});
+
+// ── Fragment-level variable binding (codegen) ─────────────────────────────────
+
+describe('compileStructuredQuery fragment binding', () => {
+  test('a $name column token renders a quoted identifier tracking param.update', () => {
+    const param = Param.value('phrase');
+    const compiled = compileStructuredQuery<RowsInputs>(
+      { type: 'select', from: 't', select: { n: 'count(DISTINCT $x)' } },
+      () => param,
+      new Set(['x']),
+    );
+    expect(compiled.variables).toEqual(['x']);
+    expect(String(run(compiled.source))).toContain('count(DISTINCT "phrase")');
+    // Live: renaming the Param re-quotes the identifier on the next build.
+    param.update('domain');
+    expect(String(run(compiled.source))).toContain('count(DISTINCT "domain")');
+  });
+
+  test('a :name value token renders an escaped literal tracking param.update', () => {
+    const param = Param.value<number | string>(5);
+    const compiled = compileStructuredQuery<RowsInputs>(
+      {
+        type: 'select',
+        from: 't',
+        select: { v: 'search_volume' },
+        where: ['search_volume >= :min'],
+      },
+      () => param,
+      new Set(['min']),
+    );
+    expect(compiled.variables).toEqual(['min']);
+    expect(String(run(compiled.source))).toContain('search_volume >= 5');
+    // A string value is single-quote-escaped (the injection-safety pin).
+    param.update("O'Brien");
+    expect(String(run(compiled.source))).toContain(
+      "search_volume >= 'O''Brien'",
+    );
+  });
+
+  test('a $name group_by token compiles and re-groups on update (crash regression)', () => {
+    // A bare `$name` group_by entry used to throw at query-build time because no
+    // resolver was threaded into the group_by `columnExpr` call.
+    const param = Param.value('domain');
+    const compiled = compileStructuredQuery<RowsInputs>(
+      {
+        type: 'select',
+        from: 't',
+        select: { k: '$k', n: 'count(*)' },
+        group_by: ['$k'],
+      },
+      () => param,
+      new Set(['k']),
+    );
+    expect(compiled.variables).toEqual(['k']);
+    expect(String(run(compiled.source))).toContain('GROUP BY "domain"');
+    param.update('phrase');
+    expect(String(run(compiled.source))).toContain('GROUP BY "phrase"');
+  });
+
+  test('a ::cast beside a declared :name does not misfire', () => {
+    const param = Param.value(10);
+    const compiled = compileStructuredQuery<RowsInputs>(
+      {
+        type: 'select',
+        from: 't',
+        select: { v: 'volume' },
+        where: ['rank::int >= :min'],
+      },
+      () => param,
+      new Set(['min', 'int']),
+    );
+    // Only `:min` binds — `::int` stays a verbatim cast, and `int` is not bound.
+    expect(compiled.variables).toEqual(['min']);
+    const sql = String(run(compiled.source));
+    expect(sql).toContain('rank::int >=');
+    expect(sql).toContain('>= 10');
+  });
+
+  test('where and having fragments both bind value tokens', () => {
+    const lo = Param.value(1);
+    const hi = Param.value(9);
+    const resolve = (name: string): Param<number> => (name === 'lo' ? lo : hi);
+    const compiled = compileStructuredQuery<RowsInputs>(
+      {
+        type: 'select',
+        from: 't',
+        select: { g: 'domain', n: 'count(*)' },
+        group_by: ['domain'],
+        where: ['search_volume > :lo'],
+        having: ['count(*) < :hi'],
+      },
+      resolve,
+      new Set(['lo', 'hi']),
+    );
+    expect(compiled.variables).toEqual(['lo', 'hi']);
+    const sql = String(run(compiled.source));
+    expect(sql).toContain('search_volume > 1');
+    expect(sql).toContain('count(*) < 9');
+  });
+
+  test('the variable set unions every bindable position, deduplicated in order', () => {
+    const compiled = compileStructuredQuery<RowsInputs>(
+      {
+        type: 'select',
+        from: 't',
+        select: { one: '$a', two: 'coalesce($b, :c)', three: 'plain' },
+        group_by: ['$a', '$d'],
+        where: [':c > 0'],
+        having: ['count(*) > :d'],
+      },
+      (name) => Param.value(name),
+      new Set(['a', 'b', 'c', 'd']),
+    );
+    // select ($a, then $b/:c), group_by ($a dup, $d), where (:c dup), having
+    // (:d dup) → the stable, de-duplicated union.
+    expect(compiled.variables).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  test('a no-token fragment compiles byte-identically to a no-binding compile', () => {
+    const spec: StructuredQuery = {
+      type: 'select',
+      from: 't',
+      select: { m: 'max(search_volume)' },
+      where: ['search_volume > 0'],
+    };
+    // A declared set with no matching token must not perturb the output.
+    const bound = compileStructuredQuery<RowsInputs>(
+      spec,
+      () => Param.value('unused'),
+      new Set(['answer_field']),
+    );
+    const plain = compileStructuredQuery<RowsInputs>(spec);
+    expect(bound.variables).toEqual([]);
+    expect(String(run(bound.source))).toBe(String(run(plain.source)));
+    // The fragment is embedded verbatim (no identifier quoting).
+    expect(String(run(bound.source))).toContain('max(search_volume)');
   });
 });
 
@@ -389,6 +586,111 @@ describe('variable-ref cross-reference validation', () => {
       (error) =>
         error.includes('$nope') && error.includes('not a declared variable'),
     );
+  });
+
+  // ── Fragment-level refs across the new binding positions ───────────────────
+
+  test('a fragment $name column token bound to a declared variable compiles', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.d.query.select.col = 'count(DISTINCT $answer_field)';
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.errors.join('; '));
+    }
+  });
+
+  test('a fragment :name value token bound to a declared variable compiles', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.d.query.where = ['search_volume >= :answer_field'];
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.errors.join('; '));
+    }
+  });
+
+  test('a select fragment token naming a selection is a precise compile error', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.d.query.select.col = 'coalesce(phrase, :page)';
+    });
+    expectError(
+      result,
+      (error) =>
+        error.includes(':page') &&
+        error.includes('is a topology selection, not a variable'),
+    );
+  });
+
+  test('a group_by fragment token naming a selection is a compile error', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.d.query.group_by = ['date_trunc($page)'];
+    });
+    expectError(
+      result,
+      (error) =>
+        error.includes('$page') &&
+        error.includes('is a topology selection, not a variable'),
+    );
+  });
+
+  test('an unknown $name group_by ref is a compile error', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.d.query.group_by = ['$nope'];
+    });
+    expectError(
+      result,
+      (error) =>
+        error.includes('$nope') && error.includes('not a declared variable'),
+    );
+  });
+
+  test('a where fragment token naming a selection is a compile error', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.d.query.where = ['search_volume > :page'];
+    });
+    expectError(
+      result,
+      (error) =>
+        error.includes(':page') &&
+        error.includes('is a topology selection, not a variable'),
+    );
+  });
+
+  test('a having fragment token naming a selection is a compile error', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.d.query.having = ['count(*) > $page'];
+    });
+    expectError(
+      result,
+      (error) =>
+        error.includes('$page') &&
+        error.includes('is a topology selection, not a variable'),
+    );
+  });
+
+  test('a $name in from naming a declared variable is a compile error', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.d.query.from = '$answer_field';
+    });
+    expectError(
+      result,
+      (error) =>
+        error.includes('$answer_field') &&
+        error.includes('cannot switch the query table'),
+    );
+  });
+
+  test('an undeclared :name token in a fragment is left as SQL (no error)', () => {
+    // `threshold` is neither a variable nor a selection — the grammar leaves it
+    // alone (it could be legitimate SQL), so the spec still compiles.
+    const result = compileMutated((spec) => {
+      spec.widgets.d.query.where = ['search_volume > :threshold'];
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.errors.join('; '));
+    }
   });
 });
 
