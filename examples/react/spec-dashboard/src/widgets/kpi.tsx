@@ -1,7 +1,8 @@
 /**
  * A single KPI card: one `useMosaicValues` client reading a `value` column from
- * the widget's compiled raw-template query, formatted through the formatter
- * registry.
+ * the widget's compiled query (raw-template or structured), formatted through
+ * the formatter registry. A structured `$name` select column binds a topology
+ * variable (passed to the client as `params`, so a variable change re-queries).
  *
  * CRITICAL cross-filter contract: when the spec omits `filter_by`, the card must
  * NOT join the cross-filter topology at all — we pass NO `filterBy` to the
@@ -13,9 +14,11 @@ import { useMemo } from 'react';
 import { useMosaicValues } from '@nozzleio/react-mosaic';
 import { compileQuery } from '../spec/query-compiler';
 import { compileExclude } from '../spec/exclude';
-import { resolveSelection } from '../spec/topology';
+import { resolveSelection, resolveVariable } from '../spec/topology';
 import { getFormatter } from './formatters';
 import type { ReactElement } from 'react';
+import type { Param } from '@uwdata/mosaic-core';
+import type { ParamLike } from '@uwdata/mosaic-sql';
 import type { ValuesInputs } from '@nozzleio/react-mosaic';
 import type { KpiCardWidgetSpec } from '../spec/schema';
 import type { WidgetComponentProps, WidgetContext } from './registry';
@@ -49,14 +52,29 @@ function KpiCard({ widget, context }: KpiCardProps): ReactElement {
   const { topology, enabled } = context;
 
   const filterBy = resolveSelection(topology, widget.filter_by);
-  // Query is held latest-ref by the client (a new identity never re-queries),
-  // but memoize anyway so the compile runs once per spec.
-  // Raw-template only (kpi queries are `type: sql`), so the compile binds no
-  // variables; take just the source factory.
-  const query = useMemo(
-    () => compileQuery<ValuesInputs>(widget.query).source,
-    [widget.query],
+  // The query may be raw-template (`type: sql`) or structured (`type: select`).
+  // A structured `$name` select column compiles to a `column(param)` named by
+  // the variable's value — the compiler stays pure by taking a resolver (topology
+  // access is the widget's) and reports back which variables it bound, so we hand
+  // them to the client as `params` (a variable change then re-queries). The raw
+  // path binds no variables, so the compile just yields a source factory. Memoize
+  // so the compile runs once per spec (the query is held latest-ref by the client).
+  const compiled = useMemo(
+    () =>
+      compileQuery<ValuesInputs>(
+        widget.query,
+        (name) => resolveVariable(topology, name) as ParamLike,
+      ),
+    [widget.query, topology],
   );
+  const query = compiled.source;
+  const params = useMemo(() => {
+    const bound: Record<string, Param<unknown>> = {};
+    for (const name of compiled.variables) {
+      bound[name] = resolveVariable(topology, name) as Param<unknown>;
+    }
+    return bound;
+  }, [compiled, topology]);
   // `exclude` (see spec/exclude.ts): `'all'` drops filterBy (full opt-out); a
   // list yields a stable `skipSources` set dropping just those clauses.
   const exclude = useMemo(
@@ -73,6 +91,7 @@ function KpiCard({ widget, context }: KpiCardProps): ReactElement {
     ...(exclude.skipSources !== undefined
       ? { skipSources: exclude.skipSources }
       : {}),
+    ...(compiled.variables.length > 0 ? { params } : {}),
     enabled,
   });
 

@@ -38,6 +38,7 @@ import type {
   ChannelSpec,
   DashboardSpec,
   ExcludeSpec,
+  StructuredQuery,
   WidgetSpec,
 } from './schema';
 
@@ -144,12 +145,40 @@ function validateChannelVariables(
   }
 }
 
+/**
+ * Validate the `$name` variable refs in a structured (`type: select`) query. A
+ * bare `$name` select expression binds a declared variable (compiled to a
+ * `column(param)`); each ref must name a declared variable, not a selection. The
+ * kpi-card, selection-table, and data-table renderers all share this check.
+ */
+function validateStructuredQueryVariables(
+  query: StructuredQuery,
+  widgetId: string,
+  validNames: Set<string>,
+  variableNames: Set<string>,
+  errors: Array<string>,
+): void {
+  for (const [alias, expr] of Object.entries(query.select)) {
+    const name = parseVariableRef(expr);
+    if (name !== null) {
+      validateVariableRef(
+        name,
+        `query.select '${alias}'`,
+        widgetId,
+        validNames,
+        variableNames,
+        errors,
+      );
+    }
+  }
+}
+
 /** Validate the placeholder rules for a raw-template widget. */
 function validatePlaceholders(
   widget: Extract<WidgetSpec, { renderer: 'kpi-card' | 'selection-table' }>,
+  statement: string,
   errors: Array<string>,
 ): void {
-  const statement = widget.query.statement;
   const hasFilterBy = widget.filter_by !== undefined;
   const hasHavingBy =
     widget.renderer === 'selection-table' && widget.having_by !== undefined;
@@ -349,13 +378,25 @@ function validateWidget(
         filterSpecIds,
         errors,
       });
-      validatePlaceholders(widget, errors);
-      validateRawTemplateVariables(
-        widget.query.statement,
-        widget.id,
-        variableNames,
-        errors,
-      );
+      // Either query form: raw-template checks its placeholders + rejects a
+      // variable-binding token; structured validates its `$name` select refs.
+      if (widget.query.type === 'sql') {
+        validatePlaceholders(widget, widget.query.statement, errors);
+        validateRawTemplateVariables(
+          widget.query.statement,
+          widget.id,
+          variableNames,
+          errors,
+        );
+      } else {
+        validateStructuredQueryVariables(
+          widget.query,
+          widget.id,
+          validNames,
+          variableNames,
+          errors,
+        );
+      }
       break;
     }
     case 'selection-table': {
@@ -402,13 +443,25 @@ function validateWidget(
         filterSpecIds,
         errors,
       });
-      validatePlaceholders(widget, errors);
-      validateRawTemplateVariables(
-        widget.query.statement,
-        widget.id,
-        variableNames,
-        errors,
-      );
+      // Either query form: raw-template checks its placeholders + rejects a
+      // variable-binding token; structured validates its `$name` select refs.
+      if (widget.query.type === 'sql') {
+        validatePlaceholders(widget, widget.query.statement, errors);
+        validateRawTemplateVariables(
+          widget.query.statement,
+          widget.id,
+          variableNames,
+          errors,
+        );
+      } else {
+        validateStructuredQueryVariables(
+          widget.query,
+          widget.id,
+          validNames,
+          variableNames,
+          errors,
+        );
+      }
       break;
     }
     case 'data-table': {
@@ -433,19 +486,13 @@ function validateWidget(
       });
       // A `$name` structured-select expression binds a declared variable
       // (compiled to a `column(param)`); validate each ref.
-      for (const [alias, expr] of Object.entries(widget.query.select)) {
-        const name = parseVariableRef(expr);
-        if (name !== null) {
-          validateVariableRef(
-            name,
-            `query.select '${alias}'`,
-            widget.id,
-            validNames,
-            variableNames,
-            errors,
-          );
-        }
-      }
+      validateStructuredQueryVariables(
+        widget.query,
+        widget.id,
+        validNames,
+        variableNames,
+        errors,
+      );
       break;
     }
     case 'vgplot': {

@@ -9,8 +9,16 @@ import {
 } from '../src/spec/query-compiler';
 import { buildPlotSpec } from '../src/spec/plot-interpreter';
 import { compileSpec } from '../src/spec/compile';
+import {
+  kpiCardWidgetSchema,
+  selectionTableWidgetSchema,
+} from '../src/spec/schema';
 import type { ExprNode, SelectQuery } from '@uwdata/mosaic-sql';
-import type { QuerySource, RowsInputs } from '@nozzleio/react-mosaic';
+import type {
+  QuerySource,
+  RowsInputs,
+  ValuesInputs,
+} from '@nozzleio/react-mosaic';
 import type { PlotApi, PlotChannels } from '../src/spec/plot-interpreter';
 import type { PlotSpec, StructuredQuery } from '../src/spec/schema';
 
@@ -101,6 +109,23 @@ describe('compileStructuredQuery variable binding', () => {
       statement: 'SELECT 1 AS value',
     });
     expect(compiled.variables).toEqual([]);
+  });
+
+  test('compileQuery binds a structured $name column for the kpi (ValuesInputs) shape', () => {
+    const param = Param.value('title');
+    const compiled = compileQuery<ValuesInputs>(
+      { type: 'select', from: 't', select: { value: '$answer_field' } },
+      () => param,
+    );
+    expect(compiled.variables).toEqual(['answer_field']);
+    const source = compiled.source;
+    if (typeof source !== 'function') {
+      throw new Error('expected a query factory, not a table name');
+    }
+    // The variable value NAMES the `value` column the kpi card reads back.
+    expect(String(source({ where: [], having: [], inputs: {} }))).toContain(
+      '"title" AS "value"',
+    );
   });
 });
 
@@ -333,5 +358,166 @@ describe('variable-ref cross-reference validation', () => {
         error.includes('bin/date_bin/aggregate') &&
         error.includes('not supported'),
     );
+  });
+
+  // ── kpi-card / selection-table now take either query form ──────────────────
+
+  test('a structured kpi-card $name column bound to a declared variable compiles', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.k = {
+        renderer: 'kpi-card',
+        label: 'K',
+        format: 'number',
+        filter_by: 'page',
+        query: {
+          type: 'select',
+          from: 't',
+          select: { value: '$answer_field' },
+        },
+      };
+      spec.layout.rows.push({ widgets: [{ ref: 'k', col_span: 1 }] });
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.errors.join('; '));
+    }
+  });
+
+  test('a structured selection-table $name column bound to a declared variable compiles', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.s = {
+        renderer: 'selection-table',
+        title: 'S',
+        metric_label: 'M',
+        filter_by: 'page',
+        query: {
+          type: 'select',
+          from: 't',
+          select: { key: '$answer_field', metric: 'count(*)' },
+        },
+        publish: {
+          spec_id: 'sel:s',
+          label: 'S',
+          columns: ['key'],
+          fields: ['phrase'],
+        },
+      };
+      spec.layout.rows.push({ widgets: [{ ref: 's', col_span: 1 }] });
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.errors.join('; '));
+    }
+  });
+
+  test('an unknown structured $name ref on a kpi-card is a compile error', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.k = {
+        renderer: 'kpi-card',
+        label: 'K',
+        format: 'number',
+        filter_by: 'page',
+        query: { type: 'select', from: 't', select: { value: '$nope' } },
+      };
+      spec.layout.rows.push({ widgets: [{ ref: 'k', col_span: 1 }] });
+    });
+    expectError(
+      result,
+      (error) =>
+        error.includes('$nope') && error.includes('not a declared variable'),
+    );
+  });
+
+  test('a raw selection-table statement still rejects a variable-binding token', () => {
+    const result = compileMutated((spec) => {
+      spec.widgets.s = {
+        renderer: 'selection-table',
+        title: 'S',
+        metric_label: 'M',
+        filter_by: 'page',
+        query: {
+          type: 'sql',
+          statement:
+            'SELECT phrase AS key, count(*) FILTER ($answer_field) AS metric FROM t WHERE {{where}}',
+        },
+        publish: {
+          spec_id: 'sel:s',
+          label: 'S',
+          columns: ['key'],
+          fields: ['phrase'],
+        },
+      };
+      spec.layout.rows.push({ widgets: [{ ref: 's', col_span: 1 }] });
+    });
+    expectError(
+      result,
+      (error) =>
+        error.includes('$answer_field') &&
+        error.includes('cannot bind a variable'),
+    );
+  });
+});
+
+// ── Schema accepts BOTH query forms on kpi-card and selection-table ───────────
+
+describe('kpi-card / selection-table query-form schema acceptance', () => {
+  const rawQuery = { type: 'sql', statement: 'SELECT 1 AS value' };
+  const structuredQuery = {
+    type: 'select',
+    from: 't',
+    select: { value: 'search_volume' },
+  };
+
+  test('kpi-card accepts a raw-template query', () => {
+    expect(
+      kpiCardWidgetSchema.safeParse({
+        renderer: 'kpi-card',
+        label: 'K',
+        format: 'number',
+        query: rawQuery,
+      }).success,
+    ).toBe(true);
+  });
+
+  test('kpi-card accepts a structured query', () => {
+    expect(
+      kpiCardWidgetSchema.safeParse({
+        renderer: 'kpi-card',
+        label: 'K',
+        format: 'number',
+        query: structuredQuery,
+      }).success,
+    ).toBe(true);
+  });
+
+  const selectionTableBase = {
+    renderer: 'selection-table',
+    title: 'S',
+    metric_label: 'M',
+    filter_by: 'page',
+    publish: {
+      spec_id: 'sel:s',
+      label: 'S',
+      columns: ['key'],
+      fields: ['key'],
+    },
+  };
+
+  test('selection-table accepts a raw-template query', () => {
+    expect(
+      selectionTableWidgetSchema.safeParse({
+        ...selectionTableBase,
+        query: rawQuery,
+      }).success,
+    ).toBe(true);
+  });
+
+  test('selection-table accepts a structured query', () => {
+    expect(
+      selectionTableWidgetSchema.safeParse({
+        ...selectionTableBase,
+        query: { type: 'select', from: 't', select: { key: 'domain' } },
+      }).success,
+    ).toBe(true);
   });
 });

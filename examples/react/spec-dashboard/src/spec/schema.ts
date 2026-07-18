@@ -31,7 +31,8 @@ import { SqlIdentifier } from '@nozzleio/react-mosaic';
 /**
  * Raw-template query (the primary idiom): a SQL statement with `{{where}}` /
  * `{{having}}` placeholders the query compiler substitutes with the stringified
- * cross-filter predicates. Used by kpi-card and selection-table renderers.
+ * cross-filter predicates. Accepted by the kpi-card, selection-table, and
+ * data-table renderers (every renderer takes the {@link querySchema} union).
  *
  * A raw statement CANNOT bind a variable: its text is opaque, substituted only
  * for the predicate placeholders. A `$name` token matching a declared variable
@@ -50,7 +51,8 @@ export const rawTemplateQuerySchema = z
  * optional static `where` / `group_by` / `having` raw-SQL fragments. The
  * compiler routes simple column names / dotted struct paths through the
  * library's `SqlIdentifier` + `createStructAccess`; anything else is treated as
- * a raw SQL expression. Used by the data-table renderer.
+ * a raw SQL expression. Accepted by every widget renderer that takes a query
+ * (see {@link querySchema}); the data-table renderer's `query` is structured-only.
  *
  * A select expression that is exactly `$name` (a bare variable ref, matching
  * upstream Mosaic's spec convention) binds the declared variable `name`: it
@@ -656,7 +658,7 @@ export const kpiCardWidgetSchema = z
     filter_by: z.string().optional(),
     /** Filter exclusion (see {@link excludeSchema}); requires `filter_by`. */
     exclude: excludeSchema.optional(),
-    query: rawTemplateQuerySchema,
+    query: querySchema,
     ...widgetMeta,
   })
   .strict();
@@ -671,7 +673,7 @@ export const selectionTableWidgetSchema = z
     /** Filter exclusion (see {@link excludeSchema}); requires `filter_by`. */
     exclude: excludeSchema.optional(),
     expandable: z.boolean().optional().default(false),
-    query: rawTemplateQuerySchema,
+    query: querySchema,
     publish: selectionPublishSchema,
     sparkline: sparklineSchema.optional(),
     metric_threshold: metricThresholdSchema.optional(),
