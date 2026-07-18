@@ -149,7 +149,11 @@ filters: # the filter-builder field catalog (the only filter UI)
 
 widgets: # a map keyed by widget id; `renderer` selects the widget registry entry
   kpi_phrases:
-    { renderer: kpi-card, filter_by: page, query: { type: sql, statement: … } }
+    {
+      renderer: kpi-card,
+      filter_by: page,
+      query: { type: select, from: …, select: { value: … } },
+    }
 
 layout: # a CSS grid: rows of { ref, col_span } widgets
   columns: 5
@@ -181,33 +185,25 @@ cross-reference-checks every `renderer` / `format` / `kind` / `filter_by` /
 violations at once. An invalid _initial_ spec renders its errors with no
 dashboard; an invalid _editor_ apply keeps the last-good dashboard running.
 
-## The two query forms
+## The query form
 
-Widget queries (`src/spec/query-compiler.ts`) come in two shapes, discriminated
-on `query.type`:
+Widget queries (`src/spec/query-compiler.ts`) take one shape, **structured
+(`type: select`)** — an alias→expression map over a base table, compiled with
+`Query.from(from).select(…).where(ctx.where)` plus optional static `where` /
+`group_by` / `having` fragments. Simple column names and dotted struct paths
+route through the library's `SqlIdentifier` + `createStructAccess` (each part
+quoted); anything else is embedded as a raw SQL fragment. Every query-bearing
+renderer (kpi-card, selection-table, data-table) uses it.
 
-- **Raw template (`type: sql`)** — a SQL statement carrying `{{where}}` /
-  `{{having}}` placeholders. At query time the incoming cross-filter predicates
-  (`ctx.where` / `ctx.having`, mosaic-sql `ExprNode`s) are stringified to SQL,
-  substituted into the placeholders, and the whole statement is wrapped as a
-  subquery — `SELECT * FROM (<statement>)`. **The wrapping is load-bearing:** it
-  lets the rows client's append mode attach its own `ORDER BY` / `LIMIT` /
-  `OFFSET` to the outer query without touching the author's SQL (including an
-  author-supplied trailing `ORDER BY` / `LIMIT`, which stays inside the
-  subquery). An empty/absent predicate renders as `TRUE`, so a placeholder
-  always substitutes into valid SQL. Used by the KPI and summary renderers.
-- **Structured (`type: select`)** — an alias→expression map over a base table,
-  compiled with `Query.from(from).select(…).where(ctx.where)` plus optional
-  static `where` / `group_by` / `having` fragments. Simple column names and
-  dotted struct paths route through the library's `SqlIdentifier` +
-  `createStructAccess` (each part quoted); anything else is embedded as a raw
-  SQL fragment. Used by the data-table renderer.
+The compiler applies the incoming cross-filter predicate (`ctx.where` /
+`ctx.having`, mosaic-sql `ExprNode`s) directly, so a widget's `filter_by` /
+`having_by` is honored without the author writing any placeholder; a widget that
+omits `filter_by` (e.g. the opt-out KPI `kpi_phrases_all`) simply drops the
+predicate.
 
-**The placeholder contract** (enforced by `validate.ts`): a `{{where}}` requires
-a `filter_by`, and a `filter_by` requires a `{{where}}` — a placeholder with no
-matching Selection is meaningless and rejected, and a missing one is required.
-The same rule pairs `{{having}}` with `having_by`. This is why `kpi_phrases_all`
-(the opt-out card) has **no** `{{where}}` in its statement.
+A bare `$name` select expression binds a declared `variable` (a topology-owned
+Mosaic Param): it compiles to a `column(param)` whose value NAMES the column, so
+the widget re-queries when the variable changes.
 
 ## The renderer registry
 

@@ -103,8 +103,9 @@ function baseSpec(): Record<string, unknown> {
         format: 'number',
         filter_by: 'page',
         query: {
-          type: 'sql',
-          statement: 'SELECT count(*) AS value FROM t WHERE {{where}}',
+          type: 'select',
+          from: 't',
+          select: { value: 'count(*)' },
         },
       },
     },
@@ -160,9 +161,8 @@ describe('exclude cross-reference validation', () => {
 
   test('exclude without filter_by is a compile error', () => {
     const result = compileMutated((spec) => {
-      // Drop filter_by (and the now-meaningless {{where}}) but keep exclude.
+      // Drop filter_by but keep exclude — nothing to exclude from.
       delete spec.widgets.k.filter_by;
-      spec.widgets.k.query.statement = 'SELECT count(*) AS value FROM t';
       spec.widgets.k.exclude = ['text:phrase'];
     });
     expect(result.ok).toBe(false);

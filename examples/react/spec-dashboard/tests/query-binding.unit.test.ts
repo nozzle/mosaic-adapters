@@ -3,7 +3,6 @@ import { stringify as stringifyYaml } from 'yaml';
 import { Param } from '@uwdata/mosaic-core';
 import { collectParams, isColumnParam } from '@uwdata/mosaic-sql';
 import {
-  compileQuery,
   compileStructuredQuery,
   parseVariableRef,
 } from '../src/spec/query-compiler';
@@ -103,17 +102,9 @@ describe('compileStructuredQuery variable binding', () => {
     expect(() => run(compiled.source)).toThrow(/variable ref/);
   });
 
-  test('the raw-template path binds no variables', () => {
-    const compiled = compileQuery<RowsInputs>({
-      type: 'sql',
-      statement: 'SELECT 1 AS value',
-    });
-    expect(compiled.variables).toEqual([]);
-  });
-
-  test('compileQuery binds a structured $name column for the kpi (ValuesInputs) shape', () => {
+  test('compileStructuredQuery binds a structured $name column for the kpi (ValuesInputs) shape', () => {
     const param = Param.value('title');
-    const compiled = compileQuery<ValuesInputs>(
+    const compiled = compileStructuredQuery<ValuesInputs>(
       { type: 'select', from: 't', select: { value: '$answer_field' } },
       () => param,
     );
@@ -192,12 +183,12 @@ describe('buildPlotSpec variable channel binding', () => {
   });
 });
 
-// ── Cross-reference validation (compile errors + the raw-SQL boundary) ────────
+// ── Cross-reference validation (compile errors) ───────────────────────────────
 
 /**
- * A minimal-but-valid dashboard with a variable, a structured data-table, a
- * vgplot widget, and a raw-template KPI — the four surfaces variable-ref
- * validation covers. Tests deep-clone it, mutate one corner, and compile.
+ * A minimal-but-valid dashboard with a variable and a structured data-table.
+ * Tests deep-clone it, mutate one corner (adding a structured KPI, a vgplot
+ * widget, …), and compile to exercise the variable-ref surfaces.
  */
 function baseSpec(): Record<string, unknown> {
   return {
@@ -277,46 +268,18 @@ describe('variable-ref cross-reference validation', () => {
     );
   });
 
-  test('a raw-template statement cannot bind a variable (boundary pinned)', () => {
+  test('an unknown query type fails schema parse', () => {
     const result = compileMutated((spec) => {
-      spec.widgets.k = {
-        renderer: 'kpi-card',
-        label: 'K',
-        format: 'number',
-        filter_by: 'page',
-        query: {
-          type: 'sql',
-          statement:
-            'SELECT count(*) FILTER ($answer_field) AS value FROM t WHERE {{where}}',
-        },
+      // The raw-template (`type: sql`) widget-query form is gone: any query
+      // whose `type` is not the structured `select` is rejected at schema parse.
+      spec.widgets.d.query = {
+        type: 'sql',
+        statement: 'SELECT count(*) AS value FROM t WHERE {{where}}',
       };
-      spec.layout.rows.push({ widgets: [{ ref: 'k', col_span: 1 }] });
     });
-    expectError(
-      result,
-      (error) =>
-        error.includes('$answer_field') &&
-        error.includes('cannot bind a variable'),
-    );
-  });
-
-  test('a raw $-token that is not a declared variable is left alone', () => {
-    const result = compileMutated((spec) => {
-      // `$1` is not a declared variable, so the raw-SQL scan ignores it.
-      spec.widgets.k = {
-        renderer: 'kpi-card',
-        label: 'K',
-        format: 'number',
-        query: {
-          type: 'sql',
-          statement: "SELECT count(*) FILTER (phrase = '$1') AS value FROM t",
-        },
-      };
-      spec.layout.rows.push({ widgets: [{ ref: 'k', col_span: 1 }] });
-    });
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      throw new Error(result.errors.join('; '));
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('expected a compile failure');
     }
   });
 
@@ -360,7 +323,7 @@ describe('variable-ref cross-reference validation', () => {
     );
   });
 
-  // ── kpi-card / selection-table now take either query form ──────────────────
+  // ── kpi-card / selection-table take the structured query form ──────────────
 
   test('a structured kpi-card $name column bound to a declared variable compiles', () => {
     const result = compileMutated((spec) => {
@@ -427,38 +390,9 @@ describe('variable-ref cross-reference validation', () => {
         error.includes('$nope') && error.includes('not a declared variable'),
     );
   });
-
-  test('a raw selection-table statement still rejects a variable-binding token', () => {
-    const result = compileMutated((spec) => {
-      spec.widgets.s = {
-        renderer: 'selection-table',
-        title: 'S',
-        metric_label: 'M',
-        filter_by: 'page',
-        query: {
-          type: 'sql',
-          statement:
-            'SELECT phrase AS key, count(*) FILTER ($answer_field) AS metric FROM t WHERE {{where}}',
-        },
-        publish: {
-          spec_id: 'sel:s',
-          label: 'S',
-          columns: ['key'],
-          fields: ['phrase'],
-        },
-      };
-      spec.layout.rows.push({ widgets: [{ ref: 's', col_span: 1 }] });
-    });
-    expectError(
-      result,
-      (error) =>
-        error.includes('$answer_field') &&
-        error.includes('cannot bind a variable'),
-    );
-  });
 });
 
-// ── Schema accepts BOTH query forms on kpi-card and selection-table ───────────
+// ── Schema accepts only the structured query form (kpi-card / selection-table) ─
 
 describe('kpi-card / selection-table query-form schema acceptance', () => {
   const rawQuery = { type: 'sql', statement: 'SELECT 1 AS value' };
@@ -467,17 +401,6 @@ describe('kpi-card / selection-table query-form schema acceptance', () => {
     from: 't',
     select: { value: 'search_volume' },
   };
-
-  test('kpi-card accepts a raw-template query', () => {
-    expect(
-      kpiCardWidgetSchema.safeParse({
-        renderer: 'kpi-card',
-        label: 'K',
-        format: 'number',
-        query: rawQuery,
-      }).success,
-    ).toBe(true);
-  });
 
   test('kpi-card accepts a structured query', () => {
     expect(
@@ -488,6 +411,17 @@ describe('kpi-card / selection-table query-form schema acceptance', () => {
         query: structuredQuery,
       }).success,
     ).toBe(true);
+  });
+
+  test('kpi-card rejects a raw-template query', () => {
+    expect(
+      kpiCardWidgetSchema.safeParse({
+        renderer: 'kpi-card',
+        label: 'K',
+        format: 'number',
+        query: rawQuery,
+      }).success,
+    ).toBe(false);
   });
 
   const selectionTableBase = {
@@ -503,15 +437,6 @@ describe('kpi-card / selection-table query-form schema acceptance', () => {
     },
   };
 
-  test('selection-table accepts a raw-template query', () => {
-    expect(
-      selectionTableWidgetSchema.safeParse({
-        ...selectionTableBase,
-        query: rawQuery,
-      }).success,
-    ).toBe(true);
-  });
-
   test('selection-table accepts a structured query', () => {
     expect(
       selectionTableWidgetSchema.safeParse({
@@ -519,5 +444,14 @@ describe('kpi-card / selection-table query-form schema acceptance', () => {
         query: { type: 'select', from: 't', select: { key: 'domain' } },
       }).success,
     ).toBe(true);
+  });
+
+  test('selection-table rejects a raw-template query', () => {
+    expect(
+      selectionTableWidgetSchema.safeParse({
+        ...selectionTableBase,
+        query: rawQuery,
+      }).success,
+    ).toBe(false);
   });
 });

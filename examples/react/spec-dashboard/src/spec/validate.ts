@@ -10,8 +10,6 @@
  * - every `filter_by` / `having_by` ref, every vgplot mark `data.filter_by`, and
  *   every vgplot `selects[].as` is in `topology.validNames`;
  * - every kpi-card `format` is in the formatter registry;
- * - raw-template `{{where}}` / `{{having}}` placeholders match the widget's
- *   `filter_by` / `having_by` presence;
  * - every `filter_kinds` entry names a known behavior, and its `having_target` /
  *   `members_target` resolve under a declared `filter-set` entry;
  * - every table referenced by `filter_kinds`, vgplot marks, and sparklines
@@ -26,11 +24,7 @@
  */
 import { formatterRegistry } from '../widgets/formatters';
 import { widgetRegistry } from '../widgets/registry';
-import {
-  parseVariableRef,
-  statementHasHavingPlaceholder,
-  statementHasWherePlaceholder,
-} from './query-compiler';
+import { parseVariableRef } from './query-compiler';
 import { isKnownBehavior } from './kinds';
 import { filterSetEntryNames } from './topology';
 import type { FilterKind } from '@nozzleio/react-mosaic';
@@ -41,9 +35,6 @@ import type {
   StructuredQuery,
   WidgetSpec,
 } from './schema';
-
-/** Every `$identifier` token in a string (raw-SQL variable-binding scan). */
-const VARIABLE_TOKEN = /\$([A-Za-z_][A-Za-z0-9_]*)/g;
 
 /**
  * Validate a `$name` variable ref found in a binding position: it must name a
@@ -71,31 +62,6 @@ function validateVariableRef(
   errors.push(
     `widget '${widgetId}' ${site} references '$${name}', which is not a declared variable.`,
   );
-}
-
-/**
- * Pin the raw-SQL boundary: a raw-template statement cannot bind a variable (its
- * text is opaque, substituted only for the `{{where}}` / `{{having}}`
- * predicates). A `$name` token matching a DECLARED variable is therefore almost
- * certainly a mistaken binding attempt — rejected with guidance. A `$` that does
- * not name a declared variable (a positional `$1`, dollar-quoting) is left alone.
- */
-function validateRawTemplateVariables(
-  statement: string,
-  widgetId: string,
-  variableNames: Set<string>,
-  errors: Array<string>,
-): void {
-  const seen = new Set<string>();
-  for (const match of statement.matchAll(VARIABLE_TOKEN)) {
-    const name = match[1]!;
-    if (variableNames.has(name) && !seen.has(name)) {
-      seen.add(name);
-      errors.push(
-        `widget '${widgetId}' raw SQL references '$${name}', but a raw (type: sql) query cannot bind a variable; use a structured (type: select) column, or a vgplot channel.`,
-      );
-    }
-  }
 }
 
 /**
@@ -170,40 +136,6 @@ function validateStructuredQueryVariables(
         errors,
       );
     }
-  }
-}
-
-/** Validate the placeholder rules for a raw-template widget. */
-function validatePlaceholders(
-  widget: Extract<WidgetSpec, { renderer: 'kpi-card' | 'selection-table' }>,
-  statement: string,
-  errors: Array<string>,
-): void {
-  const hasFilterBy = widget.filter_by !== undefined;
-  const hasHavingBy =
-    widget.renderer === 'selection-table' && widget.having_by !== undefined;
-  const hasWhere = statementHasWherePlaceholder(statement);
-  const hasHaving = statementHasHavingPlaceholder(statement);
-
-  if (hasFilterBy && !hasWhere) {
-    errors.push(
-      `widget '${widget.id}' has a filter_by but its query omits the required {{where}} placeholder.`,
-    );
-  }
-  if (!hasFilterBy && hasWhere) {
-    errors.push(
-      `widget '${widget.id}' references {{where}} but declares no filter_by — the placeholder is meaningless.`,
-    );
-  }
-  if (hasHavingBy && !hasHaving) {
-    errors.push(
-      `widget '${widget.id}' has a having_by but its query omits the required {{having}} placeholder.`,
-    );
-  }
-  if (!hasHavingBy && hasHaving) {
-    errors.push(
-      `widget '${widget.id}' references {{having}} but declares no having_by — the placeholder is meaningless.`,
-    );
   }
 }
 
@@ -378,25 +310,15 @@ function validateWidget(
         filterSpecIds,
         errors,
       });
-      // Either query form: raw-template checks its placeholders + rejects a
-      // variable-binding token; structured validates its `$name` select refs.
-      if (widget.query.type === 'sql') {
-        validatePlaceholders(widget, widget.query.statement, errors);
-        validateRawTemplateVariables(
-          widget.query.statement,
-          widget.id,
-          variableNames,
-          errors,
-        );
-      } else {
-        validateStructuredQueryVariables(
-          widget.query,
-          widget.id,
-          validNames,
-          variableNames,
-          errors,
-        );
-      }
+      // A `$name` structured-select expression binds a declared variable
+      // (compiled to a `column(param)`); validate each ref.
+      validateStructuredQueryVariables(
+        widget.query,
+        widget.id,
+        validNames,
+        variableNames,
+        errors,
+      );
       break;
     }
     case 'selection-table': {
@@ -443,25 +365,15 @@ function validateWidget(
         filterSpecIds,
         errors,
       });
-      // Either query form: raw-template checks its placeholders + rejects a
-      // variable-binding token; structured validates its `$name` select refs.
-      if (widget.query.type === 'sql') {
-        validatePlaceholders(widget, widget.query.statement, errors);
-        validateRawTemplateVariables(
-          widget.query.statement,
-          widget.id,
-          variableNames,
-          errors,
-        );
-      } else {
-        validateStructuredQueryVariables(
-          widget.query,
-          widget.id,
-          validNames,
-          variableNames,
-          errors,
-        );
-      }
+      // A `$name` structured-select expression binds a declared variable
+      // (compiled to a `column(param)`); validate each ref.
+      validateStructuredQueryVariables(
+        widget.query,
+        widget.id,
+        validNames,
+        variableNames,
+        errors,
+      );
       break;
     }
     case 'data-table': {

@@ -2,43 +2,17 @@
  * The query compiler — the core bridge from a spec `query:` block to a Mosaic
  * `QuerySource` factory. Pure functions: spec in, `(ctx) => SelectQuery` out.
  *
- * Two forms (discriminated on `query.type`):
- *
- * - **Raw template** (`type: sql`): a SQL statement carrying `{{where}}` /
- *   `{{having}}` placeholders. At query time the incoming cross-filter
- *   predicates (`ctx.where` / `ctx.having`, mosaic-sql `ExprNode`s) are
- *   stringified to SQL text, substituted into the placeholders, and the whole
- *   statement is wrapped as a subquery — `SELECT * FROM (<statement>)` — so the
- *   rows client's `inputMode: 'append'` can still attach ORDER BY / LIMIT /
- *   OFFSET to the outer query. An empty/absent predicate renders as `TRUE`.
- *
- * - **Structured** (`type: select`): an alias→expression map over a base table
- *   compiled with `Query.from(from).select(...).where(ctx.where)`, plus optional
- *   static WHERE / GROUP BY / HAVING fragments. Simple column names and dotted
- *   struct paths route through the library's `SqlIdentifier` + `createStructAccess`;
- *   any other expression is embedded as a raw `sql` fragment.
- *
- * ## Predicate stringification (the load-bearing detail)
- *
- * `ctx.where` / `ctx.having` are `FilterExpr` — either an array of mosaic-sql
- * `ExprNode`s (`[]` when unfiltered) or a single node. {@link predicateToSql}
- * combines an array with `and(...)` (empty → renders as the empty string) and
- * `String()`-renders the node to SQL. An empty render becomes `TRUE`, so a
- * placeholder always substitutes into valid SQL.
+ * One form, **structured** (`type: select`): an alias→expression map over a base
+ * table compiled with `Query.from(from).select(...).where(ctx.where)`, plus
+ * optional static WHERE / GROUP BY / HAVING fragments. Simple column names and
+ * dotted struct paths route through the library's `SqlIdentifier` +
+ * `createStructAccess`; any other expression is embedded as a raw `sql` fragment.
  */
-import { Query, and, column, sql } from '@uwdata/mosaic-sql';
+import { Query, column, sql } from '@uwdata/mosaic-sql';
 import { SqlIdentifier, createStructAccess } from '@nozzleio/react-mosaic';
-import type {
-  ExprNode,
-  FilterExpr,
-  ParamLike,
-  SelectQuery,
-} from '@uwdata/mosaic-sql';
+import type { ExprNode, ParamLike, SelectQuery } from '@uwdata/mosaic-sql';
 import type { QueryContext, QuerySource } from '@nozzleio/react-mosaic';
-import type { QuerySpec, StructuredQuery } from './schema';
-
-export const WHERE_PLACEHOLDER = '{{where}}';
-export const HAVING_PLACEHOLDER = '{{having}}';
+import type { StructuredQuery } from './schema';
 
 /**
  * The variable-reference sigil: a whole expression that is exactly `$name`
@@ -74,37 +48,12 @@ export type VariableResolver = (name: string) => ParamLike;
  * A compiled query: the `QuerySource` factory plus the declared-variable names it
  * binds (a `$name` ref in a structured column position → a `column(param)` in the
  * AST). The consuming widget passes the same names — resolved to their Params —
- * as the data hook's `params`, so a variable change re-queries the client. The
- * raw-template path never binds variables (see {@link compileRawTemplateQuery}),
- * so its `variables` is always empty.
+ * as the data hook's `params`, so a variable change re-queries the client. A
+ * query that binds no variable has an empty `variables`.
  */
 export interface CompiledQuery<TInputs extends object> {
   source: QuerySource<TInputs>;
   variables: ReadonlyArray<string>;
-}
-
-/** True when the raw template references the `{{where}}` placeholder. */
-export function statementHasWherePlaceholder(statement: string): boolean {
-  return statement.includes(WHERE_PLACEHOLDER);
-}
-
-/** True when the raw template references the `{{having}}` placeholder. */
-export function statementHasHavingPlaceholder(statement: string): boolean {
-  return statement.includes(HAVING_PLACEHOLDER);
-}
-
-/**
- * Stringify a cross-filter predicate to SQL. Arrays combine via `and(...)`; a
- * single node renders directly; an empty/absent predicate renders as `TRUE` so
- * substitution always produces valid SQL.
- */
-export function predicateToSql(expr: FilterExpr | null | undefined): string {
-  if (expr === null || expr === undefined) {
-    return 'TRUE';
-  }
-  const combined = Array.isArray(expr) ? and(expr) : expr;
-  const rendered = String(combined).trim();
-  return rendered === '' ? 'TRUE' : rendered;
 }
 
 /** Matches a bare column name or a dotted struct path (no quotes, no calls). */
@@ -140,24 +89,6 @@ export function columnExpr(
     return createStructAccess(SqlIdentifier.from(expr));
   }
   return sql`${expr}`;
-}
-
-/**
- * Compile a raw-template statement into a query factory: substitute the
- * stringified predicates, then wrap the result as a subquery so the client can
- * append its own ORDER BY / LIMIT / OFFSET. Raw SQL is opaque text — a variable
- * cannot bind into it (cross-reference validation rejects a `$name` matching a
- * declared variable inside a raw statement), so this path binds no variables.
- */
-export function compileRawTemplateQuery<TInputs extends object>(
-  statement: string,
-): QuerySource<TInputs> {
-  return (ctx: QueryContext<TInputs>): SelectQuery => {
-    const filled = statement
-      .replaceAll(WHERE_PLACEHOLDER, predicateToSql(ctx.where))
-      .replaceAll(HAVING_PLACEHOLDER, predicateToSql(ctx.having));
-    return Query.from(sql`(${filled})`).select('*');
-  };
 }
 
 /**
@@ -211,22 +142,4 @@ export function compileStructuredQuery<TInputs extends object>(
     return query;
   };
   return { source, variables: structuredQueryVariables(spec) };
-}
-
-/**
- * Compile either query form into a {@link CompiledQuery}. `resolveVariable` is
- * required only when the (structured) query references a variable; the raw-template
- * path ignores it and binds no variables.
- */
-export function compileQuery<TInputs extends object>(
-  query: QuerySpec,
-  resolveVariable?: VariableResolver,
-): CompiledQuery<TInputs> {
-  if (query.type === 'sql') {
-    return {
-      source: compileRawTemplateQuery<TInputs>(query.statement),
-      variables: [],
-    };
-  }
-  return compileStructuredQuery<TInputs>(query, resolveVariable);
 }
