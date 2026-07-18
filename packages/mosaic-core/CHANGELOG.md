@@ -1,5 +1,13 @@
 # @nozzleio/mosaic-core
 
+## 0.6.0
+
+### Minor Changes
+
+- [#212](https://github.com/nozzle/mosaic-adapters/pull/212) [`1a5d3ab`](https://github.com/nozzle/mosaic-adapters/commit/1a5d3ab714c19bbebacc68c8c8f81ef0b1e792ed) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - `createTopology` now models Mosaic `Param` nodes as first-class topology entries. A `param` declaration owns a `Param.value(default)`, while an `external-param` declaration binds a caller-supplied instance passed via `options.params` (with the same strict symmetry checks as `external` selections). Params resolve through the new `resolveParam(ref)` accessor and are exposed eagerly on the `params` record; they are validated as leaves and rejected in compose `include`, cascading `keys`/`externals`, and filter-set `context` refs. `reset()` restores owned params to their `default` (honoring `reset: false`), skips external params, and params are never enumerated as active clauses. `resolveParam` is generic — `resolveParam<TParamValue = any>(ref)` — so a caller can assert the value type at the call site (`resolveParam<MedalMetric>('metric')`) instead of casting the result.
+
+- [#212](https://github.com/nozzle/mosaic-adapters/pull/212) [`1a5d3ab`](https://github.com/nozzle/mosaic-adapters/commit/1a5d3ab714c19bbebacc68c8c8f81ef0b1e792ed) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Add per-entry `paramOptions.persist` to `createTopology`, giving topology-owned `param` entries Persister-backed live values. A non-nullish persisted value hydrates the param at construction and wins over the declared `default`; every subsequent value change (including `reset()`'s restore-to-default) writes through the same lifecycle used by filter-set persistence, with hydration echo suppression. Persistence applies to owned `param` entries only — supplying it for any other entry, including an `external-param`, is a construction error.
+
 ## 0.5.0
 
 ### Minor Changes
