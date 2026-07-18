@@ -1,6 +1,6 @@
 /**
  * A single KPI card: one `useMosaicValues` client reading a `value` column from
- * the widget's compiled query (raw-template or structured), formatted through
+ * the widget's compiled (structured) query, formatted through
  * the formatter registry. A structured `$name` select column binds a topology
  * variable (passed to the client as `params`, so a variable change re-queries).
  *
@@ -12,7 +12,7 @@
  */
 import { useMemo } from 'react';
 import { useMosaicValues } from '@nozzleio/react-mosaic';
-import { compileQuery } from '../spec/query-compiler';
+import { compileStructuredQuery } from '../spec/query-compiler';
 import { compileExclude } from '../spec/exclude';
 import { resolveSelection, resolveVariable } from '../spec/topology';
 import { getFormatter } from './formatters';
@@ -52,16 +52,14 @@ function KpiCard({ widget, context }: KpiCardProps): ReactElement {
   const { topology, enabled } = context;
 
   const filterBy = resolveSelection(topology, widget.filter_by);
-  // The query may be raw-template (`type: sql`) or structured (`type: select`).
   // A structured `$name` select column compiles to a `column(param)` named by
   // the variable's value — the compiler stays pure by taking a resolver (topology
   // access is the widget's) and reports back which variables it bound, so we hand
-  // them to the client as `params` (a variable change then re-queries). The raw
-  // path binds no variables, so the compile just yields a source factory. Memoize
+  // them to the client as `params` (a variable change then re-queries). Memoize
   // so the compile runs once per spec (the query is held latest-ref by the client).
   const compiled = useMemo(
     () =>
-      compileQuery<ValuesInputs>(
+      compileStructuredQuery<ValuesInputs>(
         widget.query,
         (name) => resolveVariable(topology, name) as ParamLike,
       ),

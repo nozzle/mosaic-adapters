@@ -366,8 +366,9 @@ function baseSpec(): Record<string, unknown> {
         format: 'number',
         filter_by: 'page',
         query: {
-          type: 'sql',
-          statement: 'SELECT count(*) AS value FROM t WHERE {{where}}',
+          type: 'select',
+          from: 't',
+          select: { value: 'count(*)' },
         },
       },
     },

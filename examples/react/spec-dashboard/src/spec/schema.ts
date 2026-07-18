@@ -26,33 +26,15 @@
 import { z } from 'zod';
 import { SqlIdentifier } from '@nozzleio/react-mosaic';
 
-// ── Query forms ──────────────────────────────────────────────────────────────
+// ── Query form ───────────────────────────────────────────────────────────────
 
 /**
- * Raw-template query (the primary idiom): a SQL statement with `{{where}}` /
- * `{{having}}` placeholders the query compiler substitutes with the stringified
- * cross-filter predicates. Accepted by the kpi-card, selection-table, and
- * data-table renderers (every renderer takes the {@link querySchema} union).
- *
- * A raw statement CANNOT bind a variable: its text is opaque, substituted only
- * for the predicate placeholders. A `$name` token matching a declared variable
- * is rejected at compile time (see `validate.ts`) — bind variables in a
- * structured (`type: select`) column or a vgplot channel instead.
- */
-export const rawTemplateQuerySchema = z
-  .object({
-    type: z.literal('sql'),
-    statement: z.string().min(1),
-  })
-  .strict();
-
-/**
- * Structured query form: an alias→expression select over a base table with
- * optional static `where` / `group_by` / `having` raw-SQL fragments. The
- * compiler routes simple column names / dotted struct paths through the
- * library's `SqlIdentifier` + `createStructAccess`; anything else is treated as
- * a raw SQL expression. Accepted by every widget renderer that takes a query
- * (see {@link querySchema}); the data-table renderer's `query` is structured-only.
+ * Structured query form (the one query idiom): an alias→expression select over a
+ * base table with optional static `where` / `group_by` / `having` raw-SQL
+ * fragments. The compiler routes simple column names / dotted struct paths
+ * through the library's `SqlIdentifier` + `createStructAccess`; anything else is
+ * treated as a raw SQL expression. Accepted by every query-bearing widget
+ * renderer (kpi-card, selection-table, data-table).
  *
  * A select expression that is exactly `$name` (a bare variable ref, matching
  * upstream Mosaic's spec convention) binds the declared variable `name`: it
@@ -70,11 +52,6 @@ export const structuredQuerySchema = z
     having: z.array(z.string()).optional(),
   })
   .strict();
-
-export const querySchema = z.discriminatedUnion('type', [
-  rawTemplateQuerySchema,
-  structuredQuerySchema,
-]);
 
 // ── Data section ─────────────────────────────────────────────────────────────
 
@@ -658,7 +635,7 @@ export const kpiCardWidgetSchema = z
     filter_by: z.string().optional(),
     /** Filter exclusion (see {@link excludeSchema}); requires `filter_by`. */
     exclude: excludeSchema.optional(),
-    query: querySchema,
+    query: structuredQuerySchema,
     ...widgetMeta,
   })
   .strict();
@@ -673,7 +650,7 @@ export const selectionTableWidgetSchema = z
     /** Filter exclusion (see {@link excludeSchema}); requires `filter_by`. */
     exclude: excludeSchema.optional(),
     expandable: z.boolean().optional().default(false),
-    query: querySchema,
+    query: structuredQuerySchema,
     publish: selectionPublishSchema,
     sparkline: sparklineSchema.optional(),
     metric_threshold: metricThresholdSchema.optional(),
@@ -798,9 +775,7 @@ export const dashboardSpecSchema = z
 
 // ── Inferred types (the public type surface for the whole example) ────────────
 
-export type RawTemplateQuery = z.infer<typeof rawTemplateQuerySchema>;
 export type StructuredQuery = z.infer<typeof structuredQuerySchema>;
-export type QuerySpec = z.infer<typeof querySchema>;
 
 export type DataSourceSpec = z.infer<typeof dataSourceSchema>;
 export type DataSpec = z.infer<typeof dataSchema>;

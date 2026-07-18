@@ -24,7 +24,7 @@ import {
   paginationToWindow,
   useTanStackTableFilterBridge,
 } from '@nozzleio/mosaic-tanstack-react-table';
-import { compileQuery } from '../spec/query-compiler';
+import { compileStructuredQuery } from '../spec/query-compiler';
 import { compileExclude } from '../spec/exclude';
 import { resolveSelection, resolveVariable } from '../spec/topology';
 import { WidgetSqlPopover } from './widget-sql-details';
@@ -117,7 +117,7 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
   // so we hand them to the client as `params` (a variable change then re-queries).
   const compiled = useMemo(
     () =>
-      compileQuery<RowsInputs>(
+      compileStructuredQuery<RowsInputs>(
         widget.query,
         (name) => resolveVariable(topology, name) as ParamLike,
       ),

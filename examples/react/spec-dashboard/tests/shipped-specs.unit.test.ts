@@ -74,12 +74,13 @@ describe('questions spec query forms', () => {
     test(`widget '${id}' uses a structured (type: select) query`, () => {
       const widget = widgets[id];
       expect(widget).toBeDefined();
-      // Only query-bearing renderers reach here; narrow to the query-carrying set.
-      expect(
-        widget !== undefined &&
-          'query' in widget &&
-          widget.query.type === 'select',
-      ).toBe(true);
+      // Only query-bearing renderers reach here. The structured form is now the
+      // ONLY widget-query shape the schema admits (a revert to a raw statement
+      // would fail to parse in `compileSpec`), but read the runtime `type` back
+      // anyway so the shipped spec is pinned to it.
+      expect(widget !== undefined && 'query' in widget).toBe(true);
+      const query = (widget as { query?: { type?: string } }).query;
+      expect(query?.type).toBe('select');
     });
   }
 
