@@ -156,9 +156,6 @@ importers:
 
   examples/react/athletes:
     dependencies:
-      '@nozzleio/mosaic-core':
-        specifier: workspace:*
-        version: link:../../../packages/mosaic-core
       '@nozzleio/mosaic-tanstack-react-table':
         specifier: workspace:*
         version: link:../../../packages/mosaic-tanstack-react-table
