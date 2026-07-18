@@ -1,5 +1,6 @@
-import { Param, Selection } from '@uwdata/mosaic-core';
+import { Selection } from '@uwdata/mosaic-core';
 import { createFilterSet } from '@nozzleio/react-mosaic';
+import type { TopologyConfig } from '@nozzleio/mosaic-core';
 
 export const tableName = 'athletes';
 
@@ -31,11 +32,17 @@ export const $picked = Selection.union();
 export type MedalMetric = 'gold' | 'silver' | 'bronze';
 
 /**
- * Drives which medal column the KPI aggregates. A Param 'value' event
+ * Topology config for the page's declared params. The `metric` entry is a
+ * topology-owned Param (default 'gold') that drives which medal column the KPI
+ * aggregates. Resolved via `useMosaicParamRef('metric')`; a Param 'value' event
  * re-queries every client that lists it in `params` (our wiring — upstream
- * never re-queries on Param changes automatically).
+ * never re-queries on Param changes automatically). Hoisted to a stable
+ * reference so `useTopology` keeps one instance across re-renders. The page's
+ * Selections stay module-scope and are deliberately not part of the topology.
  */
-export const $metric = Param.value<MedalMetric>('gold');
+export const pageTopologyConfig = {
+  metric: { type: 'param', default: 'gold' },
+} satisfies TopologyConfig;
 
 export interface AthleteRow {
   id: number;

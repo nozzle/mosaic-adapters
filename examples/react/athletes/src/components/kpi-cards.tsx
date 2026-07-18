@@ -1,7 +1,10 @@
-import { useState } from 'react';
 import { Query, column, count, sum } from '@uwdata/mosaic-sql';
-import { useMosaicValues } from '@nozzleio/react-mosaic';
-import { $metric, $page, tableName } from '../page-context';
+import {
+  useMosaicParamRef,
+  useMosaicParamValue,
+  useMosaicValues,
+} from '@nozzleio/react-mosaic';
+import { $page, tableName } from '../page-context';
 import type { MedalMetric } from '../page-context';
 
 type KpiValues = {
@@ -18,22 +21,23 @@ const metricLabels: Record<MedalMetric, string> = {
 /**
  * One values client serves every KPI card in a single round trip: a
  * single-row aggregate query whose columns become a typed record. It is
- * cross-filtered by $page (brush + column filters) and re-queries when
- * $metric changes.
+ * cross-filtered by $page (brush + column filters) and re-queries when the
+ * topology-declared `metric` param changes.
  */
 export function KpiCards() {
-  const [metric, setMetric] = useState<MedalMetric>($metric.value ?? 'gold');
+  const metricParam = useMosaicParamRef<MedalMetric>('metric');
+  const metric = useMosaicParamValue(metricParam) ?? 'gold';
 
   const kpis = useMosaicValues<KpiValues>({
     query: ({ where }) =>
       Query.from(tableName)
         .select({
           athletes: count(),
-          medals: sum(column($metric.value ?? 'gold')),
+          medals: sum(column(metricParam.value ?? 'gold')),
         })
         .where(where),
     filterBy: $page,
-    params: { metric: $metric },
+    params: { metric: metricParam },
   });
 
   const pending = kpis.status === 'pending';
@@ -59,9 +63,7 @@ export function KpiCards() {
           data-testid="metric-select"
           value={metric}
           onChange={(event) => {
-            const next = event.target.value as MedalMetric;
-            setMetric(next);
-            $metric.update(next);
+            metricParam.update(event.target.value as MedalMetric);
           }}
         >
           <option value="gold">Gold</option>
