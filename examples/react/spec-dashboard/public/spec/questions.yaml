@@ -255,56 +255,52 @@ widgets:
     format: number
     filter_by: page
     query:
-      type: sql
-      statement: |
-        SELECT count(DISTINCT phrase) AS value
-        FROM questions_enriched
-        WHERE {{where}}
+      type: select
+      from: questions_enriched
+      select:
+        value: 'count(DISTINCT phrase)'
   kpi_questions:
     renderer: kpi-card
     label: '# of Unique Questions'
     format: number
     filter_by: page
     query:
-      type: sql
-      statement: |
-        SELECT count(DISTINCT "related_phrase"."phrase") AS value
-        FROM questions_enriched
-        WHERE {{where}}
+      type: select
+      from: questions_enriched
+      select:
+        value: 'count(DISTINCT "related_phrase"."phrase")'
   kpi_days:
     renderer: kpi-card
     label: '# of Days'
     format: number
     filter_by: page
     query:
-      type: sql
-      statement: |
-        SELECT count(DISTINCT requested) AS value
-        FROM questions_enriched
-        WHERE {{where}}
+      type: select
+      from: questions_enriched
+      select:
+        value: 'count(DISTINCT requested)'
   kpi_devices:
     renderer: kpi-card
     label: '# of Devices'
     format: number
     filter_by: page
     query:
-      type: sql
-      statement: |
-        SELECT count(DISTINCT device) AS value
-        FROM questions_enriched
-        WHERE {{where}}
+      type: select
+      from: questions_enriched
+      select:
+        value: 'count(DISTINCT device)'
   # The fifth KPI omits `filter_by`: it never joins the cross-filter topology,
-  # so its value stays constant. Its raw template MUST NOT carry a `{{where}}`
-  # placeholder (validation rejects a meaningless one).
+  # so its value stays constant. As a structured query with no `filter_by`, its
+  # `ctx.where` is empty, so the compiled query emits no WHERE clause at all.
   kpi_phrases_all:
     renderer: kpi-card
     label: Phrases (all data)
     format: number
     query:
-      type: sql
-      statement: |
-        SELECT count(DISTINCT phrase) AS value
-        FROM questions_enriched
+      type: select
+      from: questions_enriched
+      select:
+        value: 'count(DISTINCT phrase)'
 
   # Demonstrates the per-widget `exclude` field (GitHub issue #206). This card
   # reads the SAME count(DISTINCT phrase) as `kpi_phrases` and DOES join the page
@@ -325,11 +321,10 @@ widgets:
     filter_by: page
     exclude: [facet:domain]
     query:
-      type: sql
-      statement: |
-        SELECT count(DISTINCT phrase) AS value
-        FROM questions_enriched
-        WHERE {{where}}
+      type: select
+      from: questions_enriched
+      select:
+        value: 'count(DISTINCT phrase)'
 
   # Search-volume histogram — a generic vgplot widget whose plot is DECLARED in
   # the spec's plot DSL. A rectY bar mark (binned x, counted y) reads the
@@ -403,13 +398,12 @@ widgets:
     having_by: 'filters.having:phrase'
     expandable: true
     query:
-      type: sql
-      statement: |
-        SELECT phrase AS key, max(search_volume) AS metric
-        FROM questions_enriched
-        WHERE {{where}}
-        GROUP BY phrase
-        HAVING {{having}}
+      type: select
+      from: questions_enriched
+      select:
+        key: phrase
+        metric: 'max(search_volume)'
+      group_by: [phrase]
     publish:
       spec_id: select:phrase
       label: Selected Keyword
@@ -436,13 +430,13 @@ widgets:
     filter_by: 'summary_filter_by:domain'
     having_by: 'filters.having:domain'
     query:
-      type: sql
-      statement: |
-        SELECT domain AS key, count(*) AS metric
-        FROM questions_enriched
-        WHERE {{where}} AND domain IS NOT NULL
-        GROUP BY domain
-        HAVING {{having}}
+      type: select
+      from: questions_enriched
+      select:
+        key: domain
+        metric: 'count(*)'
+      where: ['domain IS NOT NULL']
+      group_by: [domain]
     publish:
       spec_id: select:domain
       label: Selected Domain
@@ -459,12 +453,12 @@ widgets:
     metric_label: '# of Answers'
     filter_by: page
     query:
-      type: sql
-      statement: |
-        SELECT device AS key, count(*) AS metric
-        FROM questions_enriched
-        WHERE {{where}}
-        GROUP BY device
+      type: select
+      from: questions_enriched
+      select:
+        key: device
+        metric: 'count(*)'
+      group_by: [device]
     publish:
       spec_id: select:device
       label: Selected Device
@@ -476,12 +470,12 @@ widgets:
     metric_label: '# of Answers'
     filter_by: page
     query:
-      type: sql
-      statement: |
-        SELECT volume_bucket AS key, count(*) AS metric
-        FROM questions_enriched
-        WHERE {{where}}
-        GROUP BY volume_bucket
+      type: select
+      from: questions_enriched
+      select:
+        key: volume_bucket
+        metric: 'count(*)'
+      group_by: [volume_bucket]
     publish:
       spec_id: select:bucket
       label: Selected Bucket
@@ -499,7 +493,7 @@ widgets:
       - { value: title, label: Answer Title }
       - { value: description, label: Answer Description }
 
-  # Detail table — the one structured-query widget; TanStack Table v9 with column
+  # Detail table — the sole data-table renderer; TanStack Table v9 with column
   # filters bridged into the `filters` set via bridge_columns. Its "Answer"
   # column is variable-bound: `answer: $answer_field` compiles to a
   # `column(param)` named by the `answer_field` variable's value, so the
