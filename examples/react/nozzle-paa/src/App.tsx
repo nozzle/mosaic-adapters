@@ -42,6 +42,7 @@ import {
   SummaryTable,
   SummaryTablePlaceholder,
 } from './components/summary-table';
+import type { DataClientStatus } from '@nozzleio/react-mosaic';
 import type { DataLoadConfig } from './data-loader';
 import type { MetricThresholdFilterState } from './components/metric-threshold-filter';
 import type { SummaryTableConfig } from './components/summary-table';
@@ -437,7 +438,7 @@ function KpiCard(props: {
   // gate a baseline capture on a *settled* KPI rather than a transient value
   // painted mid-requery — a burst-of-clauses interaction (the volume brush)
   // paints several intermediate counts before the final query lands.
-  status?: string;
+  status?: DataClientStatus;
 }) {
   return (
     <div className="text-center md:text-right">
