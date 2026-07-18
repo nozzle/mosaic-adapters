@@ -364,6 +364,9 @@ function SummaryTableBody(props: {
       compileStructuredQuery<RowsInputs>(
         widget.query,
         (name) => resolveVariable(topology, name) as ParamLike,
+        // The declared-variable name set the fragment scanner matches `$name` /
+        // `:name` tokens against (every owned/external Param entry).
+        new Set(Object.keys(topology.params)),
       ),
     [widget.query, topology],
   );

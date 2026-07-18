@@ -205,6 +205,22 @@ A bare `$name` select expression binds a declared `variable` (a topology-owned
 Mosaic Param): it compiles to a `column(param)` whose value NAMES the column, so
 the widget re-queries when the variable changes.
 
+Inside a raw SQL fragment (a non-simple `select` expression, a `where` /
+`having` entry, or a `group_by` entry) two tokens bind a declared variable,
+matched **only** against the declared-variable name set (an incidental `$` / `:`
+in trusted SQL is never a token):
+
+- **`$name`** — a **column** reference: the variable's value names a column
+  (quoted identifier), the same semantics as a bare `$name` select, e.g.
+  `count(DISTINCT $answer_field)`;
+- **`:name`** — a **value** placeholder: the variable's value interpolates as an
+  escaped SQL literal, e.g. `search_volume >= :min_volume`.
+
+Both re-query the widget on a variable change. A `$name` / `:name` in the `from`
+clause is a compile error (a variable cannot switch the table); a fragment token
+naming a selection is a compile error; a token matching no declared variable is
+left as verbatim SQL.
+
 ## The renderer registry
 
 Four generic, domain-blind renderers (`src/widgets/registry.tsx`), each keyed by
