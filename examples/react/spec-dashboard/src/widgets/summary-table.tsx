@@ -353,8 +353,10 @@ function SummaryTableBody(props: {
 
   const filterBy = resolveSelection(topology, widget.filter_by);
   const havingBy = resolveSelection(topology, widget.having_by);
+  // Raw-template only (selection-table queries are `type: sql`), so the compile
+  // binds no variables; take just the source factory.
   const query = useMemo(
-    () => compileQuery<RowsInputs>(widget.query),
+    () => compileQuery<RowsInputs>(widget.query).source,
     [widget.query],
   );
   // `exclude` (see spec/exclude.ts): `'all'` drops BOTH the WHERE (`filter_by`)

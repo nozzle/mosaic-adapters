@@ -14,7 +14,11 @@ import { z } from 'zod';
 import { createTopology } from '@nozzleio/react-mosaic';
 import { dashboardSpecSchema } from './schema';
 import { buildKindRegistry, buildSpecKinds } from './kinds';
-import { buildTopologyOptions, toTopologyConfig } from './topology';
+import {
+  buildTopologyOptions,
+  toTopologyConfig,
+  variableEntryNames,
+} from './topology';
 import { validateCrossReferences } from './validate';
 import {
   buildFilterUrlInfo,
@@ -27,6 +31,10 @@ import {
   buildSelectionUrlRegistry,
   validateSelectionUrl,
 } from './url-state/selection-url';
+import {
+  buildVariableUrlRegistry,
+  validateVariableUrl,
+} from './url-state/variable-url';
 import { buildDashboardUrlInfo } from './url-state/info';
 import type {
   FilterKind,
@@ -38,6 +46,7 @@ import type { ZodError } from 'zod';
 import type { FilterPersistWiring } from './filter-url';
 import type { DashboardUrlInfo } from './url-state/info';
 import type { SelectionUrlRegistry } from './url-state/selection-url';
+import type { VariableUrlRegistry } from './url-state/variable-url';
 import type { DashboardSpec, WidgetSpec } from './schema';
 
 /**
@@ -106,6 +115,7 @@ export interface CompiledSpec {
   urlState: {
     filterSet: FilterPersistWiring;
     selections: SelectionUrlRegistry;
+    variables: VariableUrlRegistry;
     /** Reactive param-classification view for the URL-params popover. */
     info: DashboardUrlInfo;
   };
@@ -217,6 +227,7 @@ export function compileSpec(text: string): CompileResult {
   const persistConfig = resolveFilterPersistConfig(spec.topology);
   const defaultSpecs = collectDefaultSpecs(spec, filterUrlRegistry);
   const selectionUrlRegistry = buildSelectionUrlRegistry(spec.topology);
+  const variableUrlRegistry = buildVariableUrlRegistry(spec.topology);
 
   // Build a throwaway topology purely to (a) run the library's structural
   // validation (bad include/context refs throw) and (b) read `validNames`.
@@ -231,9 +242,17 @@ export function compileSpec(text: string): CompileResult {
   const validNames = new Set(topology.validNames);
   topology.destroy();
 
+  // The declared `variable` (topology-owned Param) names. `validNames` above
+  // includes them (a Param is a resolvable topology name), so this set is kept
+  // separately for widget validation — the set later slices (query binding,
+  // input widgets) consume, and today the boundary that keeps a variable ref out
+  // of the selection-consuming sites.
+  const variableNames = new Set(variableEntryNames(spec.topology));
+
   const crossRefErrors = validateCrossReferences(
     spec,
     validNames,
+    variableNames,
     kindRegistry,
     new Set(filterUrlRegistry.ids),
   );
@@ -248,7 +267,18 @@ export function compileSpec(text: string): CompileResult {
     filterUrlRegistry,
     persistConfig,
   );
-  const errors = [...crossRefErrors, ...filterUrlErrors, ...selectionUrlErrors];
+  const variableUrlErrors = validateVariableUrl(
+    variableUrlRegistry,
+    filterUrlRegistry,
+    persistConfig,
+    selectionUrlRegistry,
+  );
+  const errors = [
+    ...crossRefErrors,
+    ...filterUrlErrors,
+    ...selectionUrlErrors,
+    ...variableUrlErrors,
+  ];
   if (errors.length > 0) {
     return { ok: false, errors };
   }
@@ -267,9 +297,11 @@ export function compileSpec(text: string): CompileResult {
           defaults: defaultSpecs,
         },
         selections: selectionUrlRegistry,
+        variables: variableUrlRegistry,
         info: buildDashboardUrlInfo(
           buildFilterUrlInfo(filterUrlRegistry, persistConfig),
           selectionUrlRegistry,
+          variableUrlRegistry,
         ),
       },
     },

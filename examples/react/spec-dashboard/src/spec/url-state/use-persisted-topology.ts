@@ -30,6 +30,7 @@ import {
   hydratePersistedSelections,
 } from './selection-runtime';
 import { createSearchPatchCommitter } from './search-patch-committer';
+import { buildVariableParamOptions } from './variable-url';
 import type {
   ActiveClause,
   FilterSet,
@@ -128,8 +129,30 @@ export function usePersistedTopology(compiled: CompiledSpec): Topology {
     [compiled, navigateSearch, search],
   );
 
+  // Owned-variable persisters, keyed by entry, for `paramOptions`. The identity
+  // of `paramOptions` is a topology-recreation key (see `useTopology`), so it is
+  // memoized on `compiled` (+ the stable `searchCommitter`) ALONE: it must NOT
+  // change on every URL navigation, or the whole topology would be torn down and
+  // rebuilt on each filter/selection write. The persister `read` (URL → hydrate,
+  // winning over the default) runs only once, at construction — which is
+  // triggered by exactly this `compiled` change — so capturing the
+  // construction-time `search` snapshot here is correct. `write` routes through
+  // the shared `searchCommitter` (the same coalescing/replace queue filter +
+  // selection writes use), so a variable change merges into one navigation
+  // instead of firing its own extra tree-wide re-render mid-requery.
+  const paramOptions = useMemo(
+    () =>
+      buildVariableParamOptions(compiled.urlState.variables, () => ({
+        search,
+        commit: (patch) => searchCommitter.schedule(patch, 'selection'),
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `search` is excluded deliberately: see the comment above.
+    [compiled, searchCommitter],
+  );
+
   const topology = useTopology(compiled.topologyConfig, {
     ...compiled.topologyOptions,
+    paramOptions,
     initialize,
   });
   const primaryFilterSet = topology.filterSets.filters;

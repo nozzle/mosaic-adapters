@@ -930,10 +930,9 @@ test.describe('spec-driven dashboard', () => {
     expect(content.trim().length).toBeGreaterThan(0);
 
     const lines = content.split('\n');
-    // The header row is derived from the widget's column defs, in order.
-    expect(lines[0]).toBe(
-      'Domain,PAA Question,Answer Title,Answer Description',
-    );
+    // The header row is derived from the widget's column defs, in order. The
+    // third column ("Answer") is variable-bound (`answer: $answer_field`).
+    expect(lines[0]).toBe('Domain,PAA Question,Answer');
     // Header + at least one data row from the current page.
     expect(lines.length).toBeGreaterThan(1);
   });
@@ -1738,5 +1737,140 @@ test.describe('spec-driven dashboard', () => {
     await expect(fullyFiltered).toHaveText(TOTAL_PHRASES);
     await expect(noDomain).toHaveText(TOTAL_PHRASES);
     await expect(optOut).toHaveText(TOTAL_PHRASES);
+  });
+
+  test('(x2) a variable-select re-queries the detail table that binds it', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // `gotoDashboard` gates on the phrase KPI settling to its unfiltered value,
+    // but the detail table's own re-query (triggered by the `facet:domain`
+    // default clear) settles independently — and slightly later. Gate on the
+    // detail table's unfiltered total BEFORE capturing the baseline: this is the
+    // same settle wait every other detail-table test uses, and it is the real
+    // fix for the former flake. Capturing `titleText` mid-transition (the
+    // default-clear re-query still reordering rows) made the first switch's
+    // `.not.toBe(titleText)` poll resolve on that reorder rather than on the
+    // title→description column swap, so `descText` snapshotted title data and the
+    // switch-back assertion could never see it change. Waiting for the settled
+    // total pins the baseline to the fully-rendered unfiltered table.
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(
+      `${TOTAL_ROWS} rows match`,
+      { timeout: 30_000 },
+    );
+
+    // The detail table's "Answer" column is `answer: $answer_field` — a
+    // structured column named by the `answer_field` variable's value. Its default
+    // (`title`) renders the answer titles.
+    const body = page.getByTestId('detail-detail-body');
+    await expect
+      .poll(async () => body.locator('tr').count())
+      .toBeGreaterThan(0);
+    const titleText = (await body.textContent()) ?? '';
+    expect(titleText.trim().length).toBeGreaterThan(0);
+
+    // Switching the variable to `description` re-queries the client (the variable
+    // rides in as `params`) and the SAME "Answer" column now shows descriptions —
+    // the rendered data changes, proving the query binding is live.
+    await page
+      .getByTestId('variable-select-answer_field_select-input')
+      .selectOption({ label: 'Answer Description' });
+    await expect
+      .poll(async () => (await body.textContent())?.trim() ?? '', {
+        timeout: 30_000,
+      })
+      .not.toBe(titleText.trim());
+    const descText = (await body.textContent())?.trim() ?? '';
+
+    // Switching back re-queries again: the column changes away from the
+    // descriptions (order is unconstrained, so assert the transition, not an
+    // exact restore of the first render).
+    await page
+      .getByTestId('variable-select-answer_field_select-input')
+      .selectOption({ label: 'Answer Title' });
+    await expect
+      .poll(async () => (await body.textContent())?.trim() ?? '', {
+        timeout: 30_000,
+      })
+      .not.toBe(descText);
+  });
+
+  test('(x3) changing the variable-select writes its encoded value to the URL (owned as a variable param)', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // A fresh load leaves NO variable param: the declared default (`title`) is
+    // never written until the value actually changes.
+    expect(new URL(page.url()).searchParams.has('v.answer_field')).toBe(false);
+
+    // Switching the control publishes `description` into the owned Param, whose
+    // write-through replaces the owned URL param with the encoded value
+    // (`s` string tag + value → `sdescription`).
+    await page
+      .getByTestId('variable-select-answer_field_select-input')
+      .selectOption({ label: 'Answer Description' });
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('v.answer_field'))
+      .toBe('sdescription');
+
+    // The URL-params popover badges it as a variable-owned param and decodes it.
+    await page.getByTestId('url-params-button').click();
+    const row = page.getByTestId('url-param-v.answer_field');
+    await expect(row).toHaveAttribute('data-ownership', 'variable');
+    await expect(row).toContainText('description');
+  });
+
+  test('(x4) a shared link with a variable value hydrates the control and the bound column over the default', async ({
+    page,
+  }) => {
+    // Load directly with the owned variable param set: core hydrates the Param
+    // to `description` at construction, beating the declared default (`title`).
+    await page.goto('/?spec=questions&v.answer_field=sdescription');
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
+      TOTAL_PHRASES,
+      { timeout: 90_000 },
+    );
+
+    // The control reflects the hydrated value (Answer Description), not the
+    // default — proving the URL value won at construction.
+    const select = page.getByTestId(
+      'variable-select-answer_field_select-input',
+    );
+    await expect
+      .poll(async () =>
+        select.evaluate(
+          (element) =>
+            (element as HTMLSelectElement).selectedOptions[0]?.textContent ??
+            '',
+        ),
+      )
+      .toBe('Answer Description');
+
+    // The variable-bound "Answer" column (`answer: $answer_field`) hydrated over
+    // the default: the detail table's last-executed query selects the
+    // `description` column (asserted on its SQL, which is deterministic — unlike
+    // the unordered row content).
+    const detail = page.getByTestId('detail-detail');
+    const sqlPanel = detail.getByTestId('widget-sql');
+    await detail.getByTestId('widget-sql-trigger').click();
+    await expect(sqlPanel.locator('pre')).toContainText('"description"', {
+      timeout: 30_000,
+    });
+    await expect(sqlPanel.locator('pre')).not.toContainText('"title" AS');
+    await page.keyboard.press('Escape');
+
+    // Switching to the default `title` re-queries the bound column and writes the
+    // new value through to the URL (round-trip both ways).
+    await select.selectOption({ label: 'Answer Title' });
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('v.answer_field'))
+      .toBe('stitle');
+    await detail.getByTestId('widget-sql-trigger').click();
+    await expect(sqlPanel.locator('pre')).toContainText('"title" AS', {
+      timeout: 30_000,
+    });
+    await page.keyboard.press('Escape');
   });
 });

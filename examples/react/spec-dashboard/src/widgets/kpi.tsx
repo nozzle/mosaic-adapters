@@ -51,8 +51,10 @@ function KpiCard({ widget, context }: KpiCardProps): ReactElement {
   const filterBy = resolveSelection(topology, widget.filter_by);
   // Query is held latest-ref by the client (a new identity never re-queries),
   // but memoize anyway so the compile runs once per spec.
+  // Raw-template only (kpi queries are `type: sql`), so the compile binds no
+  // variables; take just the source factory.
   const query = useMemo(
-    () => compileQuery<ValuesInputs>(widget.query),
+    () => compileQuery<ValuesInputs>(widget.query).source,
     [widget.query],
   );
   // `exclude` (see spec/exclude.ts): `'all'` drops filterBy (full opt-out); a
