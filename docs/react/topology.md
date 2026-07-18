@@ -6,7 +6,7 @@ The core object does all the work (construction, validation, reset, active-claus
 
 ## `useTopology`
 
-`useTopology(config, options?)` constructs a [`Topology`](../core/selection-topology.md) and owns its lifecycle inside React: lazy construction, teardown on unmount, and StrictMode-safe single-wiring. The `options` bag carries the code-only core fields (`selections`, `filterSets`) plus an optional `initialize(topology)` callback that runs once for each newly-created topology before the hook returns it. `initialize` is intended for application-owned bootstrap state that must be present before querying children mount; changing only the callback identity never recreates a live topology.
+`useTopology(config, options?)` constructs a [`Topology`](../core/selection-topology.md) and owns its lifecycle inside React: lazy construction, teardown on unmount, and StrictMode-safe single-wiring. The `options` bag carries the code-only core fields (`selections`, `filterSets`, and the [param](../core/selection-topology.md#params) fields `params` / `paramOptions`) plus an optional `initialize(topology)` callback that runs once for each newly-created topology before the hook returns it. `initialize` is intended for application-owned bootstrap state that must be present before querying children mount; changing only the callback identity never recreates a live topology.
 
 ```tsx
 import { useTopology } from '@nozzleio/react-mosaic';
@@ -25,7 +25,7 @@ function Page() {
 
 ### Hoist or memoize the config and options fields
 
-Recreation is keyed on the **identities** of `config`, `options.selections`, and `options.filterSets` — not on the options bag object itself, and not on `initialize`. A change to any of those three references tears the previous topology down and builds a fresh one. The options bag itself may be built inline every render (e.g. `{ ...coreOptions, initialize }`), and `initialize`'s identity never recreates — only the config and the `selections` / `filterSets` fields need a stable identity. Keep those references stable — hoist to module scope (the common case, since a page's topology is static), or `useMemo` / a ref when the shape genuinely depends on props:
+Recreation is keyed on the **identities** of `config`, `options.selections`, `options.filterSets`, `options.params`, and `options.paramOptions` — not on the options bag object itself, and not on `initialize`. A change to any of those references tears the previous topology down and builds a fresh one. The options bag itself may be built inline every render (e.g. `{ ...coreOptions, initialize }`), and `initialize`'s identity never recreates — only the config and the `selections` / `filterSets` / `params` / `paramOptions` fields need a stable identity. Keep those references stable — hoist to module scope (the common case, since a page's topology is static), or `useMemo` / a ref when the shape genuinely depends on props:
 
 ```tsx
 // Module scope — one stable identity for the page's lifetime.
@@ -44,7 +44,9 @@ function Page() {
 }
 ```
 
-An inline `useTopology({ … }, { selections: { … } })` literal mints a new `config` (and `selections`) identity every render, which would rebuild the topology (and re-wire every relay) on each render — the same contract the Phase-1 composition hooks (`useComposedSelection`, `useCascadingContexts`) document. The bag wrapper itself is exempt: `useTopology(config, { ...options, initialize })` with a stable `config` and stable `selections` / `filterSets` stays stable even though the bag is a fresh object each render.
+An inline `useTopology({ … }, { selections: { … } })` literal mints a new `config` (and `selections`) identity every render, which would rebuild the topology (and re-wire every relay) on each render — the same contract the Phase-1 composition hooks (`useComposedSelection`, `useCascadingContexts`) document. The bag wrapper itself is exempt: `useTopology(config, { ...options, initialize })` with a stable `config` and stable `selections` / `filterSets` / `params` / `paramOptions` stays stable even though the bag is a fresh object each render.
+
+The [`params`](../core/selection-topology.md#params) and `paramOptions` fields participate in the recreation key exactly like `selections` / `filterSets`: a mid-life identity change tears the previous topology down and builds a fresh one (resolving the newly-supplied external param instances). Supply them from a stable reference — hoist or memoize alongside `config` — so the topology stays stable across re-renders, and only swap the identity when you intend to rebuild.
 
 ## Provider and consumer hooks
 
@@ -104,6 +106,31 @@ To retrieve a FilterSet by entry name, reach through the topology object rather 
 const topology = useMosaicTopology();
 const filterSet = topology.getFilterSet('filters');
 ```
+
+### `useMosaicParamRef`
+
+`useMosaicParamRef<T>(ref)` — sugar over `useMosaicTopology`: resolve a bare ref to its [`Param<T>`](../core/selection-topology.md#params) through the provided topology — the param mirror of `useMosaicSelectionRef`. Throws (via `topology.resolveParam`, listing `validNames`) on an undeclared ref, a dotted ref (params have no children), or a ref to a selection-flavored entry (directing back to `resolve`). The `T` type parameter defaults to `any`, so `useMosaicParamRef<MedalMetric>('metric')` types the result without a cast.
+
+Use it to hand a declared param to a client's `params` — the value-less handle, resolved from the same string ref a `param` entry carries in a spec:
+
+```tsx
+import { useMosaicParamRef, useMosaicValues } from '@nozzleio/react-mosaic';
+import { Query, column, sum } from '@uwdata/mosaic-sql';
+
+function MedalKpi() {
+  const $metric = useMosaicParamRef('metric');
+  const kpis = useMosaicValues<{ medals: number }>({
+    query: ({ where }) =>
+      Query.from('athletes')
+        .select({ medals: sum(column($metric.value!)) })
+        .where(where),
+    params: { metric: $metric }, // re-queries when the param changes
+  });
+  return <div>{kpis.values?.medals}</div>;
+}
+```
+
+To render the param's live value (a display, or a controlled input), read it with [`useMosaicParamValue`](./hooks.md#param-read-back).
 
 ## Active-clause hooks
 

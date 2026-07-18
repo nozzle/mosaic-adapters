@@ -1,6 +1,6 @@
 # Topology recipes
 
-Two consumer-side patterns over a [`Topology`](../core/selection-topology.md): a page-wide **reset** and an **active-filters / chips** bar. Both are a few lines of app code over the topology object's two consumer surfaces — the `reset()` action and the `activeClauses` observation. Neither ships in any package: the chip model, its grouping, and the union below are exactly where apps differ, so they live here and in the example apps.
+Consumer-side patterns over a [`Topology`](../core/selection-topology.md): a page-wide **reset**, an **active-filters / chips** bar, and a **param → selection bridge**. Each is a few lines of app code over the topology object's consumer surfaces — the `reset()` action, the `activeClauses` observation, and the resolvers. None ships in any package: the chip model, its grouping, the union, and the clause-minting below are exactly where apps differ, so they live here and in the example apps.
 
 The reference implementation for both is [`examples/react/nozzle-paa/src/topology.ts`](../../examples/react/nozzle-paa/src/topology.ts).
 
@@ -115,9 +115,64 @@ The example's inline comments call these out; they are the whole reason this is 
 - **Label from the annotation.** A foreign clause has no spec, so its human label comes from the declaration's `label` (and/or `meta`) surfaced on the [`ActiveClause`](../core/selection-topology.md#active-clauses) — e.g. the example declares `spotlight: { type: 'single', label: 'Domain Spotlight', meta: { column: 'domain' } }` and reads both back.
 - **Foreign removal is a null-predicate publish.** Clearing the whole clause means publishing `{ source, value: null, predicate: null }` from the clause's own source onto its owning Selection. `Selection.remove(source)` does **not** clear a `single` Selection's clause, so the null-predicate publish is the form that works across every resolution type. Per-value narrowing (removing one value from a multi-value clause) stays a FilterSet concern.
 
+## Param → selection bridge
+
+A [`param`](../core/selection-topology.md#params) is a scalar knob: it shapes _what a query computes_ by value interpolation, and it never mints a `WHERE` / `HAVING` predicate. Sometimes an app wants a control that is **both** — a value read by some queries _and_ a filter clause published onto a Selection (a "minimum medals" threshold, a "top-N as a filter"). Minting a clause from a scalar is publish-side, precisely like a FilterSet chip: its shape is where apps differ, so the packages deliberately **do not ship it**. The packages give you the resolver ([`useMosaicParamRef`](./topology.md#usemosaicparamref)) and the read hook ([`useMosaicParamValue`](./hooks.md#param-read-back)); the bridge is these few lines of app code.
+
+The widget reads the param's scalar value and publishes a clause into a sibling Selection under a stable source, so the clause updates in place and clears as a whole clause on [`reset()`](../core/selection-topology.md#reset-semantics) or from a chip bar:
+
+```tsx
+import { useEffect, useMemo } from 'react';
+import {
+  useMosaicParamRef,
+  useMosaicParamValue,
+  useMosaicSelectionRef,
+} from '@nozzleio/react-mosaic';
+import { sql } from '@uwdata/mosaic-sql';
+
+// Config declares the knob and the Selection it filters into:
+//   minMedals: { type: 'param', default: 0 },
+//   where: { type: 'crossfilter' },
+
+function MinMedalsFilter() {
+  const $minMedals = useMosaicParamRef('minMedals');
+  const $where = useMosaicSelectionRef('where');
+  const value = useMosaicParamValue<number>($minMedals) ?? 0;
+
+  // A stable clause source identifies this bridge's clause on $where, so a new
+  // value replaces the previous clause in place rather than stacking.
+  const source = useMemo(() => ({ id: 'min-medals-bridge' }), []);
+
+  // The bridge: whenever the scalar changes, mint (or clear) a predicate
+  // clause. This is the publish step the packages leave to the app.
+  useEffect(() => {
+    $where.update({
+      source,
+      value,
+      predicate: value > 0 ? sql`"medals" >= ${value}` : null,
+    });
+  }, [$where, source, value]);
+
+  // The input still drives the param itself — other queries read it via `params`.
+  return (
+    <input
+      type="number"
+      min={0}
+      value={value}
+      onChange={(event) => $minMedals.update(event.target.valueAsNumber)}
+    />
+  );
+}
+```
+
+Two things this makes explicit:
+
+- **The param stays the source of truth.** The input writes the scalar; the bridge derives a clause from it. A KPI that aggregates under this threshold reads the same `minMedals` param through its client's `params` — the knob and the filter never drift.
+- **The published clause is an ordinary foreign clause.** Because it lands on `where` under its own source, it surfaces in [`activeClauses`](../core/selection-topology.md#active-clauses) and clears with the [null-predicate publish](#active-filters--chips) like any other foreign clause — the bridge did not create a new removal path.
+
 ## See also
 
-- [Selection topology (core)](../core/selection-topology.md) — reset and active-clause semantics.
+- [Selection topology (core)](../core/selection-topology.md) — reset, active-clause, and [param](../core/selection-topology.md#params) semantics.
 - [Topology bindings (React)](./topology.md) — `useTopology`, provider/consumer hooks, active-clause hooks.
 - [Filter set](../core/filter-set.md) — the chip model (`useFilterSetChips`) the FilterSet half of the union uses.
 - Sibling React recipes: [connector lifecycle](./connector-lifecycle.md), [data loading](./data-loading.md), [filter editor](./filter-editor.md).
