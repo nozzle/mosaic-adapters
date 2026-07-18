@@ -12,12 +12,16 @@ const TOTAL_PHRASES = '2,681';
 const TOTAL_ROWS = '203,556';
 const TOTAL_PHRASES_NUM = 2_681;
 const TOTAL_ROWS_NUM = 203_556;
+// The switchable distinct-count KPI (`kpi_distinct`, `count(DISTINCT $count_field)`)
+// reads exact dataset values per dimension: 2 devices (its default), 7 days,
+// 2,681 phrases, 2,884 domains.
+const TOTAL_DEVICES = '2';
+const TOTAL_DOMAINS = '2,884';
 
 const KPI_VALUE_IDS = [
   'kpi-kpi_phrases-value',
   'kpi-kpi_questions-value',
-  'kpi-kpi_days-value',
-  'kpi-kpi_devices-value',
+  'kpi-kpi_distinct-value',
   'kpi-kpi_phrases_all-value',
 ] as const;
 
@@ -1872,5 +1876,74 @@ test.describe('spec-driven dashboard', () => {
       timeout: 30_000,
     });
     await page.keyboard.press('Escape');
+  });
+
+  test('(x5) the count-field variable-select switches the distinct-count KPI across dimensions', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    // `kpi_distinct` reads `count(DISTINCT $count_field)` — a `$name` COLUMN token
+    // whose value NAMES the counted column. Its default (`device`) counts the two
+    // devices, so the card settles on 2 once the unfiltered baseline is live.
+    const kpi = page.getByTestId('kpi-kpi_distinct-value');
+    await expect(kpi).toHaveText(TOTAL_DEVICES, { timeout: 30_000 });
+
+    const select = page.getByTestId('variable-select-count_field_select-input');
+
+    // Switching the dimension re-quotes the counted column (the variable rides in
+    // as the client's `params`, re-querying the card): Phrases → 2,681 distinct
+    // phrases, Domains → 2,884 distinct domains. Two distinct pinned values.
+    await select.selectOption({ label: 'Phrases' });
+    await expect(kpi).toHaveText(TOTAL_PHRASES, { timeout: 30_000 });
+
+    await select.selectOption({ label: 'Domains' });
+    await expect(kpi).toHaveText(TOTAL_DOMAINS, { timeout: 30_000 });
+
+    // Switching back to the default dimension restores its value.
+    await select.selectOption({ label: 'Devices' });
+    await expect(kpi).toHaveText(TOTAL_DEVICES, { timeout: 30_000 });
+  });
+
+  test('(x6) the min-volume threshold narrows the Domain table and round-trips through the URL', async ({
+    page,
+  }) => {
+    await gotoDashboard(page);
+
+    const card = page.getByTestId('summary-table-by_domain');
+    const domainRows = summaryRows(page, 'summary-table-by_domain');
+
+    // Baseline (min_volume=0, unfiltered): the Domain table's `search_volume >=
+    // :min_volume` fragment admits every non-null-volume domain — 2,876 groups —
+    // and the default floor is not written to the URL until it changes.
+    await expect(domainRows).toHaveCount(10, { timeout: 30_000 });
+    await expect(card.getByText('2,876 groups')).toBeVisible({
+      timeout: 30_000,
+    });
+    expect(new URL(page.url()).searchParams.has('v.min_volume')).toBe(false);
+
+    const select = page.getByTestId('variable-select-min_volume_select-input');
+
+    // Raise the floor to ≥ 50k: the escaped literal `search_volume >= 50000`
+    // narrows the table to the 8 domains answering the two 50k+ phrases — a
+    // single 8-row page — and the numeric value round-trips to the owned URL
+    // param (a number encodes as `n<value>`).
+    await select.selectOption({ label: '≥ 50k' });
+    await expect(card.getByText('8 groups')).toBeVisible({ timeout: 30_000 });
+    await expect(domainRows).toHaveCount(8);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('v.min_volume'))
+      .toBe('n50000');
+
+    // Switching back to All volumes restores the full domain set and writes the
+    // (default) floor back through to the URL.
+    await select.selectOption({ label: 'All volumes' });
+    await expect(card.getByText('2,876 groups')).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(domainRows).toHaveCount(10);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('v.min_volume'))
+      .toBe('n0');
   });
 });

@@ -24,6 +24,12 @@
 #   - The `answer_field` variable declares `persist: { type: url }`, so its value
 #     round-trips through `?v.answer_field=…`; a shared link with it set hydrates
 #     the control and the bound detail-table column over the declared default.
+#   - The `min_volume` variable also declares `persist: { type: url }`; its numeric
+#     value round-trips through `?v.min_volume=…` (a number encodes as `n<value>`,
+#     so `50000` → `v.min_volume=n50000`). It binds as a `:name` VALUE placeholder
+#     (escaped SQL literal) in the Domain table's WHERE. The `count_field` variable
+#     is not persisted; it binds as a `$name` COLUMN token inside the distinct-count
+#     KPI's `count(DISTINCT $count_field)` aggregate.
 
 # Optional page title rendered in the header (falls back to a generic default if
 # absent — the domain string lives here, never in src/).
@@ -136,6 +142,27 @@ topology:
     # round-trips through the type-tagged codec (a string encodes as `s<value>`,
     # so `title` → `v.answer_field=stitle`). A shared link with the param set
     # hydrates the control (and the bound detail-table column) over the default.
+    persist:
+      type: url
+  # `count_field` picks WHICH column the distinct-count KPI counts. Its value
+  # NAMES a column, spliced into `count(DISTINCT $count_field)` as a `$name`
+  # COLUMN token (quoted identifier). The `count_field_select` widget drives it
+  # and the KPI re-queries on change (the value rides in as the client's
+  # `params`). Not persisted — a session-local exploration control.
+  count_field:
+    type: variable
+    default: device
+    label: Count dimension
+  # `min_volume` is a search-volume FLOOR. Its value is interpolated as a `:name`
+  # VALUE placeholder (escaped SQL literal) into the Domain table's
+  # `search_volume >= :min_volume` WHERE, so a higher floor drops the table to
+  # the domains that answer high-volume questions. The `min_volume_select` widget
+  # drives it; `persist: { type: url }` round-trips the numeric value through
+  # `?v.min_volume=…` (encoded `n<value>`), so a floored view is a shareable link.
+  min_volume:
+    type: variable
+    default: 0
+    label: Min search volume
     persist:
       type: url
 
@@ -269,26 +296,22 @@ widgets:
       from: questions_enriched
       select:
         value: 'count(DISTINCT "related_phrase"."phrase")'
-  kpi_days:
+  # One switchable distinct-count card replacing the former near-duplicate
+  # `kpi_days` / `kpi_devices` cards: its `value` binds the `count_field` variable
+  # as a `$name` COLUMN token — `count(DISTINCT $count_field)` counts whichever
+  # column the value names (quoted identifier). The `count_field_select` control
+  # picks the dimension (Devices / Days / Phrases / Domains) and the card
+  # re-queries on change (the variable rides in as the client's `params`).
+  kpi_distinct:
     renderer: kpi-card
-    label: '# of Days'
+    label: Distinct Count
     format: number
     filter_by: page
     query:
       type: select
       from: questions_enriched
       select:
-        value: 'count(DISTINCT requested)'
-  kpi_devices:
-    renderer: kpi-card
-    label: '# of Devices'
-    format: number
-    filter_by: page
-    query:
-      type: select
-      from: questions_enriched
-      select:
-        value: 'count(DISTINCT device)'
+        value: 'count(DISTINCT $count_field)'
   # The fifth KPI omits `filter_by`: it never joins the cross-filter topology,
   # so its value stays constant. As a structured query with no `filter_by`, its
   # `ctx.where` is empty, so the compiled query emits no WHERE clause at all.
@@ -435,7 +458,10 @@ widgets:
       select:
         key: domain
         metric: 'count(*)'
-      where: ['domain IS NOT NULL']
+      # The second fragment binds the `min_volume` variable as a `:name` VALUE
+      # placeholder — an escaped SQL literal ANDed into the WHERE, so raising the
+      # floor narrows the table to the domains answering high-volume questions.
+      where: ['domain IS NOT NULL', 'search_volume >= :min_volume']
       group_by: [domain]
     publish:
       spec_id: select:domain
@@ -493,6 +519,32 @@ widgets:
       - { value: title, label: Answer Title }
       - { value: description, label: Answer Description }
 
+  # Drives the `count_field` variable: picks which column the distinct-count KPI
+  # (`kpi_distinct`) counts. Its value NAMES the column spliced into
+  # `count(DISTINCT $count_field)`, so the KPI re-queries on every change.
+  count_field_select:
+    renderer: variable-select
+    label: Count dimension
+    variable: count_field
+    options:
+      - { value: device, label: Devices }
+      - { value: requested, label: Days }
+      - { value: phrase, label: Phrases }
+      - { value: domain, label: Domains }
+
+  # Drives the `min_volume` variable: a search-volume floor spliced into the
+  # Domain table's `search_volume >= :min_volume` WHERE as an escaped literal.
+  # Raising it narrows that table to high-volume domains; the value is
+  # URL-persisted, so a floored view is shareable.
+  min_volume_select:
+    renderer: variable-select
+    label: Min search volume
+    variable: min_volume
+    options:
+      - { value: 0, label: All volumes }
+      - { value: 10000, label: '≥ 10k' }
+      - { value: 50000, label: '≥ 50k' }
+
   # Detail table — the sole data-table renderer; TanStack Table v9 with column
   # filters bridged into the `filters` set via bridge_columns. Its "Answer"
   # column is variable-bound: `answer: $answer_field` compiles to a
@@ -544,8 +596,7 @@ layout:
     - widgets:
         - { ref: kpi_phrases, col_span: 1 }
         - { ref: kpi_questions, col_span: 1 }
-        - { ref: kpi_days, col_span: 1 }
-        - { ref: kpi_devices, col_span: 1 }
+        - { ref: kpi_distinct, col_span: 1 }
         - { ref: kpi_phrases_all, col_span: 1 }
         - { ref: kpi_phrases_no_domain, col_span: 1 }
     - widgets:
@@ -559,5 +610,7 @@ layout:
         - { ref: by_bucket, col_span: 1 }
     - widgets:
         - { ref: answer_field_select, col_span: 1 }
+        - { ref: count_field_select, col_span: 1 }
+        - { ref: min_volume_select, col_span: 1 }
     - widgets:
         - { ref: detail, col_span: 5 }

@@ -59,8 +59,7 @@ describe('questions spec query forms', () => {
   const structuredIds = [
     'kpi_phrases',
     'kpi_questions',
-    'kpi_days',
-    'kpi_devices',
+    'kpi_distinct',
     'kpi_phrases_all',
     'kpi_phrases_no_domain',
     'by_phrase',
@@ -84,11 +83,76 @@ describe('questions spec query forms', () => {
     });
   }
 
-  test('by_domain keeps its static WHERE fragment', () => {
+  test('by_domain keeps its static WHERE fragment plus the :min_volume value token', () => {
     const widget = widgets['by_domain'];
     expect(widget !== undefined && 'query' in widget).toBe(true);
     const query = (widget as { query: StructuredQuery }).query;
-    expect(query.where).toEqual(['domain IS NOT NULL']);
+    // The static predicate is preserved and the `:min_volume` VALUE placeholder
+    // is ANDed in as a second fragment.
+    expect(query.where).toEqual([
+      'domain IS NOT NULL',
+      'search_volume >= :min_volume',
+    ]);
     expect(query.group_by).toEqual(['domain']);
+  });
+});
+
+// Pin the two live fragment-token usages the shipped questions spec exercises:
+// a `:name` VALUE placeholder (`min_volume`) and a `$name` COLUMN token
+// (`count_field`), each declared as a persisted/unpersisted `variable` and driven
+// by a `variable-select` control. A regression that dropped either the variable,
+// its control, or the binding would render the tokens inert — caught here without
+// waiting on Playwright.
+describe('questions spec fragment-token variable usages', () => {
+  const result = compileSpec(readText('/spec/questions.yaml'));
+  if (!result.ok) {
+    throw new Error(
+      `questions spec failed to compile: ${result.errors.join('; ')}`,
+    );
+  }
+  const { spec } = result.compiled;
+  const { widgets, topology } = spec;
+
+  test('declares the count_field variable (unpersisted) and the min_volume variable (url-persisted)', () => {
+    const countField = topology['count_field'];
+    expect(countField).toEqual({
+      type: 'variable',
+      default: 'device',
+      label: 'Count dimension',
+    });
+
+    const minVolume = topology['min_volume'];
+    expect(minVolume !== undefined && minVolume.type === 'variable').toBe(true);
+    expect((minVolume as { default?: unknown }).default).toBe(0);
+    expect((minVolume as { persist?: unknown }).persist).toEqual({
+      type: 'url',
+    });
+  });
+
+  test('kpi_distinct binds count_field as a $name COLUMN token in count(DISTINCT ...)', () => {
+    const widget = widgets['kpi_distinct'];
+    expect(widget !== undefined && 'query' in widget).toBe(true);
+    const query = (widget as { query: StructuredQuery }).query;
+    expect(query.select['value']).toBe('count(DISTINCT $count_field)');
+  });
+
+  test('the count_field_select control drives the count_field variable', () => {
+    const widget = widgets['count_field_select'];
+    expect(widget?.renderer).toBe('variable-select');
+    expect((widget as { variable?: string }).variable).toBe('count_field');
+    const values = (
+      widget as { options?: Array<{ value: unknown }> }
+    ).options?.map((option) => option.value);
+    expect(values).toEqual(['device', 'requested', 'phrase', 'domain']);
+  });
+
+  test('the min_volume_select control drives the min_volume variable with numeric thresholds', () => {
+    const widget = widgets['min_volume_select'];
+    expect(widget?.renderer).toBe('variable-select');
+    expect((widget as { variable?: string }).variable).toBe('min_volume');
+    const values = (
+      widget as { options?: Array<{ value: unknown }> }
+    ).options?.map((option) => option.value);
+    expect(values).toEqual([0, 10000, 50000]);
   });
 });
