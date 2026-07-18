@@ -70,6 +70,7 @@ export type { TopologyInitializer, UseTopologyOptions } from './use-topology';
 
 export {
   MosaicTopologyProvider,
+  useMosaicParamRef,
   useMosaicSelectionRef,
   useMosaicTopology,
 } from './topology-context';
@@ -82,5 +83,7 @@ export {
 
 export { useMosaicSelectionValue } from './use-mosaic-selection-value';
 export type { UseMosaicSelectionValueOptions } from './use-mosaic-selection-value';
+
+export { useMosaicParamValue } from './use-mosaic-param-value';
 
 export { useFilterSetChips, useFilterSetState } from './use-filter-set';

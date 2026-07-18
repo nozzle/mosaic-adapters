@@ -12,7 +12,7 @@
  * a microtask, so assertions on the active-clause store follow `settle()`.
  */
 import { createElement } from 'react';
-import { clausePoint } from '@uwdata/mosaic-core';
+import { Param, clausePoint } from '@uwdata/mosaic-core';
 import { describe, expect, test } from 'vitest';
 
 import { interact, renderHook, settle } from '@nozzleio/test-support/react';
@@ -178,6 +178,76 @@ describe('useTopology', () => {
     expect(second.validNames).toEqual(new Set(['b']));
     // The superseded topology was torn down.
     expect(first.destroyed).toBe(true);
+
+    await hook.unmount();
+  });
+
+  test('recreates when the options.params identity changes', async () => {
+    const config: TopologyConfig = { x: { type: 'external-param' } };
+    const paramA = Param.value(1);
+    const paramB = Param.value(2);
+    const hook = await renderHook(
+      ({ params }: { params: Record<string, Param<number>> }) =>
+        useTopology(config, { params }),
+      { initialProps: { params: { x: paramA } } },
+    );
+
+    const first = hook.result.current;
+    expect(first.resolveParam('x')).toBe(paramA);
+
+    // A new params bag identity (holding a different external instance) tears
+    // the previous topology down and resolves the fresh instance.
+    await hook.rerender({ params: { x: paramB } });
+    const second = hook.result.current;
+    expect(second).not.toBe(first);
+    expect(first.destroyed).toBe(true);
+    expect(second.resolveParam('x')).toBe(paramB);
+
+    await hook.unmount();
+  });
+
+  test('recreates when the options.paramOptions identity changes', async () => {
+    const config: TopologyConfig = {
+      threshold: { type: 'param', default: 10 },
+    };
+    const hook = await renderHook(
+      ({ paramOptions }: { paramOptions: Record<string, object> }) =>
+        useTopology(config, { paramOptions }),
+      { initialProps: { paramOptions: {} } },
+    );
+
+    const first = hook.result.current;
+    expect(first.destroyed).toBe(false);
+
+    // A new paramOptions bag identity recreates, mirroring filterSets.
+    await hook.rerender({ paramOptions: {} });
+    const second = hook.result.current;
+    expect(second).not.toBe(first);
+    expect(first.destroyed).toBe(true);
+
+    await hook.unmount();
+  });
+
+  test('stable params / paramOptions identities do not recreate across renders', async () => {
+    const config: TopologyConfig = {
+      x: { type: 'external-param' },
+      threshold: { type: 'param', default: 10 },
+    };
+    // Stable field identities; the bag wrapper is rebuilt every render.
+    const params = { x: Param.value(1) };
+    const paramOptions = {};
+    const hook = await renderHook(
+      // Fresh bag wrapper every render, but stable params/paramOptions fields.
+      () => useTopology(config, { params, paramOptions }),
+      { initialProps: {} },
+    );
+
+    const first = hook.result.current;
+    await hook.rerender({});
+    await hook.rerender({});
+    // Stable params/paramOptions identities → same live instance.
+    expect(hook.result.current).toBe(first);
+    expect(first.destroyed).toBe(false);
 
     await hook.unmount();
   });

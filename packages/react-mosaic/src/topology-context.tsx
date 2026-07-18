@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { Topology } from '@nozzleio/mosaic-core';
-import type { Selection } from '@uwdata/mosaic-core';
+import type { Param, Selection } from '@uwdata/mosaic-core';
 import type { ReactNode } from 'react';
 
 const MosaicTopologyContext = createContext<Topology | null>(null);
@@ -55,4 +55,26 @@ export function useMosaicTopology(): Topology {
 export function useMosaicSelectionRef(ref: string): Selection {
   const topology = useMosaicTopology();
   return topology.resolve(ref);
+}
+
+/**
+ * Sugar over {@link useMosaicTopology}: resolve a ref through the provided
+ * topology to its {@link Param}. Throws (via `topology.resolveParam`) on an
+ * undeclared ref, a dotted ref (params have no children), or a ref to a
+ * selection-flavored entry — the same contract as calling `resolveParam`
+ * directly.
+ *
+ * The `TParamValue` type parameter (default `any`) flows through to the returned
+ * `Param`, so a caller can write `useMosaicParamRef<MedalMetric>('metric')`
+ * instead of casting the result. It is a caller-side assertion only — the
+ * topology never verifies it.
+ *
+ * @param ref - A bare topology param ref (`entry`).
+ * @returns The resolved Param.
+ */
+export function useMosaicParamRef<TParamValue = any>(
+  ref: string,
+): Param<TParamValue> {
+  const topology = useMosaicTopology();
+  return topology.resolveParam<TParamValue>(ref);
 }
