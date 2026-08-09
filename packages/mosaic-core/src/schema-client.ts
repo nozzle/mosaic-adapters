@@ -79,6 +79,8 @@ export function createSchemaClient(options: SchemaClientOptions): SchemaClient {
       store.setState((prev) => ({
         ...prev,
         status: 'error',
+        // queryFieldInfo uses coordinator.query() directly rather than
+        // updateClient(), so upstream does not wrap this path in QueryError.
         error: error instanceof Error ? error : new Error(String(error)),
       }));
     }

@@ -50,6 +50,14 @@ Every client exposes a `@tanstack/store` `Store`. The base shape:
 
 Specializations add their payload (`rows`/`totalRows`, `values`). Read `store.state`, subscribe with `store.subscribe`.
 
+With Mosaic 0.30+, a main-query failure sets `error` to the upstream
+`QueryError` class. Narrow it with `instanceof QueryError` (imported from
+`@uwdata/mosaic-core`) to inspect `.sql`, the SQL the coordinator actually
+issued, and `.cause`, the underlying database error. `Error | null` remains the
+public state type because non-client paths are not all wrapped; notably,
+[`createSchemaClient`](./schema-client.md) runs `queryFieldInfo` through
+`coordinator.query()` directly and can surface a plain `Error`.
+
 ## Selection topology
 
 A whole page typically runs on **one** `Selection.crossfilter()`. Every filter UI publishes clauses into it; every client consumes it via `filterBy`. Native cross-mode resolution excludes each publisher from its own clause (the clause `clients` set), so views cascade correctly with no adapter-level selection manager. Note that self-exclusion is cross-mode only: use `Selection.crossfilter()`, not plain `intersect()`, for a shared page context.

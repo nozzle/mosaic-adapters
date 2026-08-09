@@ -268,14 +268,15 @@ class RowsDataClient<TRow>
           totalRows: first ? Number(first[ROW_COUNT_COLUMN]) : 0,
         });
       })
-      .catch(() => {
-        // The main query surfaces errors on the store; a failed count query
-        // leaves totalRows untouched. Drop the memo so a later build retries
-        // rather than skipping against a count that never landed.
+      .catch((error: unknown) => {
+        // The main query alone owns status/error. Surface this side-channel
+        // failure through the coordinator logger without clobbering a
+        // successful rows result, and clear the memo so a later build retries.
         if (this.destroyed || generation !== this.#countGeneration) {
           return;
         }
         this.#lastCountQuerySql = undefined;
+        this.#options.coordinator.logger().error(error);
       });
   }
 

@@ -12,6 +12,7 @@
  * than being clipped. {@link usePopoverDismiss} closes it on an outside
  * mousedown or Escape; the panel stays mounted (hidden) while closed.
  */
+import { QueryError } from '@uwdata/mosaic-core';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { usePopoverDismiss } from '../chrome/use-popover-dismiss';
 import type { ReactElement } from 'react';
@@ -19,7 +20,7 @@ import type { ReactElement } from 'react';
 /** The slice of a data-client store this control reads. */
 interface SqlStore {
   subscribe: (listener: () => void) => { unsubscribe: () => void };
-  state: { lastQuery: string | null };
+  state: { lastQuery: string | null; error: Error | null };
 }
 
 export function WidgetSqlPopover(props: {
@@ -41,6 +42,16 @@ export function WidgetSqlPopover(props: {
     () => store.state.lastQuery,
     () => store.state.lastQuery,
   );
+  const error = useSyncExternalStore(
+    subscribe,
+    () => store.state.error,
+    () => store.state.error,
+  );
+  const queryError = error instanceof QueryError ? error : null;
+  const causeMessage =
+    queryError?.cause instanceof Error
+      ? queryError.cause.message
+      : String(queryError?.cause ?? '');
 
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -49,7 +60,7 @@ export function WidgetSqlPopover(props: {
   }, []);
   usePopoverDismiss(rootRef, open, close);
 
-  if (!sql) {
+  if (!sql && queryError === null) {
     return null;
   }
 
@@ -79,12 +90,35 @@ export function WidgetSqlPopover(props: {
           open ? '' : 'hidden'
         }`}
       >
-        <div className="mb-1.5 text-[11px] font-medium tracking-wide text-muted uppercase">
-          Last executed SQL
-        </div>
-        <pre className="max-h-[360px] overflow-auto rounded-gf border border-line bg-editor p-2 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap text-editor-ink">
-          {sql}
-        </pre>
+        {sql ? (
+          <>
+            <div className="mb-1.5 text-[11px] font-medium tracking-wide text-muted uppercase">
+              Last executed SQL
+            </div>
+            <pre className="max-h-[360px] overflow-auto rounded-gf border border-line bg-editor p-2 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap text-editor-ink">
+              {sql}
+            </pre>
+          </>
+        ) : null}
+        {queryError ? (
+          <div data-testid="widget-sql-error" className={sql ? 'mt-3' : ''}>
+            <div className="mb-1.5 text-[11px] font-medium tracking-wide text-gf-red uppercase">
+              Failed SQL
+            </div>
+            <pre className="max-h-[360px] overflow-auto rounded-gf border border-gf-red/30 bg-gf-red/5 p-2 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap text-gf-red">
+              {queryError.sql}
+            </pre>
+            <div className="mt-2 mb-1.5 text-[11px] font-medium tracking-wide text-gf-red uppercase">
+              Cause
+            </div>
+            <div
+              data-testid="widget-sql-error-cause"
+              className="rounded-gf border border-gf-red/30 bg-gf-red/5 p-2 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap text-gf-red"
+            >
+              {causeMessage}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
