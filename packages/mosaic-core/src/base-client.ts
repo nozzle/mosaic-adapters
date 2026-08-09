@@ -4,6 +4,7 @@ import { Store } from '@tanstack/store';
 import { deepEqual } from './utils';
 import type {
   MosaicClient,
+  QueryError,
   Selection,
   SelectionClause,
 } from '@uwdata/mosaic-core';
@@ -134,11 +135,20 @@ export abstract class BaseDataClient<
           ...this.onResult(data),
         });
       },
-      queryError: (error) => {
+      // Mosaic 0.30 wraps main-query failures in QueryError (a subclass of
+      // Error carrying `.sql`/`.cause`) before dispatch. It lands on the store
+      // intact; `state.error` stays typed `Error | null` so consumers narrow.
+      queryError: (error: QueryError) => {
         if (this.#destroyed) {
           return;
         }
-        this.patchState({ status: 'error', error } as Partial<TState>);
+        // Widened to Error first: `as Partial<TState>` on a QueryError-typed
+        // property fails the comparability check against the generic TState.
+        const stateError: Error = error;
+        this.patchState({
+          status: 'error',
+          error: stateError,
+        } as Partial<TState>);
       },
     });
 
