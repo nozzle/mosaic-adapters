@@ -435,9 +435,16 @@ class RowsDataClient<TRow>
   /**
    * A grouped main query whose group domain changes under filtering breaks
    * Mosaic's pre-aggregation assumptions, and `filterStable` defaults to
-   * upstream's `true` — the resulting optimizer path can hang on wrong
-   * pre-aggregated tables with no error. Surface the hazard once instead of
-   * failing silently.
+   * upstream's `true`. Mosaic then answers selection updates from a
+   * materialized view it builds once from `client.query()` with the *active*
+   * clause removed (sibling clauses still applied) — every part of the query
+   * that varies with the active filter beyond the WHERE clause, the GROUP BY
+   * domain included, is frozen at that pre-active shape and never rebuilt
+   * while the brush moves. Mosaic 0.30's `updateSelection` retries the standard
+   * query when the pre-aggregated update returns a `QueryError`, so a
+   * *failing* optimizer path now degrades to a correct (slower) query; a
+   * wrong-but-valid one still returns incorrect rows with no error. Surface
+   * the hazard once instead of failing silently.
    */
   #warnGroupedFilterStable(base: SelectQuery): void {
     if (this.#warnedGroupedFilterStable) {
