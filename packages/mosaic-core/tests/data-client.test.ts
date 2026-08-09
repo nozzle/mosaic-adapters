@@ -1,4 +1,4 @@
-import { Param, Selection } from '@uwdata/mosaic-core';
+import { Param, QueryError, Selection } from '@uwdata/mosaic-core';
 import { Query, count, eq, gte, literal } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
@@ -328,7 +328,7 @@ describe('enabled + refetch', () => {
     client.destroy();
   });
 
-  test('query errors surface on the store with status "error"', async () => {
+  test('main-query failures retain the coordinator QueryError details', async () => {
     const client = createRowsClient<AthleteRow>({
       coordinator: db.coordinator,
       query: () => Query.from('does_not_exist').select('*'),
@@ -336,8 +336,15 @@ describe('enabled + refetch', () => {
 
     await waitFor(() => {
       expect(client.store.state.status).toBe('error');
-      expect(client.store.state.error).toBeInstanceOf(Error);
+      expect(client.store.state.error).toBeInstanceOf(QueryError);
     });
+    const error = client.store.state.error;
+    expect(error).toBeInstanceOf(QueryError);
+    if (!(error instanceof QueryError)) {
+      throw new Error('Expected the coordinator to produce a QueryError');
+    }
+    expect(error.sql).toContain('does_not_exist');
+    expect(error.cause).toBeInstanceOf(Error);
 
     client.destroy();
   });

@@ -303,6 +303,56 @@ describe('rowCount: "query"', () => {
     querySpy.mockRestore();
     client.destroy();
   });
+
+  test('logs a failed count, preserves main-query status, and retries later', async () => {
+    const countError = new Error('count failed');
+    const loggerError = vi.spyOn(db.coordinator.logger(), 'error');
+    const originalQuery = db.coordinator.query.bind(db.coordinator);
+    let countAttempts = 0;
+    const querySpy = vi
+      .spyOn(db.coordinator, 'query')
+      .mockImplementation((query, options) => {
+        if (/__total_rows__/.test(String(query))) {
+          countAttempts += 1;
+          if (countAttempts === 1) {
+            return Promise.reject(countError) as ReturnType<
+              typeof db.coordinator.query
+            >;
+          }
+        }
+        return originalQuery(query, options);
+      });
+
+    const client = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: ({ where }) => athleteQuery().where(where),
+      inputs: { orderBy: [{ column: 'id' }], limit: 2, offset: 0 },
+      rowCount: 'query',
+    });
+
+    await waitFor(() => {
+      expect(client.store.state.status).toBe('success');
+      expect(loggerError).toHaveBeenCalledWith(countError);
+    });
+    expect(client.store.state.error).toBeNull();
+    expect(client.store.state.totalRows).toBeUndefined();
+    expect(countAttempts).toBe(1);
+
+    // A page turn rebuilds the same count SQL. It must retry because the
+    // failed attempt cleared the memo, while the main rows status stays good.
+    client.setInputs({ offset: 2 });
+    await waitFor(() => {
+      expect(client.store.state.rows.map((row) => row.id)).toEqual([3, 4]);
+      expect(client.store.state.totalRows).toBe(6);
+    });
+    expect(countAttempts).toBe(2);
+    expect(client.store.state.status).toBe('success');
+    expect(client.store.state.error).toBeNull();
+
+    querySpy.mockRestore();
+    loggerError.mockRestore();
+    client.destroy();
+  });
 });
 
 describe('rowCount: "none"', () => {
