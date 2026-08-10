@@ -1,5 +1,5 @@
 ---
-'@nozzleio/react-mosaic': major
+'@nozzleio/react-mosaic': minor
 ---
 
 **BREAKING:** `useVgPlot` and the `VgPlotElement` type have moved off the package root onto a new `@nozzleio/react-mosaic/vgplot` entry point. Everything else on the root export is unchanged.
