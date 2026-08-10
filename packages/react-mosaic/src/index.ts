@@ -55,9 +55,6 @@ export type {
   UseMosaicSchemaResult,
 } from './use-mosaic-schema';
 
-export { useVgPlot } from './use-vg-plot';
-export type { VgPlotElement } from './use-vg-plot';
-
 export {
   useCascadingContexts,
   useComposedSelection,

@@ -6,7 +6,8 @@ import {
   render,
   waitFor,
 } from '@nozzleio/test-support/react';
-import { useTopology, useVgPlot } from '../src/index';
+import { useTopology } from '../src/index';
+import { useVgPlot } from '../src/vgplot';
 import type { TestDb } from '@nozzleio/test-support/react';
 import type { Selection } from '@uwdata/mosaic-core';
 import type { Topology, TopologyConfig } from '../src/index';

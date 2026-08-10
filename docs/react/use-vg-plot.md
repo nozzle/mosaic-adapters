@@ -2,9 +2,11 @@
 
 vgplot interop is first-class and permanent: vgplot marks are MosaicClients on the same coordinator, so a vgplot chart handed the page Selection cross-filters with every data client for free. `useVgPlot` is thin sugar that mounts a vgplot element and disconnects its mark clients on unmount — nothing else sits between vgplot and the page.
 
+The hook ships on its own entry point, `@nozzleio/react-mosaic/vgplot`, and `@uwdata/vgplot` is an optional peer dependency — install it only if you import that subpath.
+
 ```tsx
 import * as vg from '@uwdata/vgplot';
-import { useVgPlot } from '@nozzleio/react-mosaic';
+import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
 
 function WeightHeightScatter() {
   const plotRef = useVgPlot(() =>

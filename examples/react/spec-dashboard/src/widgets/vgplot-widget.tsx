@@ -57,8 +57,8 @@ import * as vg from '@uwdata/vgplot';
 import {
   useMosaicActiveClauses,
   useMosaicCoordinator,
-  useVgPlot,
 } from '@nozzleio/react-mosaic';
+import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
 import {
   PlotSpecError,
   buildPlotSpec,
@@ -69,7 +69,7 @@ import { syncVgplotSelectionInteractors } from './vgplot-selection-sync';
 import type { ReactElement } from 'react';
 import type { Coordinator } from '@uwdata/mosaic-core';
 import type { ParamLike } from '@uwdata/mosaic-sql';
-import type { VgPlotElement } from '@nozzleio/react-mosaic';
+import type { VgPlotElement } from '@nozzleio/react-mosaic/vgplot';
 import type {
   DomainBounds,
   FixedDomainRequest,

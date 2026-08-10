@@ -138,7 +138,8 @@ Build plots through `vg.createAPIContext({ coordinator })` and use that context'
 
 ```tsx
 import * as vg from '@uwdata/vgplot';
-import { useMosaicCoordinator, useVgPlot } from '@nozzleio/react-mosaic';
+import { useMosaicCoordinator } from '@nozzleio/react-mosaic';
+import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
 
 function VolumePanel() {
   // Bare `vg.*` binds to the GLOBAL coordinator; this app owns an explicit one

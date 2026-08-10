@@ -111,6 +111,8 @@ back into `$page`, filtering the KPIs and the table.
 [`useVgPlot`](react/use-vg-plot.md) is mounting sugar only:
 
 ```tsx
+import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
+
 const plotRef = useVgPlot(() =>
   vg.plot(
     vg.dot(vg.from('athletes', { filterBy: $page }), {
