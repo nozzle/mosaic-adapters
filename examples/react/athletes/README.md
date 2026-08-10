@@ -7,8 +7,9 @@ Mosaic data client, and the whole page cross-filters through one
 
 - **KPI cards** — one values client, N KPIs per round trip, re-queried by a
   `Param`-driven metric select.
-- **Weight × height scatterplot** — native vgplot via `useVgPlot`; its brush
-  publishes into the page Selection and filters everything else.
+- **Weight × height scatterplot** — native vgplot via `useVgPlot` from
+  `@nozzleio/react-mosaic/vgplot`; its brush publishes into the page Selection
+  and filters everything else.
 - **The table** — user-owned `useReactTable` in fully manual mode: sorting and
   pagination execute in SQL as serializable rows-client inputs, column filters
   become Selection clauses through the TanStack Table filter bridge, and row clicks

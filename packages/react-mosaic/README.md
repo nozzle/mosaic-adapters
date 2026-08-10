@@ -10,6 +10,8 @@ The hooks are **controlled bindings**: you own the state (sorting, pagination, f
 npm install @nozzleio/react-mosaic @uwdata/mosaic-core @uwdata/mosaic-sql
 ```
 
+vgplot interop lives on a separate entry point — add `@uwdata/vgplot` (an optional peer dependency) only if you import `@nozzleio/react-mosaic/vgplot`.
+
 ## Usage
 
 ```tsx
@@ -38,7 +40,7 @@ Wrap your app in `<MosaicProvider coordinator={...}>` (or pass `coordinator` per
 - `MosaicProvider` / `useMosaicCoordinator` — coordinator context.
 - `useMosaicRows`, `useMosaicValues` — controlled-binding hooks over the rows/values clients.
 - `useMosaicSelection(type?)` — one stable `Selection` (companion to `useMosaicSelections`) for `filterBy`/`havingBy` wiring and sibling-widget pub/sub.
-- `useVgPlot` — mount a vgplot element and disconnect its clients on unmount.
+- `useVgPlot` (from `@nozzleio/react-mosaic/vgplot`) — mount a vgplot element and disconnect its clients on unmount. `@uwdata/vgplot` is an optional peer dependency, needed only if you import this subpath.
 - Everything from `@nozzleio/mosaic-core`, re-exported.
 
 See `docs/react/` in the repository for hook semantics (the option-identity rules) and `docs/core/` for the client contract.

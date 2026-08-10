@@ -20,7 +20,7 @@ export default mergeConfig(
   packageConfig,
   tanstackViteConfig({
     cjs: false,
-    entry: ['src/index.ts'],
+    entry: ['src/index.ts', 'src/vgplot/index.ts'],
     srcDir: './src',
     tsconfigPath: './tsconfig.build.json',
   }),

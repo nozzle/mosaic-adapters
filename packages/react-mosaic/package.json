@@ -38,6 +38,10 @@
       "types": "./dist/esm/index.d.ts",
       "default": "./dist/esm/index.js"
     },
+    "./vgplot": {
+      "types": "./dist/esm/vgplot/index.d.ts",
+      "default": "./dist/esm/vgplot/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -54,7 +58,13 @@
   "peerDependencies": {
     "@uwdata/mosaic-core": ">=0.30.0 <1",
     "@uwdata/mosaic-sql": ">=0.30.0 <1",
+    "@uwdata/vgplot": ">=0.30.0 <1",
     "react": ">=19.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@uwdata/vgplot": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint-react/eslint-plugin": "catalog:",

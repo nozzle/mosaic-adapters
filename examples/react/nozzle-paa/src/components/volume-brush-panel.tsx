@@ -13,15 +13,15 @@ import {
   useMosaicActiveClauses,
   useMosaicCoordinator,
   useMosaicSelectionRef,
-  useVgPlot,
 } from '@nozzleio/react-mosaic';
+import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
 import {
   VOLUME_BRUSH_COLUMN,
   VOLUME_BRUSH_ENTRY,
   tableName,
 } from '../page-context';
 import { usePageContexts } from '../topology';
-import type { VgPlotElement } from '@nozzleio/react-mosaic';
+import type { VgPlotElement } from '@nozzleio/react-mosaic/vgplot';
 
 /** The slice of the vgplot `Plot` instance (exposed as `element.value`) this panel drives. */
 interface PlotInstance {

@@ -1,5 +1,5 @@
 import * as vg from '@uwdata/vgplot';
-import { useVgPlot } from '@nozzleio/react-mosaic';
+import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
 import { $page, tableName } from '../page-context';
 
 /**
