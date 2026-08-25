@@ -22,7 +22,7 @@ pnpm add @uwdata/mosaic-core @uwdata/mosaic-sql @uwdata/vgplot @tanstack/react-t
 ```
 
 All four published adapter packages declare `@uwdata/mosaic-core` and
-`@uwdata/mosaic-sql` as peers at `>=0.30.0 <1` — install Mosaic 0.30 or newer.
+`@uwdata/mosaic-sql` as peers at `>=0.31.0 <1` — install Mosaic 0.31 or newer.
 Keep the two on the same release line: Mosaic Core depends on a matching Mosaic
 SQL, and two copies of the SQL AST in one tree break pre-aggregation.
 
