@@ -441,8 +441,10 @@ class RowsDataClient<TRow>
    * that varies with the active filter beyond the WHERE clause, the GROUP BY
    * domain included, is frozen at that pre-active shape and never rebuilt
    * while the brush moves. Mosaic 0.30's `updateSelection` retries the standard
-   * query when the pre-aggregated update returns a `QueryError`, so a
-   * *failing* optimizer path now degrades to a correct (slower) query; a
+   * query when the pre-aggregated update returns a `QueryError`, and Mosaic
+   * 0.31 additionally catches a failing view-*creation* query (logged via the
+   * coordinator's logger, then the standard path is used), so a *failing*
+   * optimizer path degrades to a correct (slower) query at either stage; a
    * wrong-but-valid one still returns incorrect rows with no error. Surface
    * the hazard once instead of failing silently.
    */
