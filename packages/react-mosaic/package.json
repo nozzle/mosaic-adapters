@@ -69,16 +69,16 @@
   "devDependencies": {
     "@eslint-react/eslint-plugin": "catalog:",
     "@nozzleio/test-support": "workspace:*",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
     "@uwdata/vgplot": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "rimraf": "catalog:",
     "typescript": "catalog:"
   }
