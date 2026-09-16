@@ -1,5 +1,13 @@
 # @nozzleio/mosaic-core
 
+## 0.8.1
+
+### Patch Changes
+
+- [#232](https://github.com/nozzle/mosaic-adapters/pull/232) [`587ab10`](https://github.com/nozzle/mosaic-adapters/commit/587ab10157ac742a44d43451f77fa3ae5bad7c2f) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Data clients now honour a current-request guarantee: only the response to the most recent main-query request writes `status`/data to the store. A response for a request that has since been superseded — by a `filterBy`/`havingBy`/Param-driven re-query, `setInputs`, `refetch()`, or an empty round — is dropped whether it succeeds or fails and whichever order responses arrive in. Previously an older in-flight query completing first would briefly report `'success'` with stale rows against the newer `inputs` (nozzle/mosaic-adapters#230).
+
+- [#234](https://github.com/nozzle/mosaic-adapters/pull/234) [`b0443b5`](https://github.com/nozzle/mosaic-adapters/commit/b0443b5fdd6fb236a812f5ce3a831386f622abd6) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - `skipSources` now applies in front of the coordinator. A data client with a non-empty `skipSources` subscribes to a derived Selection (`createSkipProjectedSelection`, newly exported) that never carries a skipped clause, so a change to a skipped source no longer issues a byte-identical query or flips `status` to `'pending'`. Kept clauses, `setInputs`, Params, `havingBy` and `refetch()` refresh exactly as before; resolver semantics (union / intersect / `empty` / crossfilter self-exclusion) are unchanged (nozzle/mosaic-adapters#229).
+
 ## 0.8.0
 
 ### Minor Changes
