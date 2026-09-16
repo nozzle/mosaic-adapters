@@ -16,6 +16,7 @@ import type {
   ExecQueryRequest,
   JSONQueryRequest,
   MosaicClient,
+  SelectionClause,
 } from '@uwdata/mosaic-core';
 import type { DataClientStatus, ValuesClient } from '../src/index';
 
@@ -255,16 +256,132 @@ describe('skipSources projection', () => {
     expect(handle.selection.clauses[0]?.value).toBe('swim');
   });
 
-  test('reset() on the parent relays only kept clauses', () => {
+  test('reset() on the parent relays only kept clauses', async () => {
     const parent = Selection.intersect();
     const handle = createSkipProjectedSelection(parent, new Set(['device']));
     parent.update(device('desktop'));
+    await parent.pending('value');
     parent.update(sport('swim'));
+    await parent.pending('value');
     expect(handle.selection.clauses).toHaveLength(1);
 
     parent.reset();
+    await parent.pending('value');
     expect(parent.clauses).toHaveLength(0);
     expect(handle.selection.clauses).toHaveLength(0);
     handle.destroy();
+  });
+
+  /**
+   * A parent that installs complete snapshots and emits itself — the shape of
+   * an application-side source projection — never calls `update()`, so the
+   * relay is silent; the projection must follow the emitted value instead.
+   */
+  class SnapshotSelection extends Selection {
+    replace(clauses: Array<SelectionClause>, active?: SelectionClause): void {
+      const next: Selection['clauses'] = [...clauses];
+      if (active !== undefined) {
+        next.active = active;
+      }
+      this._value = next;
+      this._resolved = next;
+      void this.emit('value', next);
+    }
+  }
+
+  describe('snapshot-style parents (no update() relay)', () => {
+    test('a kept clause change re-queries with fresh clause objects per snapshot', async () => {
+      const db = createCountingDb();
+      const parent = new SnapshotSelection(Selection.intersect().resolver);
+      const client = createValuesClient<Totals>({
+        coordinator: db.coordinator,
+        filterBy: parent,
+        skipSources: new Set(['device']),
+        query: ({ where }) => totals(where),
+      });
+      await settle();
+      expect(db.queries).toHaveLength(1);
+
+      parent.replace([device('desktop'), sport('swim')], sport('swim'));
+      await parent.pending('value');
+      await settle();
+      expect(db.queries).toHaveLength(2);
+      expect(db.queries[1]).toContain('swim');
+      expect(db.queries[1]).not.toContain('desktop');
+
+      // A new snapshot with identical content but new clause objects.
+      parent.replace([device('desktop'), sport('swim')], sport('swim'));
+      await parent.pending('value');
+      await settle();
+      expect(db.queries).toHaveLength(2);
+
+      parent.replace([device('desktop'), sport('run')], sport('run'));
+      await parent.pending('value');
+      await settle();
+      expect(db.queries).toHaveLength(3);
+      expect(db.queries[2]).toContain('run');
+
+      client.destroy();
+    });
+
+    test('a skipped-only snapshot change issues no query and never goes pending', async () => {
+      const db = createCountingDb();
+      const parent = new SnapshotSelection(Selection.intersect().resolver);
+      parent.replace([sport('swim')], sport('swim'));
+      const client = createValuesClient<Totals>({
+        coordinator: db.coordinator,
+        filterBy: parent,
+        skipSources: new Set(['device']),
+        query: ({ where }) => totals(where),
+      });
+      await settle();
+      expect(db.queries).toHaveLength(1);
+      expect(db.queries[0]).toContain('swim');
+      const statuses = recordStatuses(client);
+
+      parent.replace([sport('swim'), device('desktop')], device('desktop'));
+      await parent.pending('value');
+      await settle();
+      parent.replace([sport('swim')], device('desktop'));
+      await parent.pending('value');
+      await settle();
+
+      expect(db.queries).toHaveLength(1);
+      expect(statuses).toEqual(['success']);
+
+      client.destroy();
+    });
+
+    test('a re-keyed clause with identical SQL still counts as a change', async () => {
+      const parent = new SnapshotSelection(Selection.crossfilter().resolver);
+      const handle = createSkipProjectedSelection(parent, new Set(['device']));
+      const emitted: Array<unknown> = [];
+      handle.selection.addEventListener('value', () => {
+        emitted.push(handle.selection.clauses);
+      });
+
+      const owner = {} as MosaicClient;
+      parent.replace([sport('swim')]);
+      await handle.selection.pending('value');
+      parent.replace([
+        clausePoint('sport', 'swim', {
+          source: { id: 'sport' } as object,
+          clients: new Set([owner]),
+        }),
+      ]);
+      await handle.selection.pending('value');
+      expect(emitted).toHaveLength(2);
+      handle.destroy();
+    });
+
+    test('destroy() stops following the parent', () => {
+      const parent = new SnapshotSelection(Selection.intersect().resolver);
+      const handle = createSkipProjectedSelection(parent, new Set(['device']));
+      parent.replace([sport('swim')]);
+      expect(handle.selection.clauses).toHaveLength(1);
+      handle.destroy();
+      parent.replace([sport('run')]);
+      expect(handle.selection.clauses[0]?.value).toBe('swim');
+    });
   });
 });
