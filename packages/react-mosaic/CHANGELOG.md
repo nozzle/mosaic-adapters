@@ -1,5 +1,12 @@
 # @nozzleio/react-mosaic
 
+## 0.10.2
+
+### Patch Changes
+
+- Updated dependencies [[`0a64cd3`](https://github.com/nozzle/mosaic-adapters/commit/0a64cd3835feb784ef27cdfb6d84d5295b05841c)]:
+  - @nozzleio/mosaic-core@0.8.2
+
 ## 0.10.1
 
 ### Patch Changes
