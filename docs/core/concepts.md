@@ -35,6 +35,10 @@ Exactly four things trigger a query:
 
 The input-driven triggers (`setInputs`, Param and `havingBy` `'value'` events) are **coalesced**: a burst of synchronous changes in one tick collapses into a single query build (the last state wins) instead of one query per event. In browsers this rides upstream `requestUpdate()`, which throttles on an animation frame; in environments without `requestAnimationFrame` (Node, workers) the client falls back to a macrotask flush with the same one-build-per-tick semantics. `status` still flips to `'pending'` synchronously so loading stays responsive. `refetch()` bypasses coalescing and queries immediately.
 
+### The current-request guarantee
+
+Every trigger supersedes whatever main query was still in flight. Only the response to the **most recent** request writes `status`/data to the store; a response for an older request — whether it succeeds or fails, and whichever order the responses arrive in — is dropped. So while filter A's query is still running and filter B's query is issued, the store stays `'pending'` until B answers, rather than briefly reporting `'success'` with A's rows against B's `inputs`. A build that yields no query (`buildQuery` returns `null`) counts as the current request too: its empty payload is final and any late result is discarded. Nothing is cancelled at the connector — the older query still runs to completion in the database — the guarantee is about what the store advertises.
+
 ## The store
 
 Every client exposes a `@tanstack/store` `Store`. The base shape:
