@@ -37,6 +37,9 @@ import type {
  * elsewhere a core-owned macrotask fallback coalesces (see
  * `#requestCoalescedUpdate`). `refetch()` (and any user-explicit re-query)
  * stays immediate via `requestQuery()`.
+ *
+ * Every trigger supersedes the in-flight main query: only the response to
+ * the most recent request reaches the store (see `#settle`).
  */
 export abstract class BaseDataClient<
   TInputs extends object,
@@ -53,6 +56,19 @@ export abstract class BaseDataClient<
   #teardown: Array<() => void> = [];
   /** Pending macrotask flush for the non-browser coalescing fallback. */
   #coalesceHandle: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Request-identity bookkeeping for the current-request guarantee (see
+   * `#settle`). `#inflight` is the FIFO of main-query requests the coordinator
+   * has marked pending but not yet settled; `#latestRequest` is the id of the
+   * request whose result the store is waiting on (or of the most recent
+   * "nothing to fetch" round, which supersedes every in-flight request).
+   */
+  #requestSeq = 0;
+  #latestRequest = 0;
+  #inflight: Array<{ id: number; sql: string | null }> = [];
+  /** SQL of the most recently built main query, attributed at `queryPending`. */
+  #lastBuiltSql: string | null = null;
 
   protected constructor(
     options: DataClientOptions<TInputs>,
@@ -123,10 +139,19 @@ export abstract class BaseDataClient<
         if (this.#destroyed) {
           return;
         }
+        const id = this.#nextRequestId();
+        this.#inflight.push({ id, sql: this.#lastBuiltSql });
+        this.#lastBuiltSql = null;
         this.patchState({ status: 'pending' } as Partial<TState>);
       },
       queryResult: (data) => {
         if (this.#destroyed) {
+          return;
+        }
+        // Successful results are fulfilled in request order (see `#settle`),
+        // so the oldest in-flight request is the one that just completed.
+        const request = this.#inflight.shift();
+        if (!this.#settle(request)) {
           return;
         }
         this.patchState({
@@ -140,6 +165,12 @@ export abstract class BaseDataClient<
       // intact; `state.error` stays typed `Error | null` so consumers narrow.
       queryError: (error: QueryError) => {
         if (this.#destroyed) {
+          return;
+        }
+        // Errors reject immediately rather than in request order, so match the
+        // failed request by its SQL; fall back to FIFO when nothing matches.
+        const request = this.#takeInflight(error.sql);
+        if (!this.#settle(request)) {
           return;
         }
         // Widened to Error first: `as Partial<TState>` on a QueryError-typed
@@ -230,6 +261,10 @@ export abstract class BaseDataClient<
    */
   #requestCoalescedUpdate(): void {
     if (this.#client.enabled) {
+      // The coalesced request is now the one the store waits on; a result
+      // from an older in-flight request landing before the flush fires must
+      // not report success for the newer inputs (see `#settle`).
+      this.#nextRequestId();
       this.patchState({ status: 'pending' } as Partial<TState>);
     }
     if (typeof requestAnimationFrame === 'function') {
@@ -493,7 +528,11 @@ export abstract class BaseDataClient<
     if (query === null) {
       // No query issued this round: `lastQuery` is explicitly `null` rather
       // than left as whatever the prior query was, since a stale SQL string
-      // would misrepresent the current (empty, unqueried) state.
+      // would misrepresent the current (empty, unqueried) state. The empty
+      // payload is the current state, so any still in-flight request is now
+      // superseded and its late result must not replace it.
+      this.#nextRequestId();
+      this.#lastBuiltSql = null;
       this.patchState({
         inputs: this.inputs,
         lastQuery: null,
@@ -504,12 +543,66 @@ export abstract class BaseDataClient<
       this.afterQueryBuilt(ctx);
       return null;
     }
+    const sql = String(query);
+    this.#lastBuiltSql = sql;
     this.patchState({
       inputs: this.inputs,
-      lastQuery: String(query),
+      lastQuery: sql,
     } as Partial<TState>);
     this.afterQueryBuilt(ctx);
     return query;
+  }
+
+  /**
+   * Mint the next request id and make it the one the store waits on. Every
+   * request issued earlier is superseded from this point.
+   */
+  #nextRequestId(): number {
+    this.#requestSeq += 1;
+    this.#latestRequest = this.#requestSeq;
+    return this.#requestSeq;
+  }
+
+  /**
+   * Remove and return the in-flight request whose SQL matches `sql`, falling
+   * back to the oldest in-flight request when none matches (a request issued
+   * by the coordinator's pre-aggregation path carries a query this class did
+   * not build).
+   */
+  #takeInflight(sql: string): { id: number; sql: string | null } | undefined {
+    const index = this.#inflight.findIndex((request) => request.sql === sql);
+    if (index === -1) {
+      return this.#inflight.shift();
+    }
+    const [request] = this.#inflight.splice(index, 1);
+    return request;
+  }
+
+  /**
+   * Current-request guarantee: a completed main-query request may only write
+   * `status`/data to the store when it is the request the store is waiting on.
+   * A response for a request that has since been superseded — by a newer
+   * `filterBy`/`havingBy`/Param-driven query, `setInputs`, `refetch()`, or an
+   * empty round — is dropped, so the store never advertises `'success'` (or
+   * `'error'`) against inputs that a still-pending request will answer.
+   *
+   * The upstream hooks (`queryPending`/`queryResult`/`queryError`) carry no
+   * request identity, so attribution relies on two coordinator properties:
+   * `QueryManager` fulfills successful results in submission order, which
+   * makes the oldest in-flight request the completed one; and failures are
+   * wrapped in a `QueryError` carrying the failed SQL, which identifies the
+   * request directly (errors reject out of order). Two concurrent requests
+   * with identical SQL are indistinguishable but also interchangeable.
+   *
+   * Returns true when the settled request is the current one. Also returns
+   * true when no in-flight request is known (nothing to compare against), so
+   * an unexpected completion is surfaced rather than swallowed.
+   */
+  #settle(request: { id: number } | undefined): boolean {
+    if (!request) {
+      return true;
+    }
+    return request.id === this.#latestRequest;
   }
 
   #resolveHaving(): FilterExpr {
