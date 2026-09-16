@@ -1,13 +1,9 @@
 import { makeClient } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import { Store } from '@tanstack/store';
+import { createSkipProjectedSelection } from './skip-projection';
 import { deepEqual } from './utils';
-import type {
-  MosaicClient,
-  QueryError,
-  Selection,
-  SelectionClause,
-} from '@uwdata/mosaic-core';
+import type { MosaicClient, QueryError, Selection } from '@uwdata/mosaic-core';
 import type {
   FilterExpr,
   Query as MosaicQuery,
@@ -52,6 +48,14 @@ export abstract class BaseDataClient<
 
   #querySource: QuerySource<TInputs>;
   #client: MosaicClient;
+  /**
+   * The Selections the coordinator and the HAVING wiring actually observe.
+   * Identical to `options.filterBy`/`options.havingBy` unless `skipSources`
+   * is non-empty, in which case each is a skip-projected derivation (see
+   * `skip-projection.ts`) so skipped-only changes never reach the coordinator.
+   */
+  readonly #filterBy: Selection | undefined;
+  readonly #havingBy: Selection | undefined;
   #destroyed = false;
   #teardown: Array<() => void> = [];
   /** Pending macrotask flush for the non-browser coalescing fallback. */
@@ -95,15 +99,21 @@ export abstract class BaseDataClient<
       ...payload,
     } as TState);
 
+    this.#filterBy = this.#project(options.filterBy);
+    this.#havingBy =
+      options.havingBy === options.filterBy
+        ? this.#filterBy
+        : this.#project(options.havingBy);
+
     const prepare = hooks?.prepare;
     this.#client = makeClient({
       coordinator: options.coordinator,
-      selection: options.filterBy,
+      selection: this.#filterBy,
       enabled: options.enabled ?? true,
       // A non-empty `skipSources` forces pre-aggregation off: the optimizer
       // re-applies the active clause independent of the `query` callback
       // (upstream `PreAggregator`), so a skipped active clause would otherwise
-      // leak back into the materialized-view query. See `#resolveSkipping`.
+      // leak back into the materialized-view query.
       filterStable: this.#skipping() ? false : (options.filterStable ?? true),
       // makeClient connects (and may initialize) synchronously inside this
       // constructor; defer the hook one microtask so it runs against a fully
@@ -124,17 +134,10 @@ export abstract class BaseDataClient<
         : undefined,
       // Upstream types the filter as always-present, but `requestQuery()`
       // passes undefined when the active clause cross-filters this client.
-      //
       // On selection-driven updates the coordinator computes the predicate
-      // itself (`Selection.predicate(client)`) and passes it in WITHOUT
-      // `skipSources` applied, so when skipping is active the passed filter is
-      // ignored and `#currentWhere()` re-resolves with the skip.
+      // from `#filterBy` — already skip-projected — so it is used as-is.
       query: (filter: FilterExpr | undefined) =>
-        this.#materialize(
-          this.#skipping()
-            ? this.#currentWhere()
-            : (filter ?? this.#currentWhere()),
-        ),
+        this.#materialize(filter ?? this.#currentWhere()),
       queryPending: () => {
         if (this.#destroyed) {
           return;
@@ -467,41 +470,20 @@ export abstract class BaseDataClient<
   }
 
   /**
-   * Resolve a Selection's predicate with `skipSources` applied: drop every
-   * clause whose `source.id` is in the skip set, then delegate to the
-   * Selection's own resolver so union/intersect/empty/crossfilter semantics
-   * (including this client's own crossfilter self-exclusion) are preserved
-   * exactly rather than hand-rolled.
-   *
-   * `.clauses` (last-emitted state, not `_resolved`) and `.resolver` are read
-   * to match today's resolution timing and behavior. `active` mirrors
-   * upstream `Selection.predicate`'s `noSkip` handling: `null` for the WHERE
-   * path (noSkip=true), the active clause for the HAVING path (noSkip=false).
-   * Only called when `#skipping()` is true. The clause guard is defensive:
-   * sources without a string `id` (upstream `ClauseSource` is `object`) are
-   * never skipped.
+   * The Selection this client observes for `selection`: the Selection itself,
+   * or — when `skipSources` is non-empty — a derived Selection that never
+   * carries a skipped clause. The derivation is detached on `destroy()`.
    */
-  #resolveSkipping(
-    selection: Selection,
-    active: SelectionClause | null,
-  ): FilterExpr {
-    const skip = this.options.skipSources!;
-    const clauses = selection.clauses.filter((clause) => {
-      const source = clause.source as { id?: unknown } | null | undefined;
-      const skipped =
-        typeof source === 'object' &&
-        source !== null &&
-        typeof source.id === 'string' &&
-        skip.has(source.id);
-      return !skipped;
-    });
-    return (
-      selection.resolver.predicate(
-        clauses,
-        active as SelectionClause,
-        this.#client,
-      ) ?? []
+  #project(selection: Selection | undefined): Selection | undefined {
+    if (!selection || !this.#skipping()) {
+      return selection;
+    }
+    const projected = createSkipProjectedSelection(
+      selection,
+      this.options.skipSources!,
     );
+    this.#teardown.push(projected.destroy);
+    return projected.selection;
   }
 
   /**
@@ -511,15 +493,10 @@ export abstract class BaseDataClient<
    * clauses in cross-filtering contexts.
    */
   #currentWhere(): FilterExpr {
-    const filterBy = this.options.filterBy;
-    if (!filterBy) {
+    if (!this.#filterBy) {
       return [];
     }
-    if (!this.#skipping()) {
-      return filterBy.predicate(this.#client, true) ?? [];
-    }
-    // noSkip=true → upstream passes `active = null` to the resolver.
-    return this.#resolveSkipping(filterBy, null);
+    return this.#filterBy.predicate(this.#client, true) ?? [];
   }
 
   #materialize(where: FilterExpr): MosaicQuery | string | null {
@@ -606,15 +583,10 @@ export abstract class BaseDataClient<
   }
 
   #resolveHaving(): FilterExpr {
-    const havingBy = this.options.havingBy;
-    if (!havingBy) {
+    if (!this.#havingBy) {
       return [];
     }
-    if (!this.#skipping()) {
-      return havingBy.predicate(this.#client) ?? [];
-    }
-    // noSkip=false → upstream passes `active = clauses.active` to the resolver.
-    return this.#resolveSkipping(havingBy, havingBy.clauses.active ?? null);
+    return this.#havingBy.predicate(this.#client) ?? [];
   }
 
   #wireParams(): void {
@@ -645,8 +617,8 @@ export abstract class BaseDataClient<
    * wiring a second listener would double-query. Skip it.
    */
   #wireHavingBy(): void {
-    const havingBy = this.options.havingBy;
-    if (!havingBy || havingBy === this.options.filterBy) {
+    const havingBy = this.#havingBy;
+    if (!havingBy || havingBy === this.#filterBy) {
       return;
     }
     const listener = () => {

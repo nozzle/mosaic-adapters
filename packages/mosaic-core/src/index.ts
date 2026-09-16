@@ -44,6 +44,9 @@ export * from './filter-set/index';
 
 export * from './topology/index';
 
+export { createSkipProjectedSelection } from './skip-projection';
+export type { SkipProjectedSelectionHandle } from './skip-projection';
+
 export { isFilterSetPublishTarget } from './types';
 
 export { deepEqual, resolveCoerce } from './utils';

@@ -1729,10 +1729,14 @@ test.describe('spec-driven dashboard', () => {
 
     // The fully-filtered KPI honors BOTH the domain default AND the phrase
     // filter, so its phrase-matching phrases are constrained to the five domains
-    // — a subset of the exclude-domain KPI's all-domain phrase matches.
-    expect(await readCount(fullyFiltered)).toBeLessThanOrEqual(
-      await readCount(noDomain),
-    );
+    // — a subset of the exclude-domain KPI's all-domain phrase matches. The two
+    // cards settle independently (the excluding card observes a skip-projected
+    // Selection), so poll until the fully-filtered card has caught up rather
+    // than reading it the instant the excluding card lands.
+    const noDomainAfter = await readCount(noDomain);
+    await expect
+      .poll(async () => readCount(fullyFiltered), { timeout: 30_000 })
+      .toBeLessThanOrEqual(noDomainAfter);
 
     // ── Semantic 3: clearing every filter (domain default + phrase) restores all
     // three KPIs to the full unfiltered total and empties the active-filter bar.
