@@ -5,16 +5,17 @@
  * string shapes.
  */
 import { createRequire } from 'node:module';
-import { Coordinator } from '@uwdata/mosaic-core';
+
+import type * as DuckDBBlocking from '@duckdb/duckdb-wasm/blocking';
 import { tableFromArrays, tableToIPC } from '@uwdata/flechette';
+import type { Table } from '@uwdata/flechette';
+import { Coordinator } from '@uwdata/mosaic-core';
 import type {
   ArrowQueryRequest,
   Connector,
   ExecQueryRequest,
   MosaicClient,
 } from '@uwdata/mosaic-core';
-import type { Table } from '@uwdata/flechette';
-import type * as DuckDBBlocking from '@duckdb/duckdb-wasm/blocking';
 
 const require = createRequire(import.meta.url);
 
@@ -30,27 +31,20 @@ export interface TestDb {
 export async function createTestDb(): Promise<TestDb> {
   // The blocking build is CJS-only; load it through require for stable interop.
 
-  const duckdb =
-    require('@duckdb/duckdb-wasm/blocking') as typeof DuckDBBlocking;
+  const duckdb = require('@duckdb/duckdb-wasm/blocking') as typeof DuckDBBlocking;
   // The blocking runtime never spawns the worker, but the bundle type
   // requires the path.
   const bundles = {
     mvp: {
       mainModule: require.resolve('@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm'),
-      mainWorker:
-        require.resolve('@duckdb/duckdb-wasm/dist/duckdb-node-mvp.worker.cjs'),
+      mainWorker: require.resolve('@duckdb/duckdb-wasm/dist/duckdb-node-mvp.worker.cjs'),
     },
     eh: {
       mainModule: require.resolve('@duckdb/duckdb-wasm/dist/duckdb-eh.wasm'),
-      mainWorker:
-        require.resolve('@duckdb/duckdb-wasm/dist/duckdb-node-eh.worker.cjs'),
+      mainWorker: require.resolve('@duckdb/duckdb-wasm/dist/duckdb-node-eh.worker.cjs'),
     },
   };
-  const db = await duckdb.createDuckDB(
-    bundles,
-    new duckdb.VoidLogger(),
-    duckdb.NODE_RUNTIME,
-  );
+  const db = await duckdb.createDuckDB(bundles, new duckdb.VoidLogger(), duckdb.NODE_RUNTIME);
   await db.instantiate(() => {});
   db.open({ path: ':memory:' });
   const conn = db.connect();
@@ -61,9 +55,7 @@ export async function createTestDb(): Promise<TestDb> {
     query(request: ArrowQueryRequest | ExecQueryRequest) {
       const { type, sql } = request;
       connectorQueries.push(sql);
-      const buffer = conn.useUnsafe((bindings, connId) =>
-        bindings.runQuery(connId, sql),
-      );
+      const buffer = conn.useUnsafe((bindings, connId) => bindings.runQuery(connId, sql));
       if (type === 'exec') {
         return Promise.resolve(undefined);
       }
@@ -117,10 +109,7 @@ export async function createAthletesDb(): Promise<TestDb> {
 }
 
 /** Poll until the assertion stops throwing (real queries are async). */
-export async function waitFor(
-  assertion: () => void,
-  timeoutMs = 5_000,
-): Promise<void> {
+export async function waitFor(assertion: () => void, timeoutMs = 5_000): Promise<void> {
   const timeoutAt = Date.now() + timeoutMs;
   let lastError: unknown;
 
@@ -153,9 +142,7 @@ export function arrowRows(table: Table): Array<Record<string, unknown>> {
  */
 export function rowsToIPC(rows: Array<Record<string, unknown>>): Uint8Array {
   const names = rows.length > 0 ? Object.keys(rows[0]!) : [];
-  const columns = Object.fromEntries(
-    names.map((name) => [name, rows.map((row) => row[name])]),
-  );
+  const columns = Object.fromEntries(names.map((name) => [name, rows.map((row) => row[name])]));
   const bytes = tableToIPC(tableFromArrays(columns), {});
   if (!bytes) {
     throw new Error('rowsToIPC: failed to encode rows as Arrow IPC.');

@@ -7,6 +7,7 @@
  * `./setup-react`, which consuming packages load through `setupFiles`.
  */
 import { act } from '@testing-library/react';
+
 import { settle as coreSettle } from './duckdb';
 
 export { act, render, renderHook, waitFor } from '@testing-library/react';
