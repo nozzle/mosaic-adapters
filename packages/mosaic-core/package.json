@@ -41,7 +41,7 @@
   },
   "scripts": {
     "clear-build": "rimraf dist",
-    "build": "vite build",
+    "build": "tsdown",
     "test:types": "tsc --noEmit",
     "test:lib": "vitest",
     "test:lint": "oxlint ./src ./tests"
@@ -55,9 +55,9 @@
   },
   "devDependencies": {
     "@nozzleio/test-support": "workspace:*",
-    "@typescript/native": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
-    "rimraf": "catalog:"
+    "rimraf": "catalog:",
+    "typescript": "catalog:"
   }
 }

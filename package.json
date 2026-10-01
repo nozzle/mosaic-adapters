@@ -37,8 +37,6 @@
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@playwright/test": "catalog:",
-    "@tanstack/vite-config": "catalog:",
-    "@typescript/native": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
     "@uwdata/vgplot": "catalog:",
@@ -47,7 +45,9 @@
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
     "prettier": "^3.9.9",
+    "publint": "catalog:",
     "rimraf": "catalog:",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"

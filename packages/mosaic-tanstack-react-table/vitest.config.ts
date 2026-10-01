@@ -1,10 +1,9 @@
-import { defineConfig, mergeConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import { tanstackViteConfig } from '@tanstack/vite-config';
 
 import packageJson from './package.json';
 
-const packageConfig = defineConfig({
+export default defineConfig({
   plugins: [react()],
   test: {
     name: packageJson.name,
@@ -17,13 +16,3 @@ const packageConfig = defineConfig({
     typecheck: { enabled: true },
   },
 });
-
-export default mergeConfig(
-  packageConfig,
-  tanstackViteConfig({
-    cjs: false,
-    entry: ['src/index.ts'],
-    srcDir: './src',
-    tsconfigPath: './tsconfig.build.json',
-  }),
-);

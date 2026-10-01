@@ -30,9 +30,9 @@
     "@types/node": "catalog:",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@typescript/native": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "rimraf": "catalog:",
+    "typescript": "catalog:",
     "vite": "catalog:"
   }
 }
