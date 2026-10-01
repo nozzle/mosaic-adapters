@@ -147,7 +147,7 @@ export function useMosaicSelections<TKey extends string>(
       map[key] = createSelection(type);
     });
     return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [keyString, type]);
 
   return selections;
@@ -173,7 +173,7 @@ export function useCascadingContexts<TKey extends string>(
   const stableExternals = useMemo(
     () => externals,
     // The key fully captures identity/order for this selection list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
     [externalsKey],
   );
 
@@ -201,7 +201,7 @@ export function useComposedSelection(
   const stableIncludedSelections = useMemo(
     () => includedSelections,
     // The key fully captures identity/order for this selection list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
     [includedSelectionsKey],
   );
 
