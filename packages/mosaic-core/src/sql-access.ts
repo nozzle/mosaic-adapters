@@ -25,9 +25,7 @@ export class SqlIdentifier {
    */
   static from(input: string): SqlIdentifier {
     if (typeof input !== 'string') {
-      throw new Error(
-        `[SqlIdentifier] Input must be a string. Received: ${typeof input}`,
-      );
+      throw new Error(`[SqlIdentifier] Input must be a string. Received: ${typeof input}`);
     }
 
     const trimmed = input.trim();

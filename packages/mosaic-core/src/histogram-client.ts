@@ -1,4 +1,5 @@
 import { clauseInterval } from '@uwdata/mosaic-core';
+import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import {
   Query,
   and,
@@ -13,13 +14,12 @@ import {
   min,
   scaleTransform,
 } from '@uwdata/mosaic-sql';
+import type { Scale, SelectQuery } from '@uwdata/mosaic-sql';
+
 import { BaseDataClient } from './base-client';
+import type { FilterSpec } from './filter-set/types';
 import { PersisterLifecycle } from './persistence';
 import { isFilterSetPublishTarget } from './types';
-import { toResultRows } from './utils';
-import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
-import type { Scale, SelectQuery } from '@uwdata/mosaic-sql';
-import type { FilterSpec } from './filter-set/types';
 import type {
   FilterSetPublishTarget,
   HistogramBin,
@@ -29,6 +29,7 @@ import type {
   HistogramInputs,
   QueryContext,
 } from './types';
+import { toResultRows } from './utils';
 
 /**
  * Binned counts of a numeric column in, interval clauses out.
@@ -40,9 +41,7 @@ import type {
  * `clients` set: under a crossfilter Selection, its own brush never filters
  * its own bins.
  */
-export function createHistogramClient(
-  options: HistogramClientOptions,
-): HistogramClient {
+export function createHistogramClient(options: HistogramClientOptions): HistogramClient {
   if (
     options.scale === 'log' &&
     options.extent !== undefined &&
@@ -123,9 +122,7 @@ class HistogramDataClient
   protected buildQuery(ctx: QueryContext<HistogramInputs>): SelectQuery {
     const extent = this.#extent;
     if (extent === null) {
-      throw new Error(
-        'Histogram extent unresolved — prepare() has not completed.',
-      );
+      throw new Error('Histogram extent unresolved — prepare() has not completed.');
     }
     const binOptions = {
       step: ctx.inputs.step,
@@ -135,11 +132,7 @@ class HistogramDataClient
       // fixed extent; preserve existing nice linear behavior.
       nice: this.#options.scale === 'log' ? false : undefined,
     };
-    this.#spec = binSpec(
-      this.#scale.apply(extent[0]),
-      this.#scale.apply(extent[1]),
-      binOptions,
-    );
+    this.#spec = binSpec(this.#scale.apply(extent[0]), this.#scale.apply(extent[1]), binOptions);
 
     const field = column(this.#options.column);
     return Query.from(this.resolveBase(ctx))
@@ -147,12 +140,7 @@ class HistogramDataClient
         x0: binHistogram(field, extent, binOptions, this.#scale),
         count: count(),
       })
-      .where(
-        and(
-          isNotNull(field),
-          this.#options.scale === 'log' ? gt(field, 0) : [],
-        ),
-      )
+      .where(and(isNotNull(field), this.#options.scale === 'log' ? gt(field, 0) : []))
       .groupby('x0')
       .orderby(asc('x0'));
   }
@@ -164,14 +152,11 @@ class HistogramDataClient
     }
 
     const step = (spec.max - spec.min) / spec.steps;
-    const bins: Array<HistogramBin> = Array.from(
-      { length: spec.steps },
-      (_, index) => ({
-        x0: this.#scale.invert(spec.min + index * step),
-        x1: this.#scale.invert(spec.min + (index + 1) * step),
-        count: 0,
-      }),
-    );
+    const bins: Array<HistogramBin> = Array.from({ length: spec.steps }, (_, index) => ({
+      x0: this.#scale.invert(spec.min + index * step),
+      x1: this.#scale.invert(spec.min + (index + 1) * step),
+      count: 0,
+    }));
 
     let maxCount = 0;
     for (const row of toResultRows(data)) {
@@ -227,9 +212,7 @@ class HistogramDataClient
     if (this.destroyed) {
       return;
     }
-    const spec = target.into.store.state.specs.find(
-      (candidate) => candidate.id === target.id,
-    );
+    const spec = target.into.store.state.specs.find((candidate) => candidate.id === target.id);
     if (spec === undefined) {
       return;
     }
@@ -308,10 +291,7 @@ class HistogramDataClient
    * (non-null range) or remove it (null). Fenced by `#writingToSet` so the
    * store mirror ignores this self-inflicted change.
    */
-  #publishToSet(
-    target: FilterSetPublishTarget,
-    range: [number, number] | null,
-  ): void {
+  #publishToSet(target: FilterSetPublishTarget, range: [number, number] | null): void {
     this.#writingToSet = true;
     try {
       if (range === null) {
@@ -345,9 +325,7 @@ class HistogramDataClient
       if (this.destroyed || this.#range === null) {
         return;
       }
-      const present = target.as.clauses.some(
-        (clause) => clause.source === this.#source,
-      );
+      const present = target.as.clauses.some((clause) => clause.source === this.#source);
       if (!present) {
         this.#range = null;
         this.patchState({ range: null });
@@ -372,9 +350,7 @@ class HistogramDataClient
       if (this.destroyed || this.#writingToSet) {
         return;
       }
-      const spec = target.into.store.state.specs.find(
-        (candidate) => candidate.id === target.id,
-      );
+      const spec = target.into.store.state.specs.find((candidate) => candidate.id === target.id);
       if (spec === undefined) {
         if (this.#range !== null) {
           this.#range = null;

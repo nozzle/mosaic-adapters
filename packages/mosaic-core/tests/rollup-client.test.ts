@@ -1,10 +1,10 @@
+import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { Query, count, sum } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
 import { createRollupClient, rollupRowsToTree } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface WeightRollup {
   sport: string | null;
@@ -57,9 +57,7 @@ describe('rollup client', () => {
     expect(Number(total.data.totalWeight)).toBe(420);
 
     // Pre-order: each subtotal is immediately followed by its own leaves.
-    expect(
-      rows.slice(1).map((r) => [r.level, r.data.sport, r.data.name]),
-    ).toEqual([
+    expect(rows.slice(1).map((r) => [r.level, r.data.sport, r.data.name])).toEqual([
       [1, 'run', null],
       [2, 'run', 'Ed'],
       [2, 'run', 'Fi'],
@@ -104,8 +102,7 @@ describe('rollup client', () => {
       members: number | bigint;
     }>({
       coordinator: db.coordinator,
-      query: ({ where }) =>
-        Query.from('squads').select({ members: count() }).where(where),
+      query: ({ where }) => Query.from('squads').select({ members: count() }).where(where),
       groupBy: ['region', 'sport', 'name'],
     });
 
@@ -153,14 +150,8 @@ describe('rollup client', () => {
     expect(roots).toHaveLength(1);
     const total = roots[0]!;
     expect(total.row.level).toBe(0);
-    expect(total.children.map((c) => c.row.data.sport)).toEqual([
-      'run',
-      'swim',
-    ]);
-    expect(total.children[0]!.children.map((c) => c.row.data.name)).toEqual([
-      'Ed',
-      'Fi',
-    ]);
+    expect(total.children.map((c) => c.row.data.sport)).toEqual(['run', 'swim']);
+    expect(total.children[0]!.children.map((c) => c.row.data.name)).toEqual(['Ed', 'Fi']);
     expect(total.children[1]!.children).toHaveLength(4);
 
     rollup.destroy();
@@ -174,9 +165,7 @@ describe('rollup client', () => {
       expect(rollup.store.state.rows).toHaveLength(9);
     });
 
-    $page.update(
-      clausePoint('sport', 'run', { source: { peer: true } as object }),
-    );
+    $page.update(clausePoint('sport', 'run', { source: { peer: true } as object }));
     await waitFor(() => {
       expect(rollup.store.state.rows).toHaveLength(4);
     });
@@ -197,8 +186,7 @@ describe('rollup client', () => {
     expect(() =>
       createRollupClient({
         coordinator: db.coordinator,
-        query: ({ where }) =>
-          Query.from('athletes').select({ athletes: count() }).where(where),
+        query: ({ where }) => Query.from('athletes').select({ athletes: count() }).where(where),
         groupBy: [],
       }),
     ).toThrowError(/at least one groupBy/);

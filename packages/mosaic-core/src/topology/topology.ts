@@ -15,17 +15,12 @@
  */
 import { Store } from '@tanstack/store';
 import { Param, Selection } from '@uwdata/mosaic-core';
+
 import { createFilterSet } from '../filter-set/filter-set';
-import { PersisterLifecycle } from '../persistence';
-import { createCascadingContexts } from './cascading';
-import {
-  attachIncludedSelection,
-  clearSeededClauses,
-  detachIncludedSelection,
-  seedContext,
-} from './wiring';
 import type { FilterSet } from '../filter-set/types';
+import { PersisterLifecycle } from '../persistence';
 import type { Persister } from '../persistence';
+import { createCascadingContexts } from './cascading';
 import type { CascadingContextsHandle } from './cascading';
 import type {
   ActiveClause,
@@ -44,6 +39,12 @@ import type {
   TopologyDeclaration,
   TopologyOptions,
 } from './types';
+import {
+  attachIncludedSelection,
+  clearSeededClauses,
+  detachIncludedSelection,
+  seedContext,
+} from './wiring';
 
 const STANDALONE_TYPES: ReadonlySet<string> = new Set([
   'intersect',
@@ -98,10 +99,7 @@ interface EntryNode {
   param: Param<any> | undefined;
 }
 
-export function createTopology(
-  config: TopologyConfig,
-  options: TopologyOptions = {},
-): Topology {
+export function createTopology(config: TopologyConfig, options: TopologyOptions = {}): Topology {
   const suppliedSelections = options.selections ?? {};
   const suppliedParams = options.params ?? {};
   const filterSetOptions = options.filterSets ?? {};
@@ -118,13 +116,10 @@ export function createTopology(
     }
     const declaration = config[name];
     if (declaration === undefined || !KNOWN_TYPES.has(declaration.type)) {
-      const type =
-        declaration === undefined ? 'undefined' : String(declaration.type);
+      const type = declaration === undefined ? 'undefined' : String(declaration.type);
       throw new Error(
         `[mosaic-core] createTopology: entry '${name}' has unknown ` +
-          `declaration type '${type}'. Known types: ${[...KNOWN_TYPES].join(
-            ', ',
-          )}.`,
+          `declaration type '${type}'. Known types: ${[...KNOWN_TYPES].join(', ')}.`,
       );
     }
   }
@@ -149,10 +144,7 @@ export function createTopology(
   }
   for (const name of entryNames) {
     const declaration = config[name];
-    if (
-      declaration?.type === 'external' &&
-      suppliedSelections[name] === undefined
-    ) {
+    if (declaration?.type === 'external' && suppliedSelections[name] === undefined) {
       throw new Error(
         `[mosaic-core] createTopology: entry '${name}' is declared 'external' ` +
           `but no instance was supplied in options.selections['${name}'].`,
@@ -181,10 +173,7 @@ export function createTopology(
   }
   for (const name of entryNames) {
     const declaration = config[name];
-    if (
-      declaration?.type === 'external-param' &&
-      suppliedParams[name] === undefined
-    ) {
+    if (declaration?.type === 'external-param' && suppliedParams[name] === undefined) {
       throw new Error(
         `[mosaic-core] createTopology: entry '${name}' is declared ` +
           `'external-param' but no instance was supplied in ` +
@@ -221,10 +210,7 @@ export function createTopology(
   function assertNotParamRef(ref: string, site: string, verb: string): void {
     const { entry } = parseRef(ref);
     const declaration = config[entry];
-    if (
-      declaration?.type === 'param' ||
-      declaration?.type === 'external-param'
-    ) {
+    if (declaration?.type === 'param' || declaration?.type === 'external-param') {
       throw new Error(
         `[mosaic-core] createTopology: ${site} references param entry ` +
           `'${entry}' (ref '${ref}'); params are leaves and cannot be ${verb}.`,
@@ -299,9 +285,7 @@ export function createTopology(
     if (cycleStack.has(name)) {
       const start = cyclePath.indexOf(name);
       const rendered = [...cyclePath.slice(start), name].join(' → ');
-      throw new Error(
-        `[mosaic-core] createTopology: dependency cycle detected: ${rendered}.`,
-      );
+      throw new Error(`[mosaic-core] createTopology: dependency cycle detected: ${rendered}.`);
     }
     cycleStack.add(name);
     cyclePath.push(name);
@@ -348,8 +332,7 @@ export function createTopology(
     const declaration = config[entry];
     if (declaration === undefined) {
       throw new Error(
-        `[mosaic-core] createTopology: ref '${ref}' points at undeclared ` +
-          `entry '${entry}'.`,
+        `[mosaic-core] createTopology: ref '${ref}' points at undeclared ` + `entry '${entry}'.`,
       );
     }
     if (declaration.type === 'param' || declaration.type === 'external-param') {
@@ -363,9 +346,7 @@ export function createTopology(
     const node = nodes.get(entry);
     if (node === undefined) {
       // Unreachable once ensureBuilt succeeds, but keeps the type narrow.
-      throw new Error(
-        `[mosaic-core] createTopology: entry '${entry}' failed to build.`,
-      );
+      throw new Error(`[mosaic-core] createTopology: entry '${entry}' failed to build.`);
     }
 
     if (child === undefined) {
@@ -381,9 +362,7 @@ export function createTopology(
 
     const childSelection = node.children.get(child);
     if (childSelection === undefined) {
-      const valid = [...node.children.keys()]
-        .map((name) => `${entry}.${name}`)
-        .join(', ');
+      const valid = [...node.children.keys()].map((name) => `${entry}.${name}`).join(', ');
       throw new Error(
         `[mosaic-core] createTopology: ref '${ref}' points at unknown child ` +
           `'${child}' of entry '${entry}'. Valid children: ${valid || '(none)'}.`,
@@ -400,9 +379,7 @@ export function createTopology(
     if (resolving.has(entry)) {
       const cycleStart = path.indexOf(entry);
       const cyclePath = [...path.slice(cycleStart), entry].join(' → ');
-      throw new Error(
-        `[mosaic-core] createTopology: dependency cycle detected: ${cyclePath}.`,
-      );
+      throw new Error(`[mosaic-core] createTopology: dependency cycle detected: ${cyclePath}.`);
     }
 
     resolving.add(entry);
@@ -418,10 +395,7 @@ export function createTopology(
     resolved.add(entry);
   }
 
-  function buildEntry(
-    entry: string,
-    declaration: TopologyDeclaration,
-  ): EntryNode {
+  function buildEntry(entry: string, declaration: TopologyDeclaration): EntryNode {
     switch (declaration.type) {
       case 'intersect':
       case 'union':
@@ -475,14 +449,8 @@ export function createTopology(
    * hydration once a real write lands), and hydration replays through the same
    * `value` path as a user update.
    */
-  function wireParamPersistence(
-    param: Param<ParamValue>,
-    persister: Persister<ParamValue>,
-  ): void {
-    const lifecycle = new PersisterLifecycle<ParamValue>(
-      persister,
-      () => destroyed,
-    );
+  function wireParamPersistence(param: Param<ParamValue>, persister: Persister<ParamValue>): void {
+    const lifecycle = new PersisterLifecycle<ParamValue>(persister, () => destroyed);
     // Write-through: forward every value change to the persister. The listener
     // is attached before hydrate so a synchronous hydration update still routes
     // here, where the lifecycle no-ops it (echo suppression). reset()'s
@@ -492,9 +460,7 @@ export function createTopology(
       lifecycle.write(param.value ?? null, 'update');
     };
     param.addEventListener('value', listener);
-    paramPersistDetachers.push(() =>
-      param.removeEventListener('value', listener),
-    );
+    paramPersistDetachers.push(() => param.removeEventListener('value', listener));
     // Hydrate: a non-nullish persisted value wins over the declared default. A
     // synchronous read applies immediately; a thenable applies later (detached)
     // and is dropped if the topology is destroyed first, per the lifecycle's
@@ -505,10 +471,7 @@ export function createTopology(
     });
   }
 
-  function buildExternalParam(
-    entry: string,
-    declaration: ExternalParamDeclaration,
-  ): EntryNode {
+  function buildExternalParam(entry: string, declaration: ExternalParamDeclaration): EntryNode {
     // Presence was asserted above; read it back here.
     const instance = suppliedParams[entry];
     if (instance === undefined) {
@@ -526,10 +489,7 @@ export function createTopology(
     };
   }
 
-  function buildExternal(
-    entry: string,
-    declaration: ExternalDeclaration,
-  ): EntryNode {
+  function buildExternal(entry: string, declaration: ExternalDeclaration): EntryNode {
     // Presence was asserted above; read it back here.
     const instance = suppliedSelections[entry];
     if (instance === undefined) {
@@ -555,9 +515,7 @@ export function createTopology(
     // construction-order detection. The `as` strategy (default `'intersect'`)
     // is honored here so a crossfilter compose self-excludes its publishers.
     const bareSelection =
-      declaration.as === 'crossfilter'
-        ? Selection.crossfilter()
-        : Selection.intersect();
+      declaration.as === 'crossfilter' ? Selection.crossfilter() : Selection.intersect();
     return {
       declaration,
       bareSelection,
@@ -580,9 +538,7 @@ export function createTopology(
       }
       inputs[key] = resolveRef(key);
     }
-    const externals = (declaration.externals ?? []).map((ref) =>
-      resolveRef(ref),
-    );
+    const externals = (declaration.externals ?? []).map((ref) => resolveRef(ref));
     const handle = createCascadingContexts(inputs, externals);
     cascadingHandles.push(handle);
     const children = new Map<string, Selection>();
@@ -601,24 +557,16 @@ export function createTopology(
     };
   }
 
-  function buildFilterSet(
-    entry: string,
-    declaration: FilterSetDeclaration,
-  ): EntryNode {
+  function buildFilterSet(entry: string, declaration: FilterSetDeclaration): EntryNode {
     const children = new Map<string, Selection>();
     const targets: Record<string, Selection> = {};
-    for (const [targetName, targetType] of Object.entries(
-      declaration.targets,
-    )) {
+    for (const [targetName, targetType] of Object.entries(declaration.targets)) {
       const selection = createStandaloneSelection(targetType);
       targets[targetName] = selection;
       children.set(targetName, selection);
     }
 
-    const context =
-      declaration.context === undefined
-        ? undefined
-        : resolveRef(declaration.context);
+    const context = declaration.context === undefined ? undefined : resolveRef(declaration.context);
 
     const entryOptions = filterSetOptions[entry];
     const filterSet = createFilterSet({
@@ -667,8 +615,7 @@ export function createTopology(
     if (context === undefined) {
       // Unreachable: phase 1 always allocates a compose's bare Selection.
       throw new Error(
-        `[mosaic-core] createTopology: compose entry '${entry}' has no ` +
-          `allocated selection.`,
+        `[mosaic-core] createTopology: compose entry '${entry}' has no ` + `allocated selection.`,
       );
     }
     // Resolving includes here keeps the ref-must-exist and bare-ref-to-compound
@@ -737,8 +684,7 @@ export function createTopology(
     const declaration = config[entry];
     if (declaration === undefined) {
       throw new Error(
-        `[mosaic-core] createTopology: ref '${ref}' points at undeclared ` +
-          `entry '${entry}'.`,
+        `[mosaic-core] createTopology: ref '${ref}' points at undeclared ` + `entry '${entry}'.`,
       );
     }
     if (declaration.type !== 'param' && declaration.type !== 'external-param') {
@@ -757,9 +703,7 @@ export function createTopology(
     const param = params[entry];
     if (param === undefined) {
       // Unreachable once the entry built, but keeps the type narrow.
-      throw new Error(
-        `[mosaic-core] createTopology: param entry '${entry}' failed to build.`,
-      );
+      throw new Error(`[mosaic-core] createTopology: param entry '${entry}' failed to build.`);
     }
     return param;
   }
@@ -868,9 +812,7 @@ export function createTopology(
       refreshActiveClauses();
     };
     selection.addEventListener('value', listener);
-    clauseDetachers.push(() =>
-      selection.removeEventListener('value', listener),
-    );
+    clauseDetachers.push(() => selection.removeEventListener('value', listener));
   }
   // Seed the store with any clauses present at construction.
   refreshActiveClauses();

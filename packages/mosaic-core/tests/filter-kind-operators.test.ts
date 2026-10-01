@@ -72,8 +72,7 @@ describe('FilterKind operator vocabulary', () => {
   });
 
   test('point / points / interval omit operators (they ignore spec.operator)', async () => {
-    const { intervalFilterKind, pointFilterKind, pointsFilterKind } =
-      await import('../src/index');
+    const { intervalFilterKind, pointFilterKind, pointsFilterKind } = await import('../src/index');
     expect(pointFilterKind.operators).toBeUndefined();
     expect(pointsFilterKind.operators).toBeUndefined();
     expect(intervalFilterKind.operators).toBeUndefined();
@@ -85,10 +84,7 @@ describe('FilterKind operator vocabulary', () => {
     const kind = conditionFilterKind();
     for (const op of kind.operators ?? []) {
       const sql = emitSql(kind, specForArity('sport', op.id, op.arity));
-      expect(
-        sql,
-        `condition operator "${op.id}" should be accepted`,
-      ).toBeTruthy();
+      expect(sql, `condition operator "${op.id}" should be accepted`).toBeTruthy();
     }
   });
 
@@ -112,17 +108,13 @@ describe('FilterKind operator vocabulary', () => {
       });
       expect(sql, `match operator "${op.id}" produces SQL`).toBeTruthy();
       if (op.id !== 'contains') {
-        expect(sql, `match operator "${op.id}" differs from fallback`).not.toBe(
-          bogusSql,
-        );
+        expect(sql, `match operator "${op.id}" differs from fallback`).not.toBe(bogusSql);
       }
     }
   });
 
   test('representative arities are correct (none / unary / range / set)', () => {
-    const byId = new Map(
-      (conditionFilterKind().operators ?? []).map((op) => [op.id, op]),
-    );
+    const byId = new Map((conditionFilterKind().operators ?? []).map((op) => [op.id, op]));
     expect(byId.get('is_empty')?.arity).toBe('none');
     expect(byId.get('is_null')?.arity).toBe('none');
     expect(byId.get('eq')?.arity).toBe('unary');
@@ -132,9 +124,7 @@ describe('FilterKind operator vocabulary', () => {
     expect(byId.get('not_in')?.arity).toBe('set');
     expect(byId.get('excludes_all')?.arity).toBe('set');
 
-    const matchById = new Map(
-      (matchFilterKind.operators ?? []).map((op) => [op.id, op]),
-    );
+    const matchById = new Map((matchFilterKind.operators ?? []).map((op) => [op.id, op]));
     expect(matchById.get('contains')?.arity).toBe('unary');
     expect(matchById.get('regexp')?.arity).toBe('unary');
   });
@@ -193,12 +183,7 @@ describe('FilterKind operator vocabulary', () => {
       'is_empty',
       'excludes_all',
     ];
-    const matchIds: ReadonlyArray<MatchOperator> = [
-      'contains',
-      'prefix',
-      'suffix',
-      'regexp',
-    ];
+    const matchIds: ReadonlyArray<MatchOperator> = ['contains', 'prefix', 'suffix', 'regexp'];
     expect(conditionIds).toHaveLength(5);
     expect(matchIds).toHaveLength(4);
   });

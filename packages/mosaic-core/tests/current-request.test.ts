@@ -1,26 +1,16 @@
+import { rowsToIPC, settle } from '@nozzleio/test-support/duckdb';
 /**
  * The current-request guarantee: only the response to the most recent
  * main-query request writes to the store. A controllable connector holds
  * each query open so response order and supersession can be driven exactly.
  */
-import {
-  Coordinator,
-  Param,
-  QueryError,
-  Selection,
-  clausePoint,
-} from '@uwdata/mosaic-core';
+import { Coordinator, Param, QueryError, Selection, clausePoint } from '@uwdata/mosaic-core';
+import type { ArrowQueryRequest, Connector, ExecQueryRequest } from '@uwdata/mosaic-core';
 import { Query, eq, literal } from '@uwdata/mosaic-sql';
+import type { FilterExpr } from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
-import { rowsToIPC, settle } from '@nozzleio/test-support/duckdb';
 import { createSparklineClient, createValuesClient } from '../src/index';
-import type {
-  ArrowQueryRequest,
-  Connector,
-  ExecQueryRequest,
-} from '@uwdata/mosaic-core';
-import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { DataClientStatus, ValuesClient } from '../src/index';
 
 interface Deferred {

@@ -1,14 +1,10 @@
-import { makeClient } from '@uwdata/mosaic-core';
-import { Query } from '@uwdata/mosaic-sql';
 import { Store } from '@tanstack/store';
-import { createSkipProjectedSelection } from './skip-projection';
-import { deepEqual } from './utils';
+import { makeClient } from '@uwdata/mosaic-core';
 import type { MosaicClient, QueryError, Selection } from '@uwdata/mosaic-core';
-import type {
-  FilterExpr,
-  Query as MosaicQuery,
-  SelectQuery,
-} from '@uwdata/mosaic-sql';
+import { Query } from '@uwdata/mosaic-sql';
+import type { FilterExpr, Query as MosaicQuery, SelectQuery } from '@uwdata/mosaic-sql';
+
+import { createSkipProjectedSelection } from './skip-projection';
 import type {
   DataClient,
   DataClientOptions,
@@ -16,6 +12,7 @@ import type {
   QueryContext,
   QuerySource,
 } from './types';
+import { deepEqual } from './utils';
 
 /**
  * Framework-agnostic base for every data client: wraps upstream
@@ -101,9 +98,7 @@ export abstract class BaseDataClient<
 
     this.#filterBy = this.#project(options.filterBy);
     this.#havingBy =
-      options.havingBy === options.filterBy
-        ? this.#filterBy
-        : this.#project(options.havingBy);
+      options.havingBy === options.filterBy ? this.#filterBy : this.#project(options.havingBy);
 
     const prepare = hooks?.prepare;
     this.#client = makeClient({
@@ -136,8 +131,7 @@ export abstract class BaseDataClient<
       // passes undefined when the active clause cross-filters this client.
       // On selection-driven updates the coordinator computes the predicate
       // from `#filterBy` — already skip-projected — so it is used as-is.
-      query: (filter: FilterExpr | undefined) =>
-        this.#materialize(filter ?? this.#currentWhere()),
+      query: (filter: FilterExpr | undefined) => this.#materialize(filter ?? this.#currentWhere()),
       queryPending: () => {
         if (this.#destroyed) {
           return;
@@ -325,9 +319,7 @@ export abstract class BaseDataClient<
    * SQL string "null" and fail to parse. Cross-filtered clients must always
    * return a real (if trivial) query.
    */
-  protected abstract buildQuery(
-    ctx: QueryContext<TInputs>,
-  ): MosaicQuery | string | null;
+  protected abstract buildQuery(ctx: QueryContext<TInputs>): MosaicQuery | string | null;
 
   /** Map a query result to the specialization's store payload. */
   protected abstract onResult(data: unknown): Partial<TState>;
@@ -478,10 +470,7 @@ export abstract class BaseDataClient<
     if (!selection || !this.#skipping()) {
       return selection;
     }
-    const projected = createSkipProjectedSelection(
-      selection,
-      this.options.skipSources!,
-    );
+    const projected = createSkipProjectedSelection(selection, this.options.skipSources!);
     this.#teardown.push(projected.destroy);
     return projected.selection;
   }

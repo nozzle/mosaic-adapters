@@ -27,7 +27,10 @@
  *   `createFilterSet` returns; `destroy()` never writes.
  */
 import { Store } from '@tanstack/store';
+import type { ClauseSource, MosaicClient, Selection, SelectionClause } from '@uwdata/mosaic-core';
 import { and } from '@uwdata/mosaic-sql';
+import type { ExprNode } from '@uwdata/mosaic-sql';
+
 import {
   createClearClause,
   createSubqueryClause,
@@ -35,17 +38,10 @@ import {
   updateClauseIfChanged,
 } from '../clause-factory';
 import { PersisterLifecycle } from '../persistence';
+import type { PersisterWriteReason } from '../persistence';
 import { SqlIdentifier, createStructAccess } from '../sql-access';
 import { formatFilterValue } from './format';
 import { builtinFilterKinds } from './kinds';
-import type {
-  ClauseSource,
-  MosaicClient,
-  Selection,
-  SelectionClause,
-} from '@uwdata/mosaic-core';
-import type { ExprNode } from '@uwdata/mosaic-sql';
-import type { PersisterWriteReason } from '../persistence';
 import type {
   FilterKind,
   FilterKindArgs,
@@ -90,9 +86,7 @@ function isValidSpec(value: unknown): value is FilterSpec {
   }
   const record = value as Record<string, unknown>;
   return (
-    isNonEmptyString(record.id) &&
-    isNonEmptyString(record.column) &&
-    isNonEmptyString(record.kind)
+    isNonEmptyString(record.id) && isNonEmptyString(record.column) && isNonEmptyString(record.kind)
   );
 }
 
@@ -276,9 +270,7 @@ class FilterSetImpl implements FilterSet {
     }
 
     if (isPointsTupleEnvelope(spec.value)) {
-      const remaining = spec.value.tuples.filter(
-        (tuple) => tuple !== chip.value,
-      );
+      const remaining = spec.value.tuples.filter((tuple) => tuple !== chip.value);
       if (remaining.length === 0) {
         this.remove(chip.id);
         return;
@@ -442,10 +434,7 @@ class FilterSetImpl implements FilterSet {
         if (resolved.predicate === null) {
           if (active.has(target)) {
             active.delete(target);
-            updateClauseIfChanged(
-              targetSel,
-              createClearClause(source, clients),
-            );
+            updateClauseIfChanged(targetSel, createClearClause(source, clients));
           }
           continue;
         }
@@ -605,9 +594,7 @@ class FilterSetImpl implements FilterSet {
         this.#onTargetValue(targetSel);
       };
       targetSel.addEventListener('value', listener);
-      this.#detachers.push(() =>
-        targetSel.removeEventListener('value', listener),
-      );
+      this.#detachers.push(() => targetSel.removeEventListener('value', listener));
     }
   }
 
@@ -615,9 +602,7 @@ class FilterSetImpl implements FilterSet {
     if (this.#destroyed || this.#publishing) {
       return;
     }
-    const present = new Set<ClauseSource>(
-      targetSel._resolved.map((clause) => clause.source),
-    );
+    const present = new Set<ClauseSource>(targetSel._resolved.map((clause) => clause.source));
     const clearedIds: Array<string> = [];
 
     for (const [id, active] of this.#active) {
@@ -706,8 +691,7 @@ class FilterSetImpl implements FilterSet {
       // abort the whole batch, so each replay is validated and try/caught.
       if (!Array.isArray(specs)) {
         console.warn(
-          '[mosaic-core] FilterSet ignored a persisted state that was not an ' +
-            'array of specs.',
+          '[mosaic-core] FilterSet ignored a persisted state that was not an ' + 'array of specs.',
           specs,
         );
         return;

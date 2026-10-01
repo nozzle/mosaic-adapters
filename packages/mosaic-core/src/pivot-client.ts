@@ -1,17 +1,7 @@
-import {
-  PivotQuery,
-  asc,
-  avg,
-  column,
-  count,
-  desc,
-  max,
-  min,
-  sum,
-} from '@uwdata/mosaic-sql';
-import { BaseDataClient } from './base-client';
-import { resolveCoerce, toResultRows } from './utils';
+import { PivotQuery, asc, avg, column, count, desc, max, min, sum } from '@uwdata/mosaic-sql';
 import type { ExprNode, ExprValue } from '@uwdata/mosaic-sql';
+
+import { BaseDataClient } from './base-client';
 import type {
   CoerceOption,
   OrderByItem,
@@ -22,6 +12,7 @@ import type {
   QueryContext,
   RowsInputs,
 } from './types';
+import { resolveCoerce, toResultRows } from './utils';
 
 /**
  * True crosstabs via DuckDB `PIVOT` (mosaic-sql's `PivotQuery`). The pivot
@@ -29,9 +20,7 @@ import type {
  * (unless pinned with `in`) — so the client discovers them from each result's
  * schema and surfaces them as `pivotColumns` for column-def generation.
  */
-export function createPivotClient<TRow>(
-  options: PivotClientOptions<TRow>,
-): PivotClient<TRow> {
+export function createPivotClient<TRow>(options: PivotClientOptions<TRow>): PivotClient<TRow> {
   if (options.using.length === 0) {
     throw new Error('Pivot clients require at least one `using` aggregate.');
   }
@@ -98,9 +87,7 @@ class PivotDataClient<TRow>
     const groupColumns = new Set(this.#options.groupBy);
 
     return {
-      rows: raw.map((record) =>
-        this.#coerce ? this.#coerce(record) : (record as TRow),
-      ),
+      rows: raw.map((record) => (this.#coerce ? this.#coerce(record) : (record as TRow))),
       pivotColumns: names.filter((name) => !groupColumns.has(name)),
     };
   }
@@ -111,9 +98,7 @@ class PivotDataClient<TRow>
  * given (`Q1_total`); an unaliased single aggregate keeps bare value names
  * (`Q1`). Only alias when the caller asked for it.
  */
-function usingEntry(
-  aggregate: PivotAggregate,
-): ExprNode | Record<string, ExprNode> {
+function usingEntry(aggregate: PivotAggregate): ExprNode | Record<string, ExprNode> {
   const expr = aggregateExpression(aggregate);
   if (aggregate.as === undefined) {
     return expr;
@@ -141,16 +126,8 @@ function aggregateExpression(aggregate: PivotAggregate): ExprNode {
  * tables expose `names`); JSON-typed connectors fall back to the first row's
  * keys.
  */
-function resultColumnNames(
-  data: unknown,
-  rows: Array<Record<string, unknown>>,
-): Array<string> {
-  if (
-    data !== null &&
-    typeof data === 'object' &&
-    'names' in data &&
-    Array.isArray(data.names)
-  ) {
+function resultColumnNames(data: unknown, rows: Array<Record<string, unknown>>): Array<string> {
+  if (data !== null && typeof data === 'object' && 'names' in data && Array.isArray(data.names)) {
     return (data as { names: Array<string> }).names.map(String);
   }
   const first = rows[0];

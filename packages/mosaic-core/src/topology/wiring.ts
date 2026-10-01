@@ -15,18 +15,12 @@ import { clauseNone } from '@uwdata/mosaic-core';
 import type { Selection } from '@uwdata/mosaic-core';
 
 /** Register `derived` to receive relayed clauses from `source`. */
-export function attachIncludedSelection(
-  source: Selection,
-  derived: Selection,
-): void {
+export function attachIncludedSelection(source: Selection, derived: Selection): void {
   source._relay.add(derived);
 }
 
 /** Stop `derived` from receiving relayed clauses from `source`. */
-export function detachIncludedSelection(
-  source: Selection,
-  derived: Selection,
-): void {
+export function detachIncludedSelection(source: Selection, derived: Selection): void {
   source._relay.delete(derived);
 }
 
@@ -35,10 +29,7 @@ export function detachIncludedSelection(
  * wired after its sources already carry clauses reflects that existing state
  * (the relay only forwards *future* updates).
  */
-export function seedContext(
-  sources: Array<Selection>,
-  context: Selection,
-): void {
+export function seedContext(sources: Array<Selection>, context: Selection): void {
   sources.forEach((selection) => {
     selection.clauses.forEach((clause) => {
       context.update(clause);
@@ -51,10 +42,7 @@ export function seedContext(
  * sources currently hold, dropping the seeded clauses from `context` on
  * teardown without touching the source Selections themselves.
  */
-export function clearSeededClauses(
-  sources: Array<Selection>,
-  context: Selection,
-): void {
+export function clearSeededClauses(sources: Array<Selection>, context: Selection): void {
   sources.forEach((selection) => {
     selection.clauses.forEach((clause) => {
       context.update(clauseNone(clause.source));

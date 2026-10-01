@@ -1,11 +1,8 @@
+import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import {
-  createAthletesDb,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/duckdb';
 import {
   createFacetClient,
   createFilterSet,
@@ -13,7 +10,6 @@ import {
   createRowsClient,
 } from '../src/index';
 import type { FilterSpec, Persister } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface AthleteRow {
   id: number;
@@ -216,10 +212,7 @@ describe('facet publish.into', () => {
     // list_has_any predicate carries no optimizer meta.
     expect($page.clauses[0]!.meta).toBeUndefined();
     await waitFor(() => {
-      expect(rows.store.state.rows.map((r) => r.phrase)).toEqual([
-        'alpha',
-        'beta',
-      ]);
+      expect(rows.store.state.rows.map((r) => r.phrase)).toEqual(['alpha', 'beta']);
     });
 
     facet.destroy();
@@ -275,9 +268,7 @@ describe('facet publish.into', () => {
     facet.setSelected(['swim']);
     await settle();
 
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('the set owns persistence'),
-    );
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('the set owns persistence'));
     expect(read).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
 
@@ -388,9 +379,7 @@ describe('rows publish.into', () => {
 describe('rows publish.into — remount / adopt self-exclusion', () => {
   /** The `select:<id>` clause currently on `$page`, if any. */
   function pickedClause(page: Selection, id: string) {
-    return page._resolved.find(
-      (clause) => (clause.source as { id?: unknown }).id === id,
-    );
+    return page._resolved.find((clause) => (clause.source as { id?: unknown }).id === id);
   }
 
   test('a destroyed client never re-keys the surviving clause to itself', async () => {
@@ -475,9 +464,7 @@ describe('rows publish.into — remount / adopt self-exclusion', () => {
       publish: { select: { into: set, id: 'picked', columns: ['id'] } },
     });
     await waitFor(() => {
-      expect(second.store.state.rows).toEqual([
-        expect.objectContaining({ id: 1 }),
-      ]);
+      expect(second.store.state.rows).toEqual([expect.objectContaining({ id: 1 })]);
     });
 
     // Release the held emit: the queued re-key now lands on the published value,

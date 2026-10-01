@@ -32,11 +32,9 @@
  * same clause objects and does nothing.
  */
 import { Selection } from '@uwdata/mosaic-core';
-import {
-  attachIncludedSelection,
-  detachIncludedSelection,
-} from './topology/wiring';
 import type { SelectionClause } from '@uwdata/mosaic-core';
+
+import { attachIncludedSelection, detachIncludedSelection } from './topology/wiring';
 
 /** Handle returned by {@link createSkipProjectedSelection}. */
 export interface SkipProjectedSelectionHandle {
@@ -47,10 +45,7 @@ export interface SkipProjectedSelectionHandle {
 }
 
 /** True when the clause's source carries a string `id` in `skip`. */
-export function isSkippedClause(
-  clause: SelectionClause,
-  skip: ReadonlySet<string>,
-): boolean {
+export function isSkippedClause(clause: SelectionClause, skip: ReadonlySet<string>): boolean {
   const source = clause.source as { id?: unknown } | null | undefined;
   if (typeof source !== 'object' || source === null) {
     return false;
@@ -61,11 +56,7 @@ export function isSkippedClause(
 /** Stable identity of a clause's source: its string `id` when it has one, else the object. */
 function sourceKey(clause: SelectionClause): unknown {
   const source = clause.source as { id?: unknown } | null | undefined;
-  if (
-    typeof source === 'object' &&
-    source !== null &&
-    typeof source.id === 'string'
-  ) {
+  if (typeof source === 'object' && source !== null && typeof source.id === 'string') {
     return source.id;
   }
   return clause.source;
@@ -184,9 +175,7 @@ class SkipProjectedSelection extends Selection {
     if (clauses === undefined) {
       return super.reset();
     }
-    return super.reset(
-      clauses.filter((clause) => !isSkippedClause(clause, this.#skip)),
-    );
+    return super.reset(clauses.filter((clause) => !isSkippedClause(clause, this.#skip)));
   }
 }
 

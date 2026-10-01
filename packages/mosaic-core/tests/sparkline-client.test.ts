@@ -1,13 +1,9 @@
+import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/duckdb';
 import { createSparklineClient } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 let db: TestDb;
 
@@ -32,9 +28,10 @@ describe('sparkline batching', () => {
     expect(db.clientQueries).toHaveLength(1);
 
     const series = spark.store.state.series;
-    expect(
-      [...series.keys()].map(String).sort((a, b) => a.localeCompare(b)),
-    ).toEqual(['run', 'swim']);
+    expect([...series.keys()].map(String).sort((a, b) => a.localeCompare(b))).toEqual([
+      'run',
+      'swim',
+    ]);
     // swim weights 60, 70, 80, 90 → floor-to-10 bins.
     expect(series.get('swim')).toEqual([
       { x: 60, y: 1 },
@@ -168,14 +165,10 @@ describe('sparkline declarative x/y', () => {
     const alpha = spark.store.state.series.get('alpha')!;
     expect(alpha.map((p) => p.y)).toEqual([250, 50]);
     const days = alpha.map((p) =>
-      p.x instanceof Date
-        ? p.x.getUTCDate()
-        : new Date(Number(p.x)).getUTCDate(),
+      p.x instanceof Date ? p.x.getUTCDate() : new Date(Number(p.x)).getUTCDate(),
     );
     expect(days).toEqual([1, 2]);
-    expect(spark.store.state.series.get('beta')!.map((p) => p.y)).toEqual([
-      10, 30,
-    ]);
+    expect(spark.store.state.series.get('beta')!.map((p) => p.y)).toEqual([10, 30]);
 
     spark.destroy();
   });
@@ -230,9 +223,7 @@ describe('sparkline filtering', () => {
       expect(spark.store.state.series.size).toBe(2);
     });
 
-    $page.update(
-      clausePoint('name', 'Ada', { source: { peer: true } as object }),
-    );
+    $page.update(clausePoint('name', 'Ada', { source: { peer: true } as object }));
     await waitFor(() => {
       expect(spark.store.state.series.size).toBe(1);
       expect(spark.store.state.series.get('swim')).toEqual([{ x: 60, y: 1 }]);
@@ -262,9 +253,7 @@ describe('sparkline filtering', () => {
     });
     expect(spark.store.state.series.size).toBe(0);
 
-    $page.update(
-      clausePoint('name', 'Ada', { source: { peer: true } as object }),
-    );
+    $page.update(clausePoint('name', 'Ada', { source: { peer: true } as object }));
     await settle();
 
     expect(spark.store.state.status).toBe('success');

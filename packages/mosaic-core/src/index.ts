@@ -6,11 +6,7 @@ export { createSparklineClient } from './sparkline-client';
 export { createRollupClient, rollupRowsToTree } from './rollup-client';
 export { createPivotClient } from './pivot-client';
 export { createSchemaClient } from './schema-client';
-export type {
-  SchemaClient,
-  SchemaClientOptions,
-  SchemaClientState,
-} from './schema-client';
+export type { SchemaClient, SchemaClientOptions, SchemaClientState } from './schema-client';
 
 export {
   createClearClause,
@@ -32,10 +28,7 @@ export {
   buildSubqueryPredicate,
   normalizeSubqueryFilterQuery,
 } from './subquery-predicate';
-export type {
-  BuildSubqueryPredicateOptions,
-  SubqueryFilterQuery,
-} from './subquery-predicate';
+export type { BuildSubqueryPredicateOptions, SubqueryFilterQuery } from './subquery-predicate';
 
 export { applyRoutedFilters, routeFilter } from './filter-routing';
 export type { RoutedFilterExpr, SqlFilterClauseTarget } from './filter-routing';
@@ -51,11 +44,7 @@ export { isFilterSetPublishTarget } from './types';
 
 export { deepEqual, resolveCoerce } from './utils';
 
-export type {
-  Persister,
-  PersisterWriteContext,
-  PersisterWriteReason,
-} from './persistence';
+export type { Persister, PersisterWriteContext, PersisterWriteReason } from './persistence';
 
 export type {
   CoerceDescriptor,

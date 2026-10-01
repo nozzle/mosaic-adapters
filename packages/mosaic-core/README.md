@@ -30,8 +30,7 @@ const $page = Selection.crossfilter();
 
 const athletes = createRowsClient({
   coordinator,
-  query: ({ where }) =>
-    Query.from('athletes').select('id', 'name', 'sport').where(where),
+  query: ({ where }) => Query.from('athletes').select('id', 'name', 'sport').where(where),
   filterBy: $page,
   inputs: { orderBy: [{ column: 'name' }], limit: 25, offset: 0 },
   rowCount: 'window',

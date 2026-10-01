@@ -1,7 +1,7 @@
 import { asc, column, desc, sql } from '@uwdata/mosaic-sql';
-import { BaseDataClient } from './base-client';
-import { resolveCoerce, toResultRows } from './utils';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
+
+import { BaseDataClient } from './base-client';
 import type {
   CoerceOption,
   QueryContext,
@@ -12,6 +12,7 @@ import type {
   RollupRow,
   RollupTreeNode,
 } from './types';
+import { resolveCoerce, toResultRows } from './utils';
 
 /** Alias for the injected GROUPING() bitmask; stripped from row data. */
 const GROUPING_COLUMN = '__rollup_grouping__';
@@ -23,9 +24,7 @@ const GROUPING_COLUMN = '__rollup_grouping__';
  * visibility over the flat rows (`level` / `groupPath` / `isLeaf`), not a
  * data operation; `rollupRowsToTree` derives a nested view when needed.
  */
-export function createRollupClient<TRow>(
-  options: RollupClientOptions<TRow>,
-): RollupClient<TRow> {
+export function createRollupClient<TRow>(options: RollupClientOptions<TRow>): RollupClient<TRow> {
   if (typeof options.query === 'string') {
     throw new Error(
       'Rollup clients require a query factory producing an aggregate select ' +
@@ -90,9 +89,7 @@ class RollupDataClient<TRow>
       return {
         data: (this.#coerce ? this.#coerce(rest) : rest) as TRow,
         level,
-        groupPath: this.#groupBy
-          .slice(0, level)
-          .map((name) => String(rest[name])),
+        groupPath: this.#groupBy.slice(0, level).map((name) => String(rest[name])),
         isLeaf: level === depth,
       };
     });
@@ -114,9 +111,7 @@ function popcount(mask: number): number {
  * Pure nested view over the flat pre-ordered rollup rows. Returns the roots
  * (normally the single grand-total row) with children attached per level.
  */
-export function rollupRowsToTree<TRow>(
-  rows: Array<RollupRow<TRow>>,
-): Array<RollupTreeNode<TRow>> {
+export function rollupRowsToTree<TRow>(rows: Array<RollupRow<TRow>>): Array<RollupTreeNode<TRow>> {
   const roots: Array<RollupTreeNode<TRow>> = [];
   const stack: Array<RollupTreeNode<TRow>> = [];
 

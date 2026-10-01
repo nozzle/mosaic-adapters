@@ -26,13 +26,8 @@ export interface PersisterWriteContext {
  * closures know where they point.
  */
 export interface Persister<TState, TContext = unknown> {
-  read: (
-    context: TContext,
-  ) => TState | null | undefined | Promise<TState | null | undefined>;
-  write: (
-    state: TState | null,
-    context: TContext & PersisterWriteContext,
-  ) => void;
+  read: (context: TContext) => TState | null | undefined | Promise<TState | null | undefined>;
+  write: (state: TState | null, context: TContext & PersisterWriteContext) => void;
 }
 
 /**
@@ -118,10 +113,7 @@ export class PersisterLifecycle<TState> {
     this.#persister.write(state, { reason });
   }
 
-  #applyGuarded(
-    state: TState | null | undefined,
-    apply: (state: TState) => void,
-  ): void {
+  #applyGuarded(state: TState | null | undefined, apply: (state: TState) => void): void {
     if (state == null) {
       return;
     }

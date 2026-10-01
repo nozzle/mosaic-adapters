@@ -13,9 +13,9 @@
  * kind does this by embedding `args.contextPredicate` in the subquery WHERE).
  */
 import * as mSql from '@uwdata/mosaic-sql';
-import { SqlIdentifier, createStructAccess } from './sql-access';
-
 import type { ExprNode, Query } from '@uwdata/mosaic-sql';
+
+import { SqlIdentifier, createStructAccess } from './sql-access';
 
 /**
  * What a subquery factory may return:
@@ -23,8 +23,7 @@ import type { ExprNode, Query } from '@uwdata/mosaic-sql';
  * - `{ query, negate: true }` -> `NOT (column IN (<query>))`
  * - `null` -> no predicate (the filter is cleared / inactive)
  */
-export type SubqueryFilterQuery =
-  Query | { query: Query; negate?: boolean } | null;
+export type SubqueryFilterQuery = Query | { query: Query; negate?: boolean } | null;
 
 export interface BuildSubqueryPredicateOptions {
   /** The outer column (or struct path "a.b") tested for membership. */
@@ -41,18 +40,15 @@ export interface BuildSubqueryPredicateOptions {
  * should use `field` as the clause's `fields` entry so it is the same node
  * instance embedded in the predicate (Mosaic 0.29 field-identity requirement).
  */
-export function buildSubqueryClauseParts(
-  options: BuildSubqueryPredicateOptions,
-): { predicate: ExprNode; field: ExprNode } {
+export function buildSubqueryClauseParts(options: BuildSubqueryPredicateOptions): {
+  predicate: ExprNode;
+  field: ExprNode;
+} {
   const { column, query, negate = false } = options;
-  const columnAccessor =
-    typeof column === 'string' ? SqlIdentifier.from(column) : column;
+  const columnAccessor = typeof column === 'string' ? SqlIdentifier.from(column) : column;
   const columnExpr = createStructAccess(columnAccessor);
 
-  const inPredicate = new mSql.InOpNode(
-    columnExpr,
-    new mSql.ScalarSubqueryNode(query),
-  );
+  const inPredicate = new mSql.InOpNode(columnExpr, new mSql.ScalarSubqueryNode(query));
 
   return {
     predicate: negate ? mSql.not(inPredicate) : inPredicate,
@@ -63,9 +59,7 @@ export function buildSubqueryClauseParts(
 /**
  * Builds a `column [NOT] IN (SELECT ...)` membership predicate.
  */
-export function buildSubqueryPredicate(
-  options: BuildSubqueryPredicateOptions,
-): ExprNode {
+export function buildSubqueryPredicate(options: BuildSubqueryPredicateOptions): ExprNode {
   return buildSubqueryClauseParts(options).predicate;
 }
 

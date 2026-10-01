@@ -1,13 +1,9 @@
+import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/duckdb';
 import { createFacetClient, createRowsClient } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface AthleteRow {
   id: number;
@@ -59,15 +55,9 @@ describe('facet options', () => {
       expect(alpha.store.state.status).toBe('success');
       expect(bare.store.state.status).toBe('success');
     });
-    expect(alpha.store.state.options.map((o) => o.value)).toEqual([
-      'run',
-      'swim',
-    ]);
+    expect(alpha.store.state.options.map((o) => o.value)).toEqual(['run', 'swim']);
     // Without counts the sort falls back to alpha and options carry no count.
-    expect(bare.store.state.options).toEqual([
-      { value: 'run' },
-      { value: 'swim' },
-    ]);
+    expect(bare.store.state.options).toEqual([{ value: 'run' }, { value: 'swim' }]);
 
     alpha.destroy();
     bare.destroy();
@@ -94,10 +84,7 @@ describe('facet options', () => {
 
     facet.setInputs({ search: undefined, limit: 2 });
     await waitFor(() => {
-      expect(facet.store.state.options.map((o) => o.value)).toEqual([
-        'Ada',
-        'Bo',
-      ]);
+      expect(facet.store.state.options.map((o) => o.value)).toEqual(['Ada', 'Bo']);
     });
     expect(db.clientQueries.length).toBe(queriesAfterInit + 2);
 
@@ -225,9 +212,7 @@ describe('facet publishing', () => {
     ]);
 
     // A peer clause (different source, no clients overlap) cascades the counts.
-    $page.update(
-      clausePoint('name', 'Ada', { source: { peer: true } as object }),
-    );
+    $page.update(clausePoint('name', 'Ada', { source: { peer: true } as object }));
     await waitFor(() => {
       expect(facet.store.state.options).toEqual([{ value: 'swim', count: 1 }]);
     });
@@ -277,10 +262,7 @@ describe('facet publishing', () => {
     // Subquery-free list predicate; no optimizer meta on list matches.
     expect($page.clauses[0]!.meta).toBeUndefined();
     await waitFor(() => {
-      expect(rows.store.state.rows.map((r) => r.phrase)).toEqual([
-        'alpha',
-        'gamma',
-      ]);
+      expect(rows.store.state.rows.map((r) => r.phrase)).toEqual(['alpha', 'gamma']);
     });
 
     facet.clear();

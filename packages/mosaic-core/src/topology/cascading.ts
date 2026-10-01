@@ -7,6 +7,7 @@
  * "ghost option" bug).
  */
 import { Selection } from '@uwdata/mosaic-core';
+
 import {
   attachIncludedSelection,
   clearSeededClauses,
@@ -34,9 +35,7 @@ function getContextSources(
   key: string,
 ): Array<Selection> {
   const self = inputs[key];
-  const others = Object.values(inputs).filter(
-    (selection) => selection !== self,
-  );
+  const others = Object.values(inputs).filter((selection) => selection !== self);
   return [...others, ...externals];
 }
 

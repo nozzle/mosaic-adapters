@@ -17,10 +17,7 @@ export function formatFilterValue(value: unknown): string {
     return value.toLocaleDateString();
   }
   if (Array.isArray(value)) {
-    if (
-      value.length === 2 &&
-      (typeof value[0] === 'number' || typeof value[1] === 'number')
-    ) {
+    if (value.length === 2 && (typeof value[0] === 'number' || typeof value[1] === 'number')) {
       return `${formatFilterValue(value[0])} - ${formatFilterValue(value[1])}`;
     }
     return value.map((item) => formatFilterValue(item)).join(', ');

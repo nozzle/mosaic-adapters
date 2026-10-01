@@ -10,13 +10,9 @@
  * class instances); they accept plain scalars/arrays and let DuckDB coerce.
  */
 import type { Store } from '@tanstack/store';
-import type {
-  ClauseMetadata,
-  ClauseSource,
-  MosaicClient,
-  Selection,
-} from '@uwdata/mosaic-core';
+import type { ClauseMetadata, ClauseSource, MosaicClient, Selection } from '@uwdata/mosaic-core';
 import type { ExprNode } from '@uwdata/mosaic-sql';
+
 import type { Persister } from '../persistence';
 
 /**

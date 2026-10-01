@@ -1,14 +1,14 @@
 import { clausePoints } from '@uwdata/mosaic-core';
+import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import { Query, asc, count, desc, sql } from '@uwdata/mosaic-sql';
+import type { SelectQuery } from '@uwdata/mosaic-sql';
+
 import { BaseDataClient } from './base-client';
 import { createClearClause } from './clause-factory';
-import { SqlIdentifier, createStructAccess } from './sql-access';
-import { PersisterLifecycle } from './persistence';
-import { isFilterSetPublishTarget } from './types';
-import { resolveCoerce, toResultRows, trailingThrottle } from './utils';
-import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
-import type { SelectQuery } from '@uwdata/mosaic-sql';
 import type { FilterSpec } from './filter-set/types';
+import { PersisterLifecycle } from './persistence';
+import { SqlIdentifier, createStructAccess } from './sql-access';
+import { isFilterSetPublishTarget } from './types';
 import type {
   CoerceOption,
   OrderByItem,
@@ -20,6 +20,7 @@ import type {
   RowsInputs,
   RowsPublishTarget,
 } from './types';
+import { resolveCoerce, toResultRows, trailingThrottle } from './utils';
 import type { TrailingThrottle } from './utils';
 
 /** Alias for the injected window/count expression; stripped from row data. */
@@ -27,9 +28,7 @@ const ROW_COUNT_COLUMN = '__total_rows__';
 
 const DEFAULT_HOVER_THROTTLE_MS = 50;
 
-export function createRowsClient<TRow>(
-  options: RowsClientOptions<TRow>,
-): RowsClient<TRow> {
+export function createRowsClient<TRow>(options: RowsClientOptions<TRow>): RowsClient<TRow> {
   return new RowsDataClient(options);
 }
 
@@ -103,9 +102,7 @@ class RowsDataClient<TRow>
     this.#coerce = resolveCoerce(options.coerce);
     const select = options.publish?.select;
     this.#selectSource =
-      select !== undefined && !isFilterSetPublishTarget(select)
-        ? (select.source ?? {})
-        : {};
+      select !== undefined && !isFilterSetPublishTarget(select) ? (select.source ?? {}) : {};
     this.#hoverSource = options.publish?.hover?.source ?? {};
     this.#persist = this.#resolvePersist();
 
@@ -325,11 +322,7 @@ class RowsDataClient<TRow>
         const tuples =
           row === null
             ? []
-            : [
-                hover.columns.map(
-                  (column) => (row as Record<string, unknown>)[column],
-                ),
-              ];
+            : [hover.columns.map((column) => (row as Record<string, unknown>)[column])];
         this.#publishPoints(hover, this.#hoverSource, tuples);
         this.#hasHoverClause = row !== null;
       }, hover.throttleMs ?? DEFAULT_HOVER_THROTTLE_MS);
@@ -387,10 +380,7 @@ class RowsDataClient<TRow>
    * `{ columns, tuples }` envelope. Empty selection removes the spec. Fenced by
    * `#writingToSet` so the store mirror ignores this self-inflicted change.
    */
-  #publishToSet(
-    target: RowsFilterSetPublishTarget<TRow>,
-    tuples: Array<Array<unknown>>,
-  ): void {
+  #publishToSet(target: RowsFilterSetPublishTarget<TRow>, tuples: Array<Array<unknown>>): void {
     const fields = target.fields ?? target.columns;
     this.#writingToSet = true;
     try {
@@ -503,9 +493,7 @@ class RowsDataClient<TRow>
     if (this.destroyed) {
       return;
     }
-    const spec = target.into.store.state.specs.find(
-      (candidate) => candidate.id === target.id,
-    );
+    const spec = target.into.store.state.specs.find((candidate) => candidate.id === target.id);
     if (spec === undefined) {
       return;
     }
@@ -542,9 +530,7 @@ class RowsDataClient<TRow>
       if (this.destroyed || this.#selectedTuples.length === 0) {
         return;
       }
-      const present = target.as.clauses.some(
-        (clause) => clause.source === this.#selectSource,
-      );
+      const present = target.as.clauses.some((clause) => clause.source === this.#selectSource);
       if (!present) {
         this.#selectedTuples = [];
         this.#hasSelectClause = false;
@@ -570,9 +556,7 @@ class RowsDataClient<TRow>
       if (this.destroyed || this.#writingToSet) {
         return;
       }
-      const spec = target.into.store.state.specs.find(
-        (candidate) => candidate.id === target.id,
-      );
+      const spec = target.into.store.state.specs.find((candidate) => candidate.id === target.id);
       if (spec === undefined) {
         if (this.#selectedTuples.length > 0) {
           this.#selectedTuples = [];

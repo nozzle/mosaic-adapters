@@ -75,10 +75,7 @@ describe('createTopology — param resolution', () => {
 
   test('external-param resolves to the supplied instance', () => {
     const external = Param.value(42);
-    const topology = createTopology(
-      { p: { type: 'external-param' } },
-      { params: { p: external } },
-    );
+    const topology = createTopology({ p: { type: 'external-param' } }, { params: { p: external } });
 
     expect(topology.resolveParam('p')).toBe(external);
     expect(topology.params.p).toBe(external);
@@ -111,9 +108,7 @@ describe('createTopology — param resolution', () => {
       { params: { supplied: external } },
     );
 
-    expect([...topology.validNames].sort()).toEqual(
-      ['owned', 'sel', 'supplied'].sort(),
-    );
+    expect([...topology.validNames].sort()).toEqual(['owned', 'sel', 'supplied'].sort());
     topology.destroy();
   });
 });
@@ -128,9 +123,9 @@ describe('createTopology — param validation errors', () => {
 
   test('supplied param for a non-external-param declaration throws', () => {
     const p = Param.value(1);
-    expect(() =>
-      createTopology({ p: { type: 'intersect' } }, { params: { p } }),
-    ).toThrow(/declared as 'intersect', not 'external-param'/);
+    expect(() => createTopology({ p: { type: 'intersect' } }, { params: { p } })).toThrow(
+      /declared as 'intersect', not 'external-param'/,
+    );
   });
 
   test('external-param without a supplied instance throws', () => {
@@ -208,9 +203,7 @@ describe('createTopology — resolve / resolveParam cross-type errors', () => {
 
   test('resolveParam() on an undeclared ref lists the undeclared entry', () => {
     const topology = createTopology({ p: { type: 'param', default: 1 } });
-    expect(() => topology.resolveParam('typo')).toThrow(
-      /undeclared entry 'typo'/,
-    );
+    expect(() => topology.resolveParam('typo')).toThrow(/undeclared entry 'typo'/);
     topology.destroy();
   });
 
@@ -251,10 +244,7 @@ describe('createTopology — param reset() semantics', () => {
 
   test('reset skips external params (not owned)', () => {
     const external = Param.value(1);
-    const topology = createTopology(
-      { p: { type: 'external-param' } },
-      { params: { p: external } },
-    );
+    const topology = createTopology({ p: { type: 'external-param' } }, { params: { p: external } });
     external.update(2);
 
     topology.reset();
@@ -426,9 +416,7 @@ describe('createTopology — owned param persistence', () => {
 describe('createTopology — param persistence validation errors', () => {
   test('paramOptions on an unknown entry throws', () => {
     const { persister } = memoryParamPersister();
-    expect(() =>
-      createTopology({}, { paramOptions: { p: { persist: persister } } }),
-    ).toThrow(
+    expect(() => createTopology({}, { paramOptions: { p: { persist: persister } } })).toThrow(
       /options\.paramOptions\['p'\] was supplied but no entry 'p' is declared/,
     );
   });
@@ -452,10 +440,7 @@ describe('createTopology — param persistence validation errors', () => {
   test('paramOptions on a selection entry throws', () => {
     const { persister } = memoryParamPersister();
     expect(() =>
-      createTopology(
-        { s: { type: 'intersect' } },
-        { paramOptions: { s: { persist: persister } } },
-      ),
+      createTopology({ s: { type: 'intersect' } }, { paramOptions: { s: { persist: persister } } }),
     ).toThrow(
       /options\.paramOptions\['s'\] was supplied but entry 's' is declared as 'intersect', not 'param'/,
     );
@@ -466,10 +451,7 @@ describe('createTopology — param destroy guard', () => {
   test('destroy leaves external params untouched and marks destroyed', () => {
     const external = Param.value(1);
     external.update(7);
-    const topology = createTopology(
-      { p: { type: 'external-param' } },
-      { params: { p: external } },
-    );
+    const topology = createTopology({ p: { type: 'external-param' } }, { params: { p: external } });
 
     topology.destroy();
 

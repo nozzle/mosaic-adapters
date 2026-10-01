@@ -59,9 +59,7 @@ export function toResultRows(data: unknown): Array<Record<string, unknown>> {
     'toArray' in data &&
     typeof data.toArray === 'function'
   ) {
-    return (
-      data as { toArray: () => Array<Record<string, unknown>> }
-    ).toArray();
+    return (data as { toArray: () => Array<Record<string, unknown>> }).toArray();
   }
   return [];
 }

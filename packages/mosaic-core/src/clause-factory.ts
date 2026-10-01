@@ -77,9 +77,7 @@ export type SubqueryClauseSpec = Omit<ValueClauseSpec, 'meta'>;
  * Builds a Selection clause whose predicate embeds a scalar subquery
  * (e.g. `col IN (SELECT ...)`). Never attaches optimizer `meta`.
  */
-export function createSubqueryClause(
-  spec: SubqueryClauseSpec,
-): SelectionClause {
+export function createSubqueryClause(spec: SubqueryClauseSpec): SelectionClause {
   return {
     source: spec.source,
     clients: spec.clients,
@@ -131,13 +129,8 @@ export function createClearClause(
  *
  * @returns true when the update was applied, false when suppressed.
  */
-export function updateClauseIfChanged(
-  selection: Selection,
-  clause: SelectionClause,
-): boolean {
-  const current = selection._resolved.find(
-    (existing) => existing.source === clause.source,
-  );
+export function updateClauseIfChanged(selection: Selection, clause: SelectionClause): boolean {
+  const current = selection._resolved.find((existing) => existing.source === clause.source);
 
   if (current === undefined && clause.predicate == null) {
     return false;
