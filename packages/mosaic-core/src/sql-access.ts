@@ -42,7 +42,7 @@ export class SqlIdentifier {
     // 4. Null Bytes / Control Chars: binary corruption.
     // Note: Dots (.) are allowed — they are struct access paths.
 
-    // eslint-disable-next-line no-control-regex
+    // oxlint-disable-next-line no-control-regex
     const unsafePattern = /["\0\x08\x09\x1a\n\r;]|(--)|(\/\*)/;
 
     if (unsafePattern.test(trimmed)) {
