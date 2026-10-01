@@ -2,37 +2,33 @@
   "name": "@nozzleio/react-mosaic",
   "version": "0.10.2",
   "description": "React bindings for the Mosaic data clients: controlled-binding hooks over @nozzleio/mosaic-core plus vgplot interop.",
+  "keywords": [
+    "data-client",
+    "duckdb",
+    "headless",
+    "mosaic",
+    "react"
+  ],
+  "homepage": "https://github.com/nozzle/mosaic-adapters/tree/main/packages/react-mosaic",
+  "bugs": {
+    "url": "https://github.com/nozzle/mosaic-adapters/issues"
+  },
   "license": "MIT",
-  "type": "module",
-  "main": "dist/esm/index.js",
-  "module": "dist/esm/index.js",
-  "types": "dist/esm/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nozzle/mosaic-adapters.git",
     "directory": "packages/react-mosaic"
   },
-  "homepage": "https://github.com/nozzle/mosaic-adapters/tree/main/packages/react-mosaic",
-  "bugs": {
-    "url": "https://github.com/nozzle/mosaic-adapters/issues"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
-  "keywords": [
-    "mosaic",
-    "react",
-    "duckdb",
-    "headless",
-    "data-client"
-  ],
   "files": [
     "dist",
     "README.md",
     "LICENSE"
   ],
+  "type": "module",
   "sideEffects": false,
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/esm/index.d.ts",
@@ -44,6 +40,10 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "clear-build": "rimraf dist",
     "build": "tsdown",
@@ -54,17 +54,6 @@
   "dependencies": {
     "@nozzleio/mosaic-core": "workspace:*",
     "@tanstack/react-store": "catalog:"
-  },
-  "peerDependencies": {
-    "@uwdata/mosaic-core": ">=0.32.0 <1",
-    "@uwdata/mosaic-sql": ">=0.32.0 <1",
-    "@uwdata/vgplot": ">=0.32.0 <1",
-    "react": ">=19.2.0"
-  },
-  "peerDependenciesMeta": {
-    "@uwdata/vgplot": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@nozzleio/test-support": "workspace:*",
@@ -78,5 +67,16 @@
     "react-dom": "^19.3.0",
     "rimraf": "catalog:",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@uwdata/mosaic-core": ">=0.32.0 <1",
+    "@uwdata/mosaic-sql": ">=0.32.0 <1",
+    "@uwdata/vgplot": ">=0.32.0 <1",
+    "react": ">=19.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@uwdata/vgplot": {
+      "optional": true
+    }
   }
 }

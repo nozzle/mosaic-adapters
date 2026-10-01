@@ -1,6 +1,3 @@
-import { Selection } from '@uwdata/mosaic-core';
-import { beforeEach, describe, expect, test } from 'vitest';
-
 import {
   createAthletesDb,
   interact,
@@ -8,8 +5,11 @@ import {
   settle,
   waitFor,
 } from '@nozzleio/test-support/react';
-import { useMosaicFacet } from '../src/index';
 import type { TestDb } from '@nozzleio/test-support/react';
+import { Selection } from '@uwdata/mosaic-core';
+import { beforeEach, describe, expect, test } from 'vitest';
+
+import { useMosaicFacet } from '../src/index';
 
 let db: TestDb;
 

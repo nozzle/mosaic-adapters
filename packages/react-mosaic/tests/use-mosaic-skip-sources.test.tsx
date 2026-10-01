@@ -1,17 +1,12 @@
+import { createAthletesDb, renderHook, settle, waitFor } from '@nozzleio/test-support/react';
+import type { TestDb } from '@nozzleio/test-support/react';
 import { Selection } from '@uwdata/mosaic-core';
+import type { ClauseSource } from '@uwdata/mosaic-core';
 import { Query, eq, gte, literal } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  renderHook,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/react';
 import { useMosaicRows } from '../src/index';
-import type { ClauseSource } from '@uwdata/mosaic-core';
 import type { QuerySource, RowsInputs } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/react';
 
 interface AthleteRow {
   id: number;
@@ -39,8 +34,7 @@ function athleteQuery() {
   return Query.from('athletes').select('id', 'name', 'sport', 'weight');
 }
 
-const allAthletes: QuerySource<RowsInputs> = ({ where }) =>
-  athleteQuery().where(where);
+const allAthletes: QuerySource<RowsInputs> = ({ where }) => athleteQuery().where(where);
 
 describe('skipSources structural identity', () => {
   test('a new but value-equal Set does not recreate the client', async () => {

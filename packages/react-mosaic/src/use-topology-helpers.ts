@@ -1,10 +1,7 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react';
-import { Selection } from '@uwdata/mosaic-core';
-import {
-  createCascadingContexts,
-  createComposedSelection,
-} from '@nozzleio/mosaic-core';
+import { createCascadingContexts, createComposedSelection } from '@nozzleio/mosaic-core';
 import type { ComposedSelectionOptions } from '@nozzleio/mosaic-core';
+import { Selection } from '@uwdata/mosaic-core';
+import { useEffect, useMemo, useReducer, useRef } from 'react';
 
 type SelectionType = 'intersect' | 'union' | 'single' | 'crossfilter';
 
@@ -119,9 +116,7 @@ function getSelectionListKey(selections: Array<Selection>) {
  * where possible — it guarantees a stable identity and a consistent surface
  * across all Selection types.
  */
-export function useMosaicSelection(
-  type: SelectionType = 'intersect',
-): Selection {
+export function useMosaicSelection(type: SelectionType = 'intersect'): Selection {
   return useMemo(() => createSelection(type), [type]);
 }
 

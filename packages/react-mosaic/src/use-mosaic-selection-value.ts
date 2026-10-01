@@ -1,5 +1,5 @@
-import { useSyncExternalStore } from 'react';
 import type { Selection } from '@uwdata/mosaic-core';
+import { useSyncExternalStore } from 'react';
 
 export interface UseMosaicSelectionValueOptions {
   /**

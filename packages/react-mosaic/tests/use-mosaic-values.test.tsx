@@ -1,21 +1,16 @@
+import { createAthletesDb, interact, renderHook, waitFor } from '@nozzleio/test-support/react';
+import type { TestDb } from '@nozzleio/test-support/react';
 import { Selection } from '@uwdata/mosaic-core';
 import { Query, count, eq, literal, max } from '@uwdata/mosaic-sql';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  interact,
-  renderHook,
-  waitFor,
-} from '@nozzleio/test-support/react';
 import {
   MosaicProvider,
   createRowsClient,
   createValuesClient,
   useMosaicValues,
 } from '../src/index';
-import type { ReactNode } from 'react';
-import type { TestDb } from '@nozzleio/test-support/react';
 
 interface Kpis extends Record<string, unknown> {
   athletes: number;
@@ -44,9 +39,7 @@ describe('useMosaicValues', () => {
       {
         initialProps: {},
         wrapper: ({ children }: { children: ReactNode }) => (
-          <MosaicProvider coordinator={db.coordinator}>
-            {children}
-          </MosaicProvider>
+          <MosaicProvider coordinator={db.coordinator}>{children}</MosaicProvider>
         ),
       },
     );

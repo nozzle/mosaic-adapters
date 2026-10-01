@@ -1,27 +1,17 @@
-import { useSelector } from '@tanstack/react-store';
-import {
-  createRowsClient,
-  isFilterSetPublishTarget,
-} from '@nozzleio/mosaic-core';
-import {
-  deriveStatus,
-  paramsKey,
-  skipSourcesKey,
-  useBoundClient,
-} from './use-data-client';
-import { useMosaicCoordinator } from './context';
-import type { Coordinator } from '@uwdata/mosaic-core';
+import { createRowsClient, isFilterSetPublishTarget } from '@nozzleio/mosaic-core';
 import type {
   RowsClient,
   RowsClientOptions,
   RowsClientState,
   RowsInputs,
 } from '@nozzleio/mosaic-core';
+import { useSelector } from '@tanstack/react-store';
+import type { Coordinator } from '@uwdata/mosaic-core';
 
-export type UseMosaicRowsOptions<TRow> = Omit<
-  RowsClientOptions<TRow>,
-  'coordinator'
-> & {
+import { useMosaicCoordinator } from './context';
+import { deriveStatus, paramsKey, skipSourcesKey, useBoundClient } from './use-data-client';
+
+export type UseMosaicRowsOptions<TRow> = Omit<RowsClientOptions<TRow>, 'coordinator'> & {
   /** Defaults to the nearest `MosaicProvider`, then the global coordinator. */
   coordinator?: Coordinator;
 };
@@ -63,8 +53,7 @@ export function useMosaicRows<TRow>(
     : [select?.as, select?.source];
 
   const client = useBoundClient<RowsInputs, RowsClient<TRow>>({
-    create: () =>
-      createRowsClient<TRow>({ ...options, coordinator, enabled: false }),
+    create: () => createRowsClient<TRow>({ ...options, coordinator, enabled: false }),
     structuralKey: [
       coordinator,
       options.filterBy,

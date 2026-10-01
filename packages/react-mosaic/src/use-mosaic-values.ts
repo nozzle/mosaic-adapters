@@ -1,24 +1,17 @@
-import { useSelector } from '@tanstack/react-store';
 import { createValuesClient } from '@nozzleio/mosaic-core';
-import {
-  deriveStatus,
-  paramsKey,
-  skipSourcesKey,
-  useBoundClient,
-} from './use-data-client';
-import { useMosaicCoordinator } from './context';
-import type { Coordinator } from '@uwdata/mosaic-core';
 import type {
   ValuesClient,
   ValuesClientOptions,
   ValuesClientState,
   ValuesInputs,
 } from '@nozzleio/mosaic-core';
+import { useSelector } from '@tanstack/react-store';
+import type { Coordinator } from '@uwdata/mosaic-core';
 
-export type UseMosaicValuesOptions = Omit<
-  ValuesClientOptions,
-  'coordinator'
-> & {
+import { useMosaicCoordinator } from './context';
+import { deriveStatus, paramsKey, skipSourcesKey, useBoundClient } from './use-data-client';
+
+export type UseMosaicValuesOptions = Omit<ValuesClientOptions, 'coordinator'> & {
   /** Defaults to the nearest `MosaicProvider`, then the global coordinator. */
   coordinator?: Coordinator;
 };
@@ -40,8 +33,7 @@ export function useMosaicValues<TValues extends Record<string, unknown>>(
   const enabled = options.enabled ?? true;
 
   const client = useBoundClient<ValuesInputs, ValuesClient<TValues>>({
-    create: () =>
-      createValuesClient<TValues>({ ...options, coordinator, enabled: false }),
+    create: () => createValuesClient<TValues>({ ...options, coordinator, enabled: false }),
     structuralKey: [
       coordinator,
       options.filterBy,

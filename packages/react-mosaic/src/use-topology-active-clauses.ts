@@ -1,6 +1,7 @@
-import { useSelector } from '@tanstack/react-store';
-import { useMosaicTopology } from './topology-context';
 import type { ActiveClause, Topology } from '@nozzleio/mosaic-core';
+import { useSelector } from '@tanstack/react-store';
+
+import { useMosaicTopology } from './topology-context';
 
 /**
  * Subscribe to a topology's annotated foreign active clauses. The topology is a
@@ -12,9 +13,7 @@ import type { ActiveClause, Topology } from '@nozzleio/mosaic-core';
  * `label`, and `meta`. No chip model, grouping, or label-map logic lives here;
  * those are app concerns (docs recipes / example apps).
  */
-export function useTopologyActiveClauses(
-  topology: Topology,
-): Array<ActiveClause> {
+export function useTopologyActiveClauses(topology: Topology): Array<ActiveClause> {
   return useSelector(topology.activeClauses, (state) => state.clauses);
 }
 

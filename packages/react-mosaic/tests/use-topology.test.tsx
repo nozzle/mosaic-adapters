@@ -1,3 +1,6 @@
+import { interact, renderHook, settle } from '@nozzleio/test-support/react';
+import { Param, clausePoint } from '@uwdata/mosaic-core';
+import type { Selection } from '@uwdata/mosaic-core';
 /**
  * React bindings for #181's topology primitive: `useTopology` (owns a
  * `createTopology` instance — lazy construction, unmount teardown, StrictMode
@@ -12,10 +15,9 @@
  * a microtask, so assertions on the active-clause store follow `settle()`.
  */
 import { createElement } from 'react';
-import { Param, clausePoint } from '@uwdata/mosaic-core';
+import type { PropsWithChildren } from 'react';
 import { describe, expect, test } from 'vitest';
 
-import { interact, renderHook, settle } from '@nozzleio/test-support/react';
 import {
   MosaicTopologyProvider,
   createTopology,
@@ -25,8 +27,6 @@ import {
   useTopology,
   useTopologyActiveClauses,
 } from '../src/index';
-import type { PropsWithChildren } from 'react';
-import type { Selection } from '@uwdata/mosaic-core';
 import type { Topology, TopologyConfig } from '../src/index';
 
 /** Publish a point clause from an independent (foreign) source; returns it. */
@@ -80,9 +80,7 @@ describe('useTopology', () => {
     );
 
     expect(initialized).toEqual([hook.result.current]);
-    expect(
-      hook.result.current.activeClauses.state.clauses[0]?.clause.value,
-    ).toBe('a');
+    expect(hook.result.current.activeClauses.state.clauses[0]?.clause.value).toBe('a');
 
     await hook.rerender({ config: configA });
     expect(initialized).toHaveLength(1);
@@ -90,9 +88,7 @@ describe('useTopology', () => {
     await hook.rerender({ config: configB });
     expect(initialized).toHaveLength(2);
     expect(initialized[1]).toBe(hook.result.current);
-    expect(
-      hook.result.current.activeClauses.state.clauses[0]?.clause.value,
-    ).toBe('b');
+    expect(hook.result.current.activeClauses.state.clauses[0]?.clause.value).toBe('b');
 
     await hook.unmount();
   });
@@ -164,10 +160,9 @@ describe('useTopology', () => {
   test('recreates when the config identity changes', async () => {
     const configA: TopologyConfig = { a: { type: 'crossfilter' } };
     const configB: TopologyConfig = { b: { type: 'crossfilter' } };
-    const hook = await renderHook(
-      ({ config }: { config: TopologyConfig }) => useTopology(config),
-      { initialProps: { config: configA } },
-    );
+    const hook = await renderHook(({ config }: { config: TopologyConfig }) => useTopology(config), {
+      initialProps: { config: configA },
+    });
 
     const first = hook.result.current;
     expect(first.validNames).toEqual(new Set(['a']));
@@ -187,8 +182,7 @@ describe('useTopology', () => {
     const paramA = Param.value(1);
     const paramB = Param.value(2);
     const hook = await renderHook(
-      ({ params }: { params: Record<string, Param<number>> }) =>
-        useTopology(config, { params }),
+      ({ params }: { params: Record<string, Param<number>> }) => useTopology(config, { params }),
       { initialProps: { params: { x: paramA } } },
     );
 
@@ -340,9 +334,7 @@ describe('useTopologyActiveClauses / useMosaicActiveClauses', () => {
     // Clearing the clause (a null-predicate publish for the same source
     // reference) empties the subscription.
     await interact(() => {
-      topology
-        .resolve('a')
-        .update({ source, value: null, predicate: null, fields: [] });
+      topology.resolve('a').update({ source, value: null, predicate: null, fields: [] });
     });
     await settle();
     expect(hook.result.current).toEqual([]);
@@ -389,9 +381,7 @@ describe('useTopologyActiveClauses / useMosaicActiveClauses', () => {
     });
 
     // A spec-derived clause on the shared target must NOT appear as foreign.
-    await interact(() =>
-      filterSet.set({ id: 'p', column: 'sport', kind: 'point', value: 'swim' }),
-    );
+    await interact(() => filterSet.set({ id: 'p', column: 'sport', kind: 'point', value: 'swim' }));
     await settle();
     expect(hook.result.current).toEqual([]);
 

@@ -23,8 +23,7 @@ const $page = Selection.crossfilter();
 
 function AthletesTable() {
   const athletes = useMosaicRows<AthleteRow>({
-    query: ({ where }) =>
-      Query.from('athletes').select('id', 'name', 'sport').where(where),
+    query: ({ where }) => Query.from('athletes').select('id', 'name', 'sport').where(where),
     filterBy: $page,
     inputs: { orderBy: [{ column: 'name' }], limit: 25, offset: 0 },
     rowCount: 'window',

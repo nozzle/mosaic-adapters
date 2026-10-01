@@ -8,52 +8,28 @@ export { MosaicProvider, useMosaicCoordinator } from './context';
 export type { MosaicProviderProps } from './context';
 
 export { useMosaicRows } from './use-mosaic-rows';
-export type {
-  UseMosaicRowsOptions,
-  UseMosaicRowsResult,
-} from './use-mosaic-rows';
+export type { UseMosaicRowsOptions, UseMosaicRowsResult } from './use-mosaic-rows';
 
 export { useMosaicValues } from './use-mosaic-values';
-export type {
-  UseMosaicValuesOptions,
-  UseMosaicValuesResult,
-} from './use-mosaic-values';
+export type { UseMosaicValuesOptions, UseMosaicValuesResult } from './use-mosaic-values';
 
 export { useMosaicFacet } from './use-mosaic-facet';
-export type {
-  UseMosaicFacetOptions,
-  UseMosaicFacetResult,
-} from './use-mosaic-facet';
+export type { UseMosaicFacetOptions, UseMosaicFacetResult } from './use-mosaic-facet';
 
 export { useMosaicHistogram } from './use-mosaic-histogram';
-export type {
-  UseMosaicHistogramOptions,
-  UseMosaicHistogramResult,
-} from './use-mosaic-histogram';
+export type { UseMosaicHistogramOptions, UseMosaicHistogramResult } from './use-mosaic-histogram';
 
 export { useMosaicSparkline } from './use-mosaic-sparkline';
-export type {
-  UseMosaicSparklineOptions,
-  UseMosaicSparklineResult,
-} from './use-mosaic-sparkline';
+export type { UseMosaicSparklineOptions, UseMosaicSparklineResult } from './use-mosaic-sparkline';
 
 export { useMosaicRollup } from './use-mosaic-rollup';
-export type {
-  UseMosaicRollupOptions,
-  UseMosaicRollupResult,
-} from './use-mosaic-rollup';
+export type { UseMosaicRollupOptions, UseMosaicRollupResult } from './use-mosaic-rollup';
 
 export { useMosaicPivot } from './use-mosaic-pivot';
-export type {
-  UseMosaicPivotOptions,
-  UseMosaicPivotResult,
-} from './use-mosaic-pivot';
+export type { UseMosaicPivotOptions, UseMosaicPivotResult } from './use-mosaic-pivot';
 
 export { useMosaicSchema } from './use-mosaic-schema';
-export type {
-  UseMosaicSchemaOptions,
-  UseMosaicSchemaResult,
-} from './use-mosaic-schema';
+export type { UseMosaicSchemaOptions, UseMosaicSchemaResult } from './use-mosaic-schema';
 
 export {
   useCascadingContexts,
@@ -73,10 +49,7 @@ export {
 } from './topology-context';
 export type { MosaicTopologyProviderProps } from './topology-context';
 
-export {
-  useMosaicActiveClauses,
-  useTopologyActiveClauses,
-} from './use-topology-active-clauses';
+export { useMosaicActiveClauses, useTopologyActiveClauses } from './use-topology-active-clauses';
 
 export { useMosaicSelectionValue } from './use-mosaic-selection-value';
 export type { UseMosaicSelectionValueOptions } from './use-mosaic-selection-value';

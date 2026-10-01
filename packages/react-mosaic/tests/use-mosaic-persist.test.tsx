@@ -1,3 +1,5 @@
+import { createAthletesDb, interact, renderHook, waitFor } from '@nozzleio/test-support/react';
+import type { TestDb } from '@nozzleio/test-support/react';
 /**
  * Persistence pass-through for the data-client hooks: `persist` flows from the
  * hook options into the core factory (so hydration and echo suppression are the
@@ -11,15 +13,8 @@ import { Selection } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import {
-  createAthletesDb,
-  interact,
-  renderHook,
-  waitFor,
-} from '@nozzleio/test-support/react';
 import { useMosaicFacet, useMosaicRows } from '../src/index';
 import type { Persister, QuerySource, RowsInputs } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/react';
 
 let db: TestDb;
 
@@ -177,9 +172,7 @@ describe('useMosaicRows persistence', () => {
   test('persisted tuples hydrate through setSelectedValues into the Selection', async () => {
     const $selected = Selection.single();
     const source = {};
-    const { persister, write } = memoryPersister<Array<Array<unknown>>>([
-      ['Ada'],
-    ]);
+    const { persister, write } = memoryPersister<Array<Array<unknown>>>([['Ada']]);
 
     const hook = await renderHook(
       () =>

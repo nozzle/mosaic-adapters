@@ -1,14 +1,9 @@
+import { createAthletesDb, interact, renderHook, waitFor } from '@nozzleio/test-support/react';
+import type { TestDb } from '@nozzleio/test-support/react';
 import { Selection } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  interact,
-  renderHook,
-  waitFor,
-} from '@nozzleio/test-support/react';
 import { useMosaicHistogram } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/react';
 
 let db: TestDb;
 
@@ -34,9 +29,7 @@ describe('useMosaicHistogram', () => {
     );
 
     await waitFor(() => {
-      expect(hook.result.current.bins.map((b) => b.count)).toEqual([
-        1, 2, 1, 2,
-      ]);
+      expect(hook.result.current.bins.map((b) => b.count)).toEqual([1, 2, 1, 2]);
     });
     expect(hook.result.current.extent).toEqual([55, 90]);
     expect(hook.result.current.maxCount).toBe(2);
@@ -49,9 +42,7 @@ describe('useMosaicHistogram', () => {
 
     // Crossfilter self-exclusion: its own brush leaves its own bins intact.
     await waitFor(() => {
-      expect(hook.result.current.bins.map((b) => b.count)).toEqual([
-        1, 2, 1, 2,
-      ]);
+      expect(hook.result.current.bins.map((b) => b.count)).toEqual([1, 2, 1, 2]);
     });
 
     await hook.unmount();

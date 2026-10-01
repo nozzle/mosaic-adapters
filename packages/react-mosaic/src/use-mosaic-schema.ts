@@ -1,18 +1,12 @@
-import { useEffect, useReducer, useRef } from 'react';
-import { useSelector } from '@tanstack/react-store';
 import { createSchemaClient } from '@nozzleio/mosaic-core';
-import { useMosaicCoordinator } from './context';
+import type { SchemaClient, SchemaClientOptions, SchemaClientState } from '@nozzleio/mosaic-core';
+import { useSelector } from '@tanstack/react-store';
 import type { Coordinator } from '@uwdata/mosaic-core';
-import type {
-  SchemaClient,
-  SchemaClientOptions,
-  SchemaClientState,
-} from '@nozzleio/mosaic-core';
+import { useEffect, useReducer, useRef } from 'react';
 
-export type UseMosaicSchemaOptions = Omit<
-  SchemaClientOptions,
-  'coordinator'
-> & {
+import { useMosaicCoordinator } from './context';
+
+export type UseMosaicSchemaOptions = Omit<SchemaClientOptions, 'coordinator'> & {
   /** Defaults to the nearest `MosaicProvider`, then the global coordinator. */
   coordinator?: Coordinator;
 };
@@ -26,9 +20,7 @@ export type UseMosaicSchemaResult = SchemaClientState & {
  * structural — the schema client has no setters — so changing the table,
  * columns, or stats re-creates the client and re-reads.
  */
-export function useMosaicSchema(
-  options: UseMosaicSchemaOptions,
-): UseMosaicSchemaResult {
+export function useMosaicSchema(options: UseMosaicSchemaOptions): UseMosaicSchemaResult {
   const coordinator = useMosaicCoordinator(options.coordinator);
   const columns = options.columns ?? '*';
   const columnsKey = columns === '*' ? '*' : columns.join(' ');

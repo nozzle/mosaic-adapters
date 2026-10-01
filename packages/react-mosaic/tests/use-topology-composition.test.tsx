@@ -1,3 +1,4 @@
+import { interact, renderHook } from '@nozzleio/test-support/react';
 /**
  * React bindings for the composition topology helpers. Since #181's prerequisite
  * refactor, `useComposedSelection` and `useCascadingContexts` are thin wrappers
@@ -8,16 +9,13 @@
  * double-mount settles on exactly one live wiring.
  */
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
+import type { MosaicClient } from '@uwdata/mosaic-core';
 import { describe, expect, test } from 'vitest';
 
-import { interact, renderHook } from '@nozzleio/test-support/react';
 import { useCascadingContexts, useComposedSelection } from '../src/index';
-import type { MosaicClient } from '@uwdata/mosaic-core';
 
 function publish(selection: Selection, column: string, value: string): void {
-  selection.update(
-    clausePoint(column, value, { source: { column, value } as object }),
-  );
+  selection.update(clausePoint(column, value, { source: { column, value } as object }));
 }
 
 /** A stand-in Mosaic client (only object identity matters for self-exclusion). */
@@ -41,9 +39,7 @@ function publishForClient(
 }
 
 function resolvedColumns(context: Selection): Array<string> {
-  return context._resolved.map((clause) =>
-    String((clause.source as { column: string }).column),
-  );
+  return context._resolved.map((clause) => String((clause.source as { column: string }).column));
 }
 
 describe('useComposedSelection', () => {
@@ -59,10 +55,7 @@ describe('useComposedSelection', () => {
       publish($b, 'name', 'Ada');
     });
 
-    expect(resolvedColumns(hook.result.current).sort()).toEqual([
-      'name',
-      'sport',
-    ]);
+    expect(resolvedColumns(hook.result.current).sort()).toEqual(['name', 'sport']);
   });
 
   test('keeps a stable identity across re-renders', async () => {
@@ -110,10 +103,9 @@ describe('useComposedSelection', () => {
 
   test("as: 'crossfilter' yields a self-excluding composite", async () => {
     const $a = Selection.crossfilter();
-    const hook = await renderHook(
-      () => useComposedSelection([$a], { as: 'crossfilter' }),
-      { initialProps: {} },
-    );
+    const hook = await renderHook(() => useComposedSelection([$a], { as: 'crossfilter' }), {
+      initialProps: {},
+    });
 
     // A clause whose clients set names `client`; the composite must exclude it
     // from that client's own predicate.
@@ -123,9 +115,7 @@ describe('useComposedSelection', () => {
     // Reading for the owning client self-excludes (its own only clause drops).
     expect(hook.result.current.predicate(client)).toBeUndefined();
     // A different client still sees the clause.
-    expect(String(hook.result.current.predicate(fakeClient()))).toContain(
-      '"sport"',
-    );
+    expect(String(hook.result.current.predicate(fakeClient()))).toContain('"sport"');
   });
 
   test("default (no options) stays 'intersect' — no self-exclusion", async () => {
@@ -144,8 +134,7 @@ describe('useComposedSelection', () => {
   test("changing 'as' across rerenders rebuilds the composition", async () => {
     const $a = Selection.crossfilter();
     const hook = await renderHook(
-      ({ as }: { as: 'intersect' | 'crossfilter' }) =>
-        useComposedSelection([$a], { as }),
+      ({ as }: { as: 'intersect' | 'crossfilter' }) => useComposedSelection([$a], { as }),
       {
         initialProps: { as: 'intersect' },
       },
@@ -193,10 +182,9 @@ describe('useCascadingContexts', () => {
     const $ext = Selection.crossfilter();
     const inputs = { a: $a, b: $b };
     const externals = [$ext];
-    const hook = await renderHook(
-      () => useCascadingContexts(inputs, externals),
-      { initialProps: {} },
-    );
+    const hook = await renderHook(() => useCascadingContexts(inputs, externals), {
+      initialProps: {},
+    });
 
     await interact(() => publish($ext, 'tableFilter', 'v'));
 
