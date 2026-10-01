@@ -1,9 +1,5 @@
-import { useState } from 'react';
-import { Selection } from '@uwdata/mosaic-core';
-import { Query } from '@uwdata/mosaic-sql';
-import { beforeEach, describe, expect, test } from 'vitest';
 import { createFilterSet, useMosaicRows } from '@nozzleio/react-mosaic';
-
+import type { FilterSet } from '@nozzleio/react-mosaic';
 import {
   createAthletesDb,
   interact,
@@ -11,11 +7,15 @@ import {
   settle,
   waitFor,
 } from '@nozzleio/test-support/react';
-import { useTanStackTableFilterBridge } from '../src/index';
-import type { FilterSet } from '@nozzleio/react-mosaic';
-import type { ColumnFiltersState } from '@tanstack/table-core';
-import type { FilterBridgeColumns } from '../src/index';
 import type { TestDb } from '@nozzleio/test-support/react';
+import type { ColumnFiltersState } from '@tanstack/table-core';
+import { Selection } from '@uwdata/mosaic-core';
+import { Query } from '@uwdata/mosaic-sql';
+import { useState } from 'react';
+import { beforeEach, describe, expect, test } from 'vitest';
+
+import { useTanStackTableFilterBridge } from '../src/index';
+import type { FilterBridgeColumns } from '../src/index';
 
 interface AthleteRow {
   id: number;
@@ -54,9 +54,7 @@ describe('full loop with a consuming rows client', () => {
         return useMosaicRows<AthleteRow>({
           coordinator: db.coordinator,
           query: ({ where }) =>
-            Query.from('athletes')
-              .select('id', 'name', 'sport', 'weight')
-              .where(where),
+            Query.from('athletes').select('id', 'name', 'sport', 'weight').where(where),
           filterBy: $page,
         });
       },
@@ -116,8 +114,7 @@ describe('full loop with a consuming rows client', () => {
         });
         return useMosaicRows<AthleteRow>({
           coordinator: db.coordinator,
-          query: ({ where }) =>
-            Query.from('athletes').select('id', 'sport').where(where),
+          query: ({ where }) => Query.from('athletes').select('id', 'sport').where(where),
           filterBy: $page,
         });
       },

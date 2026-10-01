@@ -2,42 +2,42 @@
   "name": "@nozzleio/mosaic-tanstack-react-table",
   "version": "0.13.2",
   "description": "React bindings for the Mosaic TanStack Table glue: the column-filter bridge hook plus the full glue-core re-export.",
+  "keywords": [
+    "filters",
+    "mosaic",
+    "react",
+    "tanstack-table"
+  ],
+  "homepage": "https://github.com/nozzle/mosaic-adapters/tree/main/packages/mosaic-tanstack-react-table",
+  "bugs": {
+    "url": "https://github.com/nozzle/mosaic-adapters/issues"
+  },
   "license": "MIT",
-  "type": "module",
-  "main": "dist/esm/index.js",
-  "module": "dist/esm/index.js",
-  "types": "dist/esm/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nozzle/mosaic-adapters.git",
     "directory": "packages/mosaic-tanstack-react-table"
   },
-  "homepage": "https://github.com/nozzle/mosaic-adapters/tree/main/packages/mosaic-tanstack-react-table",
-  "bugs": {
-    "url": "https://github.com/nozzle/mosaic-adapters/issues"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
-  "keywords": [
-    "mosaic",
-    "react",
-    "tanstack-table",
-    "filters"
-  ],
   "files": [
     "dist",
     "README.md",
     "LICENSE"
   ],
+  "type": "module",
   "sideEffects": false,
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/esm/index.d.ts",
       "default": "./dist/esm/index.js"
     },
     "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "clear-build": "rimraf dist",
@@ -49,12 +49,6 @@
   "dependencies": {
     "@nozzleio/mosaic-core": "workspace:*",
     "@nozzleio/mosaic-tanstack-table-core": "workspace:*"
-  },
-  "peerDependencies": {
-    "@tanstack/react-table": "^9.0.0-beta.34",
-    "@uwdata/mosaic-core": ">=0.32.0 <1",
-    "@uwdata/mosaic-sql": ">=0.32.0 <1",
-    "react": ">=19.2.0"
   },
   "devDependencies": {
     "@nozzleio/react-mosaic": "workspace:*",
@@ -70,5 +64,11 @@
     "react-dom": "^19.3.0",
     "rimraf": "catalog:",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@tanstack/react-table": "^9.0.0-beta.34",
+    "@uwdata/mosaic-core": ">=0.32.0 <1",
+    "@uwdata/mosaic-sql": ">=0.32.0 <1",
+    "react": ">=19.2.0"
   }
 }
