@@ -234,11 +234,15 @@ describe('skipSources', () => {
       predicate: eq('sport', literal('run')),
     });
 
-    await client.refetch();
-
+    // The Selection's `'value'` event drives the re-query. (A `refetch()` here
+    // would read the last *emitted* clauses and be superseded by that event's
+    // query, so wait for the settled store instead.)
     // weight >= 60 only → Ada, Bo, Cy, Di, Fi (5); neither sport clause applies
     // (`sport` still appears as a selected column, so assert on the literals).
-    expect(client.store.state.rows).toHaveLength(5);
+    await waitFor(() => {
+      expect(client.store.state.status).toBe('success');
+      expect(client.store.state.rows).toHaveLength(5);
+    });
     expect(client.store.state.lastQuery).toMatch(/"weight" >= 60/);
     expect(client.store.state.lastQuery).not.toMatch(/'swim'/);
     expect(client.store.state.lastQuery).not.toMatch(/'run'/);

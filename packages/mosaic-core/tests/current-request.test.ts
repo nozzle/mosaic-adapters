@@ -13,13 +13,12 @@ import {
 import { Query, eq, literal } from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
-import { settle } from '@nozzleio/test-support/duckdb';
+import { rowsToIPC, settle } from '@nozzleio/test-support/duckdb';
 import { createSparklineClient, createValuesClient } from '../src/index';
 import type {
   ArrowQueryRequest,
   Connector,
   ExecQueryRequest,
-  JSONQueryRequest,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import type { DataClientStatus, ValuesClient } from '../src/index';
@@ -41,9 +40,13 @@ interface ControlledDb {
 function createControlledDb(): ControlledDb {
   const requests: Array<Deferred> = [];
   const connector = {
-    query(request: ArrowQueryRequest | ExecQueryRequest | JSONQueryRequest) {
-      return new Promise((resolve, reject) => {
-        requests.push({ sql: request.sql, resolve, reject });
+    query(request: ArrowQueryRequest | ExecQueryRequest) {
+      return new Promise<Uint8Array>((resolve, reject) => {
+        requests.push({
+          sql: request.sql,
+          resolve: (rows) => resolve(rowsToIPC(rows)),
+          reject,
+        });
       });
     },
   } as Connector;
@@ -256,13 +259,17 @@ describe('current-request guarantee', () => {
 
   test('refetch() supersedes the in-flight request', async () => {
     const db = createControlledDb();
+    // The query factory is held by latest-ref, so the refetch builds new SQL
+    // and reaches the connector as a second request.
+    let total = 1;
     const client = createValuesClient<Totals>({
       coordinator: db.coordinator,
-      query: () => Query.from('t').select({ total: literal(1) }),
+      query: () => Query.from('t').select({ total: literal(total) }),
     });
     await settle(0);
     expect(db.requests).toHaveLength(1);
 
+    total = 2;
     const refetch = client.refetch();
     await settle(0);
     expect(db.requests).toHaveLength(2);
@@ -275,6 +282,33 @@ describe('current-request guarantee', () => {
     await refetch;
     expect(client.store.state.status).toBe('success');
     expect(client.store.state.values).toEqual({ total: 2 });
+
+    client.destroy();
+  });
+
+  test('a refetch with identical SQL joins the in-flight request and settles once', async () => {
+    // Mosaic 0.32's QueryManager shares one connector request between
+    // concurrent requests for the same SQL; both completions carry the same
+    // rows, so the superseded one is dropped and the current one settles.
+    const db = createControlledDb();
+    const client = createValuesClient<Totals>({
+      coordinator: db.coordinator,
+      query: () => Query.from('t').select({ total: literal(1) }),
+    });
+    const log = recordTransitions(client);
+    await settle(0);
+    expect(db.requests).toHaveLength(1);
+
+    const refetch = client.refetch();
+    await settle(0);
+    expect(db.requests).toHaveLength(1);
+    expect(client.store.state.status).toBe('pending');
+
+    db.requests[0]!.resolve([{ total: 1 }]);
+    await refetch;
+    expect(client.store.state.status).toBe('success');
+    expect(client.store.state.values).toEqual({ total: 1 });
+    expect(log.filter((s) => s.status === 'success')).toHaveLength(1);
 
     client.destroy();
   });

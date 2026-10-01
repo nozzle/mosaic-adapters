@@ -117,8 +117,8 @@ describe('clause kinds', () => {
     ]);
     expect(clause?.meta).toMatchObject({ type: 'interval' });
     const sql = predicateSql(clause);
-    expect(sql).toContain(`DATE '2024-1-1'`);
-    expect(sql).toContain(`DATE '2024-6-30'`);
+    expect(sql).toContain(`DATE '2024-01-01'`);
+    expect(sql).toContain(`DATE '2024-06-30'`);
   });
 
   test('in maps to a multi-point clause; scalars become single-element lists', () => {
