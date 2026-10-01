@@ -16,6 +16,6 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "js/ts.preferences.autoImportFileExcludePatterns": ["dist", "gen"],
-  "js/ts.tsdk.path": "node_modules/@typescript/native",
+  "js/ts.tsdk.path": "node_modules/typescript",
   "js/ts.experimental.useTsgo": true
 }

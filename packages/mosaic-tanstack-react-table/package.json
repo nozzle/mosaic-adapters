@@ -41,7 +41,7 @@
   },
   "scripts": {
     "clear-build": "rimraf dist",
-    "build": "vite build",
+    "build": "tsdown",
     "test:types": "tsc --noEmit",
     "test:lib": "vitest",
     "test:lint": "oxlint ./src ./tests"
@@ -63,12 +63,12 @@
     "@tanstack/table-core": "catalog:",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@typescript/native": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "rimraf": "catalog:"
+    "rimraf": "catalog:",
+    "typescript": "catalog:"
   }
 }
