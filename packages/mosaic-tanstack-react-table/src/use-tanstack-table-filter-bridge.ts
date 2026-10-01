@@ -1,11 +1,8 @@
-import { useEffect, useRef } from 'react';
-import { createTanStackTableFilterBridge } from '@nozzleio/mosaic-tanstack-table-core';
 import type { FilterSet } from '@nozzleio/mosaic-core';
+import { createTanStackTableFilterBridge } from '@nozzleio/mosaic-tanstack-table-core';
+import type { FilterBridge, FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-table-core';
 import type { ColumnFiltersState } from '@tanstack/react-table';
-import type {
-  FilterBridge,
-  FilterBridgeColumns,
-} from '@nozzleio/mosaic-tanstack-table-core';
+import { useEffect, useRef } from 'react';
 
 export interface UseTanStackTableFilterBridgeOptions {
   /** TanStack Table column-filter state (consumer-owned, controlled). */
@@ -51,9 +48,7 @@ export interface UseTanStackFilterBridgeOptions extends UseTanStackTableFilterBr
  * equal state publish nothing and cannot echo into a Selection-activation
  * feedback loop.
  */
-export function useTanStackTableFilterBridge(
-  options: UseTanStackTableFilterBridgeOptions,
-): void {
+export function useTanStackTableFilterBridge(options: UseTanStackTableFilterBridgeOptions): void {
   const { filters, set, columns, idPrefix, onExternalChange } = options;
 
   const bridgeRef = useRef<FilterBridge | null>(null);
