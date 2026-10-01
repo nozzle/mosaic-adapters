@@ -199,9 +199,7 @@ topology.resolve('wehre'); // throws: lists validNames
 for (const widget of dashboardSpec.widgets) {
   const ref = widget.inputs?.data?.filterBy;
   if (ref !== undefined && !topology.validNames.has(ref)) {
-    throw new Error(
-      `Widget '${widget.id}' references unknown selection '${ref}'.`,
-    );
+    throw new Error(`Widget '${widget.id}' references unknown selection '${ref}'.`);
   }
 }
 ```
@@ -291,8 +289,7 @@ A **`param`** is topology-owned — constructed as `Param.value(default)` and to
 `default` (and every value the param later holds) ranges over `ParamValue` — a JSON scalar or a flat array of them:
 
 ```ts
-type ParamValue =
-  string | number | boolean | null | Array<string | number | boolean | null>;
+type ParamValue = string | number | boolean | null | Array<string | number | boolean | null>;
 ```
 
 That is exactly the set Mosaic interpolates: a metric name, a grain string, an N, a boolean toggle, a multi-select of scalars.
@@ -438,10 +435,7 @@ So the previously-required escape hatch is gone: declare the context as an ordin
 The two composition primitives the topology builds on are exported directly, for graphs assembled outside a topology (or inside a React lifecycle via the [hooks](../react/hooks.md#topology-helpers)). Both return a handle with a `destroy()` — they wire relay listeners that must be torn down.
 
 ```ts
-import {
-  createComposedSelection,
-  createCascadingContexts,
-} from '@nozzleio/mosaic-core';
+import { createComposedSelection, createCascadingContexts } from '@nozzleio/mosaic-core';
 
 // One Selection mirroring the union of the given Selections' clauses.
 // `as: 'crossfilter'` makes it self-exclude each clause's own clients.
@@ -451,10 +445,7 @@ composed.destroy(); // detach relays, clear seeded clauses (idempotent)
 
 // Peer-minus-self contexts: each key's context includes every OTHER input
 // plus the externals, never the key's own input.
-const cascading = createCascadingContexts(
-  { sport: $sport, country: $country },
-  [$where],
-);
+const cascading = createCascadingContexts({ sport: $sport, country: $country }, [$where]);
 cascading.contexts.sport; // → Selection (sees country + where, not sport)
 cascading.destroy();
 ```

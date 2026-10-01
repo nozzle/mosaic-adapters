@@ -34,10 +34,7 @@ export default defineConfig({
     'sort-imports': ['error', { ignoreDeclarationSort: true }],
 
     // typescript
-    'typescript/array-type': [
-      'error',
-      { default: 'generic', readonly: 'generic' },
-    ],
+    'typescript/array-type': ['error', { default: 'generic', readonly: 'generic' }],
     'typescript/ban-ts-comment': [
       'error',
       { 'ts-expect-error': false, 'ts-ignore': 'allow-with-description' },

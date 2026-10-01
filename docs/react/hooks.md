@@ -25,8 +25,7 @@ Every client has a controlled-binding hook: `useMosaicRows`, `useMosaicValues`, 
 
 ```tsx
 const athletes = useMosaicRows<AthleteRow>({
-  query: ({ where }) =>
-    Query.from('athletes').select('id', 'name', 'sport', 'weight').where(where),
+  query: ({ where }) => Query.from('athletes').select('id', 'name', 'sport', 'weight').where(where),
   filterBy: $page,
   inputs: {
     orderBy: sortingToOrderBy(sorting),
@@ -96,10 +95,7 @@ function MetricToggle() {
   const $metric = useMosaicParamRef('metric');
   const metric = useMosaicParamValue<string>($metric);
   return (
-    <select
-      value={metric ?? 'gold'}
-      onChange={(e) => $metric.update(e.target.value)}
-    >
+    <select value={metric ?? 'gold'} onChange={(e) => $metric.update(e.target.value)}>
       <option value="gold">Gold</option>
       <option value="silver">Silver</option>
       <option value="bronze">Bronze</option>

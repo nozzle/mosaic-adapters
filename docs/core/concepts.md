@@ -11,8 +11,7 @@ Every client is fed by a `QuerySource`: a table name, or a factory receiving a `
 ```ts
 const client = createRowsClient({
   coordinator,
-  query: ({ where, having }) =>
-    Query.from('athletes').select('id', 'name', 'sport').where(where),
+  query: ({ where, having }) => Query.from('athletes').select('id', 'name', 'sport').where(where),
   filterBy: $page, // native Selection → WHERE
   havingBy: $agg, // native Selection → HAVING (our extension; upstream is WHERE-only)
 });
@@ -77,8 +76,7 @@ A widget consuming a shared Selection can opt out of _specific_ clauses in it wh
 // e.g. an all-time total shown alongside the date-filtered views.
 const allTime = createValuesClient({
   coordinator,
-  query: ({ where }) =>
-    Query.from('events').select({ total: count() }).where(where),
+  query: ({ where }) => Query.from('events').select({ total: count() }).where(where),
   filterBy: $page,
   skipSources: new Set(['date_range']),
 });

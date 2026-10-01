@@ -9,13 +9,7 @@ This recipe is the shape that policy takes: an app-owned `ConnectorProvider` tha
 Construct the coordinator explicitly — `new Coordinator(connector)`, never the global singleton — so every client hook resolves _this_ instance through context. Track a `connectionId` that changes whenever the connector is rebuilt; that id is the connection's identity, and it is what downstream state keys on.
 
 ```tsx
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from 'react';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { Coordinator, wasmConnector } from '@uwdata/mosaic-core';
 import type { ReactNode } from 'react';
 
@@ -52,11 +46,7 @@ export function ConnectorProvider(props: { children: ReactNode }) {
     [coordinator, connectionId, recreate],
   );
 
-  return (
-    <ConnectorContext.Provider value={value}>
-      {props.children}
-    </ConnectorContext.Provider>
-  );
+  return <ConnectorContext.Provider value={value}>{props.children}</ConnectorContext.Provider>;
 }
 
 /** Read the current connector state; throws outside a ConnectorProvider. */
@@ -146,10 +136,7 @@ function VolumePanel() {
   // via MosaicProvider. Build an API context bound to the resolved coordinator
   // so the marks and brush interactor live on the SAME coordinator as the hooks.
   const coordinator = useMosaicCoordinator();
-  const api = useMemo(
-    () => vg.createAPIContext({ coordinator }),
-    [coordinator],
-  );
+  const api = useMemo(() => vg.createAPIContext({ coordinator }), [coordinator]);
 
   const attachPlot = useVgPlot(
     () =>

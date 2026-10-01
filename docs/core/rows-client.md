@@ -5,8 +5,7 @@
 ```ts
 const athletes = createRowsClient<AthleteRow>({
   coordinator,
-  query: ({ where }) =>
-    Query.from('athletes').select('id', 'name', 'sport', 'weight').where(where),
+  query: ({ where }) => Query.from('athletes').select('id', 'name', 'sport', 'weight').where(where),
   filterBy: $page,
   inputs: { orderBy: [{ column: 'name' }], limit: 25, offset: 0 },
   rowCount: 'window',

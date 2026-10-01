@@ -175,16 +175,7 @@ useTanStackTableFilterBridge({
 const athletes = useMosaicRows<AthleteRow>({
   query: ({ where }) =>
     Query.from('athletes')
-      .select(
-        'id',
-        'name',
-        'nationality',
-        'sport',
-        'sex',
-        'height',
-        'weight',
-        'gold',
-      )
+      .select('id', 'name', 'nationality', 'sport', 'sex', 'height', 'weight', 'gold')
       .where(where),
   filterBy: $page,
   inputs: {

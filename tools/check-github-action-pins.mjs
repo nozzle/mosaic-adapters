@@ -9,12 +9,7 @@ const fullShaPattern = /^[a-f0-9]{40}$/i;
 const workflowFilePattern = /\.ya?ml$/i;
 const usesPattern = /^(\s*(?:-\s*)?uses:\s*)(['"]?)([^'"\s#]+)(\2)(.*)$/;
 
-const defaultWorkflowGlobs = [
-  '.github/workflows',
-  '.github/actions',
-  'action.yml',
-  'action.yaml',
-];
+const defaultWorkflowGlobs = ['.github/workflows', '.github/actions', 'action.yml', 'action.yaml'];
 
 /**
  * @typedef {{ owner: string, repo: string, subpath: string, ref: string }} ActionRef
@@ -53,8 +48,7 @@ export async function main(argv = process.argv.slice(2), options = {}) {
     return 0;
   }
 
-  const scanRoots =
-    parsedArgs.paths.length > 0 ? parsedArgs.paths : defaultWorkflowGlobs;
+  const scanRoots = parsedArgs.paths.length > 0 ? parsedArgs.paths : defaultWorkflowGlobs;
   const workflowFiles = await findWorkflowFiles(cwd, scanRoots);
   const findings = await collectFindings(workflowFiles, {
     cwd,
@@ -216,21 +210,13 @@ export async function findWorkflowFiles(cwd, scanRoots) {
  * @returns {Promise<Resolution>}
  */
 export async function resolveGitHubRef(actionRef, fetchRef = fetchGitHubRef) {
-  const tag = await fetchRef(
-    actionRef.owner,
-    actionRef.repo,
-    `tags/${actionRef.ref}`,
-  );
+  const tag = await fetchRef(actionRef.owner, actionRef.repo, `tags/${actionRef.ref}`);
 
   if (tag) {
     return dereferenceGitObject(tag, fetchRef);
   }
 
-  const branch = await fetchRef(
-    actionRef.owner,
-    actionRef.repo,
-    `heads/${actionRef.ref}`,
-  );
+  const branch = await fetchRef(actionRef.owner, actionRef.repo, `heads/${actionRef.ref}`);
 
   if (branch) {
     return dereferenceGitObject(branch, fetchRef);
@@ -350,10 +336,7 @@ async function getStats(filePath) {
  */
 function isNodeError(error) {
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    typeof error.code === 'string'
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
   );
 }
 
@@ -390,9 +373,7 @@ async function fetchGitHubRef(owner, repo, refPath) {
   }
 
   if (!response.ok) {
-    throw new Error(
-      `GitHub returned ${response.status} for ${owner}/${repo}@${refPath}.`,
-    );
+    throw new Error(`GitHub returned ${response.status} for ${owner}/${repo}@${refPath}.`);
   }
 
   return response.json();
@@ -527,9 +508,7 @@ function printReport(findings, options) {
     const resolution = finding.resolution;
 
     if (!resolution?.ok) {
-      console.error(
-        `  resolve: ${resolution?.message ?? 'Resolution was not attempted.'}`,
-      );
+      console.error(`  resolve: ${resolution?.message ?? 'Resolution was not attempted.'}`);
       continue;
     }
 
