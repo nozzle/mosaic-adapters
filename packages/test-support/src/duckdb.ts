@@ -5,12 +5,12 @@
  * string shapes.
  */
 import { createRequire } from 'node:module';
-import { Coordinator, decodeIPC } from '@uwdata/mosaic-core';
+import { Coordinator } from '@uwdata/mosaic-core';
+import { tableFromArrays, tableToIPC } from '@uwdata/flechette';
 import type {
   ArrowQueryRequest,
   Connector,
   ExecQueryRequest,
-  JSONQueryRequest,
   MosaicClient,
 } from '@uwdata/mosaic-core';
 import type { Table } from '@uwdata/flechette';
@@ -58,7 +58,7 @@ export async function createTestDb(): Promise<TestDb> {
   const connectorQueries: Array<string> = [];
 
   const connector = {
-    query(request: ArrowQueryRequest | ExecQueryRequest | JSONQueryRequest) {
+    query(request: ArrowQueryRequest | ExecQueryRequest) {
       const { type, sql } = request;
       connectorQueries.push(sql);
       const buffer = conn.useUnsafe((bindings, connId) =>
@@ -67,10 +67,9 @@ export async function createTestDb(): Promise<TestDb> {
       if (type === 'exec') {
         return Promise.resolve(undefined);
       }
-      if (type === 'json') {
-        return Promise.resolve(decodeIPC(buffer).toArray());
-      }
-      return Promise.resolve(decodeIPC(buffer));
+      // Connectors return raw Arrow IPC bytes; the coordinator's
+      // QueryManager decodes them (with its `ipc` options) and caches.
+      return Promise.resolve(buffer);
     },
   } as Connector;
 
@@ -145,4 +144,21 @@ export async function settle(ms = 50): Promise<void> {
 
 export function arrowRows(table: Table): Array<Record<string, unknown>> {
   return table.toArray();
+}
+
+/**
+ * Encode row objects as Arrow IPC bytes, the result shape a mock connector
+ * must return for an `arrow` query (the QueryManager decodes it). Columns
+ * come from the first row's keys.
+ */
+export function rowsToIPC(rows: Array<Record<string, unknown>>): Uint8Array {
+  const names = rows.length > 0 ? Object.keys(rows[0]!) : [];
+  const columns = Object.fromEntries(
+    names.map((name) => [name, rows.map((row) => row[name])]),
+  );
+  const bytes = tableToIPC(tableFromArrays(columns), {});
+  if (!bytes) {
+    throw new Error('rowsToIPC: failed to encode rows as Arrow IPC.');
+  }
+  return bytes;
 }

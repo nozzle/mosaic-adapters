@@ -8,13 +8,12 @@ import { Coordinator, Selection, clausePoint } from '@uwdata/mosaic-core';
 import { Query, count } from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
-import { settle } from '@nozzleio/test-support/duckdb';
+import { rowsToIPC, settle } from '@nozzleio/test-support/duckdb';
 import { createSkipProjectedSelection, createValuesClient } from '../src/index';
 import type {
   ArrowQueryRequest,
   Connector,
   ExecQueryRequest,
-  JSONQueryRequest,
   MosaicClient,
   SelectionClause,
 } from '@uwdata/mosaic-core';
@@ -28,11 +27,11 @@ interface CountingDb {
 function createCountingDb(): CountingDb {
   const queries: Array<string> = [];
   const connector = {
-    query(request: ArrowQueryRequest | ExecQueryRequest | JSONQueryRequest) {
+    query(request: ArrowQueryRequest | ExecQueryRequest) {
       queries.push(request.sql);
-      return Promise.resolve([{ total: 1 }]);
+      return Promise.resolve(rowsToIPC([{ total: 1 }]));
     },
-  } as unknown as Connector;
+  } as Connector;
   const coordinator = new Coordinator(connector, {
     logger: null,
     consolidate: false,
