@@ -359,8 +359,9 @@ class FilterSetImpl implements FilterSet {
 
     const columnExpr = createStructAccess(SqlIdentifier.from(spec.column));
     // Tracked through a cell so the getter's mutation is opaque to the type
-    // narrower (ESLint would otherwise treat the flag as never reassigned).
+    // narrower (the linter would otherwise treat the flag as never reassigned).
     const contextRead = { value: false };
+    // oxlint-disable-next-line typescript/no-this-alias -- the getter below rebinds `this`
     const self = this;
     const args: FilterKindArgs = {
       spec,

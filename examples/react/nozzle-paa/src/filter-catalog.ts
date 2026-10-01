@@ -43,11 +43,7 @@
  * - `date-range`       → two date inputs (interval `value`/`valueTo`).
  */
 export type FieldValueKind =
-  | 'facet-multi'
-  | 'facet-multi-array'
-  | 'text'
-  | 'number'
-  | 'date-range';
+  'facet-multi' | 'facet-multi-array' | 'text' | 'number' | 'date-range';
 
 /**
  * One authoring placement for a field: a routing target on the set plus the

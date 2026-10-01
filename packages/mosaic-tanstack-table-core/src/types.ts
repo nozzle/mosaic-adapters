@@ -1,3 +1,4 @@
+// oxlint-disable-next-line no-unused-vars -- FilterSpec is referenced by the {@link} tags below
 import type { FilterSet, FilterSpec } from '@nozzleio/mosaic-core';
 import type { ColumnFiltersState } from '@tanstack/table-core';
 
@@ -22,12 +23,7 @@ import type { ColumnFiltersState } from '@tanstack/table-core';
  *   is treated as a single-element array; an empty array clears the spec.
  */
 export type ColumnFilterClauseKind =
-  | 'equals'
-  | 'ilike'
-  | 'prefix'
-  | 'range'
-  | 'date-range'
-  | 'in';
+  'equals' | 'ilike' | 'prefix' | 'range' | 'date-range' | 'in';
 
 export interface FilterBridgeColumn {
   /**

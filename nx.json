@@ -14,22 +14,13 @@
       "{projectRoot}/**/*",
       "!{projectRoot}/**/*.md"
     ],
-    "production": [
-      "default",
-      "!{projectRoot}/tests/**/*",
-      "!{projectRoot}/eslint.config.js"
-    ]
+    "production": ["default", "!{projectRoot}/tests/**/*"]
   },
   "targetDefaults": {
     "test:lint": {
       "cache": true,
       "dependsOn": ["^build"],
-      "inputs": [
-        "default",
-        "^production",
-        "{workspaceRoot}/eslint.config.js",
-        "{projectRoot}/eslint.config.js"
-      ]
+      "inputs": ["default", "^production", "{workspaceRoot}/oxlint.config.ts"]
     },
     "test:lib": {
       "cache": true,

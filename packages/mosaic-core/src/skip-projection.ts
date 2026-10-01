@@ -163,7 +163,7 @@ class SkipProjectedSelection extends Selection {
       return;
     }
     this._resolved = effective;
-    void this.emit('value', effective);
+    this.emit('value', effective);
   };
 
   override update(clause: SelectionClause): this {

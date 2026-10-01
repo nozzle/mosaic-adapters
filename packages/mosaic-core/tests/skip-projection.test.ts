@@ -284,7 +284,7 @@ describe('skipSources projection', () => {
       }
       this._value = next;
       this._resolved = next;
-      void this.emit('value', next);
+      this.emit('value', next);
     }
   }
 

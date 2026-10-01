@@ -49,7 +49,7 @@
     "build": "vite build",
     "test:types": "tsc --noEmit",
     "test:lib": "vitest",
-    "test:lint": "eslint ./src ./tests"
+    "test:lint": "oxlint ./src ./tests"
   },
   "dependencies": {
     "@nozzleio/mosaic-core": "workspace:*",
@@ -67,19 +67,16 @@
     }
   },
   "devDependencies": {
-    "@eslint-react/eslint-plugin": "catalog:",
     "@nozzleio/test-support": "workspace:*",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@typescript/native": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
     "@uwdata/vgplot": "catalog:",
     "@vitejs/plugin-react": "catalog:",
-    "eslint": "catalog:",
-    "eslint-plugin-react-hooks": "catalog:",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "rimraf": "catalog:",
-    "typescript": "catalog:"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "rimraf": "catalog:"
   }
 }

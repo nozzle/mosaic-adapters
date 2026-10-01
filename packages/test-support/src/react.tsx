@@ -3,23 +3,15 @@
  * `renderHook` / `render` / `rerender` / `unmount` / `waitFor` already wrapped
  * in `act`, manages the act environment, and owns the jsdom container
  * lifecycle. Only the two Mosaic-specific helpers (`settle`, `interact`) and the
- * shared DuckDB fixtures are local.
+ * shared DuckDB fixtures are local. RTL cleanup and configuration live in
+ * `./setup-react`, which consuming packages load through `setupFiles`.
  */
-import { afterEach } from 'vitest';
-import { act, cleanup, configure } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { settle as coreSettle } from './duckdb';
 
 export { act, render, renderHook, waitFor } from '@testing-library/react';
 export { createAthletesDb, createTestDb } from './duckdb';
 export type { TestDb } from './duckdb';
-
-// Mosaic queries run against real (async) DuckDB; keep the generous poll budget
-// the hand-rolled harness used so slower CI never times out mid-query.
-configure({ asyncUtilTimeout: 5_000 });
-
-// vitest runs without globals here, so RTL's auto-cleanup (which looks for a
-// global `afterEach`) never registers. Wire it once, shared by every suite.
-afterEach(cleanup);
 
 /**
  * Elapse a timer window inside `act` so async Mosaic store pushes settle without

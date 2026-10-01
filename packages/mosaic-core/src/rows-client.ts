@@ -187,7 +187,7 @@ class RowsDataClient<TRow>
       ...ctx,
       inputs: { ...ctx.inputs, ...inputs },
     });
-    this.#options.coordinator.prefetch(query);
+    void this.#options.coordinator.prefetch(query);
   }
 
   protected buildQuery(ctx: QueryContext<RowsInputs>): SelectQuery {

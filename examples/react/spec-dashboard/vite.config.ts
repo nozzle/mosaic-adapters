@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     watch: false,
     testTimeout: 30_000,
+    isolate: false,
     typecheck: { enabled: true },
   },
   plugins: [react(), tailwindcss()],

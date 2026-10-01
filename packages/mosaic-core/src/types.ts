@@ -51,8 +51,7 @@ export function isFilterSetPublishTarget(
  * is built from the latest factory.
  */
 export type QuerySource<TInputs extends object> =
-  | string
-  | ((ctx: QueryContext<TInputs>) => SelectQuery);
+  string | ((ctx: QueryContext<TInputs>) => SelectQuery);
 
 export interface QueryContext<TInputs extends object> {
   /**
@@ -176,8 +175,7 @@ export type CoerceDescriptorMap = Record<string, CoerceDescriptor>;
  * descriptor map. Presentational only; held by latest-ref either way.
  */
 export type CoerceOption<TRow> =
-  | ((raw: Record<string, unknown>) => TRow)
-  | CoerceDescriptorMap;
+  ((raw: Record<string, unknown>) => TRow) | CoerceDescriptorMap;
 
 // ── Rows client ──────────────────────────────────────────────────────────────
 
