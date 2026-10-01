@@ -14,9 +14,9 @@ Choose the affected package or packages, select the semver bump, and write a sho
 
 ## Releasing
 
-The release workflow uses Changesets to either:
+On every push to `main`, the release workflow runs the CI checks and then either:
 
-- open or update a versioning pull request on `main`, or
-- publish already-versioned packages from `main`
+- opens or updates the `ci: version packages` pull request while unreleased changesets exist, or
+- publishes the already-versioned packages to npm once that pull request is merged, using tarballs packed from the CI job's build, and then creates git tags and GitHub releases.
 
-Trusted publishing is configured in npm for the GitHub Actions release workflow, so no long-lived npm token is required once trust is attached to each package.
+Private packages are not versioned or published. Trusted publishing is configured in npm for the GitHub Actions release workflow, so no long-lived npm token is required once trust is attached to each package.

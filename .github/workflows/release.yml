@@ -6,107 +6,135 @@ on:
       - main
   workflow_dispatch:
 
+# Never cancel an in-flight release: a cancelled publish job can leave a
+# partially published release. Queued runs wait for the current one instead.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+# Reset permissions and grant them per job.
+permissions: {}
 
 jobs:
   ci:
     name: CI
+    # `workflow_dispatch` can target any branch; only ever release from main.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: read
+      contents: read # to check out the repo
+    outputs:
+      mode: ${{ steps.select-mode.outputs.mode }}
+      pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Tools
-        uses: TanStack/config/.github/setup@695e782edc39b6907f79e51f4d56dc15af97df60 # main
+        uses: TanStack/config/.github/setup@7bbdf583c2fc1a7f596283cd01e0e44c43f574f2 # main
 
       - name: Check GitHub Action pins
         run: pnpm run actions:pin-check
 
-      - name: Configure npm registry for trusted publishing
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
-          registry-url: https://registry.npmjs.org
-
-      - name: Show release tool versions
-        run: |
-          node --version
-          npm --version
-          pnpm --version
-
       - name: Run CI checks
         run: pnpm run test:ci
 
-      - name: Archive package build output
-        run: |
-          tar -czf package-dist-${{ github.run_id }}.tgz packages/*/dist
-          shasum -a 256 package-dist-${{ github.run_id }}.tgz > package-dist-${{ github.run_id }}.tgz.sha256
+      - name: Select Changesets mode
+        id: select-mode
+        uses: changesets/action/select-mode@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
 
-      - name: Upload package build output
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # Pack the tarballs from this job's verified build so the publish job
+      # never runs a build while holding `id-token: write`.
+      - name: Pack packages
+        id: pack
+        if: steps.select-mode.outputs.mode == 'publish'
+        uses: changesets/action/pack@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          name: package-dist-${{ github.run_id }}
-          path: |
-            package-dist-${{ github.run_id }}.tgz
-            package-dist-${{ github.run_id }}.tgz.sha256
-          if-no-files-found: error
-          retention-days: 1
+          publish-plan-artifact-id: ${{ steps.select-mode.outputs.publish-plan-artifact-id }}
 
-  release:
-    name: Release
+  version:
+    name: Version
     needs: ci
+    if: needs.ci.outputs.mode == 'version'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     permissions:
-      contents: write
-      id-token: write
-      pull-requests: write
+      contents: write # to commit version changes to the release branch
+      pull-requests: write # to open or update the release PR
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Tools
-        uses: TanStack/config/.github/setup@695e782edc39b6907f79e51f4d56dc15af97df60 # main
+        uses: TanStack/config/.github/setup@7bbdf583c2fc1a7f596283cd01e0e44c43f574f2 # main
 
-      - name: Configure npm registry for trusted publishing
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - name: Create or update release PR
+        uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
-          registry-url: https://registry.npmjs.org
+          script: pnpm run changeset:version
+          commit-message: 'ci: version packages'
+          pr-title: 'ci: version packages'
 
-      - name: Download package build output
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+  publish:
+    name: Publish
+    needs: ci
+    if: needs.ci.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # to push git tags and create GitHub releases
+      id-token: write # for npm trusted publishing (OIDC) and provenance
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: package-dist-${{ github.run_id }}
+          persist-credentials: false
 
-      - name: Verify package build output
-        run: shasum -a 256 -c package-dist-${{ github.run_id }}.tgz.sha256
+      - name: Setup Tools
+        uses: TanStack/config/.github/setup@7bbdf583c2fc1a7f596283cd01e0e44c43f574f2 # main
 
-      - name: Restore package build output
-        run: tar -xzf package-dist-${{ github.run_id }}.tgz
+      - name: Show release tool versions
+        run: |
+          node --version
+          pnpm --version
 
-      - name: Create release PR or publish to npm
-        id: changesets
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+      - name: Publish to npm
+        id: publish
+        uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          version: pnpm run changeset:version
-          publish: pnpm run changeset:publish
-          commit: 'ci: version packages'
-          title: 'ci: version packages'
-          createGithubReleases: true
+          pack-dir-artifact-id: ${{ needs.ci.outputs.pack-dir-artifact-id }}
+          create-github-releases: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
+          # pnpm 11 publishes natively and ignores `NPM_CONFIG_*` settings.
+          PNPM_CONFIG_PROVENANCE: 'true'
+
+      # A publish without an attestation does not fail on its own, so check
+      # that every published version carries npm provenance. Retries cover
+      # registry propagation lag right after publishing.
+      - name: Verify provenance attestations
+        if: steps.publish.outputs.published == 'true'
+        env:
+          PUBLISHED_PACKAGES: ${{ steps.publish.outputs.published-packages }}
+        run: |
+          for spec in $(jq -r '.[] | "\(.name)@\(.version)"' <<< "$PUBLISHED_PACKAGES"); do
+            verified=false
+            for attempt in 1 2 3 4 5 6; do
+              if npm view "$spec" dist.attestations.provenance.predicateType 2>/dev/null | grep -q 'slsa.dev/provenance'; then
+                verified=true
+                break
+              fi
+              sleep 10
+            done
+            if [ "$verified" != true ]; then
+              echo "::error::No provenance attestation found for $spec"
+              exit 1
+            fi
+            echo "Provenance verified for $spec"
+          done

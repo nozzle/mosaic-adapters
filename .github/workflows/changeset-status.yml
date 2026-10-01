@@ -1,0 +1,47 @@
+name: Changeset Status
+
+# Non-blocking: comments on the PR with the changesets it adds (or a reminder
+# and a link to add one). Uses `pull_request`, never `pull_request_target`.
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+# Reset permissions and grant them per job.
+permissions: {}
+
+jobs:
+  pr-status:
+    name: PR Status
+    # Fork PRs only get a read-only token, and the release PR never has changesets.
+    if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'changeset-release/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # to check out the repo
+    outputs:
+      comment-body: ${{ steps.pr-status.outputs.comment-body }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Generate changeset status
+        id: pr-status
+        uses: changesets/action/pr-status@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+
+  pr-comment:
+    name: PR Comment
+    needs: pr-status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write # to create or update the status comment
+    steps:
+      - name: Comment on PR
+        uses: changesets/action/pr-comment@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          body: ${{ needs.pr-status.outputs.comment-body }}
