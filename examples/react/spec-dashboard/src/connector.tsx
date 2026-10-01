@@ -1,3 +1,4 @@
+import { Coordinator, wasmConnector } from '@uwdata/mosaic-core';
 /**
  * App-owned connector lifecycle. The app constructs its OWN
  * {@link Coordinator} + DuckDB-WASM connector (no Mosaic global singleton) and
@@ -6,14 +7,7 @@
  * connection: recreating the connector mints a new id, which downstream
  * providers key on so all Selection/topology state resets cleanly.
  */
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from 'react';
-import { Coordinator, wasmConnector } from '@uwdata/mosaic-core';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export interface ConnectorState {
@@ -42,9 +36,7 @@ function createConnection(connectionId: number): Connection {
 export function ConnectorProvider(props: { children: ReactNode }) {
   // The coordinator and its id live in ONE state atom so a recreate swaps both
   // atomically; consumers keyed on connectionId remount against fresh state.
-  const [connection, setConnection] = useState<Connection>(() =>
-    createConnection(0),
-  );
+  const [connection, setConnection] = useState<Connection>(() => createConnection(0));
 
   const recreate = useCallback(() => {
     setConnection((prev) => createConnection(prev.connectionId + 1));
@@ -56,11 +48,7 @@ export function ConnectorProvider(props: { children: ReactNode }) {
     [coordinator, connectionId, recreate],
   );
 
-  return (
-    <ConnectorContext.Provider value={value}>
-      {props.children}
-    </ConnectorContext.Provider>
-  );
+  return <ConnectorContext.Provider value={value}>{props.children}</ConnectorContext.Provider>;
 }
 
 /** Read the current connector state; throws outside a {@link ConnectorProvider}. */

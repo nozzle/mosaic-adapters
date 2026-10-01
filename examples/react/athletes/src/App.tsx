@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
 import { MosaicTopologyProvider, useTopology } from '@nozzleio/react-mosaic';
-import { initAthletesTable } from './mosaic-setup';
-import { pageTopologyConfig } from './page-context';
+import { useEffect, useState } from 'react';
+
 import { AthletesTable } from './components/athletes-table';
 import { KpiCards } from './components/kpi-cards';
 import { PivotView } from './components/pivot-view';
@@ -9,6 +8,8 @@ import { RollupView } from './components/rollup-view';
 import { ScatterPlot } from './components/scatter-plot';
 import { SportFacet } from './components/sport-facet';
 import { WeightHistogram } from './components/weight-histogram';
+import { initAthletesTable } from './mosaic-setup';
+import { pageTopologyConfig } from './page-context';
 
 type View = 'dashboard' | 'rollup' | 'pivot';
 
@@ -99,11 +100,7 @@ function App() {
     );
   }
 
-  return (
-    <MosaicTopologyProvider topology={topology}>
-      {content}
-    </MosaicTopologyProvider>
-  );
+  return <MosaicTopologyProvider topology={topology}>{content}</MosaicTopologyProvider>;
 }
 
 const viewLinks: Array<{ view: View; href: string; label: string }> = [
@@ -118,9 +115,7 @@ function Shell(props: { view: View; children: React.ReactNode }) {
       <div className="mx-auto max-w-6xl space-y-6">
         <header className="flex items-end justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">
-              Athletes dashboard
-            </h1>
+            <h1 className="text-xl font-semibold text-slate-900">Athletes dashboard</h1>
             <p className="text-sm text-slate-500">
               Mosaic data clients + native vgplot on one crossfilter Selection.
             </p>

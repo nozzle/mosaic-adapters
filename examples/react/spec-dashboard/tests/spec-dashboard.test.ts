@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 
@@ -48,10 +49,9 @@ async function readCount(locator: Locator): Promise<number> {
  * clear; after the clear every owned filter is gone and the active bar empties.
  */
 async function clearDefaultFilters(page: Page): Promise<void> {
-  await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
-    TOTAL_PHRASES,
-    { timeout: 90_000 },
-  );
+  await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES, {
+    timeout: 90_000,
+  });
   await page.getByTestId('clear-all-filters').click();
   await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
 }
@@ -66,22 +66,17 @@ async function clearDefaultFilters(page: Page): Promise<void> {
 async function gotoDashboard(page: Page): Promise<void> {
   await page.goto('/');
   await clearDefaultFilters(page);
-  await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
-    TOTAL_QUESTIONS,
-    { timeout: 90_000 },
-  );
+  await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(TOTAL_QUESTIONS, {
+    timeout: 90_000,
+  });
 }
 
 /** Commit a real interval selection against the dashboard's volume histogram. */
-async function brushVolumePlot(
-  page: Page,
-  widgetId = 'volume_brush',
-): Promise<void> {
+async function brushVolumePlot(page: Page, widgetId = 'volume_brush'): Promise<void> {
   const plot = page.getByTestId(`vgplot-${widgetId}-plot`);
   await expect(plot.locator('svg')).toBeVisible({ timeout: 30_000 });
   await plot.scrollIntoViewIfNeeded();
-  let box: { x: number; y: number; width: number; height: number } | null =
-    null;
+  let box: { x: number; y: number; width: number; height: number } | null = null;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     box = await plot.locator('svg').boundingBox();
     if (box !== null) {
@@ -100,10 +95,7 @@ async function brushVolumePlot(
 }
 
 /** Width of the painted interval overlay, or zero when the brush is clear. */
-async function brushSelectionWidth(
-  page: Page,
-  widgetId: string,
-): Promise<number> {
+async function brushSelectionWidth(page: Page, widgetId: string): Promise<number> {
   const geometry = await page
     .getByTestId(`vgplot-${widgetId}-plot`)
     .locator('g.interval-x rect.selection')
@@ -151,9 +143,7 @@ async function brushSelectionsMatch(page: Page): Promise<boolean> {
 }
 
 /** Painted rectangle geometry for the protein-design intervalXY brush. */
-async function scatterBrushGeometry(
-  page: Page,
-): Promise<{ width: number; height: number }> {
+async function scatterBrushGeometry(page: Page): Promise<{ width: number; height: number }> {
   return page
     .getByTestId('vgplot-scatter-plot')
     .locator('g.interval-xy rect.selection')
@@ -164,8 +154,7 @@ async function scatterBrushGeometry(
             width: Number(rect.getAttribute('width') ?? 0),
             height: Number(rect.getAttribute('height') ?? 0),
           };
-          return candidate.width * candidate.height >
-            largest.width * largest.height
+          return candidate.width * candidate.height > largest.width * largest.height
             ? candidate
             : largest;
         },
@@ -179,8 +168,7 @@ async function brushProteinScatter(page: Page): Promise<void> {
   const plot = page.getByTestId('vgplot-scatter-plot');
   await expect(plot.locator('svg')).toBeVisible({ timeout: 30_000 });
   await plot.scrollIntoViewIfNeeded();
-  let box: { x: number; y: number; width: number; height: number } | null =
-    null;
+  let box: { x: number; y: number; width: number; height: number } | null = null;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     box = await plot.locator('svg').boundingBox();
     if (box !== null) {
@@ -219,23 +207,16 @@ function summaryRows(page: Page, id: string): Locator {
  * sensitive rather than dev-only — it reproduces in the production preview build
  * Playwright's webServer runs here too.
  */
-async function expandSelectCollapseAndAssert(
-  page: Page,
-  id: string,
-): Promise<void> {
+async function expandSelectCollapseAndAssert(page: Page, id: string): Promise<void> {
   const table = page.getByTestId(id);
-  await expect
-    .poll(async () => summaryRows(page, id).count())
-    .toBeGreaterThan(3);
+  await expect.poll(async () => summaryRows(page, id).count()).toBeGreaterThan(3);
   const initialRows = await summaryRows(page, id).count();
 
   // Enlarge: the promoted copy renders full-width (data-mode="promoted") while a
   // placeholder holds the grid slot.
   await page.getByTestId(`${id}-toggle`).click();
   await expect(table).toHaveAttribute('data-mode', 'promoted');
-  await expect
-    .poll(async () => summaryRows(page, id).count())
-    .toBeGreaterThan(3);
+  await expect.poll(async () => summaryRows(page, id).count()).toBeGreaterThan(3);
 
   // Select the first two rows in the promoted view.
   const rows = summaryRows(page, id);
@@ -249,20 +230,14 @@ async function expandSelectCollapseAndAssert(
   await expect(table).toHaveAttribute('data-mode', 'default');
 
   // The selection survives the move…
-  await expect(
-    table.locator('tbody tr input[type=checkbox]:checked'),
-  ).toHaveCount(2);
+  await expect(table.locator('tbody tr input[type=checkbox]:checked')).toHaveCount(2);
 
   // …and — the regression assertion — the card is NOT filtered down to only its
   // own selected rows: the full group set is still present and the non-selected
   // rows render dimmed.
-  await expect
-    .poll(async () => summaryRows(page, id).count())
-    .toBe(initialRows);
+  await expect.poll(async () => summaryRows(page, id).count()).toBe(initialRows);
   expect(await summaryRows(page, id).count()).toBeGreaterThan(2);
-  await expect(table.locator('tbody tr[class*="opacity-30"]')).toHaveCount(
-    initialRows - 2,
-  );
+  await expect(table.locator('tbody tr[class*="opacity-30"]')).toHaveCount(initialRows - 2);
 }
 
 test.describe('spec-driven dashboard', () => {
@@ -294,20 +269,14 @@ test.describe('spec-driven dashboard', () => {
     for (const id of KPI_VALUE_IDS) {
       await expect(page.getByTestId(id)).toHaveText(/^[\d,]+$/);
     }
-    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText(
-      TOTAL_PHRASES,
-    );
-    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
-      TOTAL_PHRASES,
-    );
+    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText(TOTAL_PHRASES);
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES);
 
     // The vgplot histogram paints its bars.
     await expect
-      .poll(
-        async () =>
-          page.locator('[data-testid="vgplot-volume_brush-plot"] rect').count(),
-        { timeout: 30_000 },
-      )
+      .poll(async () => page.locator('[data-testid="vgplot-volume_brush-plot"] rect').count(), {
+        timeout: 30_000,
+      })
       .toBeGreaterThan(5);
 
     // Every summary table shows rows and none reports "No results.".
@@ -315,19 +284,13 @@ test.describe('spec-driven dashboard', () => {
       await expect
         .poll(async () => summaryRows(page, id).count(), { timeout: 30_000 })
         .toBeGreaterThan(0);
-      await expect(page.getByTestId(id).locator('tbody')).not.toContainText(
-        'No results.',
-      );
+      await expect(page.getByTestId(id).locator('tbody')).not.toContainText('No results.');
     }
 
     // The detail table shows rows and its total matches the whole dataset.
-    await expect(page.getByTestId('detail-detail-total')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(`${TOTAL_ROWS} rows match`);
     await expect
-      .poll(async () =>
-        page.getByTestId('detail-detail-body').locator('tr').count(),
-      )
+      .poll(async () => page.getByTestId('detail-detail-body').locator('tr').count())
       .toBeGreaterThan(0);
 
     // The regression assertion: the load produced no uncaught errors and no
@@ -359,12 +322,8 @@ test.describe('spec-driven dashboard', () => {
     await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible();
 
     // The button summarizes the committed spec (operator + quoted value).
-    await expect(page.getByTestId('filter-button-phrase')).toContainText(
-      'contains',
-    );
-    await expect(page.getByTestId('filter-button-phrase')).toContainText(
-      'stove',
-    );
+    await expect(page.getByTestId('filter-button-phrase')).toContainText('contains');
+    await expect(page.getByTestId('filter-button-phrase')).toContainText('stove');
 
     // The cross-filtered KPI drops to a strict subset…
     await expect
@@ -386,9 +345,7 @@ test.describe('spec-driven dashboard', () => {
   }) => {
     await gotoDashboard(page);
 
-    await expect(page.getByTestId('detail-detail-total')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(`${TOTAL_ROWS} rows match`);
 
     const domainRows = summaryRows(page, 'summary-table-by_domain');
     await expect.poll(async () => domainRows.count()).toBeGreaterThan(0);
@@ -396,9 +353,7 @@ test.describe('spec-driven dashboard', () => {
     // Selecting a domain publishes a `select:domain` points spec into the page.
     await domainRows.first().click();
 
-    const selectChip = page.locator(
-      '[data-testid^="filter-chip-select-domain"]',
-    );
+    const selectChip = page.locator('[data-testid^="filter-chip-select-domain"]');
     await expect(selectChip.first()).toBeVisible();
 
     // The detail table narrows to that domain's answer rows.
@@ -409,9 +364,7 @@ test.describe('spec-driven dashboard', () => {
       .toBeLessThan(TOTAL_ROWS_NUM);
 
     await page.getByTestId('clear-all-filters').click();
-    await expect(page.getByTestId('detail-detail-total')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(`${TOTAL_ROWS} rows match`);
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
@@ -436,14 +389,12 @@ test.describe('spec-driven dashboard', () => {
 
     // Apply remounts the dashboard: the new label renders and the value
     // re-populates against the reloaded data (still the unfiltered 2,681).
-    await expect(page.getByTestId('kpi-kpi_phrases_all')).toContainText(
-      NEW_LABEL,
-      { timeout: 90_000 },
-    );
-    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
-      TOTAL_PHRASES,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all')).toContainText(NEW_LABEL, {
+      timeout: 90_000,
+    });
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES, {
+      timeout: 90_000,
+    });
 
     // The Apply remount re-hydrates the spec's defaults; clear them so the
     // cross-filtered KPI returns to its unfiltered value for the assertions below.
@@ -458,12 +409,8 @@ test.describe('spec-driven dashboard', () => {
     // Errors surface in the editor, and the last-good dashboard keeps rendering
     // its data untouched (no fetch/compile teardown).
     await expect(page.getByTestId('spec-editor-errors')).toBeVisible();
-    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText(
-      TOTAL_PHRASES,
-    );
-    await expect(page.getByTestId('kpi-kpi_phrases_all')).toContainText(
-      NEW_LABEL,
-    );
+    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText(TOTAL_PHRASES);
+    await expect(page.getByTestId('kpi-kpi_phrases_all')).toContainText(NEW_LABEL);
   });
 
   test('(e) the vgplot panel expands and collapses', async ({ page }) => {
@@ -516,9 +463,7 @@ test.describe('spec-driven dashboard', () => {
   }) => {
     await gotoDashboard(page);
 
-    await expect(page.getByTestId('detail-detail-total')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(`${TOTAL_ROWS} rows match`);
     const phraseRows = summaryRows(page, 'summary-table-by_phrase');
     await expect.poll(async () => phraseRows.count()).toBeGreaterThan(2);
 
@@ -550,12 +495,8 @@ test.describe('spec-driven dashboard', () => {
       page.getByTestId('active-filter-bar').getByTestId('chip-target').first(),
     ).toHaveText('HAVING');
     await page.getByTestId('clear-all-filters').click();
-    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText(
-      TOTAL_PHRASES,
-    );
-    await expect(page.getByTestId('detail-detail-total')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText(TOTAL_PHRASES);
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(`${TOTAL_ROWS} rows match`);
   });
 
   test('(f2) the metric threshold popover stays anchored to its trigger through page scroll', async ({
@@ -629,9 +570,9 @@ test.describe('spec-driven dashboard', () => {
     await page.getByTestId('spec-editor-apply').click();
 
     // Apply remounts; wait for the now-expandable table's toggle to appear.
-    await expect(
-      page.getByTestId('summary-table-by_domain-toggle'),
-    ).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByTestId('summary-table-by_domain-toggle')).toBeVisible({
+      timeout: 90_000,
+    });
 
     await expandSelectCollapseAndAssert(page, 'summary-table-by_domain');
   });
@@ -675,12 +616,8 @@ test.describe('spec-driven dashboard', () => {
 
     await lastButton.click();
 
-    await expect(
-      card.getByText(`Page ${lastPage} of ${lastPage}`),
-    ).toBeVisible();
-    await expect(summaryRows(page, 'summary-table-by_phrase')).toHaveCount(
-      TOTAL_PHRASES_NUM % 10,
-    );
+    await expect(card.getByText(`Page ${lastPage} of ${lastPage}`)).toBeVisible();
+    await expect(summaryRows(page, 'summary-table-by_phrase')).toHaveCount(TOTAL_PHRASES_NUM % 10);
     await expect(nextButton).toBeDisabled();
     await expect(lastButton).toBeDisabled();
     await expect(firstButton).toBeEnabled();
@@ -717,13 +654,10 @@ test.describe('spec-driven dashboard', () => {
     // indicator can still reflect an in-flight window whose page count has
     // not caught up, and the Last button jumps to the last page of whatever
     // count it currently knows.
-    await expect(page.getByTestId('detail-detail-total')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
-    await expect(page.getByTestId('detail-detail-page')).toHaveText(
-      `Page 1 of ${lastPage}`,
-      { timeout: 30_000 },
-    );
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(`${TOTAL_ROWS} rows match`);
+    await expect(page.getByTestId('detail-detail-page')).toHaveText(`Page 1 of ${lastPage}`, {
+      timeout: 30_000,
+    });
     await expect(firstButton).toBeDisabled();
     await expect(prevButton).toBeDisabled();
     await expect(nextButton).toBeEnabled();
@@ -734,9 +668,9 @@ test.describe('spec-driven dashboard', () => {
     await expect(page.getByTestId('detail-detail-page')).toHaveText(
       `Page ${lastPage} of ${lastPage}`,
     );
-    await expect(
-      page.getByTestId('detail-detail-body').locator('tr'),
-    ).toHaveCount(TOTAL_ROWS_NUM % 20);
+    await expect(page.getByTestId('detail-detail-body').locator('tr')).toHaveCount(
+      TOTAL_ROWS_NUM % 20,
+    );
     await expect(nextButton).toBeDisabled();
     await expect(lastButton).toBeDisabled();
     await expect(firstButton).toBeEnabled();
@@ -744,12 +678,8 @@ test.describe('spec-driven dashboard', () => {
 
     await firstButton.click();
 
-    await expect(page.getByTestId('detail-detail-page')).toHaveText(
-      `Page 1 of ${lastPage}`,
-    );
-    await expect(
-      page.getByTestId('detail-detail-body').locator('tr'),
-    ).toHaveCount(20);
+    await expect(page.getByTestId('detail-detail-page')).toHaveText(`Page 1 of ${lastPage}`);
+    await expect(page.getByTestId('detail-detail-body').locator('tr')).toHaveCount(20);
     await expect(firstButton).toBeDisabled();
     await expect(prevButton).toBeDisabled();
   });
@@ -797,10 +727,9 @@ test.describe('spec-driven dashboard', () => {
     // (defaults hydrate, then we clear to the unfiltered baseline).
     await page.goto('/?spec=questions');
     await clearDefaultFilters(page);
-    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
-      TOTAL_QUESTIONS,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(TOTAL_QUESTIONS, {
+      timeout: 90_000,
+    });
     await expect(page.getByTestId('spec-select')).toHaveValue('questions');
 
     // Switching the selector writes ?spec=<id> and loads that spec fresh — a
@@ -808,9 +737,7 @@ test.describe('spec-driven dashboard', () => {
     // is a wholly different dashboard (its own tables, plots, and columns), so
     // the switch swaps the entire rendered page.
     await page.getByTestId('spec-select').selectOption('protein-design');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('spec'))
-      .toBe('protein-design');
+    await expect.poll(() => new URL(page.url()).searchParams.get('spec')).toBe('protein-design');
     await expect(page.getByTestId('spec-select')).toHaveValue('protein-design');
 
     // The Protein Design dashboard renders its own vgplot panels (the pLDDT
@@ -821,37 +748,29 @@ test.describe('spec-driven dashboard', () => {
     });
     await expect(page.getByTestId('vgplot-scatter')).toBeVisible();
     await expect
-      .poll(
-        async () =>
-          page.locator('[data-testid="vgplot-plddt_hist-plot"] rect').count(),
-        { timeout: 90_000 },
-      )
+      .poll(async () => page.locator('[data-testid="vgplot-plddt_hist-plot"] rect').count(), {
+        timeout: 90_000,
+      })
       .toBeGreaterThan(0);
     await expect(page.locator('[data-testid^="kpi-"]')).toHaveCount(0);
 
     // Its data-table (widget id `table`) populates from the vendored parquet:
     // the total resolves to a concrete row count and the body renders rows.
-    await expect(page.getByTestId('detail-table-total')).toHaveText(
-      /[\d,]+ rows match/,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('detail-table-total')).toHaveText(/[\d,]+ rows match/, {
+      timeout: 90_000,
+    });
     await expect
-      .poll(async () =>
-        page.getByTestId('detail-table-body').locator('tr').count(),
-      )
+      .poll(async () => page.getByTestId('detail-table-body').locator('tr').count())
       .toBeGreaterThan(0);
 
     // Switching back restores the questions dashboard and its KPIs (defaults
     // hydrate on the reload; clear to the unfiltered baseline before asserting).
     await page.getByTestId('spec-select').selectOption('questions');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('spec'))
-      .toBe('questions');
+    await expect.poll(() => new URL(page.url()).searchParams.get('spec')).toBe('questions');
     await clearDefaultFilters(page);
-    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
-      TOTAL_QUESTIONS,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(TOTAL_QUESTIONS, {
+      timeout: 90_000,
+    });
   });
 
   test('(i2) browser back after a spec switch restores the previous spec (URL + rendered dashboard)', async ({
@@ -861,18 +780,15 @@ test.describe('spec-driven dashboard', () => {
     // carries the param), proven loaded by its KPI (defaults cleared first).
     await page.goto('/?spec=questions');
     await clearDefaultFilters(page);
-    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
-      TOTAL_QUESTIONS,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(TOTAL_QUESTIONS, {
+      timeout: 90_000,
+    });
     await expect(page.getByTestId('spec-select')).toHaveValue('questions');
 
     // Switch to protein-design via the selector — a push navigation, so it lands
     // as a new history entry over the questions entry.
     await page.getByTestId('spec-select').selectOption('protein-design');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('spec'))
-      .toBe('protein-design');
+    await expect.poll(() => new URL(page.url()).searchParams.get('spec')).toBe('protein-design');
     // protein-design carries NO kpi widgets and its own vgplot panels.
     await expect(page.getByTestId('vgplot-plddt_hist')).toBeVisible({
       timeout: 90_000,
@@ -883,23 +799,18 @@ test.describe('spec-driven dashboard', () => {
     // questions AND the rendered dashboard is the questions one (its KPI, absent
     // from protein-design, is the spec-distinguishing element).
     await page.goBack();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('spec'))
-      .toBe('questions');
+    await expect.poll(() => new URL(page.url()).searchParams.get('spec')).toBe('questions');
     await expect(page.getByTestId('spec-select')).toHaveValue('questions');
     // The questions reload re-hydrates its defaults; clearing them is a no-op
     // navigation (no owned params are written), so the forward entry survives.
     await clearDefaultFilters(page);
-    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(
-      TOTAL_QUESTIONS,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_questions-value')).toHaveText(TOTAL_QUESTIONS, {
+      timeout: 90_000,
+    });
 
     // Forward returns to protein-design, proving traversal drives both directions.
     await page.goForward();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('spec'))
-      .toBe('protein-design');
+    await expect.poll(() => new URL(page.url()).searchParams.get('spec')).toBe('protein-design');
     await expect(page.getByTestId('spec-select')).toHaveValue('protein-design');
     await expect(page.getByTestId('vgplot-plddt_hist')).toBeVisible({
       timeout: 90_000,
@@ -911,23 +822,16 @@ test.describe('spec-driven dashboard', () => {
     page,
   }) => {
     await gotoDashboard(page);
-    await expect(page.getByTestId('detail-detail-total')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(`${TOTAL_ROWS} rows match`);
     await expect
-      .poll(async () =>
-        page.getByTestId('detail-detail-body').locator('tr').count(),
-      )
+      .poll(async () => page.getByTestId('detail-detail-body').locator('tr').count())
       .toBeGreaterThan(0);
 
     // The `meta: { exportable: true }` on the detail widget surfaces the button.
     const exportButton = page.getByTestId('detail-detail-export');
     await expect(exportButton).toBeVisible();
 
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      exportButton.click(),
-    ]);
+    const [download] = await Promise.all([page.waitForEvent('download'), exportButton.click()]);
 
     const path = await download.path();
     const content = readFileSync(path, 'utf8');
@@ -956,9 +860,7 @@ test.describe('spec-driven dashboard', () => {
     // The header carries no subtitle paragraph, and the old subtitle string is
     // gone from the document entirely.
     await expect(header.locator('p')).toHaveCount(0);
-    await expect(page.locator('body')).not.toContainText(
-      'Spec-driven SEO Intelligence Dashboard',
-    );
+    await expect(page.locator('body')).not.toContainText('Spec-driven SEO Intelligence Dashboard');
   });
 
   test('(iv) the filter builder confirms a field into a button, opens/closes its popover, and removes it', async ({
@@ -993,9 +895,7 @@ test.describe('spec-driven dashboard', () => {
     // Clicking the button re-opens it; an outside mousedown closes it again.
     await button.click();
     await expect(popover).toBeVisible();
-    await page
-      .getByTestId('filter-builder')
-      .click({ position: { x: 2, y: 2 } });
+    await page.getByTestId('filter-builder').click({ position: { x: 2, y: 2 } });
     await expect(popover).toBeHidden();
 
     // Re-open and commit a value, then remove the filter from inside the
@@ -1104,16 +1004,14 @@ test.describe('spec-driven dashboard', () => {
     await page.keyboard.press('ControlOrMeta+Enter');
 
     // Apply remounts the dashboard with the new title (and collapses the editor).
-    await expect(
-      page.getByRole('heading', { level: 1, name: NEW_TITLE }),
-    ).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByRole('heading', { level: 1, name: NEW_TITLE })).toBeVisible({
+      timeout: 90_000,
+    });
 
     // Re-opening the editor after Apply shows the applied text as the draft, so
     // the unsaved indicator is absent again.
     await page.getByTestId('spec-editor-toggle').click();
-    await expect(page.getByTestId('spec-editor-status')).not.toContainText(
-      'Unsaved changes',
-    );
+    await expect(page.getByTestId('spec-editor-status')).not.toContainText('Unsaved changes');
   });
 
   test('(p1) confirming a builder filter writes its persisted param; removing it deletes the param', async ({
@@ -1121,9 +1019,7 @@ test.describe('spec-driven dashboard', () => {
   }) => {
     // Unfiltered baseline (defaults cleared) — no owned params on the URL yet.
     await gotoDashboard(page);
-    await expect
-      .poll(() => new URL(page.url()).searchParams.has('f.text:phrase'))
-      .toBe(false);
+    await expect.poll(() => new URL(page.url()).searchParams.has('f.text:phrase')).toBe(false);
 
     // With no params at all, the URL-params popover shows its empty state.
     await page.getByTestId('url-params-button').click();
@@ -1138,15 +1034,11 @@ test.describe('spec-driven dashboard', () => {
     await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible();
 
     // The prefixed param is written with the encoded value.
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('f.text:phrase'))
-      .toBe('stove');
+    await expect.poll(() => new URL(page.url()).searchParams.get('f.text:phrase')).toBe('stove');
 
     // Removing the filter deletes its param (foreign/spec params untouched).
     await page.getByTestId('filter-block-phrase-remove').click();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.has('f.text:phrase'))
-      .toBe(false);
+    await expect.poll(() => new URL(page.url()).searchParams.has('f.text:phrase')).toBe(false);
   });
 
   test('(p2) a shared link with filter params hydrates the dashboard filtered (URL wins over defaults)', async ({
@@ -1159,10 +1051,9 @@ test.describe('spec-driven dashboard', () => {
     // The opt-out KPI proves the pipeline loaded; the cross-filtered KPI is a
     // strict subset — the filter was hydrated before the first query (no flash
     // back up to the full value is assertable here).
-    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
-      TOTAL_PHRASES,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES, {
+      timeout: 90_000,
+    });
     await expect
       .poll(async () => readCount(page.getByTestId('kpi-kpi_phrases-value')), {
         timeout: 30_000,
@@ -1181,29 +1072,23 @@ test.describe('spec-driven dashboard', () => {
     // Hydration ignores it and, importantly, the write-back effect's StrictMode
     // setup replay must not mistake that ignored bootstrap for a runtime clear.
     await page.goto('/?spec=questions&f.text%3Aphrase=');
-    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
-      TOTAL_PHRASES,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES, {
+      timeout: 90_000,
+    });
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
     await expect
       .poll(() => {
         const params = new URL(page.url()).searchParams;
-        return (
-          params.has('f.text:phrase') && params.get('f.text:phrase') === ''
-        );
+        return params.has('f.text:phrase') && params.get('f.text:phrase') === '';
       })
       .toBe(true);
   });
 
-  test('(p3) a bare URL hydrates the spec-declared defaults', async ({
-    page,
-  }) => {
+  test('(p3) a bare URL hydrates the spec-declared defaults', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
-      TOTAL_PHRASES,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES, {
+      timeout: 90_000,
+    });
 
     // The declared default surfaces its chip: the domain facet placement.
     await expect(page.getByTestId('filter-chip-facet-domain')).toBeVisible();
@@ -1241,20 +1126,15 @@ test.describe('spec-driven dashboard', () => {
 
     // Clear-all removes the owned param (the app `spec` param is preserved).
     await page.getByTestId('clear-all-filters').click();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.has('f.text:phrase'))
-      .toBe(false);
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('spec'))
-      .toBe('questions');
+    await expect.poll(() => new URL(page.url()).searchParams.has('f.text:phrase')).toBe(false);
+    await expect.poll(() => new URL(page.url()).searchParams.get('spec')).toBe('questions');
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
 
     // Reload the now-bare URL: the declared defaults hydrate again.
     await page.reload();
-    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
-      TOTAL_PHRASES,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES, {
+      timeout: 90_000,
+    });
     await expect(page.getByTestId('filter-chip-facet-domain')).toBeVisible();
     await expect(page.getByTestId('filter-chip-text-phrase')).toHaveCount(0);
   });
@@ -1268,12 +1148,8 @@ test.describe('spec-driven dashboard', () => {
 
     // Switching specs writes `?spec=<id>` and nulls every other current param.
     await page.getByTestId('spec-select').selectOption('protein-design');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('spec'))
-      .toBe('protein-design');
-    await expect
-      .poll(() => [...new URL(page.url()).searchParams.keys()].sort())
-      .toEqual(['spec']);
+    await expect.poll(() => new URL(page.url()).searchParams.get('spec')).toBe('protein-design');
+    await expect.poll(() => [...new URL(page.url()).searchParams.keys()].sort()).toEqual(['spec']);
   });
 
   test('(p6) the URL-params popover lists params with ownership badges and copies the link', async ({
@@ -1291,10 +1167,7 @@ test.describe('spec-driven dashboard', () => {
 
     // The `spec` param is badged as the app param; the persisted filter param is
     // badged `filter` and its value decodes to the human-readable form.
-    await expect(page.getByTestId('url-param-spec')).toHaveAttribute(
-      'data-ownership',
-      'spec',
-    );
+    await expect(page.getByTestId('url-param-spec')).toHaveAttribute('data-ownership', 'spec');
     const filterRow = page.getByTestId('url-param-f.text:phrase');
     await expect(filterRow).toHaveAttribute('data-ownership', 'filter');
     await expect(filterRow).toContainText('stove');
@@ -1325,11 +1198,7 @@ test.describe('spec-driven dashboard', () => {
       plot
         .locator('rect')
         .evaluateAll((rects) =>
-          rects.reduce(
-            (max, rect) =>
-              Math.max(max, Number(rect.getAttribute('height') ?? 0)),
-            0,
-          ),
+          rects.reduce((max, rect) => Math.max(max, Number(rect.getAttribute('height') ?? 0)), 0),
         );
     await expect.poll(tallestBar, { timeout: 30_000 }).toBeGreaterThan(80);
 
@@ -1404,13 +1273,10 @@ test.describe('spec-driven dashboard', () => {
   }) => {
     // The malformed owned FilterSet value suppresses declared FilterSet
     // defaults, isolating the persisted volume selection for this direct load.
-    await page.goto(
-      '/?spec=questions&f.text%3Aphrase=&s.volume_brush=10000..1000000',
-    );
-    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
-      TOTAL_PHRASES,
-      { timeout: 90_000 },
-    );
+    await page.goto('/?spec=questions&f.text%3Aphrase=&s.volume_brush=10000..1000000');
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES, {
+      timeout: 90_000,
+    });
 
     // The construction-time selection is already part of the topology read by
     // the first query clients: it surfaces as a chip and filters the page.
@@ -1423,12 +1289,8 @@ test.describe('spec-driven dashboard', () => {
 
     // Both renderer-local interactors adopt the topology value before their
     // first paint, even though neither renderer owns persistence.
-    await expect
-      .poll(() => brushSelectionWidth(page, 'volume_brush'))
-      .toBeGreaterThan(0);
-    await expect
-      .poll(() => brushSelectionWidth(page, 'volume_brush_mirror'))
-      .toBeGreaterThan(0);
+    await expect.poll(() => brushSelectionWidth(page, 'volume_brush')).toBeGreaterThan(0);
+    await expect.poll(() => brushSelectionWidth(page, 'volume_brush_mirror')).toBeGreaterThan(0);
     await expect.poll(() => brushSelectionsMatch(page)).toBe(true);
 
     await page.getByTestId('url-params-button').click();
@@ -1453,35 +1315,24 @@ test.describe('spec-driven dashboard', () => {
     await expect
       .poll(() => new URL(page.url()).searchParams.get('s.volume_brush'))
       .toMatch(/^-?\d+(?:\.\d+)?\.\.-?\d+(?:\.\d+)?$/);
-    await expect
-      .poll(() => brushSelectionWidth(page, 'volume_brush_mirror'))
-      .toBeGreaterThan(0);
+    await expect.poll(() => brushSelectionWidth(page, 'volume_brush_mirror')).toBeGreaterThan(0);
     await expect.poll(() => brushSelectionsMatch(page)).toBe(true);
 
     // A chip removal clears the live Mosaic source and then deletes its owned
     // selection parameter through the same hook-owned write boundary.
-    await page
-      .getByTestId('filter-chip-volume_brush')
-      .getByRole('button')
-      .click();
+    await page.getByTestId('filter-chip-volume_brush').getByRole('button').click();
     await expect(page.getByTestId('filter-chip-volume_brush')).toHaveCount(0);
-    await expect
-      .poll(() => new URL(page.url()).searchParams.has('s.volume_brush'))
-      .toBe(false);
+    await expect.poll(() => new URL(page.url()).searchParams.has('s.volume_brush')).toBe(false);
 
     await expect.poll(() => brushSelectionWidth(page, 'volume_brush')).toBe(0);
-    await expect
-      .poll(() => brushSelectionWidth(page, 'volume_brush_mirror'))
-      .toBe(0);
+    await expect.poll(() => brushSelectionWidth(page, 'volume_brush_mirror')).toBe(0);
 
     // Brush the mirror next: the primary plot adopts its sibling's value. Then
     // recreate both URL domains and clear them together. A single merged patch
     // prevents adjacent Selection / FilterSet notification waves from restoring
     // the other domain's stale parameter.
     await brushVolumePlot(page, 'volume_brush_mirror');
-    await expect
-      .poll(() => brushSelectionWidth(page, 'volume_brush'))
-      .toBeGreaterThan(0);
+    await expect.poll(() => brushSelectionWidth(page, 'volume_brush')).toBeGreaterThan(0);
     await expect.poll(() => brushSelectionsMatch(page)).toBe(true);
     await page.getByTestId('filter-builder-add-field').selectOption('phrase');
     await page.getByTestId('filter-builder-confirm').click();
@@ -1502,9 +1353,7 @@ test.describe('spec-driven dashboard', () => {
       .toBe(true);
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
     await expect.poll(() => brushSelectionWidth(page, 'volume_brush')).toBe(0);
-    await expect
-      .poll(() => brushSelectionWidth(page, 'volume_brush_mirror'))
-      .toBe(0);
+    await expect.poll(() => brushSelectionWidth(page, 'volume_brush_mirror')).toBe(0);
     expect(navigationErrors).toEqual([]);
   });
 
@@ -1512,10 +1361,9 @@ test.describe('spec-driven dashboard', () => {
     page,
   }) => {
     await page.goto('/?spec=questions&s.volume_brush=not-a-range');
-    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
-      TOTAL_PHRASES,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES, {
+      timeout: 90_000,
+    });
     await expect(page.getByTestId('filter-chip-volume_brush')).toHaveCount(0);
 
     // FilterSet defaults may materialize their own URL state after mount. The
@@ -1545,30 +1393,20 @@ test.describe('spec-driven dashboard', () => {
       expected += character;
       await page.keyboard.type(character);
       await expect(input).toHaveValue(expected);
-      expect(
-        await input.evaluate((element) => document.activeElement === element),
-      ).toBe(true);
+      expect(await input.evaluate((element) => document.activeElement === element)).toBe(true);
       await page.waitForTimeout(60);
     }
 
     // The hook classifies FilterSet changes as debounced URL work: the final
     // keystroke is visible in local/Mosaic state, but has not navigated yet.
     expect(new URL(page.url()).searchParams.has('f.detail:domain')).toBe(false);
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('f.detail:domain'))
-      .toBe('stove');
-    expect(
-      await input.evaluate((element) => document.activeElement === element),
-    ).toBe(true);
-    expect(
-      await input.evaluate((element, first) => element === first, original),
-    ).toBe(true);
+    await expect.poll(() => new URL(page.url()).searchParams.get('f.detail:domain')).toBe('stove');
+    expect(await input.evaluate((element) => document.activeElement === element)).toBe(true);
+    expect(await input.evaluate((element, first) => element === first, original)).toBe(true);
     expect(navigationErrors).toEqual([]);
   });
 
-  test('(p12) switching specs cancels a queued filter URL commit', async ({
-    page,
-  }) => {
+  test('(p12) switching specs cancels a queued filter URL commit', async ({ page }) => {
     await gotoDashboard(page);
     const input = page.getByTestId('detail-detail-filter-domain');
     await input.fill('stove');
@@ -1579,23 +1417,18 @@ test.describe('spec-driven dashboard', () => {
     // Switch inside the debounce window. Commit-phase cancellation must prevent
     // the old topology's timer from merging its filter into the new spec URL.
     await page.getByTestId('spec-select').selectOption('protein-design');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('spec'))
-      .toBe('protein-design');
+    await expect.poll(() => new URL(page.url()).searchParams.get('spec')).toBe('protein-design');
     await page.waitForTimeout(500);
-    expect([...new URL(page.url()).searchParams.keys()].sort()).toEqual([
-      'spec',
-    ]);
+    expect([...new URL(page.url()).searchParams.keys()].sort()).toEqual(['spec']);
   });
 
   test('(p13) protein intervalXY brush persists, restores, and clears atomically', async ({
     page,
   }) => {
     await page.goto('/?spec=protein-design&s.scatter_brush=70..90,0..20');
-    await expect(page.getByTestId('detail-table-total')).toHaveText(
-      '3,721 rows match',
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('detail-table-total')).toHaveText('3,721 rows match', {
+      timeout: 90_000,
+    });
     await expect(page.getByTestId('filter-chip-scatter_brush')).toBeVisible();
     await expect
       .poll(async () => {
@@ -1613,13 +1446,8 @@ test.describe('spec-driven dashboard', () => {
 
     // Removing the hydrated chip deletes the one atomic rectangle parameter
     // and clears the renderer-local 2D brush.
-    await page
-      .getByTestId('filter-chip-scatter_brush')
-      .getByRole('button')
-      .click();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.has('s.scatter_brush'))
-      .toBe(false);
+    await page.getByTestId('filter-chip-scatter_brush').getByRole('button').click();
+    await expect.poll(() => new URL(page.url()).searchParams.has('s.scatter_brush')).toBe(false);
     await expect
       .poll(async () => {
         const geometry = await scatterBrushGeometry(page);
@@ -1631,10 +1459,7 @@ test.describe('spec-driven dashboard', () => {
     // proves the URL reconstructs both the Mosaic clause and the 2D overlay.
     await brushProteinScatter(page);
     const token = '-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:e[+-]?\\d+)?';
-    const rectanglePattern = new RegExp(
-      `^${token}\\.\\.${token},${token}\\.\\.${token}$`,
-      'i',
-    );
+    const rectanglePattern = new RegExp(`^${token}\\.\\.${token},${token}\\.\\.${token}$`, 'i');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('s.scatter_brush'))
       .toMatch(rectanglePattern);
@@ -1656,9 +1481,7 @@ test.describe('spec-driven dashboard', () => {
       .toBe(true);
 
     await page.getByTestId('clear-all-filters').click();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.has('s.scatter_brush'))
-      .toBe(false);
+    await expect.poll(() => new URL(page.url()).searchParams.has('s.scatter_brush')).toBe(false);
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
@@ -1744,9 +1567,7 @@ test.describe('spec-driven dashboard', () => {
     await expect(optOut).toHaveText(TOTAL_PHRASES);
   });
 
-  test('(x2) a variable-select re-queries the detail table that binds it', async ({
-    page,
-  }) => {
+  test('(x2) a variable-select re-queries the detail table that binds it', async ({ page }) => {
     await gotoDashboard(page);
 
     // `gotoDashboard` gates on the phrase KPI settling to its unfiltered value,
@@ -1760,18 +1581,15 @@ test.describe('spec-driven dashboard', () => {
     // title→description column swap, so `descText` snapshotted title data and the
     // switch-back assertion could never see it change. Waiting for the settled
     // total pins the baseline to the fully-rendered unfiltered table.
-    await expect(page.getByTestId('detail-detail-total')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-      { timeout: 30_000 },
-    );
+    await expect(page.getByTestId('detail-detail-total')).toHaveText(`${TOTAL_ROWS} rows match`, {
+      timeout: 30_000,
+    });
 
     // The detail table's "Answer" column is `answer: $answer_field` — a
     // structured column named by the `answer_field` variable's value. Its default
     // (`title`) renders the answer titles.
     const body = page.getByTestId('detail-detail-body');
-    await expect
-      .poll(async () => body.locator('tr').count())
-      .toBeGreaterThan(0);
+    await expect.poll(async () => body.locator('tr').count()).toBeGreaterThan(0);
     const titleText = (await body.textContent()) ?? '';
     expect(titleText.trim().length).toBeGreaterThan(0);
 
@@ -1833,22 +1651,17 @@ test.describe('spec-driven dashboard', () => {
     // Load directly with the owned variable param set: core hydrates the Param
     // to `description` at construction, beating the declared default (`title`).
     await page.goto('/?spec=questions&v.answer_field=sdescription');
-    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(
-      TOTAL_PHRASES,
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES, {
+      timeout: 90_000,
+    });
 
     // The control reflects the hydrated value (Answer Description), not the
     // default — proving the URL value won at construction.
-    const select = page.getByTestId(
-      'variable-select-answer_field_select-input',
-    );
+    const select = page.getByTestId('variable-select-answer_field_select-input');
     await expect
       .poll(async () =>
         select.evaluate(
-          (element) =>
-            (element as HTMLSelectElement).selectedOptions[0]?.textContent ??
-            '',
+          (element) => (element as HTMLSelectElement).selectedOptions[0]?.textContent ?? '',
         ),
       )
       .toBe('Answer Description');
@@ -1869,9 +1682,7 @@ test.describe('spec-driven dashboard', () => {
     // Switching to the default `title` re-queries the bound column and writes the
     // new value through to the URL (round-trip both ways).
     await select.selectOption({ label: 'Answer Title' });
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('v.answer_field'))
-      .toBe('stitle');
+    await expect.poll(() => new URL(page.url()).searchParams.get('v.answer_field')).toBe('stitle');
     await detail.getByTestId('widget-sql-trigger').click();
     await expect(sqlPanel.locator('pre')).toContainText('"title" AS', {
       timeout: 30_000,
@@ -1932,9 +1743,7 @@ test.describe('spec-driven dashboard', () => {
     await select.selectOption({ label: '≥ 50k' });
     await expect(card.getByText('8 groups')).toBeVisible({ timeout: 30_000 });
     await expect(domainRows).toHaveCount(8);
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('v.min_volume'))
-      .toBe('n50000');
+    await expect.poll(() => new URL(page.url()).searchParams.get('v.min_volume')).toBe('n50000');
 
     // Switching back to All volumes restores the full domain set and writes the
     // (default) floor back through to the URL.
@@ -1943,8 +1752,6 @@ test.describe('spec-driven dashboard', () => {
       timeout: 30_000,
     });
     await expect(domainRows).toHaveCount(10);
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('v.min_volume'))
-      .toBe('n0');
+    await expect.poll(() => new URL(page.url()).searchParams.get('v.min_volume')).toBe('n0');
   });
 });

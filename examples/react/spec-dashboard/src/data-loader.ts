@@ -1,3 +1,4 @@
+import type { Coordinator } from '@uwdata/mosaic-core';
 /**
  * Declarative, serializable data loading, driven by the spec's
  * `data.tables` section. The config compiles to an ORDERED list of
@@ -10,7 +11,7 @@
  * reaching `read_parquet` / `read_csv` / `read_json`.
  */
 import { useEffect, useState } from 'react';
-import type { Coordinator } from '@uwdata/mosaic-core';
+
 import type { DataSourceSpec } from './spec/schema';
 
 /** Insertion order of the record defines load order. */
@@ -38,8 +39,7 @@ function sourceToSelect(source: DataSourceSpec): string {
 /** Ordered `CREATE OR REPLACE TABLE` statements, one per config entry. */
 export function buildDataLoadStatements(config: DataLoadConfig): Array<string> {
   return Object.entries(config).map(
-    ([table, source]) =>
-      `CREATE OR REPLACE TABLE ${table} AS ${sourceToSelect(source)}`,
+    ([table, source]) => `CREATE OR REPLACE TABLE ${table} AS ${sourceToSelect(source)}`,
   );
 }
 
@@ -96,9 +96,7 @@ export async function runDataLoad(
 }
 
 /** A `'pending'` status for every table in `config`. */
-function initialTables(
-  config: DataLoadConfig,
-): Record<string, TableLoadStatus> {
+function initialTables(config: DataLoadConfig): Record<string, TableLoadStatus> {
   const tables: Record<string, TableLoadStatus> = {};
   for (const table of Object.keys(config)) {
     tables[table] = 'pending';
@@ -111,10 +109,7 @@ function initialTables(
  * the coordinator identity OR the config identity changes (a recreated
  * connection, or a newly compiled spec that changed the data section).
  */
-export function useDataLoad(
-  coordinator: Coordinator,
-  config: DataLoadConfig,
-): DataLoadState {
+export function useDataLoad(coordinator: Coordinator, config: DataLoadConfig): DataLoadState {
   const [state, setState] = useState<DataLoadState>(() => ({
     tables: initialTables(config),
     error: null,

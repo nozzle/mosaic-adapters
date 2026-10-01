@@ -30,9 +30,7 @@ const number: Formatter = (value) => {
 /** Compact notation (e.g. `2.7K`). */
 const compact: Formatter = (value) => {
   const parsed = toNumber(value);
-  return parsed === null
-    ? '—'
-    : parsed.toLocaleString('en-US', { notation: 'compact' });
+  return parsed === null ? '—' : parsed.toLocaleString('en-US', { notation: 'compact' });
 };
 
 /** Plain string passthrough. */

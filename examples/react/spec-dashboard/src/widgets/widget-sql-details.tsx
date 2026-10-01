@@ -14,8 +14,9 @@
  */
 import { QueryError } from '@uwdata/mosaic-core';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
-import { usePopoverDismiss } from '../chrome/use-popover-dismiss';
 import type { ReactElement } from 'react';
+
+import { usePopoverDismiss } from '../chrome/use-popover-dismiss';
 
 /** The slice of a data-client store this control reads. */
 interface SqlStore {
@@ -23,10 +24,7 @@ interface SqlStore {
   state: { lastQuery: string | null; error: Error | null };
 }
 
-export function WidgetSqlPopover(props: {
-  store: SqlStore;
-  label: string;
-}): ReactElement | null {
+export function WidgetSqlPopover(props: { store: SqlStore; label: string }): ReactElement | null {
   const { store, label } = props;
   const subscribe = useCallback(
     (onChange: () => void) => {
@@ -49,9 +47,7 @@ export function WidgetSqlPopover(props: {
   );
   const queryError = error instanceof QueryError ? error : null;
   const causeMessage =
-    queryError?.cause instanceof Error
-      ? queryError.cause.message
-      : String(queryError?.cause ?? '');
+    queryError?.cause instanceof Error ? queryError.cause.message : String(queryError?.cause ?? '');
 
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);

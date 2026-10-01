@@ -1,3 +1,14 @@
+import {
+  SqlIdentifier,
+  createStructAccess,
+  useFilterSetState,
+  useMosaicRows,
+  useMosaicSelectionRef,
+  useMosaicSparkline,
+} from '@nozzleio/react-mosaic';
+import type { SparklineX, SparklineY } from '@nozzleio/react-mosaic';
+import * as mSql from '@uwdata/mosaic-sql';
+import type { ExprNode } from '@uwdata/mosaic-sql';
 /**
  * A grouped summary table: one rows client whose factory owns the GROUP BY
  * (so `filterStable: false` — the group domain changes under filtering),
@@ -13,22 +24,12 @@
  * the selection changes).
  */
 import { useEffect, useMemo, useState } from 'react';
-import * as mSql from '@uwdata/mosaic-sql';
-import {
-  SqlIdentifier,
-  createStructAccess,
-  useFilterSetState,
-  useMosaicRows,
-  useMosaicSelectionRef,
-  useMosaicSparkline,
-} from '@nozzleio/react-mosaic';
+
 import { FILTERS_ENTRY, havingTarget, tableName } from '../page-context';
+import type { SummaryTableId } from '../page-context';
 import { usePageContexts, usePageFilterSet } from '../topology';
 import { Sparkline } from './sparkline';
 import { WidgetSqlPopover } from './widget-sql-details';
-import type { SparklineX, SparklineY } from '@nozzleio/react-mosaic';
-import type { ExprNode } from '@uwdata/mosaic-sql';
-import type { SummaryTableId } from '../page-context';
 
 const PAGE_SIZE = 10;
 
@@ -93,9 +94,7 @@ export function SummaryTable(props: {
   const filterSet = usePageFilterSet();
   const { summaryFilterBy, sparklineContext } = usePageContexts();
   // The card's own metric-threshold HAVING target Selection (resolved by ref).
-  const havingSelection = useMosaicSelectionRef(
-    `${FILTERS_ENTRY}.${havingTarget(config.id)}`,
-  );
+  const havingSelection = useMosaicSelectionRef(`${FILTERS_ENTRY}.${havingTarget(config.id)}`);
 
   // The card's own selected values, read back from its `select:` spec — chips,
   // checkmarks, and the row dimming all derive from this.
@@ -108,10 +107,7 @@ export function SummaryTable(props: {
       const query = mSql.Query.from(tableName)
         .select({
           key: groupKey,
-          metric:
-            config.metric.agg === 'count'
-              ? mSql.count()
-              : mSql.max(config.metric.column),
+          metric: config.metric.agg === 'count' ? mSql.count() : mSql.max(config.metric.column),
         })
         .groupby(groupKey)
         .where(where)
@@ -191,9 +187,7 @@ export function SummaryTable(props: {
     y: config.sparkline?.y ?? NO_SPARKLINE_Y,
     filterBy: sparklineContext,
     inputs: {
-      keys: config.sparkline
-        ? rows.rows.map((row) => row.key).filter((key) => key != null)
-        : [],
+      keys: config.sparkline ? rows.rows.map((row) => row.key).filter((key) => key != null) : [],
     },
     enabled: enabled && config.sparkline !== undefined,
   });
@@ -208,9 +202,7 @@ export function SummaryTable(props: {
   };
 
   const toggleRow = (row: GroupRow) => {
-    const isSelected = selectedValues.some((value) =>
-      Object.is(value, row.key),
-    );
+    const isSelected = selectedValues.some((value) => Object.is(value, row.key));
     const next = isSelected
       ? selectedValues.filter((value) => !Object.is(value, row.key))
       : [...selectedValues, row.key];
@@ -218,9 +210,7 @@ export function SummaryTable(props: {
   };
 
   const pageCount =
-    rows.totalRows === undefined
-      ? null
-      : Math.max(1, Math.ceil(rows.totalRows / PAGE_SIZE));
+    rows.totalRows === undefined ? null : Math.max(1, Math.ceil(rows.totalRows / PAGE_SIZE));
 
   const goToFirstPage = () => {
     setPageIndex(0);
@@ -277,11 +267,7 @@ export function SummaryTable(props: {
                 className="h-5 w-5 rounded-full text-blue-700 hover:bg-blue-100"
                 aria-label={`Remove ${config.title} selection ${String(value)}`}
                 onClick={() =>
-                  publishValues(
-                    selectedValues.filter(
-                      (candidate) => !Object.is(candidate, value),
-                    ),
-                  )
+                  publishValues(selectedValues.filter((candidate) => !Object.is(candidate, value)))
                 }
               >
                 ✕
@@ -307,16 +293,12 @@ export function SummaryTable(props: {
               <th className="w-8 px-2 py-1.5"></th>
               <th className="px-2 py-1.5">{config.title}</th>
               <th className="w-[105px] px-2 py-1.5">{config.metricLabel}</th>
-              {config.sparkline ? (
-                <th className="w-[120px] px-2 py-1.5">Trend</th>
-              ) : null}
+              {config.sparkline ? <th className="w-[120px] px-2 py-1.5">Trend</th> : null}
             </tr>
           </thead>
           <tbody>
             {rows.rows.map((row) => {
-              const isSelected = selectedValues.some((value) =>
-                Object.is(value, row.key),
-              );
+              const isSelected = selectedValues.some((value) => Object.is(value, row.key));
               const dimmed = selectedValues.length > 0 && !isSelected;
               return (
                 <tr
@@ -334,24 +316,16 @@ export function SummaryTable(props: {
                       className="size-4 cursor-pointer"
                     />
                   </td>
-                  <td
-                    className="truncate px-2 py-1.5"
-                    title={String(row.key ?? '')}
-                  >
+                  <td className="truncate px-2 py-1.5" title={String(row.key ?? '')}>
                     {row.key === null ? '' : String(row.key)}
                   </td>
-                  <td className="px-2 py-1.5">
-                    {row.metric?.toLocaleString() ?? ''}
-                  </td>
+                  <td className="px-2 py-1.5">{row.metric?.toLocaleString() ?? ''}</td>
                   {config.sparkline ? (
                     <td className="px-2 py-1.5">
-                      {sparklines.status === 'pending' &&
-                      !sparklines.series.has(row.key) ? (
+                      {sparklines.status === 'pending' && !sparklines.series.has(row.key) ? (
                         <div className="h-7 w-[100px] animate-pulse rounded bg-slate-100" />
                       ) : (
-                        <Sparkline
-                          points={sparklines.series.get(row.key) ?? []}
-                        />
+                        <Sparkline points={sparklines.series.get(row.key) ?? []} />
                       )}
                     </td>
                   ) : null}
@@ -414,9 +388,7 @@ export function SummaryTable(props: {
           {pageCount === null ? '' : ` of ${pageCount}`}
         </span>
         <span className="flex-1 text-right">
-          {rows.totalRows === undefined
-            ? '…'
-            : `${rows.totalRows.toLocaleString()} groups`}
+          {rows.totalRows === undefined ? '…' : `${rows.totalRows.toLocaleString()} groups`}
         </span>
       </div>
     </div>
@@ -438,12 +410,10 @@ export function SummaryTablePlaceholder(props: {
           {props.title}
         </div>
         <div className="rounded-lg border border-slate-200 bg-white/90 p-4">
-          <div className="text-sm font-semibold text-slate-800">
-            This table is enlarged below
-          </div>
+          <div className="text-sm font-semibold text-slate-800">This table is enlarged below</div>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Row selections live in the page-level Selection topology, so they
-            survive the move between regions of the page.
+            Row selections live in the page-level Selection topology, so they survive the move
+            between regions of the page.
           </p>
         </div>
       </div>

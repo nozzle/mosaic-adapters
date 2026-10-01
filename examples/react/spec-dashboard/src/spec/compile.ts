@@ -1,3 +1,5 @@
+import { createTopology } from '@nozzleio/react-mosaic';
+import type { FilterKind, Topology, TopologyConfig, TopologyOptions } from '@nozzleio/react-mosaic';
 /**
  * Spec loading + compilation: the runtime pipeline from raw YAML text to a
  * validated, ready-to-render {@link CompiledSpec}.
@@ -11,15 +13,8 @@
  */
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import { createTopology } from '@nozzleio/react-mosaic';
-import { dashboardSpecSchema } from './schema';
-import { buildKindRegistry, buildSpecKinds } from './kinds';
-import {
-  buildTopologyOptions,
-  toTopologyConfig,
-  variableEntryNames,
-} from './topology';
-import { validateCrossReferences } from './validate';
+import type { ZodError } from 'zod';
+
 import {
   buildFilterUrlInfo,
   buildFilterUrlRegistry,
@@ -27,27 +22,18 @@ import {
   resolveFilterPersistConfig,
   validateFilterUrl,
 } from './filter-url';
-import {
-  buildSelectionUrlRegistry,
-  validateSelectionUrl,
-} from './url-state/selection-url';
-import {
-  buildVariableUrlRegistry,
-  validateVariableUrl,
-} from './url-state/variable-url';
-import { buildDashboardUrlInfo } from './url-state/info';
-import type {
-  FilterKind,
-  Topology,
-  TopologyConfig,
-  TopologyOptions,
-} from '@nozzleio/react-mosaic';
-import type { ZodError } from 'zod';
 import type { FilterPersistWiring } from './filter-url';
-import type { DashboardUrlInfo } from './url-state/info';
-import type { SelectionUrlRegistry } from './url-state/selection-url';
-import type { VariableUrlRegistry } from './url-state/variable-url';
+import { buildKindRegistry, buildSpecKinds } from './kinds';
+import { dashboardSpecSchema } from './schema';
 import type { DashboardSpec, WidgetSpec } from './schema';
+import { buildTopologyOptions, toTopologyConfig, variableEntryNames } from './topology';
+import { buildDashboardUrlInfo } from './url-state/info';
+import type { DashboardUrlInfo } from './url-state/info';
+import { buildSelectionUrlRegistry, validateSelectionUrl } from './url-state/selection-url';
+import type { SelectionUrlRegistry } from './url-state/selection-url';
+import { buildVariableUrlRegistry, validateVariableUrl } from './url-state/variable-url';
+import type { VariableUrlRegistry } from './url-state/variable-url';
+import { validateCrossReferences } from './validate';
 
 /**
  * Normalize the parsed spec into the runtime {@link DashboardSpec}: the parse
@@ -56,9 +42,7 @@ import type { DashboardSpec, WidgetSpec } from './schema';
  * key becomes the runtime `widget.id` every downstream consumer reads). Object
  * insertion order is preserved, so the widgets keep their declaration order.
  */
-function normalizeSpec(
-  raw: z.infer<typeof dashboardSpecSchema>,
-): DashboardSpec {
+function normalizeSpec(raw: z.infer<typeof dashboardSpecSchema>): DashboardSpec {
   const widgets: Record<string, WidgetSpec> = {};
   for (const [id, widget] of Object.entries(raw.widgets)) {
     widgets[id] = { ...widget, id };
@@ -122,7 +106,8 @@ export interface CompiledSpec {
 }
 
 export type CompileResult =
-  { ok: true; compiled: CompiledSpec } | { ok: false; errors: Array<string> };
+  | { ok: true; compiled: CompiledSpec }
+  | { ok: false; errors: Array<string> };
 
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
@@ -137,21 +122,15 @@ function formatZodError(error: ZodError): Array<string> {
 }
 
 /** Fetch + zod-validate the spec manifest from `url` (defaults to the served manifest). */
-export async function fetchManifest(
-  url: string = MANIFEST_URL,
-): Promise<SpecManifest> {
+export async function fetchManifest(url: string = MANIFEST_URL): Promise<SpecManifest> {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(
-      `failed to fetch manifest from '${url}' (${response.status}).`,
-    );
+    throw new Error(`failed to fetch manifest from '${url}' (${response.status}).`);
   }
   const raw: unknown = await response.json();
   const parsed = specManifestSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new Error(
-      `invalid spec manifest: ${formatZodError(parsed.error).join('; ')}`,
-    );
+    throw new Error(`invalid spec manifest: ${formatZodError(parsed.error).join('; ')}`);
   }
   return parsed.data;
 }
@@ -167,15 +146,11 @@ export function resolveSpecEntry(
   wantedId: string | null,
 ): SpecManifestEntry {
   const byWanted =
-    wantedId === null
-      ? undefined
-      : manifest.specs.find((entry) => entry.id === wantedId);
+    wantedId === null ? undefined : manifest.specs.find((entry) => entry.id === wantedId);
   if (byWanted !== undefined) {
     return byWanted;
   }
-  const byDefault = manifest.specs.find(
-    (entry) => entry.id === manifest.default,
-  );
+  const byDefault = manifest.specs.find((entry) => entry.id === manifest.default);
   if (byDefault !== undefined) {
     return byDefault;
   }
@@ -213,10 +188,7 @@ export function compileSpec(text: string): CompileResult {
 
   const kindRegistry = buildKindRegistry(spec);
   const topologyConfig = toTopologyConfig(spec.topology);
-  const topologyOptions = buildTopologyOptions(
-    spec.topology,
-    buildSpecKinds(spec),
-  );
+  const topologyOptions = buildTopologyOptions(spec.topology, buildSpecKinds(spec));
 
   // Derive the URL codec registry, resolve persistence config, and collect the
   // central `filters.defaults` list. These are pure (no router access) and are
@@ -255,11 +227,7 @@ export function compileSpec(text: string): CompileResult {
     kindRegistry,
     new Set(filterUrlRegistry.ids),
   );
-  const filterUrlErrors = validateFilterUrl(
-    spec,
-    filterUrlRegistry,
-    persistConfig,
-  );
+  const filterUrlErrors = validateFilterUrl(spec, filterUrlRegistry, persistConfig);
   const selectionUrlErrors = validateSelectionUrl(
     spec.topology,
     selectionUrlRegistry,

@@ -1,4 +1,11 @@
-import { useEffect, useState } from 'react';
+import {
+  paginationToWindow,
+  sortingToOrderBy,
+  useTanStackTableFilterBridge,
+} from '@nozzleio/mosaic-tanstack-react-table';
+import type { FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicRows, useMosaicSparkline } from '@nozzleio/react-mosaic';
+import type { SparklinePoint } from '@nozzleio/react-mosaic';
 import {
   columnFilteringFeature,
   columnVisibilityFeature,
@@ -8,15 +15,6 @@ import {
   tableFeatures,
   useTable,
 } from '@tanstack/react-table';
-import { Query } from '@uwdata/mosaic-sql';
-import { useMosaicRows, useMosaicSparkline } from '@nozzleio/react-mosaic';
-import {
-  paginationToWindow,
-  sortingToOrderBy,
-  useTanStackTableFilterBridge,
-} from '@nozzleio/mosaic-tanstack-react-table';
-import { $page, $picked, filterSet, tableName } from '../page-context';
-import { Sparkline } from './sparkline';
 import type {
   Column,
   ColumnDef,
@@ -25,9 +23,12 @@ import type {
   PaginationState,
   SortingState,
 } from '@tanstack/react-table';
-import type { FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-react-table';
-import type { SparklinePoint } from '@nozzleio/react-mosaic';
+import { Query } from '@uwdata/mosaic-sql';
+import { useEffect, useState } from 'react';
+
+import { $page, $picked, filterSet, tableName } from '../page-context';
 import type { AthleteRow } from '../page-context';
+import { Sparkline } from './sparkline';
 
 const features = tableFeatures({
   rowSortingFeature,
@@ -62,12 +63,8 @@ const columns: Array<ColumnDef<typeof features, AthleteRow>> = [
     header: 'Weight dist. (sport)',
     cell: (cell) => (
       <Sparkline
-        points={
-          cell.table.options.meta?.sparklines.get(cell.row.original.sport) ?? []
-        }
-        tooltip={(point) =>
-          `${point.x}–${Number(point.x) + SPARKLINE_STEP}kg: ${point.y} athletes`
-        }
+        points={cell.table.options.meta?.sparklines.get(cell.row.original.sport) ?? []}
+        tooltip={(point) => `${point.x}–${Number(point.x) + SPARKLINE_STEP}kg: ${point.y} athletes`}
       />
     ),
   },
@@ -96,9 +93,7 @@ export function AthletesTable() {
     pageSize: 25,
   });
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [picked, setPicked] = useState<ReadonlyMap<number, AthleteRow>>(
-    new Map(),
-  );
+  const [picked, setPicked] = useState<ReadonlyMap<number, AthleteRow>>(new Map());
 
   useTanStackTableFilterBridge({
     filters: columnFilters,
@@ -109,16 +104,7 @@ export function AthletesTable() {
   const athletes = useMosaicRows<AthleteRow>({
     query: ({ where }) =>
       Query.from(tableName)
-        .select(
-          'id',
-          'name',
-          'nationality',
-          'sport',
-          'sex',
-          'height',
-          'weight',
-          'gold',
-        )
+        .select('id', 'name', 'nationality', 'sport', 'sex', 'height', 'weight', 'gold')
         .where(where),
     filterBy: $page,
     inputs: {
@@ -220,14 +206,9 @@ export function AthletesTable() {
                       data-testid={`sort-${header.column.id}`}
                       onClick={header.column.getToggleSortingHandler()}
                     >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )}
+                      {flexRender(header.column.columnDef.header, header.getContext())}
                       <span className="text-xs text-slate-400">
-                        {{ asc: '▲', desc: '▼' }[
-                          header.column.getIsSorted() as string
-                        ] ?? ''}
+                        {{ asc: '▲', desc: '▼' }[header.column.getIsSorted() as string] ?? ''}
                       </span>
                     </button>
                   </th>
@@ -281,8 +262,7 @@ export function AthletesTable() {
           Next
         </button>
         <span data-testid="page-label">
-          Page {pagination.pageIndex + 1} of{' '}
-          {table.getPageCount() > 0 ? table.getPageCount() : '…'}
+          Page {pagination.pageIndex + 1} of {table.getPageCount() > 0 ? table.getPageCount() : '…'}
         </span>
         <span data-testid="total-rows">
           {athletes.totalRows == null
@@ -294,9 +274,7 @@ export function AthletesTable() {
   );
 }
 
-function ColumnFilter(props: {
-  column: Column<typeof features, AthleteRow, unknown>;
-}) {
+function ColumnFilter(props: { column: Column<typeof features, AthleteRow, unknown> }) {
   const { column } = props;
   if (column.id === 'name') {
     const value = (column.getFilterValue() as string | undefined) ?? '';
@@ -312,10 +290,8 @@ function ColumnFilter(props: {
   }
   if (column.id === 'weight') {
     const range = (column.getFilterValue() as
-      [number | undefined, number | undefined] | undefined) ?? [
-      undefined,
-      undefined,
-    ];
+      | [number | undefined, number | undefined]
+      | undefined) ?? [undefined, undefined];
     const setBound = (index: 0 | 1, raw: string) => {
       const bound = raw === '' ? undefined : Number(raw);
       const next: [number | undefined, number | undefined] = [...range];
@@ -347,10 +323,7 @@ function ColumnFilter(props: {
   return null;
 }
 
-function PickedStrip(props: {
-  picked: ReadonlyMap<number, AthleteRow>;
-  onClear: () => void;
-}) {
+function PickedStrip(props: { picked: ReadonlyMap<number, AthleteRow>; onClear: () => void }) {
   // The picked rows also live in $picked as a native clause, ready for
   // downstream consumers (detail panes, comparison views) to filter by.
   // This strip renders from local state; nothing on this page consumes
@@ -363,16 +336,10 @@ function PickedStrip(props: {
     );
   }
   return (
-    <div
-      className="flex flex-wrap items-center gap-2 text-xs"
-      data-testid="picked-strip"
-    >
+    <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="picked-strip">
       <span className="text-slate-500">Picked ({props.picked.size}):</span>
       {[...props.picked.values()].map((row) => (
-        <span
-          key={row.id}
-          className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-900"
-        >
+        <span key={row.id} className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-900">
           {row.name}
         </span>
       ))}

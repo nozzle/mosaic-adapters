@@ -1,3 +1,5 @@
+import type { FilterKind, FilterSpec, OperatorDescriptor, Persister } from '@nozzleio/react-mosaic';
+
 /**
  * Spec-declared URL persistence for the dashboard's page {@link FilterSet}.
  *
@@ -48,12 +50,7 @@
  * leaves foreign ones alone, all under the router's own no-op-navigation guard.
  */
 import type { NavigateSearchOptions, Search, SearchPatch } from '@/router';
-import type {
-  FilterKind,
-  FilterSpec,
-  OperatorDescriptor,
-  Persister,
-} from '@nozzleio/react-mosaic';
+
 import type {
   BridgeColumnSpec,
   DashboardSpec,
@@ -154,9 +151,7 @@ function encodeList(values: ReadonlyArray<unknown>): string {
 }
 
 /** Parses an `operator:value` param (e.g. `gt:5000`), or `null`. */
-function parseOperatorValue(
-  raw: string,
-): { operator: string; value: string } | null {
+function parseOperatorValue(raw: string): { operator: string; value: string } | null {
   const separator = raw.indexOf(':');
   if (separator < 0) {
     return null;
@@ -168,9 +163,7 @@ function parseOperatorValue(
 }
 
 /** The operator ids of a kind whose arity is `none` (valueless). */
-function valuelessOperatorIds(
-  operators: ReadonlyArray<OperatorDescriptor>,
-): Set<string> {
+function valuelessOperatorIds(operators: ReadonlyArray<OperatorDescriptor>): Set<string> {
   const set = new Set<string>();
   for (const operator of operators) {
     if (operator.arity === 'none') {
@@ -211,11 +204,7 @@ function textConditionCodec(config: {
     ? 'contains'
     : (config.operators[0]?.id ?? 'contains');
 
-  const build = (
-    id: string,
-    operator: string,
-    value: string | undefined,
-  ): FilterSpec => {
+  const build = (id: string, operator: string, value: string | undefined): FilterSpec => {
     const spec: FilterSpec = {
       id,
       column: config.column,
@@ -239,8 +228,7 @@ function textConditionCodec(config: {
     label: config.label,
     target: config.target,
     encode: (spec) => {
-      const operator =
-        typeof spec.operator === 'string' ? spec.operator : defaultOperator;
+      const operator = typeof spec.operator === 'string' ? spec.operator : defaultOperator;
       if (!allowed.has(operator)) {
         return null;
       }
@@ -258,9 +246,7 @@ function textConditionCodec(config: {
     decode: (id, raw) => {
       const { operator, valueTail } = parseOperatorEnvelope(raw);
       if (operator === null) {
-        return valueTail.length === 0
-          ? null
-          : build(id, defaultOperator, valueTail);
+        return valueTail.length === 0 ? null : build(id, defaultOperator, valueTail);
       }
       if (!allowed.has(operator)) {
         return raw.length === 0 ? null : build(id, defaultOperator, raw);
@@ -290,11 +276,7 @@ function listCodec(config: {
   const allowed = new Set(config.allowedOperators);
   const valueless = new Set(config.valuelessOperators);
 
-  const buildValues = (
-    id: string,
-    operator: string,
-    values: Array<string>,
-  ): FilterSpec => {
+  const buildValues = (id: string, operator: string, values: Array<string>): FilterSpec => {
     const spec: FilterSpec = {
       id,
       column: config.column,
@@ -330,10 +312,7 @@ function listCodec(config: {
     label: config.label,
     target: config.target,
     encode: (spec) => {
-      const operator =
-        typeof spec.operator === 'string'
-          ? spec.operator
-          : config.defaultOperator;
+      const operator = typeof spec.operator === 'string' ? spec.operator : config.defaultOperator;
       if (valueless.has(operator)) {
         return encodeOperatorEnvelope(operator, '');
       }
@@ -353,15 +332,11 @@ function listCodec(config: {
       const { operator, valueTail } = parseOperatorEnvelope(raw);
       if (operator === null) {
         const values = decodeList(valueTail);
-        return values.length === 0
-          ? null
-          : buildValues(id, config.defaultOperator, values);
+        return values.length === 0 ? null : buildValues(id, config.defaultOperator, values);
       }
       if (!allowed.has(operator)) {
         const values = decodeList(raw);
-        return values.length === 0
-          ? null
-          : buildValues(id, config.defaultOperator, values);
+        return values.length === 0 ? null : buildValues(id, config.defaultOperator, values);
       }
       if (valueless.has(operator)) {
         return buildValueless(id, operator);
@@ -724,9 +699,7 @@ function bridgeSpecKind(clause: BridgeColumnSpec['clause']): string {
 }
 
 /** Bridge clause → FilterSpec operator (mirrors `specOperator`). */
-function bridgeSpecOperator(
-  clause: BridgeColumnSpec['clause'],
-): string | undefined {
+function bridgeSpecOperator(clause: BridgeColumnSpec['clause']): string | undefined {
   if (clause === 'ilike') {
     return 'contains';
   }
@@ -752,10 +725,7 @@ function bridgeBound(value: unknown, clause: 'range' | 'date-range'): string {
 }
 
 /** Parses one range bound back to a number (`range`) or ISO string (`date-range`). */
-function decodeBridgeBound(
-  raw: string,
-  clause: 'range' | 'date-range',
-): number | string | null {
+function decodeBridgeBound(raw: string, clause: 'range' | 'date-range'): number | string | null {
   if (raw === '') {
     return null;
   }
@@ -777,10 +747,7 @@ function isAggregateThresholdKind(spec: DashboardSpec, kind: string): boolean {
  * Only ever called for a kind {@link isAggregateThresholdKind} confirmed; an
  * unknown kind (not in `filter_kinds`) yields an empty vocabulary.
  */
-function aggregateThresholdOperators(
-  spec: DashboardSpec,
-  kind: string,
-): ReadonlyArray<string> {
+function aggregateThresholdOperators(spec: DashboardSpec, kind: string): ReadonlyArray<string> {
   const def = spec.filter_kinds?.[kind];
   if (def === undefined) {
     return [];
@@ -793,10 +760,7 @@ function aggregateThresholdOperators(
  * default) and none for a self-routing kind (which emits its own targets); the
  * declared target otherwise.
  */
-function placementTarget(
-  spec: DashboardSpec,
-  placement: FilterPlacementSpec,
-): string | undefined {
+function placementTarget(spec: DashboardSpec, placement: FilterPlacementSpec): string | undefined {
   if (placement.target === 'where') {
     return undefined;
   }
@@ -817,13 +781,8 @@ function facetOperatorConfig(
   valuelessOperators: Array<string>;
 } {
   const declared = kindRegistry[placementKind]?.operators ?? [];
-  const subset =
-    field.array_column === true
-      ? FACET_ARRAY_OPERATORS
-      : FACET_SCALAR_OPERATORS;
-  const allowed = subset.filter((id) =>
-    declared.some((entry) => entry.id === id),
-  );
+  const subset = field.array_column === true ? FACET_ARRAY_OPERATORS : FACET_SCALAR_OPERATORS;
+  const allowed = subset.filter((id) => declared.some((entry) => entry.id === id));
   const valueless = allowed.filter(
     (id) => declared.find((entry) => entry.id === id)?.arity === 'none',
   );
@@ -908,17 +867,13 @@ export function buildFilterUrlRegistry(
 
   for (const field of spec.filters.fields) {
     for (const placement of field.placements) {
-      register(
-        placement.spec_id,
-        codecForPlacement(spec, field, placement, kindRegistry),
-      );
+      register(placement.spec_id, codecForPlacement(spec, field, placement, kindRegistry));
     }
   }
 
   for (const widget of Object.values(spec.widgets)) {
     if (widget.renderer === 'selection-table') {
-      const publishColumn =
-        widget.publish.fields[0] ?? widget.publish.columns[0] ?? '';
+      const publishColumn = widget.publish.fields[0] ?? widget.publish.columns[0] ?? '';
       register(
         widget.publish.spec_id,
         pointsCodec({ column: publishColumn, label: widget.publish.label }),
@@ -967,10 +922,7 @@ function defaultEntries(spec: DashboardSpec): ReadonlyArray<FilterDefaultSpec> {
 }
 
 /** Build a FilterSpec from a central default entry's static (registry) + dynamic parts. */
-function buildDefaultSpec(
-  entry: FilterDefaultSpec,
-  codec: SpecCodec,
-): FilterSpec {
+function buildDefaultSpec(entry: FilterDefaultSpec, codec: SpecCodec): FilterSpec {
   const spec: FilterSpec = {
     id: entry.spec_id,
     column: codec.column,
@@ -1125,8 +1077,7 @@ export function buildFilterUrlPatch(
   for (const id of registry.ids) {
     const codec = registry.get(id);
     const spec = active.get(id);
-    patch[paramFor(id)] =
-      spec !== undefined && codec !== undefined ? codec.encode(spec) : null;
+    patch[paramFor(id)] = spec !== undefined && codec !== undefined ? codec.encode(spec) : null;
   }
   return patch;
 }
@@ -1287,9 +1238,7 @@ export function buildFilterUrlInfo(
  * name + param prefix. `null` when no entry persists (defaults, if any, then
  * hydrate through a synthetic persister).
  */
-export function resolveFilterPersistConfig(
-  topology: TopologySpec,
-): FilterPersistConfig | null {
+export function resolveFilterPersistConfig(topology: TopologySpec): FilterPersistConfig | null {
   for (const [name, declaration] of Object.entries(topology)) {
     if (declaration.type !== 'filter-set') {
       continue;

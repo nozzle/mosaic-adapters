@@ -1,3 +1,6 @@
+import { useFilterSetState, useMosaicFacet } from '@nozzleio/react-mosaic';
+import type { FilterSet, FilterSpec } from '@nozzleio/react-mosaic';
+import type { Selection } from '@uwdata/mosaic-core';
 /**
  * The shared facet multi-select control used by the FilterBuilder's facet value
  * editors.
@@ -23,9 +26,6 @@
  * value's co-occurring values and a second pick is impossible.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useFilterSetState, useMosaicFacet } from '@nozzleio/react-mosaic';
-import type { Selection } from '@uwdata/mosaic-core';
-import type { FilterSet, FilterSpec } from '@nozzleio/react-mosaic';
 
 /**
  * Multi-value operators whose value list is a set of EXCLUSIONS rather than
@@ -107,10 +107,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
 
   // Register THIS option query's client as the spec's clause source so the
   // facet's own list is cascaded by every OTHER filter but not its own value.
-  const clients = useMemo(
-    () => new Set([facet.client.mosaicClient]),
-    [facet.client],
-  );
+  const clients = useMemo(() => new Set([facet.client.mosaicClient]), [facet.client]);
 
   // The committed spec drives selection + operator, so both stay correct even
   // while this facet client is idle.
@@ -123,8 +120,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
     return committed.value.map((value) => String(value));
   }, [committed]);
 
-  const effectiveOperator =
-    typeof committed?.operator === 'string' ? committed.operator : operator;
+  const effectiveOperator = typeof committed?.operator === 'string' ? committed.operator : operator;
   const isExclusionOperator = EXCLUSION_OPERATORS.has(effectiveOperator);
 
   const writeSpec = (value: Array<string>, writeOperator: string) => {
@@ -146,9 +142,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
   // the predicate at call time, await the page selection's pending dispatch and
   // force one refetch against the now self-excluding predicate.
   useEffect(() => {
-    const current = filterSet.store.state.specs.find(
-      (entry) => entry.id === specId,
-    );
+    const current = filterSet.store.state.specs.find((entry) => entry.id === specId);
     if (current === undefined || !Array.isArray(current.value)) {
       return;
     }
@@ -177,9 +171,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
       filterSet.remove(specId);
       return;
     }
-    const nextOperator = isMultiValueOperator(committed?.operator)
-      ? committed.operator
-      : operator;
+    const nextOperator = isMultiValueOperator(committed?.operator) ? committed.operator : operator;
     writeSpec(next, nextOperator);
   };
 
@@ -214,13 +206,10 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
           <div className="py-3 text-center text-xs text-faint">No results.</div>
         ) : null}
         {facet.status === 'pending' && facet.options.length === 0 ? (
-          <div className="py-3 text-center text-xs text-faint italic">
-            Loading options…
-          </div>
+          <div className="py-3 text-center text-xs text-faint italic">Loading options…</div>
         ) : null}
         {facet.options.map((option) => {
-          const isSelected =
-            !isExclusionOperator && selected.includes(String(option.value));
+          const isSelected = !isExclusionOperator && selected.includes(String(option.value));
           return (
             <button
               key={String(option.value)}

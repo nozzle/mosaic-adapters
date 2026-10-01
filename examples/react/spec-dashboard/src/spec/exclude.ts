@@ -35,9 +35,7 @@ export interface CompiledExclude {
  * cheap; callers memoize on the (stable, post-compile) `exclude` reference so the
  * derived `skipSources` set keeps a stable identity across renders.
  */
-export function compileExclude(
-  exclude: ExcludeSpec | undefined,
-): CompiledExclude {
+export function compileExclude(exclude: ExcludeSpec | undefined): CompiledExclude {
   if (exclude === undefined) {
     return { omitFilterBy: false, skipSources: undefined };
   }

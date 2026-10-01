@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
-import { flexRender, tableFeatures, useTable } from '@tanstack/react-table';
 import { useMosaicPivot } from '@nozzleio/react-mosaic';
-import { tableName } from '../page-context';
+import { flexRender, tableFeatures, useTable } from '@tanstack/react-table';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useMemo } from 'react';
+
+import { tableName } from '../page-context';
 
 type PivotRow = Record<string, unknown>;
 
@@ -37,17 +38,15 @@ export function PivotView() {
         header: 'Sport',
         cell: (cell) => String(cell.row.original.sport),
       },
-      ...pivot.pivotColumns.map<ColumnDef<typeof features, PivotRow>>(
-        (column) => ({
-          id: column,
-          accessorFn: (row) => row[column],
-          header: column,
-          cell: (cell) => {
-            const value = cell.getValue<unknown>();
-            return value == null ? '—' : Number(value).toLocaleString('en-US');
-          },
-        }),
-      ),
+      ...pivot.pivotColumns.map<ColumnDef<typeof features, PivotRow>>((column) => ({
+        id: column,
+        accessorFn: (row) => row[column],
+        header: column,
+        cell: (cell) => {
+          const value = cell.getValue<unknown>();
+          return value == null ? '—' : Number(value).toLocaleString('en-US');
+        },
+      })),
     ];
   }, [pivot.pivotColumns]);
 
@@ -61,8 +60,8 @@ export function PivotView() {
   return (
     <section className="space-y-2">
       <p className="text-sm text-slate-500">
-        <code>PIVOT athletes ON sex USING count(*) GROUP BY sport</code> — the
-        gender columns come from the result schema, not the config.
+        <code>PIVOT athletes ON sex USING count(*) GROUP BY sport</code> — the gender columns come
+        from the result schema, not the config.
       </p>
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm" data-testid="pivot-table">
@@ -75,14 +74,9 @@ export function PivotView() {
                     className="px-3 py-2 font-medium"
                     // Only the dynamic pivot columns carry the testid; the
                     // fixed `sport` header does not.
-                    data-testid={
-                      header.column.id === 'sport' ? undefined : 'pivot-column'
-                    }
+                    data-testid={header.column.id === 'sport' ? undefined : 'pivot-column'}
                   >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
-                    )}
+                    {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 ))}
               </tr>

@@ -1,12 +1,11 @@
+import type { FilterUrlInfo } from '../filter-url';
 /** URL-parameter ownership and display information for the dashboard chrome. */
 import { decodeSelectionUrlValue } from './selection-url';
-import { decodeParamValue } from './variable-url';
-import type { FilterUrlInfo } from '../filter-url';
 import type { SelectionUrlRegistry } from './selection-url';
+import { decodeParamValue } from './variable-url';
 import type { VariableUrlRegistry } from './variable-url';
 
-export type ParamOwnership =
-  'spec' | 'filter' | 'selection' | 'variable' | 'other';
+export type ParamOwnership = 'spec' | 'filter' | 'selection' | 'variable' | 'other';
 
 export interface DashboardUrlInfo {
   classify: (name: string) => ParamOwnership;
@@ -63,10 +62,7 @@ export function buildDashboardUrlInfo(
         const [lo, hi] = interval as [number, number];
         return `${lo} – ${hi}`;
       }
-      const [[xLo, xHi], [yLo, yHi]] = interval as [
-        [number, number],
-        [number, number],
-      ];
+      const [[xLo, xHi], [yLo, yHi]] = interval as [[number, number], [number, number]];
       return `${descriptor.columns.x}: ${xLo} – ${xHi}; ${descriptor.columns.y}: ${yLo} – ${yHi}`;
     },
   };

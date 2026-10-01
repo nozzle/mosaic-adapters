@@ -1,3 +1,11 @@
+import {
+  useMosaicActiveClauses,
+  useMosaicCoordinator,
+  useMosaicSelectionRef,
+} from '@nozzleio/react-mosaic';
+import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
+import type { VgPlotElement } from '@nozzleio/react-mosaic/vgplot';
+import * as vg from '@uwdata/vgplot';
 /**
  * A search-volume histogram whose drag-brush publishes a foreign interval
  * clause directly to a topology Selection — like the domain spotlight, and
@@ -8,20 +16,9 @@
  * down to a handful of high-demand keywords.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as vg from '@uwdata/vgplot';
-import {
-  useMosaicActiveClauses,
-  useMosaicCoordinator,
-  useMosaicSelectionRef,
-} from '@nozzleio/react-mosaic';
-import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
-import {
-  VOLUME_BRUSH_COLUMN,
-  VOLUME_BRUSH_ENTRY,
-  tableName,
-} from '../page-context';
+
+import { VOLUME_BRUSH_COLUMN, VOLUME_BRUSH_ENTRY, tableName } from '../page-context';
 import { usePageContexts } from '../topology';
-import type { VgPlotElement } from '@nozzleio/react-mosaic/vgplot';
 
 /** The slice of the vgplot `Plot` instance (exposed as `element.value`) this panel drives. */
 interface PlotInstance {
@@ -84,16 +81,12 @@ export function VolumeBrushPanel(props: { enabled: boolean }) {
   // API context bound to that resolved coordinator so the histogram's marks and
   // brush interactor live on the same coordinator as every client hook.
   const coordinator = useMosaicCoordinator();
-  const api = useMemo(
-    () => vg.createAPIContext({ coordinator }),
-    [coordinator],
-  );
+  const api = useMemo(() => vg.createAPIContext({ coordinator }), [coordinator]);
 
   // Derive the strip's range from the committed clause, so it reflects external
   // clears (chip ✕, Clear All) and a hydrated range.
   const foreign = useMosaicActiveClauses();
-  const committed = foreign.find((clause) => clause.ref === VOLUME_BRUSH_ENTRY)
-    ?.clause.value;
+  const committed = foreign.find((clause) => clause.ref === VOLUME_BRUSH_ENTRY)?.clause.value;
   const rangeLabel = formatRange(committed);
   const hasRange = Array.isArray(committed) && committed.length === 2;
 
@@ -165,8 +158,7 @@ export function VolumeBrushPanel(props: { enabled: boolean }) {
   useEffect(() => {
     const next = expanded ? EXPANDED_SIZE : COMPACT_SIZE;
     sizeRef.current = next;
-    const plot = (plotElementRef.current as { value?: PlotInstance } | null)
-      ?.value;
+    const plot = (plotElementRef.current as { value?: PlotInstance } | null)?.value;
     if (plot === undefined) {
       return;
     }
@@ -188,8 +180,7 @@ export function VolumeBrushPanel(props: { enabled: boolean }) {
     if (hasRange) {
       return;
     }
-    const plot = (plotElementRef.current as { value?: PlotInstance } | null)
-      ?.value;
+    const plot = (plotElementRef.current as { value?: PlotInstance } | null)?.value;
     const interactor = plot?.interactors[0];
     if (interactor === undefined || interactor.value == null) {
       return;
@@ -208,10 +199,7 @@ export function VolumeBrushPanel(props: { enabled: boolean }) {
           <figcaption className="text-xs font-semibold tracking-wider text-slate-500 uppercase">
             Search Volume
           </figcaption>
-          <div
-            className="text-sm font-semibold text-slate-800"
-            data-testid="volume-brush-range"
-          >
+          <div className="text-sm font-semibold text-slate-800" data-testid="volume-brush-range">
             {hasRange ? rangeLabel : 'Full range — drag to brush'}
           </div>
         </div>
@@ -220,9 +208,7 @@ export function VolumeBrushPanel(props: { enabled: boolean }) {
           data-testid="volume-brush-toggle"
           aria-expanded={expanded}
           aria-label={
-            expanded
-              ? 'Collapse the search volume brush'
-              : 'Expand the search volume brush'
+            expanded ? 'Collapse the search volume brush' : 'Expand the search volume brush'
           }
           disabled={!enabled}
           className="h-7 rounded border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
@@ -231,15 +217,11 @@ export function VolumeBrushPanel(props: { enabled: boolean }) {
           {expanded ? '↙ Collapse' : '↗ Expand'}
         </button>
       </div>
-      <div
-        data-testid="volume-brush-plot"
-        className="overflow-x-auto"
-        ref={plotRef}
-      />
+      <div data-testid="volume-brush-plot" className="overflow-x-auto" ref={plotRef} />
       {expanded ? (
         <p className="mt-2 text-[11px] text-slate-400">
-          Drag across the bars to brush a search-volume range. The range filters
-          every widget on the page and appears as a removable chip above.
+          Drag across the bars to brush a search-volume range. The range filters every widget on the
+          page and appears as a removable chip above.
         </p>
       ) : null}
     </figure>

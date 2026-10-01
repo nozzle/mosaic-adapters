@@ -1,25 +1,19 @@
-import { describe, expect, test } from 'vitest';
-import { stringify as stringifyYaml } from 'yaml';
+import type { QuerySource, RowsInputs, ValuesInputs } from '@nozzleio/react-mosaic';
 import { Param } from '@uwdata/mosaic-core';
 import { collectParams, isColumnParam } from '@uwdata/mosaic-sql';
+import type { ExprNode, SelectQuery } from '@uwdata/mosaic-sql';
+import { describe, expect, test } from 'vitest';
+import { stringify as stringifyYaml } from 'yaml';
+
+import { compileSpec } from '../src/spec/compile';
+import { buildPlotSpec } from '../src/spec/plot-interpreter';
+import type { PlotApi, PlotChannels } from '../src/spec/plot-interpreter';
 import {
   compileStructuredQuery,
   parseVariableRef,
   scanFragmentTokens,
 } from '../src/spec/query-compiler';
-import { buildPlotSpec } from '../src/spec/plot-interpreter';
-import { compileSpec } from '../src/spec/compile';
-import {
-  kpiCardWidgetSchema,
-  selectionTableWidgetSchema,
-} from '../src/spec/schema';
-import type { ExprNode, SelectQuery } from '@uwdata/mosaic-sql';
-import type {
-  QuerySource,
-  RowsInputs,
-  ValuesInputs,
-} from '@nozzleio/react-mosaic';
-import type { PlotApi, PlotChannels } from '../src/spec/plot-interpreter';
+import { kpiCardWidgetSchema, selectionTableWidgetSchema } from '../src/spec/schema';
 import type { PlotSpec, StructuredQuery } from '../src/spec/schema';
 
 // ── parseVariableRef (the reference grammar) ──────────────────────────────────
@@ -115,9 +109,7 @@ describe('compileStructuredQuery variable binding', () => {
       throw new Error('expected a query factory, not a table name');
     }
     // The variable value NAMES the `value` column the kpi card reads back.
-    expect(String(source({ where: [], having: [], inputs: {} }))).toContain(
-      '"title" AS "value"',
-    );
+    expect(String(source({ where: [], having: [], inputs: {} }))).toContain('"title" AS "value"');
   });
 });
 
@@ -134,14 +126,9 @@ describe('scanFragmentTokens', () => {
   const declared = new Set(['min', 'metric', 'x', 'int', 'tag']);
 
   test('finds $name (column) and :name (value) for declared names', () => {
-    expect(scannedTokens('count(DISTINCT $metric)', declared)).toEqual([
-      '$metric',
-    ]);
+    expect(scannedTokens('count(DISTINCT $metric)', declared)).toEqual(['$metric']);
     expect(scannedTokens('search_volume >= :min', declared)).toEqual([':min']);
-    expect(scannedTokens('sum($x) FILTER (rank > :min)', declared)).toEqual([
-      '$x',
-      ':min',
-    ]);
+    expect(scannedTokens('sum($x) FILTER (rank > :min)', declared)).toEqual(['$x', ':min']);
     // A `:name` at index 0 (no char before) still binds.
     expect(scannedTokens(':min > 0', declared)).toEqual([':min']);
   });
@@ -173,9 +160,7 @@ describe('scanFragmentTokens', () => {
   });
 
   test('an empty declared set finds nothing', () => {
-    expect(scannedTokens('count(DISTINCT $metric) >= :min', new Set())).toEqual(
-      [],
-    );
+    expect(scannedTokens('count(DISTINCT $metric) >= :min', new Set())).toEqual([]);
   });
 });
 
@@ -212,9 +197,7 @@ describe('compileStructuredQuery fragment binding', () => {
     expect(String(run(compiled.source))).toContain('search_volume >= 5');
     // A string value is single-quote-escaped (the injection-safety pin).
     param.update("O'Brien");
-    expect(String(run(compiled.source))).toContain(
-      "search_volume >= 'O''Brien'",
-    );
+    expect(String(run(compiled.source))).toContain("search_volume >= 'O''Brien'");
   });
 
   test('a $name group_by token compiles and re-groups on update (crash regression)', () => {
@@ -414,9 +397,7 @@ function baseSpec(): Record<string, unknown> {
   };
 }
 
-function compileMutated(
-  mutate: (spec: any) => void,
-): ReturnType<typeof compileSpec> {
+function compileMutated(mutate: (spec: any) => void): ReturnType<typeof compileSpec> {
   const spec = structuredClone(baseSpec());
   mutate(spec);
   return compileSpec(stringifyYaml(spec));
@@ -448,8 +429,7 @@ describe('variable-ref cross-reference validation', () => {
     });
     expectError(
       result,
-      (error) =>
-        error.includes('$nope') && error.includes('not a declared variable'),
+      (error) => error.includes('$nope') && error.includes('not a declared variable'),
     );
   });
 
@@ -460,8 +440,7 @@ describe('variable-ref cross-reference validation', () => {
     expectError(
       result,
       (error) =>
-        error.includes('$page') &&
-        error.includes('is a topology selection, not a variable'),
+        error.includes('$page') && error.includes('is a topology selection, not a variable'),
     );
   });
 
@@ -486,9 +465,7 @@ describe('variable-ref cross-reference validation', () => {
         renderer: 'vgplot',
         label: 'P',
         plot: {
-          marks: [
-            { mark: 'rectY', data: { from: 't' }, fill: '$answer_field' },
-          ],
+          marks: [{ mark: 'rectY', data: { from: 't' }, fill: '$answer_field' }],
         },
       };
       spec.layout.rows.push({ widgets: [{ ref: 'p', col_span: 1 }] });
@@ -505,18 +482,14 @@ describe('variable-ref cross-reference validation', () => {
         renderer: 'vgplot',
         label: 'P',
         plot: {
-          marks: [
-            { mark: 'rectY', data: { from: 't' }, x: { bin: '$answer_field' } },
-          ],
+          marks: [{ mark: 'rectY', data: { from: 't' }, x: { bin: '$answer_field' } }],
         },
       };
       spec.layout.rows.push({ widgets: [{ ref: 'p', col_span: 1 }] });
     });
     expectError(
       result,
-      (error) =>
-        error.includes('bin/date_bin/aggregate') &&
-        error.includes('not supported'),
+      (error) => error.includes('bin/date_bin/aggregate') && error.includes('not supported'),
     );
   });
 
@@ -583,8 +556,7 @@ describe('variable-ref cross-reference validation', () => {
     });
     expectError(
       result,
-      (error) =>
-        error.includes('$nope') && error.includes('not a declared variable'),
+      (error) => error.includes('$nope') && error.includes('not a declared variable'),
     );
   });
 
@@ -617,8 +589,7 @@ describe('variable-ref cross-reference validation', () => {
     expectError(
       result,
       (error) =>
-        error.includes(':page') &&
-        error.includes('is a topology selection, not a variable'),
+        error.includes(':page') && error.includes('is a topology selection, not a variable'),
     );
   });
 
@@ -629,8 +600,7 @@ describe('variable-ref cross-reference validation', () => {
     expectError(
       result,
       (error) =>
-        error.includes('$page') &&
-        error.includes('is a topology selection, not a variable'),
+        error.includes('$page') && error.includes('is a topology selection, not a variable'),
     );
   });
 
@@ -640,8 +610,7 @@ describe('variable-ref cross-reference validation', () => {
     });
     expectError(
       result,
-      (error) =>
-        error.includes('$nope') && error.includes('not a declared variable'),
+      (error) => error.includes('$nope') && error.includes('not a declared variable'),
     );
   });
 
@@ -652,8 +621,7 @@ describe('variable-ref cross-reference validation', () => {
     expectError(
       result,
       (error) =>
-        error.includes(':page') &&
-        error.includes('is a topology selection, not a variable'),
+        error.includes(':page') && error.includes('is a topology selection, not a variable'),
     );
   });
 
@@ -664,8 +632,7 @@ describe('variable-ref cross-reference validation', () => {
     expectError(
       result,
       (error) =>
-        error.includes('$page') &&
-        error.includes('is a topology selection, not a variable'),
+        error.includes('$page') && error.includes('is a topology selection, not a variable'),
     );
   });
 
@@ -675,9 +642,7 @@ describe('variable-ref cross-reference validation', () => {
     });
     expectError(
       result,
-      (error) =>
-        error.includes('$answer_field') &&
-        error.includes('cannot switch the query table'),
+      (error) => error.includes('$answer_field') && error.includes('cannot switch the query table'),
     );
   });
 

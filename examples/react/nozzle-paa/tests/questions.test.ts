@@ -107,9 +107,7 @@ async function gotoDashboard(page: Page): Promise<void> {
 }
 
 function summaryRows(page: Page, id: string, expanded = false): Locator {
-  return page
-    .getByTestId(`summary-table-${id}${expanded ? '-expanded' : ''}`)
-    .locator('tbody tr');
+  return page.getByTestId(`summary-table-${id}${expanded ? '-expanded' : ''}`).locator('tbody tr');
 }
 
 async function readQuestionsKpi(page: Page): Promise<number> {
@@ -118,9 +116,7 @@ async function readQuestionsKpi(page: Page): Promise<number> {
 }
 
 test.describe('people-also-ask dashboard', () => {
-  test('renders the header, KPIs, and initial summary tables', async ({
-    page,
-  }) => {
+  test('renders the header, KPIs, and initial summary tables', async ({ page }) => {
     await gotoDashboard(page);
 
     await expect(
@@ -147,9 +143,7 @@ test.describe('people-also-ask dashboard', () => {
     }
   });
 
-  test('first/last page buttons jump the phrase table to its boundary pages', async ({
-    page,
-  }) => {
+  test('first/last page buttons jump the phrase table to its boundary pages', async ({ page }) => {
     await gotoDashboard(page);
 
     const card = page.getByTestId('summary-table-phrase');
@@ -177,9 +171,7 @@ test.describe('people-also-ask dashboard', () => {
     const lastPage = Math.ceil(2_681 / 10);
     await lastButton.click();
 
-    await expect(
-      card.getByText(`Page ${lastPage} of ${lastPage}`),
-    ).toBeVisible();
+    await expect(card.getByText(`Page ${lastPage} of ${lastPage}`)).toBeVisible();
     await expect(summaryRows(page, 'phrase')).toHaveCount(2_681 % 10);
     await expect(nextButton).toBeDisabled();
     await expect(lastButton).toBeDisabled();
@@ -194,16 +186,13 @@ test.describe('people-also-ask dashboard', () => {
     await expect(prevButton).toBeDisabled();
   });
 
-  test('one batched sparkline client feeds the phrase table', async ({
-    page,
-  }) => {
+  test('one batched sparkline client feeds the phrase table', async ({ page }) => {
     await gotoDashboard(page);
 
     const phraseCard = page.getByTestId('summary-table-phrase');
-    await expect(phraseCard.locator('[data-testid="sparkline"]')).toHaveCount(
-      10,
-      { timeout: 30_000 },
-    );
+    await expect(phraseCard.locator('[data-testid="sparkline"]')).toHaveCount(10, {
+      timeout: 30_000,
+    });
   });
 
   test('keeps narrowed summary selections visible and removable outside the table body', async ({
@@ -229,9 +218,7 @@ test.describe('people-also-ask dashboard', () => {
 
     // The question selection narrows the keyword table (peer cascade) so a
     // selected keyword can leave the visible page…
-    await expect(
-      summaryRows(page, 'phrase').filter({ hasText: 'gaz stove' }),
-    ).toHaveCount(0);
+    await expect(summaryRows(page, 'phrase').filter({ hasText: 'gaz stove' })).toHaveCount(0);
 
     // …while its in-widget chip stays visible and removable.
     const hiddenSelectionChip = page.getByRole('button', {
@@ -251,9 +238,7 @@ test.describe('people-also-ask dashboard', () => {
     ).toBeVisible();
   });
 
-  test('preserves an existing summary selection when that table is enlarged', async ({
-    page,
-  }) => {
+  test('preserves an existing summary selection when that table is enlarged', async ({ page }) => {
     await gotoDashboard(page);
 
     await summaryRows(page, 'domain').nth(0).click();
@@ -265,9 +250,7 @@ test.describe('people-also-ask dashboard', () => {
 
     await page.getByRole('button', { name: 'Enlarge Domain table' }).click();
 
-    await expect(
-      page.getByTestId('summary-table-domain-placeholder'),
-    ).toBeVisible();
+    await expect(page.getByTestId('summary-table-domain-placeholder')).toBeVisible();
     const expandedCard = page.getByTestId('summary-table-domain-expanded');
     await expect(expandedCard).toBeVisible();
     await expect(
@@ -288,18 +271,12 @@ test.describe('people-also-ask dashboard', () => {
       expandedCard.getByRole('button', { name: /Remove Domain selection / }),
     ).toBeVisible();
 
-    await expandedCard
-      .getByRole('button', { name: 'Return Domain table to grid' })
-      .click();
+    await expandedCard.getByRole('button', { name: 'Return Domain table to grid' }).click();
 
     const gridCard = page.getByTestId('summary-table-domain');
     await expect(gridCard).toBeVisible();
-    await expect(
-      page.getByTestId('summary-table-domain-placeholder'),
-    ).toHaveCount(0);
-    await expect(
-      gridCard.getByRole('button', { name: /Remove Domain selection / }),
-    ).toBeVisible();
+    await expect(page.getByTestId('summary-table-domain-placeholder')).toHaveCount(0);
+    await expect(gridCard.getByRole('button', { name: /Remove Domain selection / })).toBeVisible();
   });
 
   test('keeps shared question selection state correct through enlarge, update, and clear', async ({
@@ -315,9 +292,7 @@ test.describe('people-also-ask dashboard', () => {
     await expect.poll(() => readQuestionsKpi(page)).toBe(2);
     await expect(page.getByText('Selected Question:')).toHaveCount(2);
 
-    await page
-      .getByRole('button', { name: 'Enlarge PAA Questions table' })
-      .click();
+    await page.getByRole('button', { name: 'Enlarge PAA Questions table' }).click();
 
     const expandedCard = page.getByTestId('summary-table-question-expanded');
     await summaryRows(page, 'question', true).nth(2).click();
@@ -325,14 +300,10 @@ test.describe('people-also-ask dashboard', () => {
     await expect.poll(() => readQuestionsKpi(page)).toBe(3);
     await expect(page.getByText('Selected Question:')).toHaveCount(3);
 
-    await expandedCard
-      .getByRole('button', { name: 'Return PAA Questions table to grid' })
-      .click();
+    await expandedCard.getByRole('button', { name: 'Return PAA Questions table to grid' }).click();
 
     const restoredCard = page.getByTestId('summary-table-question');
-    await restoredCard
-      .getByRole('button', { name: 'Clear PAA Questions selections' })
-      .click();
+    await restoredCard.getByRole('button', { name: 'Clear PAA Questions selections' }).click();
 
     await expect.poll(() => readQuestionsKpi(page)).toBe(initialKpi);
     await expect(page.getByText('Selected Question:')).toHaveCount(0);
@@ -356,18 +327,12 @@ test.describe('people-also-ask dashboard', () => {
     // subquery narrows the KPI (and every sibling) to the same subset.
     await expect(page.getByTestId('kpi-questions')).toHaveText('3');
     await expect(summaryRows(page, 'question')).toHaveCount(3);
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'SERP Appears:> 5000',
-    );
+    await expect(page.getByTestId('active-filter-bar')).toContainText('SERP Appears:> 5000');
 
     // Removing the chip un-applies the widget filter (checkbox included).
-    await page
-      .getByRole('button', { name: /Remove filter SERP Appears/ })
-      .click();
+    await page.getByRole('button', { name: /Remove filter SERP Appears/ }).click();
     await expect(page.getByTestId('kpi-questions')).toHaveText(TOTAL_QUESTIONS);
-    await expect(
-      page.getByTestId('metric-filter-question-apply'),
-    ).not.toBeChecked();
+    await expect(page.getByTestId('metric-filter-question-apply')).not.toBeChecked();
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
@@ -387,12 +352,8 @@ test.describe('people-also-ask dashboard', () => {
     await page.getByTestId('metric-filter-phrase-apply').check();
     await expect(summaryRows(page, 'phrase')).toHaveCount(2);
     await expect(page.getByTestId('kpi-phrases')).toHaveText('2');
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'Search Vol:> 50000',
-    );
-    await page
-      .getByRole('button', { name: /Remove filter Search Vol/ })
-      .click();
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Search Vol:> 50000');
+    await page.getByRole('button', { name: /Remove filter Search Vol/ }).click();
     await expect(page.getByTestId('kpi-phrases')).toHaveText('2,681');
 
     // Domain card thresholds count(*): only reddit.com (17,902) and
@@ -401,17 +362,11 @@ test.describe('people-also-ask dashboard', () => {
     await page.getByTestId('metric-filter-domain-value').fill('10000');
     await page.getByTestId('metric-filter-domain-apply').check();
     await expect(summaryRows(page, 'domain')).toHaveCount(2);
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      '28,947 rows match',
-    );
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'Domain Answers:> 10000',
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText('28,947 rows match');
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Domain Answers:> 10000');
 
     await page.getByTestId('clear-all-filters').click();
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
   });
 
   test('the devices KPI is data-driven and participates in the filter context', async ({
@@ -446,15 +401,11 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('kpi-questions')).toHaveText('418', {
       timeout: 15_000,
     });
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'Min Domains:≥ 4',
-    );
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Min Domains:≥ 4');
 
     await page.getByTestId('clear-all-filters').click();
     await expect(page.getByTestId('kpi-questions')).toHaveText(TOTAL_QUESTIONS);
-    await expect(page.getByTestId('question-min-domains-input')).toHaveValue(
-      '',
-    );
+    await expect(page.getByTestId('question-min-domains-input')).toHaveValue('');
   });
 
   // ── Foreign clauses + topology reset (issue #181 §6) ─────────────────────────
@@ -468,39 +419,28 @@ test.describe('people-also-ask dashboard', () => {
     page,
   }) => {
     await gotoDashboard(page);
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
 
     // The callout explains why this control is different from the rest.
-    await expect(page.getByTestId('spotlight-domain-note')).toContainText(
-      'bypasses the FilterSet',
-    );
+    await expect(page.getByTestId('spotlight-domain-note')).toContainText('bypasses the FilterSet');
 
     // Spotlight reddit.com: a direct-to-Selection point clause narrows the
     // detail table to reddit.com's answer rows (17,902 — the share-loop value).
     await page.getByTestId('spotlight-domain-input').fill('reddit.com');
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      '17,902 rows match',
-      { timeout: 15_000 },
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText('17,902 rows match', {
+      timeout: 15_000,
+    });
 
     // A FOREIGN chip renders in the active-filter bar, badged SPOTLIGHT.
     const foreignChip = page.getByTestId('foreign-chip');
     await expect(foreignChip).toBeVisible();
     await expect(foreignChip).toContainText('Domain Spotlight:reddit.com');
-    await expect(foreignChip.getByTestId('chip-target')).toHaveText(
-      'SPOTLIGHT',
-    );
+    await expect(foreignChip.getByTestId('chip-target')).toHaveText('SPOTLIGHT');
 
     // Removing the foreign chip clears the WHOLE clause (publish null) — the
     // page returns to the unfiltered total and the bar disappears.
-    await foreignChip
-      .getByRole('button', { name: /Remove filter Domain Spotlight/ })
-      .click();
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await foreignChip.getByRole('button', { name: /Remove filter Domain Spotlight/ }).click();
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
@@ -526,9 +466,7 @@ test.describe('people-also-ask dashboard', () => {
     // URL params) AND the non-FilterSet spotlight clause in one call.
     await page.getByTestId('clear-all-filters').click();
     await expect(page.getByTestId('kpi-questions')).toHaveText(TOTAL_QUESTIONS);
-    await expect(page.getByTestId('question-min-domains-input')).toHaveValue(
-      '',
-    );
+    await expect(page.getByTestId('question-min-domains-input')).toHaveValue('');
     await expect(page.getByTestId('spotlight-domain-input')).toHaveValue('');
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
@@ -538,32 +476,22 @@ test.describe('people-also-ask dashboard', () => {
   }) => {
     await gotoDashboard(page);
 
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
 
     // Struct-path column: the ilike clause tests "related_phrase"."phrase".
     await page.getByTestId('detail-filter-question').fill('coleman');
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      '49,344 rows match',
-    );
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'PAA Question:coleman',
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText('49,344 rows match');
+    await expect(page.getByTestId('active-filter-bar')).toContainText('PAA Question:coleman');
 
     // Global reset prunes the TanStack Table filter state through the bridge's
     // external-clear write-back — the input empties instead of republishing.
     await page.getByTestId('clear-all-filters').click();
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
     await expect(page.getByTestId('detail-filter-question')).toHaveValue('');
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
-  test('first/last page buttons jump the detail table to its boundary pages', async ({
-    page,
-  }) => {
+  test('first/last page buttons jump the detail table to its boundary pages', async ({ page }) => {
     await gotoDashboard(page);
 
     const firstButton = page.getByRole('button', {
@@ -581,12 +509,8 @@ test.describe('people-also-ask dashboard', () => {
     // button state: right after load, the indicator can still reflect an
     // in-flight window whose page count has not caught up, and the Last
     // button jumps to the last page of whatever count it currently knows.
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
-    await expect(page.getByTestId('detail-page-indicator')).toHaveText(
-      `Page 1 of ${lastPage}`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
+    await expect(page.getByTestId('detail-page-indicator')).toHaveText(`Page 1 of ${lastPage}`);
     await expect(firstButton).toBeDisabled();
     await expect(prevButton).toBeDisabled();
     await expect(nextButton).toBeEnabled();
@@ -597,9 +521,9 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('detail-page-indicator')).toHaveText(
       `Page ${lastPage} of ${lastPage}`,
     );
-    await expect(
-      page.getByTestId('detail-table-body').locator('tr'),
-    ).toHaveCount(TOTAL_ROWS_NUM % 20);
+    await expect(page.getByTestId('detail-table-body').locator('tr')).toHaveCount(
+      TOTAL_ROWS_NUM % 20,
+    );
     await expect(nextButton).toBeDisabled();
     await expect(lastButton).toBeDisabled();
     await expect(firstButton).toBeEnabled();
@@ -607,19 +531,13 @@ test.describe('people-also-ask dashboard', () => {
 
     await firstButton.click();
 
-    await expect(page.getByTestId('detail-page-indicator')).toHaveText(
-      `Page 1 of ${lastPage}`,
-    );
-    await expect(
-      page.getByTestId('detail-table-body').locator('tr'),
-    ).toHaveCount(20);
+    await expect(page.getByTestId('detail-page-indicator')).toHaveText(`Page 1 of ${lastPage}`);
+    await expect(page.getByTestId('detail-table-body').locator('tr')).toHaveCount(20);
     await expect(firstButton).toBeDisabled();
     await expect(prevButton).toBeDisabled();
   });
 
-  test('facet dropdowns cascade counts and publish into the page', async ({
-    page,
-  }) => {
+  test('facet dropdowns cascade counts and publish into the page', async ({ page }) => {
     await gotoDashboard(page);
 
     await page.getByTestId('filter-domain').locator('button').first().click();
@@ -636,17 +554,11 @@ test.describe('people-also-ask dashboard', () => {
 
     await reddit.click();
     // The facet's count equals the narrowed detail-table total exactly.
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${count} rows match`,
-    );
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'Domain:reddit.com',
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${count} rows match`);
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Domain:reddit.com');
 
     await page.getByTestId('clear-all-filters').click();
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
   });
 
   // ── Builder view (issue #180 / #181) ─────────────────────────────────────────
@@ -675,10 +587,7 @@ test.describe('people-also-ask dashboard', () => {
   }
 
   /** Opens (or re-opens) a materialized field's popover by clicking its button. */
-  async function openFilterPopover(
-    page: Page,
-    fieldId: string,
-  ): Promise<Locator> {
+  async function openFilterPopover(page: Page, fieldId: string): Promise<Locator> {
     await page.getByTestId(`filter-button-${fieldId}`).click();
     const popover = page.getByTestId(`filter-popover-${fieldId}`);
     await expect(popover).toBeVisible();
@@ -712,9 +621,7 @@ test.describe('people-also-ask dashboard', () => {
     page,
   }) => {
     await gotoDashboard(page);
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
 
     // Builder → set Domain (condition `in`) to reddit.com.
     await openBuilder(page);
@@ -729,8 +636,7 @@ test.describe('people-also-ask dashboard', () => {
     await expect(bar).toContainText('reddit.com');
     await expect
       .poll(async () => {
-        const text =
-          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        const text = (await page.getByTestId('detail-total-rows').textContent()) ?? '';
         return Number(text.replaceAll(/[^\d]/g, ''));
       })
       .toBeLessThan(203_556);
@@ -739,9 +645,9 @@ test.describe('people-also-ask dashboard', () => {
     // shared spec, so its trigger shows reddit.com immediately (not a stale
     // "All") — the stale-label fix.
     await page.getByTestId('filter-view-classic').click();
-    await expect(
-      page.getByTestId('filter-domain').locator('button').first(),
-    ).toContainText('reddit.com');
+    await expect(page.getByTestId('filter-domain').locator('button').first()).toContainText(
+      'reddit.com',
+    );
 
     // The reverse direction: back in the Builder, the shared spec re-hydrates
     // the field as a closed button; opening its popover shows the reddit.com
@@ -749,9 +655,7 @@ test.describe('people-also-ask dashboard', () => {
     await page.getByTestId('filter-view-builder').click();
     const rebuilt = await openFilterPopover(page, 'domain');
     await expect(
-      rebuilt
-        .getByTestId('filter-block-domain-option')
-        .filter({ hasText: /reddit\.com \(/ }),
+      rebuilt.getByTestId('filter-block-domain-option').filter({ hasText: /reddit\.com \(/ }),
     ).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
   });
 
@@ -771,21 +675,15 @@ test.describe('people-also-ask dashboard', () => {
     // keep every other domain (e.g. youtube.com) pickable so a second value can
     // be added.
     await option(/^reddit\.com \(/).click();
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'reddit.com',
-    );
+    await expect(page.getByTestId('active-filter-bar')).toContainText('reddit.com');
     await expect(option(/^youtube\.com \(/)).toBeVisible({ timeout: 15_000 });
 
     // And a second value can actually be selected.
     await option(/^youtube\.com \(/).click();
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'youtube.com',
-    );
+    await expect(page.getByTestId('active-filter-bar')).toContainText('youtube.com');
   });
 
-  test('builder: (b) a Phrase text filter hydrates the Classic Phrase input', async ({
-    page,
-  }) => {
+  test('builder: (b) a Phrase text filter hydrates the Classic Phrase input', async ({ page }) => {
     await gotoDashboard(page);
     await openBuilder(page);
     const block = await addFilterField(page, 'phrase');
@@ -809,9 +707,7 @@ test.describe('people-also-ask dashboard', () => {
     await block
       .getByTestId('filter-block-search-volume-placement')
       .selectOption({ label: 'per keyword (HAVING)' });
-    await block
-      .getByTestId('filter-block-search-volume-operator')
-      .selectOption('gt');
+    await block.getByTestId('filter-block-search-volume-operator').selectOption('gt');
     await block.getByTestId('filter-block-search-volume-value').fill('50000');
     await expect(page.getByTestId('kpi-phrases')).toHaveText('2');
     const bar = page.getByTestId('active-filter-bar');
@@ -822,18 +718,14 @@ test.describe('people-also-ask dashboard', () => {
     await page.getByTestId('filter-view-classic').click();
     await expect(page.getByTestId('metric-filter-phrase-apply')).toBeChecked();
     await expect(page.getByTestId('metric-filter-phrase-op')).toHaveValue('gt');
-    await expect(page.getByTestId('metric-filter-phrase-value')).toHaveValue(
-      '50000',
-    );
+    await expect(page.getByTestId('metric-filter-phrase-value')).toHaveValue('50000');
   });
 
   test('builder: (d) the Domain list operator is changeable — not_in differs from in', async ({
     page,
   }) => {
     await gotoDashboard(page);
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
 
     await openBuilder(page);
     const block = await addFilterField(page, 'domain');
@@ -849,31 +741,25 @@ test.describe('people-also-ask dashboard', () => {
       throw new Error(`facet option label has no count: ${label}`);
     }
     await reddit.click();
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${inCount} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${inCount} rows match`);
 
     // Flip the operator to `not_in`: the complement (all rows NOT on reddit.com)
     // — a strictly different (larger) result than `in`.
-    await block
-      .getByTestId('filter-block-domain-operator')
-      .selectOption('not_in');
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'reddit.com',
+    await block.getByTestId('filter-block-domain-operator').selectOption('not_in');
+    await expect(page.getByTestId('active-filter-bar')).toContainText('reddit.com');
+    await expect(page.getByTestId('active-filter-bar').getByTestId('chip-operator')).toHaveText(
+      'not_in',
     );
-    await expect(
-      page.getByTestId('active-filter-bar').getByTestId('chip-operator'),
-    ).toHaveText('not_in');
     // `not_in reddit.com` is the complement: a strictly larger, and different,
     // result than `in reddit.com` (and still a narrowing of the full dataset).
     // The settled complement is the only value strictly between the `in` subset
     // and the unfiltered total — wait for it to hold there, never the transient
     // full-total the re-attach effect flashes.
     const inRows = Number(inCount.replaceAll(',', ''));
-    const notInRows = await waitForStableCount(
-      page.getByTestId('detail-total-rows'),
-      { greaterThan: inRows, lessThan: TOTAL_ROWS_NUM },
-    );
+    const notInRows = await waitForStableCount(page.getByTestId('detail-total-rows'), {
+      greaterThan: inRows,
+      lessThan: TOTAL_ROWS_NUM,
+    });
     expect(notInRows).toBeGreaterThan(inRows);
     expect(notInRows).toBeLessThan(TOTAL_ROWS_NUM);
   });
@@ -885,9 +771,7 @@ test.describe('people-also-ask dashboard', () => {
     await openBuilder(page);
     const block = await addFilterField(page, 'requested-date');
     // A single-placement field still renders a placement control (disabled).
-    await expect(
-      block.getByTestId('filter-block-requested-date-placement'),
-    ).toBeDisabled();
+    await expect(block.getByTestId('filter-block-requested-date-placement')).toBeDisabled();
     // The interval kind has no operator axis → a disabled static "in range".
     const operator = block.getByTestId('filter-block-requested-date-operator');
     await expect(operator).toBeDisabled();
@@ -901,9 +785,7 @@ test.describe('people-also-ask dashboard', () => {
     await openBuilder(page);
     const block = await addFilterField(page, 'phrase');
     // is_empty is arity 'none' → no value input, spec commits on operator pick.
-    await block
-      .getByTestId('filter-block-phrase-operator')
-      .selectOption('is_empty');
+    await block.getByTestId('filter-block-phrase-operator').selectOption('is_empty');
     await expect(block.getByTestId('filter-block-phrase-value')).toHaveCount(0);
     await expect(page.getByTestId('active-filter-bar')).toContainText('Phrase');
 
@@ -913,9 +795,7 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('filter-phrase-builder-hint')).toBeVisible();
   });
 
-  test('builder: (g) a chip shows the operator and the WHERE/HAVING badge', async ({
-    page,
-  }) => {
+  test('builder: (g) a chip shows the operator and the WHERE/HAVING badge', async ({ page }) => {
     await gotoDashboard(page);
     await openBuilder(page);
     const block = await addFilterField(page, 'domain');
@@ -935,9 +815,7 @@ test.describe('people-also-ask dashboard', () => {
     page,
   }) => {
     await gotoDashboard(page);
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
 
     // Builder → Domain = not_in [reddit.com].
     await openBuilder(page);
@@ -950,13 +828,9 @@ test.describe('people-also-ask dashboard', () => {
     // capture it so we can wait for the not_in complement, which is strictly
     // larger, rather than racing the query that replaces the `in` count.
     const redditLabel = (await reddit.textContent()) ?? '';
-    const inRows = Number(
-      (/\(([\d,]+)\)/.exec(redditLabel)?.[1] ?? '').replaceAll(',', ''),
-    );
+    const inRows = Number((/\(([\d,]+)\)/.exec(redditLabel)?.[1] ?? '').replaceAll(',', ''));
     await reddit.click();
-    await block
-      .getByTestId('filter-block-domain-operator')
-      .selectOption('not_in');
+    await block.getByTestId('filter-block-domain-operator').selectOption('not_in');
 
     const bar = page.getByTestId('active-filter-bar');
     await expect(bar.getByTestId('chip-operator')).toHaveText('not_in');
@@ -966,10 +840,10 @@ test.describe('people-also-ask dashboard', () => {
     // flashes the unfiltered total in between — both a bare read and a
     // "greater than the `in` subset" poll would race those. The complement is
     // the only value strictly between the `in` subset and the unfiltered total.
-    const complementRows = await waitForStableCount(
-      page.getByTestId('detail-total-rows'),
-      { greaterThan: inRows, lessThan: TOTAL_ROWS_NUM },
-    );
+    const complementRows = await waitForStableCount(page.getByTestId('detail-total-rows'), {
+      greaterThan: inRows,
+      lessThan: TOTAL_ROWS_NUM,
+    });
     expect(complementRows).toBeLessThan(TOTAL_ROWS_NUM);
 
     // Classic → merely OPEN the Domain dropdown. The re-attach effect must NOT
@@ -988,8 +862,7 @@ test.describe('people-also-ask dashboard', () => {
     await expect(bar.getByTestId('chip-operator')).toHaveText('not_in');
     await expect
       .poll(async () => {
-        const text =
-          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        const text = (await page.getByTestId('detail-total-rows').textContent()) ?? '';
         return Number(text.replaceAll(/[^\d]/g, ''));
       })
       .toBe(complementRows);
@@ -1013,9 +886,7 @@ test.describe('people-also-ask dashboard', () => {
     // republish lands: no WHERE chip appears, only the deliberate HAVING one
     // once the user re-enters a value.
     const bar = page.getByTestId('active-filter-bar');
-    await block
-      .getByTestId('filter-block-search-volume-operator')
-      .selectOption('gt');
+    await block.getByTestId('filter-block-search-volume-operator').selectOption('gt');
     await block.getByTestId('filter-block-search-volume-value').fill('50000');
     await expect(page.getByTestId('kpi-phrases')).toHaveText('2');
     // Exactly one Search-Volume chip, and it is the HAVING one.
@@ -1042,12 +913,8 @@ test.describe('people-also-ask dashboard', () => {
     // Builder input must have cleared (stale-state fix). Changing the operator
     // must NOT republish the deleted filter from stale text.
     await openFilterPopover(page, 'phrase');
-    await expect(block.getByTestId('filter-block-phrase-value')).toHaveValue(
-      '',
-    );
-    await block
-      .getByTestId('filter-block-phrase-operator')
-      .selectOption('starts_with');
+    await expect(block.getByTestId('filter-block-phrase-value')).toHaveValue('');
+    await block.getByTestId('filter-block-phrase-operator').selectOption('starts_with');
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
@@ -1057,13 +924,9 @@ test.describe('people-also-ask dashboard', () => {
   // Volume WHERE spec, and legacy param aliases. Each test drives the real
   // hydration path (a fresh navigation reads location.search on set creation).
 
-  test('builder: (k) a Domain not_in survives the URL share-loop', async ({
-    page,
-  }) => {
+  test('builder: (k) a Domain not_in survives the URL share-loop', async ({ page }) => {
     await gotoDashboard(page);
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
 
     // Author Domain = not_in [reddit.com] in the Builder.
     await openBuilder(page);
@@ -1076,13 +939,9 @@ test.describe('people-also-ask dashboard', () => {
     // the strictly-larger not_in complement rather than racing the query that
     // replaces the `in` count.
     const redditLabel = (await reddit.textContent()) ?? '';
-    const inRows = Number(
-      (/\(([\d,]+)\)/.exec(redditLabel)?.[1] ?? '').replaceAll(',', ''),
-    );
+    const inRows = Number((/\(([\d,]+)\)/.exec(redditLabel)?.[1] ?? '').replaceAll(',', ''));
     await reddit.click();
-    await block
-      .getByTestId('filter-block-domain-operator')
-      .selectOption('not_in');
+    await block.getByTestId('filter-block-domain-operator').selectOption('not_in');
 
     const bar = page.getByTestId('active-filter-bar');
     await expect(bar.getByTestId('chip-operator')).toHaveText('not_in');
@@ -1093,18 +952,16 @@ test.describe('people-also-ask dashboard', () => {
     // behind the detail count, so wait for it to hold too: it is the COMPLEMENT
     // (fewer than the unfiltered total) the shared link must reproduce exactly,
     // never the transient `in` count a bare snapshot here would capture.
-    const complementRows = await waitForStableCount(
-      page.getByTestId('detail-total-rows'),
-      { greaterThan: inRows, lessThan: TOTAL_ROWS_NUM },
-    );
+    const complementRows = await waitForStableCount(page.getByTestId('detail-total-rows'), {
+      greaterThan: inRows,
+      lessThan: TOTAL_ROWS_NUM,
+    });
     await waitForStableCount(page.getByTestId('kpi-questions'), {
       greaterThan: 0,
       lessThan: TOTAL_QUESTIONS_NUM,
     });
-    const questionsText =
-      (await page.getByTestId('kpi-questions').textContent()) ?? '';
-    const complementText =
-      (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+    const questionsText = (await page.getByTestId('kpi-questions').textContent()) ?? '';
+    const complementText = (await page.getByTestId('detail-total-rows').textContent()) ?? '';
 
     // The URL must carry the non-default operator (the `op~` envelope), not a
     // bare list that would silently decode back to `in`.
@@ -1118,12 +975,10 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('kpi-questions')).toHaveText(questionsText, {
       timeout: 90_000,
     });
-    await expect(
-      page.getByTestId('active-filter-bar').getByTestId('chip-operator'),
-    ).toHaveText('not_in');
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      complementText,
+    await expect(page.getByTestId('active-filter-bar').getByTestId('chip-operator')).toHaveText(
+      'not_in',
     );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(complementText);
     // Prove the filter is genuinely active: the complement KPI is not the
     // unfiltered total, and the row count is below the full dataset.
     expect(questionsText).not.toBe(TOTAL_QUESTIONS);
@@ -1138,22 +993,19 @@ test.describe('people-also-ask dashboard', () => {
     // Author Domain is_empty (arity none → no value list; commits on operator).
     await openBuilder(page);
     const block = await addFilterField(page, 'domain');
-    await expect(block.getByTestId('filter-block-domain-operator')).toBeVisible(
-      { timeout: 15_000 },
+    await expect(block.getByTestId('filter-block-domain-operator')).toBeVisible({
+      timeout: 15_000,
+    });
+    await block.getByTestId('filter-block-domain-operator').selectOption('is_empty');
+    await expect(page.getByTestId('active-filter-bar').getByTestId('chip-operator')).toHaveText(
+      'is_empty',
     );
-    await block
-      .getByTestId('filter-block-domain-operator')
-      .selectOption('is_empty');
-    await expect(
-      page.getByTestId('active-filter-bar').getByTestId('chip-operator'),
-    ).toHaveText('is_empty');
     // The is_empty filter selects the subset of PAA rows whose domain is empty,
     // so the questions KPI is a proper subset of the total, not zero. Poll for
     // the settled value (below the total), then capture it; the shared link must
     // reproduce exactly this.
     await expect.poll(() => readQuestionsKpi(page)).toBeLessThan(4_779);
-    const questionsText =
-      (await page.getByTestId('kpi-questions').textContent()) ?? '';
+    const questionsText = (await page.getByTestId('kpi-questions').textContent()) ?? '';
     expect(questionsText).not.toBe(TOTAL_QUESTIONS);
 
     // The URL carries the valueless envelope (marker, empty value tail); `~`
@@ -1167,9 +1019,9 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('kpi-questions')).toHaveText(questionsText, {
       timeout: 90_000,
     });
-    await expect(
-      page.getByTestId('active-filter-bar').getByTestId('chip-operator'),
-    ).toHaveText('is_empty');
+    await expect(page.getByTestId('active-filter-bar').getByTestId('chip-operator')).toHaveText(
+      'is_empty',
+    );
   });
 
   test('builder: (m) a per-row Search Volume WHERE filter survives the URL share-loop', async ({
@@ -1184,9 +1036,7 @@ test.describe('people-also-ask dashboard', () => {
     await block
       .getByTestId('filter-block-search-volume-placement')
       .selectOption({ label: 'per row (WHERE)' });
-    await block
-      .getByTestId('filter-block-search-volume-operator')
-      .selectOption('gt');
+    await block.getByTestId('filter-block-search-volume-operator').selectOption('gt');
     await block.getByTestId('filter-block-search-volume-value').fill('50000');
 
     const bar = page.getByTestId('active-filter-bar');
@@ -1197,14 +1047,12 @@ test.describe('people-also-ask dashboard', () => {
     const totalRows = Number(TOTAL_ROWS.replaceAll(/[^\d]/g, ''));
     await expect
       .poll(async () => {
-        const text =
-          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        const text = (await page.getByTestId('detail-total-rows').textContent()) ?? '';
         const rows = Number(text.replaceAll(/[^\d]/g, ''));
         return rows > 0 && rows < totalRows;
       })
       .toBe(true);
-    const filteredText =
-      (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+    const filteredText = (await page.getByTestId('detail-total-rows').textContent()) ?? '';
 
     // The URL must carry the built:search-volume param (write() previously
     // skipped this unknown id, dropping the filter on reload).
@@ -1216,9 +1064,7 @@ test.describe('people-also-ask dashboard', () => {
       timeout: 90_000,
     });
     await expect(bar.getByTestId('chip-target').first()).toHaveText('WHERE');
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      filteredText,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(filteredText);
   });
 
   test('builder: (n) a legacy ?f.text:desc= link hydrates the description detail filter', async ({
@@ -1232,22 +1078,17 @@ test.describe('people-also-ask dashboard', () => {
     });
 
     // A description filter is active (chip present) and narrows the result.
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'Answer Description:coleman',
-    );
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Answer Description:coleman');
     await expect
       .poll(async () => {
-        const text =
-          (await page.getByTestId('detail-total-rows').textContent()) ?? '';
+        const text = (await page.getByTestId('detail-total-rows').textContent()) ?? '';
         return Number(text.replaceAll(/[^\d]/g, ''));
       })
       .toBeLessThan(203_556);
 
     // The write side re-emits it under the canonical param, dropping the legacy
     // key — the detail input reflects the hydrated value.
-    await expect(page.getByTestId('detail-filter-description')).toHaveValue(
-      'coleman',
-    );
+    await expect(page.getByTestId('detail-filter-description')).toHaveValue('coleman');
   });
 
   test('builder: (o) a metric HAVING chip still reads HAVING after a URL reload', async ({
@@ -1303,9 +1144,7 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('filter-builder-add-field')).toHaveValue('');
     await expect(confirm).toBeDisabled();
     await expect(
-      page
-        .getByTestId('filter-builder-add-field')
-        .locator('option[value="domain"]'),
+      page.getByTestId('filter-builder-add-field').locator('option[value="domain"]'),
     ).toHaveCount(0);
 
     // Escape closes the popover; the button remains.
@@ -1328,17 +1167,13 @@ test.describe('people-also-ask dashboard', () => {
       .filter({ hasText: /^reddit\.com \(/ });
     await expect(reddit).toBeVisible({ timeout: 15_000 });
     await reddit.click();
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'reddit.com',
-    );
+    await expect(page.getByTestId('active-filter-bar')).toContainText('reddit.com');
     await block.getByTestId('filter-block-domain-remove').click();
     await expect(page.getByTestId('filter-button-domain')).toHaveCount(0);
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
   });
 
-  test('every widget exposes the SQL it last executed via its header button', async ({
-    page,
-  }) => {
+  test('every widget exposes the SQL it last executed via its header button', async ({ page }) => {
     await gotoDashboard(page);
 
     // 4 summary tables + the detail table each expose their last-executed SQL
@@ -1371,10 +1206,7 @@ test.describe('people-also-ask dashboard', () => {
    */
   async function brushVolumeRange(page: Page): Promise<number> {
     await page.getByTestId('volume-brush-toggle').click();
-    await expect(page.getByTestId('volume-brush-panel')).toHaveAttribute(
-      'data-expanded',
-      'true',
-    );
+    await expect(page.getByTestId('volume-brush-panel')).toHaveAttribute('data-expanded', 'true');
     const svg = page.locator('[data-testid="volume-brush-plot"] svg');
     // Settle the plot before capturing its box: on expand it re-renders (its
     // mark query may still be in flight when the page is already filtered) and
@@ -1405,9 +1237,7 @@ test.describe('people-also-ask dashboard', () => {
     // The drag published a clause: the range strip leaves "Full range". This
     // signals the brush landed even when the page is already filtered (so the
     // questions KPI is below the total before brushing).
-    await expect(page.getByTestId('volume-brush-range')).not.toContainText(
-      'Full range',
-    );
+    await expect(page.getByTestId('volume-brush-range')).not.toContainText('Full range');
     // The brushed range narrows the page: the questions KPI settles above zero.
     // Return the SETTLED value (two agreeing `success` reads) so callers that
     // pin an exact post-interaction count never capture a mid-drag transient.
@@ -1424,9 +1254,7 @@ test.describe('people-also-ask dashboard', () => {
     await expect(panel).toHaveAttribute('data-expanded', 'false');
     // The compact panel still renders its histogram bars.
     await expect
-      .poll(async () =>
-        page.locator('[data-testid="volume-brush-plot"] rect').count(),
-      )
+      .poll(async () => page.locator('[data-testid="volume-brush-plot"] rect').count())
       .toBeGreaterThan(5);
 
     await page.getByTestId('volume-brush-toggle').click();
@@ -1440,9 +1268,7 @@ test.describe('people-also-ask dashboard', () => {
     page,
   }) => {
     await gotoDashboard(page);
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
 
     await brushVolumeRange(page);
 
@@ -1457,31 +1283,19 @@ test.describe('people-also-ask dashboard', () => {
     await expect(foreignChip).toContainText('Search Volume:');
     await expect(foreignChip.getByTestId('chip-target')).toHaveText('BRUSH');
     // The panel's summary strip reflects the committed range (not "Full range").
-    await expect(page.getByTestId('volume-brush-range')).not.toContainText(
-      'Full range',
-    );
+    await expect(page.getByTestId('volume-brush-range')).not.toContainText('Full range');
 
     // Removing the chip clears the whole clause — the page returns to total.
-    await foreignChip
-      .getByRole('button', { name: /Remove filter Search Volume/ })
-      .click();
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      `${TOTAL_ROWS} rows match`,
-    );
+    await foreignChip.getByRole('button', { name: /Remove filter Search Volume/ }).click();
+    await expect(page.getByTestId('detail-total-rows')).toHaveText(`${TOTAL_ROWS} rows match`);
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
-    await expect(page.getByTestId('volume-brush-range')).toContainText(
-      'Full range',
-    );
+    await expect(page.getByTestId('volume-brush-range')).toContainText('Full range');
     // The external clear also resets the interactor: the brush overlay is no
     // longer painted (it must not linger until the next click on the chart).
-    await expect(
-      page.locator('[data-testid="volume-brush-plot"] svg rect.selection'),
-    ).toBeHidden();
+    await expect(page.locator('[data-testid="volume-brush-plot"] svg rect.selection')).toBeHidden();
   });
 
-  test('the brushed range and its overlay survive an expand/collapse toggle', async ({
-    page,
-  }) => {
+  test('the brushed range and its overlay survive an expand/collapse toggle', async ({ page }) => {
     await gotoDashboard(page);
 
     // Brush the high-volume tail in the expanded plot, capturing the SETTLED
@@ -1491,9 +1305,7 @@ test.describe('people-also-ask dashboard', () => {
     expect(brushedQuestions).toBeLessThan(TOTAL_QUESTIONS_NUM);
 
     // The D3 brush overlay (rect.selection) is painted with a non-zero width.
-    const brushRect = page.locator(
-      '[data-testid="volume-brush-plot"] svg rect.selection',
-    );
+    const brushRect = page.locator('[data-testid="volume-brush-plot"] svg rect.selection');
     const widthBefore = await brushRect.evaluate((rect) =>
       Number((rect as SVGRectElement).getAttribute('width')),
     );
@@ -1502,19 +1314,14 @@ test.describe('people-also-ask dashboard', () => {
     // Collapse the panel — the plot is resized in place, not remounted, so the
     // interval interactor and its overlay survive.
     await page.getByTestId('volume-brush-toggle').click();
-    await expect(page.getByTestId('volume-brush-panel')).toHaveAttribute(
-      'data-expanded',
-      'false',
-    );
+    await expect(page.getByTestId('volume-brush-panel')).toHaveAttribute('data-expanded', 'false');
 
     // The brush rectangle is still visible with a non-zero width in the
     // re-rendered (compact) plot.
     await expect(brushRect).toBeVisible();
     await expect
       .poll(async () =>
-        brushRect.evaluate((rect) =>
-          Number((rect as SVGRectElement).getAttribute('width')),
-        ),
+        brushRect.evaluate((rect) => Number((rect as SVGRectElement).getAttribute('width'))),
       )
       .toBeGreaterThan(0);
 
@@ -1523,25 +1330,18 @@ test.describe('people-also-ask dashboard', () => {
     await expect(page.getByTestId('kpi-questions')).toHaveText(
       brushedQuestions.toLocaleString('en-US'),
     );
-    await expect(page.getByTestId('volume-brush-range')).not.toContainText(
-      'Full range',
-    );
+    await expect(page.getByTestId('volume-brush-range')).not.toContainText('Full range');
 
     // The restored brush is still interactive: expanding again keeps it, and
     // the foreign chip stays live and removable.
     await page.getByTestId('volume-brush-toggle').click();
-    await expect(page.getByTestId('volume-brush-panel')).toHaveAttribute(
-      'data-expanded',
-      'true',
-    );
+    await expect(page.getByTestId('volume-brush-panel')).toHaveAttribute('data-expanded', 'true');
     await expect(brushRect).toBeVisible();
     const foreignChip = page.getByTestId('foreign-chip');
     await expect(foreignChip).toContainText('Search Volume:');
   });
 
-  test('Clear All clears the volume brush alongside a FilterSet spec', async ({
-    page,
-  }) => {
+  test('Clear All clears the volume brush alongside a FilterSet spec', async ({ page }) => {
     await gotoDashboard(page);
 
     // A FilterSet spec (min-domains → 418 questions)…
@@ -1554,23 +1354,15 @@ test.describe('people-also-ask dashboard', () => {
     await brushVolumeRange(page);
     const bar = page.getByTestId('active-filter-bar');
     await expect(bar).toContainText('Min Domains:≥ 4');
-    await expect(bar.getByTestId('foreign-chip')).toContainText(
-      'Search Volume:',
-    );
+    await expect(bar.getByTestId('foreign-chip')).toContainText('Search Volume:');
 
     // Clear All (topology.reset) clears BOTH in one call.
     await page.getByTestId('clear-all-filters').click();
     await expect(page.getByTestId('kpi-questions')).toHaveText(TOTAL_QUESTIONS);
-    await expect(page.getByTestId('question-min-domains-input')).toHaveValue(
-      '',
-    );
+    await expect(page.getByTestId('question-min-domains-input')).toHaveValue('');
     await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
-    await expect(page.getByTestId('volume-brush-range')).toContainText(
-      'Full range',
-    );
+    await expect(page.getByTestId('volume-brush-range')).toContainText('Full range');
     // Clear All resets the interactor too — no stale brush overlay.
-    await expect(
-      page.locator('[data-testid="volume-brush-plot"] svg rect.selection'),
-    ).toBeHidden();
+    await expect(page.locator('[data-testid="volume-brush-plot"] svg rect.selection')).toBeHidden();
   });
 });

@@ -1,3 +1,6 @@
+import { useFilterSetChips, useMosaicActiveClauses } from '@nozzleio/react-mosaic';
+import type { FilterSet, FilterSetChip, Topology } from '@nozzleio/react-mosaic';
+import { clauseNone } from '@uwdata/mosaic-core';
 /**
  * Removable chips for every active filter on the page. Chips are the UNION of:
  *
@@ -21,16 +24,6 @@
  * `filter-chip-range_select`); Clear All is `clear-all-filters`.
  */
 import { useMemo } from 'react';
-import { clauseNone } from '@uwdata/mosaic-core';
-import {
-  useFilterSetChips,
-  useMosaicActiveClauses,
-} from '@nozzleio/react-mosaic';
-import type {
-  FilterSet,
-  FilterSetChip,
-  Topology,
-} from '@nozzleio/react-mosaic';
 
 interface ActiveFilterChip {
   key: string;
@@ -118,18 +111,16 @@ export function ActiveFilterBar(props: ActiveFilterBarProps) {
   const foreignClauses = useMosaicActiveClauses();
 
   const chips = useMemo<Array<ActiveFilterChip>>(() => {
-    const next: Array<ActiveFilterChip> = filterSetChips.map(
-      (chip: FilterSetChip) => ({
-        key: `fs:${chip.key}`,
-        testKey: sanitize(chip.key),
-        label: chip.label,
-        value: chip.formattedValue,
-        target: chip.target,
-        operator: chip.operator,
-        foreign: false,
-        remove: () => filterSet.removeChip(chip),
-      }),
-    );
+    const next: Array<ActiveFilterChip> = filterSetChips.map((chip: FilterSetChip) => ({
+      key: `fs:${chip.key}`,
+      testKey: sanitize(chip.key),
+      label: chip.label,
+      value: chip.formattedValue,
+      target: chip.target,
+      operator: chip.operator,
+      foreign: false,
+      remove: () => filterSet.removeChip(chip),
+    }));
 
     for (const active of foreignClauses) {
       const column = readColumn(active.meta);
@@ -160,13 +151,8 @@ export function ActiveFilterBar(props: ActiveFilterBarProps) {
     .map((entry) => entry.chip);
 
   return (
-    <div
-      data-testid="active-filter-bar"
-      className="flex flex-wrap items-center gap-1.5"
-    >
-      <div className="mr-1 text-[11px] font-medium tracking-wide text-faint uppercase">
-        Active
-      </div>
+    <div data-testid="active-filter-bar" className="flex flex-wrap items-center gap-1.5">
+      <div className="mr-1 text-[11px] font-medium tracking-wide text-faint uppercase">Active</div>
 
       {ordered.map((chip) => (
         <div
@@ -194,10 +180,7 @@ export function ActiveFilterBar(props: ActiveFilterBarProps) {
           ) : null}
           <span className="font-medium text-muted">{chip.label}</span>
           <span className="text-faint">=</span>
-          <span
-            className="max-w-[150px] truncate font-medium"
-            title={chip.value}
-          >
+          <span className="max-w-[150px] truncate font-medium" title={chip.value}>
             {chip.value}
           </span>
           <button

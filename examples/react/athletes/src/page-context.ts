@@ -1,6 +1,6 @@
-import { Selection } from '@uwdata/mosaic-core';
 import { createFilterSet } from '@nozzleio/react-mosaic';
 import type { TopologyConfig } from '@nozzleio/react-mosaic';
+import { Selection } from '@uwdata/mosaic-core';
 
 export const tableName = 'athletes';
 

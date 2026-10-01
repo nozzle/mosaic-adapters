@@ -1,3 +1,5 @@
+import { useFilterSetState } from '@nozzleio/react-mosaic';
+import type { FilterSpec } from '@nozzleio/react-mosaic';
 /**
  * Metric-threshold widget filter — every summary card gets one, on its own
  * computed metric column.
@@ -11,11 +13,10 @@
  * (debounced) and clearing the checkbox `remove`s the spec.
  */
 import { useEffect, useState } from 'react';
-import { useFilterSetState } from '@nozzleio/react-mosaic';
+
 import { metricChipLabels } from '../page-context';
-import { usePageFilterSet } from '../topology';
-import type { FilterSpec } from '@nozzleio/react-mosaic';
 import type { SummaryTableId } from '../page-context';
+import { usePageFilterSet } from '../topology';
 
 export interface MetricThresholdConfig {
   id: SummaryTableId;
@@ -79,10 +80,7 @@ export function useMetricThresholdFilter(options: {
     nextValue: number | null,
   ): void => {
     const active =
-      nextApplied &&
-      nextValue !== null &&
-      Number.isFinite(nextValue) &&
-      nextValue >= 0;
+      nextApplied && nextValue !== null && Number.isFinite(nextValue) && nextValue >= 0;
     if (!active) {
       filterSet.remove(specId(config.id));
       return;
@@ -114,9 +112,7 @@ export function useMetricThresholdFilter(options: {
   };
 }
 
-export function MetricThresholdControls(props: {
-  state: MetricThresholdFilterState;
-}) {
+export function MetricThresholdControls(props: { state: MetricThresholdFilterState }) {
   const { state } = props;
   const { id } = state.config;
   return (
@@ -139,9 +135,7 @@ export function MetricThresholdControls(props: {
         aria-label={`${metricChipLabels[id]} comparison`}
         className="h-7 rounded border border-slate-200 bg-white px-1 text-xs"
         value={state.comparison}
-        onChange={(event) =>
-          state.setComparison(event.target.value as MetricComparison)
-        }
+        onChange={(event) => state.setComparison(event.target.value as MetricComparison)}
       >
         <option value="gt">&gt;</option>
         <option value="lt">&lt;</option>

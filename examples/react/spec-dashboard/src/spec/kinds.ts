@@ -1,3 +1,10 @@
+import {
+  SqlIdentifier,
+  buildSubqueryClauseParts,
+  builtinFilterKinds,
+  createStructAccess,
+} from '@nozzleio/react-mosaic';
+import type { FilterKind, FilterKindArgs, OperatorDescriptor } from '@nozzleio/react-mosaic';
 /**
  * The FilterKind registry, built from the spec. The app ships GENERIC behavior
  * factories (keyed by behavior name); the spec's `filter_kinds:` section
@@ -17,17 +24,7 @@
  * set rebuilds the subquery on context changes.
  */
 import * as mSql from '@uwdata/mosaic-sql';
-import {
-  SqlIdentifier,
-  buildSubqueryClauseParts,
-  builtinFilterKinds,
-  createStructAccess,
-} from '@nozzleio/react-mosaic';
-import type {
-  FilterKind,
-  FilterKindArgs,
-  OperatorDescriptor,
-} from '@nozzleio/react-mosaic';
+
 import type {
   AggregateThresholdConfig,
   DashboardSpec,
@@ -76,9 +73,7 @@ function isThresholdOperator(value: unknown): value is ThresholdOperator {
  * `SqlIdentifier` + `createStructAccess`. The kind advertises exactly the
  * configured operators; `emit` is the source of truth.
  */
-export function aggregateThresholdBehavior(
-  config: AggregateThresholdConfig,
-): FilterKind {
+export function aggregateThresholdBehavior(config: AggregateThresholdConfig): FilterKind {
   const allowed = new Set<ThresholdOperator>(config.operators);
   const operators: ReadonlyArray<OperatorDescriptor> = config.operators.map(
     (id) => OPERATOR_META[id],
@@ -136,9 +131,7 @@ export function aggregateThresholdBehavior(
       ];
     },
     formatValue: (spec) => {
-      const glyph = isThresholdOperator(spec.operator)
-        ? OPERATOR_GLYPH[spec.operator]
-        : '?';
+      const glyph = isThresholdOperator(spec.operator) ? OPERATOR_GLYPH[spec.operator] : '?';
       return `${glyph} ${String(spec.value)}`;
     },
   };
@@ -150,17 +143,12 @@ export function aggregateThresholdBehavior(
 export type BehaviorFactory = (config: AggregateThresholdConfig) => FilterKind;
 
 /** Behavior factories, keyed by the `behavior` name the spec references. */
-export const behaviorRegistry: Record<
-  FilterKindDef['behavior'],
-  BehaviorFactory
-> = {
+export const behaviorRegistry: Record<FilterKindDef['behavior'], BehaviorFactory> = {
   'aggregate-threshold': aggregateThresholdBehavior,
 };
 
 /** True when a behavior name has a registered factory. */
-export function isKnownBehavior(
-  name: string,
-): name is FilterKindDef['behavior'] {
+export function isKnownBehavior(name: string): name is FilterKindDef['behavior'] {
   return name in behaviorRegistry;
 }
 
@@ -169,8 +157,9 @@ export function isKnownBehavior(
  * and ignore `spec.target` — the filter builder must not stamp a decorative
  * `spec.target` on their specs.
  */
-export const selfRoutingBehaviors: ReadonlySet<FilterKindDef['behavior']> =
-  new Set<FilterKindDef['behavior']>(['aggregate-threshold']);
+export const selfRoutingBehaviors: ReadonlySet<FilterKindDef['behavior']> = new Set<
+  FilterKindDef['behavior']
+>(['aggregate-threshold']);
 
 /** The `filter_kinds` names whose behavior is self-routing. */
 export function buildSelfRoutingKindNames(spec: DashboardSpec): Set<string> {
@@ -188,9 +177,7 @@ export function buildSelfRoutingKindNames(spec: DashboardSpec): Set<string> {
  * name the spec chose. Behaviors with no registered factory are skipped —
  * validation reports them as errors ahead of this.
  */
-export function buildSpecKinds(
-  spec: DashboardSpec,
-): Record<string, FilterKind> {
+export function buildSpecKinds(spec: DashboardSpec): Record<string, FilterKind> {
   const kinds: Record<string, FilterKind> = {};
   for (const [name, def] of Object.entries(spec.filter_kinds ?? {})) {
     if (!isKnownBehavior(def.behavior)) {
@@ -206,8 +193,6 @@ export function buildSpecKinds(
  * kinds. The cross-reference validator checks every filter placement `kind` and
  * every `metric_threshold.kind` against this.
  */
-export function buildKindRegistry(
-  spec: DashboardSpec,
-): Record<string, FilterKind> {
+export function buildKindRegistry(spec: DashboardSpec): Record<string, FilterKind> {
   return { ...builtinFilterKinds, ...buildSpecKinds(spec) };
 }

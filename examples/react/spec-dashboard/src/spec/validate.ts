@@ -1,3 +1,5 @@
+import type { FilterKind } from '@nozzleio/react-mosaic';
+
 /**
  * Cross-reference validation — the checks zod cannot express because they span
  * sections of the spec (or reference code-side registries and the constructed
@@ -24,10 +26,8 @@
  */
 import { formatterRegistry } from '../widgets/formatters';
 import { widgetRegistry } from '../widgets/registry';
-import { parseVariableRef, scanFragmentTokens } from './query-compiler';
 import { isKnownBehavior } from './kinds';
-import { filterSetEntryNames } from './topology';
-import type { FilterKind } from '@nozzleio/react-mosaic';
+import { parseVariableRef, scanFragmentTokens } from './query-compiler';
 import type {
   ChannelSpec,
   DashboardSpec,
@@ -35,6 +35,7 @@ import type {
   StructuredQuery,
   WidgetSpec,
 } from './schema';
+import { filterSetEntryNames } from './topology';
 
 /**
  * Validate a variable ref (a `$name` column ref or a `:name` value placeholder)
@@ -88,26 +89,14 @@ function validateChannelVariables(
   if (typeof channel === 'string') {
     const name = parseVariableRef(channel);
     if (name !== null) {
-      validateVariableRef(
-        name,
-        `$${name}`,
-        site,
-        widgetId,
-        validNames,
-        variableNames,
-        errors,
-      );
+      validateVariableRef(name, `$${name}`, site, widgetId, validNames, variableNames, errors);
     }
     return;
   }
   // A field-encoding object: the inner column is a literal position — a `$name`
   // there is an unsupported binding, flagged so it never silently mis-binds.
   const innerColumn =
-    'bin' in channel
-      ? channel.bin
-      : 'date_bin' in channel
-        ? channel.date_bin
-        : channel.column;
+    'bin' in channel ? channel.bin : 'date_bin' in channel ? channel.date_bin : channel.column;
   if (innerColumn !== undefined && parseVariableRef(innerColumn) !== null) {
     errors.push(
       `widget '${widgetId}' ${site} references a variable inside a bin/date_bin/aggregate column, which is not supported; bind a variable in a bare channel (e.g. x: $var) instead.`,
@@ -177,52 +166,20 @@ function validateStructuredQueryVariables(
     const site = `query.select '${alias}'`;
     const whole = parseVariableRef(expr);
     if (whole !== null) {
-      validateVariableRef(
-        whole,
-        `$${whole}`,
-        site,
-        widgetId,
-        validNames,
-        variableNames,
-        errors,
-      );
+      validateVariableRef(whole, `$${whole}`, site, widgetId, validNames, variableNames, errors);
       continue;
     }
-    validateFragmentVariables(
-      expr,
-      site,
-      widgetId,
-      validNames,
-      variableNames,
-      knownNames,
-      errors,
-    );
+    validateFragmentVariables(expr, site, widgetId, validNames, variableNames, knownNames, errors);
   }
 
   for (const [index, expr] of (query.group_by ?? []).entries()) {
     const site = `query.group_by[${index}]`;
     const whole = parseVariableRef(expr);
     if (whole !== null) {
-      validateVariableRef(
-        whole,
-        `$${whole}`,
-        site,
-        widgetId,
-        validNames,
-        variableNames,
-        errors,
-      );
+      validateVariableRef(whole, `$${whole}`, site, widgetId, validNames, variableNames, errors);
       continue;
     }
-    validateFragmentVariables(
-      expr,
-      site,
-      widgetId,
-      validNames,
-      variableNames,
-      knownNames,
-      errors,
-    );
+    validateFragmentVariables(expr, site, widgetId, validNames, variableNames, knownNames, errors);
   }
 
   for (const [index, fragment] of (query.where ?? []).entries()) {
@@ -284,9 +241,7 @@ function requireValidName(
     return;
   }
   if (!validNames.has(ref)) {
-    errors.push(
-      `widget '${widgetId}' ${role} '${ref}' is not a topology selection ref.`,
-    );
+    errors.push(`widget '${widgetId}' ${role} '${ref}' is not a topology selection ref.`);
   }
 }
 
@@ -311,14 +266,10 @@ function requireVariableName(
     return;
   }
   if (validNames.has(ref)) {
-    errors.push(
-      `widget '${widgetId}' variable '${ref}' is a topology selection, not a variable.`,
-    );
+    errors.push(`widget '${widgetId}' variable '${ref}' is a topology selection, not a variable.`);
     return;
   }
-  errors.push(
-    `widget '${widgetId}' variable '${ref}' is not a declared variable.`,
-  );
+  errors.push(`widget '${widgetId}' variable '${ref}' is not a declared variable.`);
 }
 
 /** Check a referenced table exists in `data.tables`. */
@@ -354,14 +305,7 @@ function validateExclude(options: {
   filterSpecIds: Set<string>;
   errors: Array<string>;
 }): void {
-  const {
-    widgetId,
-    site,
-    exclude,
-    filterByPresent,
-    vgplotMark,
-    filterSpecIds,
-  } = options;
+  const { widgetId, site, exclude, filterByPresent, vgplotMark, filterSpecIds } = options;
   const { errors } = options;
   if (exclude === undefined) {
     return;
@@ -407,14 +351,7 @@ function validateWidget(
 
   switch (widget.renderer) {
     case 'kpi-card': {
-      requireValidName(
-        widget.filter_by,
-        'filter_by',
-        widget.id,
-        validNames,
-        variableNames,
-        errors,
-      );
+      requireValidName(widget.filter_by, 'filter_by', widget.id, validNames, variableNames, errors);
       if (!(widget.format in formatterRegistry)) {
         errors.push(
           `widget '${widget.id}' format '${widget.format}' is not in the formatter registry.`,
@@ -431,32 +368,12 @@ function validateWidget(
       });
       // A `$name` structured-select expression binds a declared variable
       // (compiled to a `column(param)`); validate each ref.
-      validateStructuredQueryVariables(
-        widget.query,
-        widget.id,
-        validNames,
-        variableNames,
-        errors,
-      );
+      validateStructuredQueryVariables(widget.query, widget.id, validNames, variableNames, errors);
       break;
     }
     case 'selection-table': {
-      requireValidName(
-        widget.filter_by,
-        'filter_by',
-        widget.id,
-        validNames,
-        variableNames,
-        errors,
-      );
-      requireValidName(
-        widget.having_by,
-        'having_by',
-        widget.id,
-        validNames,
-        variableNames,
-        errors,
-      );
+      requireValidName(widget.filter_by, 'filter_by', widget.id, validNames, variableNames, errors);
+      requireValidName(widget.having_by, 'having_by', widget.id, validNames, variableNames, errors);
       if (
         widget.metric_threshold !== undefined &&
         !(widget.metric_threshold.kind in kindRegistry)
@@ -466,13 +383,7 @@ function validateWidget(
         );
       }
       if (widget.sparkline !== undefined) {
-        requireTable(
-          widget.sparkline.table,
-          'sparkline',
-          widget.id,
-          tables,
-          errors,
-        );
+        requireTable(widget.sparkline.table, 'sparkline', widget.id, tables, errors);
       }
       validateExclude({
         widgetId: widget.id,
@@ -486,24 +397,11 @@ function validateWidget(
       });
       // A `$name` structured-select expression binds a declared variable
       // (compiled to a `column(param)`); validate each ref.
-      validateStructuredQueryVariables(
-        widget.query,
-        widget.id,
-        validNames,
-        variableNames,
-        errors,
-      );
+      validateStructuredQueryVariables(widget.query, widget.id, validNames, variableNames, errors);
       break;
     }
     case 'data-table': {
-      requireValidName(
-        widget.filter_by,
-        'filter_by',
-        widget.id,
-        validNames,
-        variableNames,
-        errors,
-      );
+      requireValidName(widget.filter_by, 'filter_by', widget.id, validNames, variableNames, errors);
       requireTable(widget.query.from, 'query.from', widget.id, tables, errors);
       validateExclude({
         widgetId: widget.id,
@@ -517,13 +415,7 @@ function validateWidget(
       });
       // A `$name` structured-select expression binds a declared variable
       // (compiled to a `column(param)`); validate each ref.
-      validateStructuredQueryVariables(
-        widget.query,
-        widget.id,
-        validNames,
-        variableNames,
-        errors,
-      );
+      validateStructuredQueryVariables(widget.query, widget.id, validNames, variableNames, errors);
       break;
     }
     case 'vgplot': {
@@ -582,10 +474,7 @@ function validateWidget(
           variableNames,
           errors,
         );
-        if (
-          select.select === 'toggle' &&
-          (select.channels ?? []).length === 0
-        ) {
+        if (select.select === 'toggle' && (select.channels ?? []).length === 0) {
           errors.push(
             `widget '${widget.id}' plot select 'toggle' (as '${select.as}') requires a non-empty channels list.`,
           );
@@ -596,13 +485,7 @@ function validateWidget(
     case 'variable-select': {
       // The one selection-inverse site: `variable` must name a declared
       // variable, never a Selection ref.
-      requireVariableName(
-        widget.variable,
-        widget.id,
-        validNames,
-        variableNames,
-        errors,
-      );
+      requireVariableName(widget.variable, widget.id, validNames, variableNames, errors);
       break;
     }
   }
@@ -666,15 +549,7 @@ export function validateCrossReferences(
   const tables = new Set(Object.keys(spec.data.tables));
   const widgetIds = new Set(Object.keys(spec.widgets));
   for (const widget of Object.values(spec.widgets)) {
-    validateWidget(
-      widget,
-      validNames,
-      variableNames,
-      tables,
-      kindRegistry,
-      filterSpecIds,
-      errors,
-    );
+    validateWidget(widget, validNames, variableNames, tables, kindRegistry, filterSpecIds, errors);
   }
 
   const filterSetEntries = filterSetEntryNames(spec.topology);

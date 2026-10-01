@@ -52,12 +52,7 @@ filters:
       value_kind: facet
       facet_table: proteins
       placements:
-        - {
-            label: Partial t,
-            target: where,
-            kind: condition,
-            spec_id: menu:partial_t,
-          }
+        - { label: Partial t, target: where, kind: condition, spec_id: menu:partial_t }
     - id: noise
       label: Noise
       column: noise
@@ -71,24 +66,14 @@ filters:
       value_kind: facet
       facet_table: proteins
       placements:
-        - {
-            label: Gradient Decay,
-            target: where,
-            kind: condition,
-            spec_id: menu:gradient_decay,
-          }
+        - { label: Gradient Decay, target: where, kind: condition, spec_id: menu:gradient_decay }
     - id: gradient_scale
       label: Gradient Scale
       column: gradient_scale
       value_kind: facet
       facet_table: proteins
       placements:
-        - {
-            label: Gradient Scale,
-            target: where,
-            kind: condition,
-            spec_id: menu:gradient_scale,
-          }
+        - { label: Gradient Scale, target: where, kind: condition, spec_id: menu:gradient_scale }
 
 widgets:
   # Upstream plot 1: pLDDT histogram, colored/grouped by version.
@@ -158,11 +143,7 @@ widgets:
       - { accessor_key: pae_interaction, header: pAE, size: 100 }
       - { accessor_key: plddt_total, header: pLDDT, size: 100 }
       - { accessor_key: noise, header: Noise, size: 100 }
-      - {
-          accessor_key: gradient_decay_function,
-          header: Gradient Decay,
-          size: 160,
-        }
+      - { accessor_key: gradient_decay_function, header: Gradient Decay, size: 160 }
       - { accessor_key: gradient_scale, header: Gradient Scale, size: 140 }
       - { accessor_key: movement, header: Movement, size: 120 }
     bridge_columns:

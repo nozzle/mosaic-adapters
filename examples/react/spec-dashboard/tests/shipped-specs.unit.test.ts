@@ -10,7 +10,9 @@
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
 import { describe, expect, test } from 'vitest';
+
 import { compileSpec, specManifestSchema } from '../src/spec/compile';
 import type { StructuredQuery } from '../src/spec/schema';
 
@@ -23,9 +25,7 @@ function readText(servedUrl: string): string {
   return readFileSync(publicPath(servedUrl), 'utf8');
 }
 
-const manifest = specManifestSchema.parse(
-  JSON.parse(readText('/spec/manifest.json')),
-);
+const manifest = specManifestSchema.parse(JSON.parse(readText('/spec/manifest.json')));
 
 describe('shipped specs compile', () => {
   for (const entry of manifest.specs) {
@@ -33,9 +33,7 @@ describe('shipped specs compile', () => {
       const result = compileSpec(readText(entry.url));
       // Surface the real errors in the failure message rather than a bare `false`.
       if (!result.ok) {
-        throw new Error(
-          `spec '${entry.id}' failed to compile:\n  ${result.errors.join('\n  ')}`,
-        );
+        throw new Error(`spec '${entry.id}' failed to compile:\n  ${result.errors.join('\n  ')}`);
       }
       expect(result.ok).toBe(true);
     });
@@ -50,9 +48,7 @@ describe('shipped specs compile', () => {
 describe('questions spec query forms', () => {
   const result = compileSpec(readText('/spec/questions.yaml'));
   if (!result.ok) {
-    throw new Error(
-      `questions spec failed to compile: ${result.errors.join('; ')}`,
-    );
+    throw new Error(`questions spec failed to compile: ${result.errors.join('; ')}`);
   }
   const { widgets } = result.compiled.spec;
 
@@ -89,10 +85,7 @@ describe('questions spec query forms', () => {
     const query = (widget as { query: StructuredQuery }).query;
     // The static predicate is preserved and the `:min_volume` VALUE placeholder
     // is ANDed in as a second fragment.
-    expect(query.where).toEqual([
-      'domain IS NOT NULL',
-      'search_volume >= :min_volume',
-    ]);
+    expect(query.where).toEqual(['domain IS NOT NULL', 'search_volume >= :min_volume']);
     expect(query.group_by).toEqual(['domain']);
   });
 });
@@ -106,9 +99,7 @@ describe('questions spec query forms', () => {
 describe('questions spec fragment-token variable usages', () => {
   const result = compileSpec(readText('/spec/questions.yaml'));
   if (!result.ok) {
-    throw new Error(
-      `questions spec failed to compile: ${result.errors.join('; ')}`,
-    );
+    throw new Error(`questions spec failed to compile: ${result.errors.join('; ')}`);
   }
   const { spec } = result.compiled;
   const { widgets, topology } = spec;
@@ -140,9 +131,9 @@ describe('questions spec fragment-token variable usages', () => {
     const widget = widgets['count_field_select'];
     expect(widget?.renderer).toBe('variable-select');
     expect((widget as { variable?: string }).variable).toBe('count_field');
-    const values = (
-      widget as { options?: Array<{ value: unknown }> }
-    ).options?.map((option) => option.value);
+    const values = (widget as { options?: Array<{ value: unknown }> }).options?.map(
+      (option) => option.value,
+    );
     expect(values).toEqual(['device', 'requested', 'phrase', 'domain']);
   });
 
@@ -150,9 +141,9 @@ describe('questions spec fragment-token variable usages', () => {
     const widget = widgets['min_volume_select'];
     expect(widget?.renderer).toBe('variable-select');
     expect((widget as { variable?: string }).variable).toBe('min_volume');
-    const values = (
-      widget as { options?: Array<{ value: unknown }> }
-    ).options?.map((option) => option.value);
+    const values = (widget as { options?: Array<{ value: unknown }> }).options?.map(
+      (option) => option.value,
+    );
     expect(values).toEqual([0, 10000, 50000]);
   });
 });

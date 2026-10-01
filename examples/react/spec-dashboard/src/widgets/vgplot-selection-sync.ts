@@ -55,9 +55,7 @@ function sameInterval(current: unknown, next: [number, number]): boolean {
   );
 }
 
-function numericInterval2D(
-  value: unknown,
-): [[number, number], [number, number]] | null {
+function numericInterval2D(value: unknown): [[number, number], [number, number]] | null {
   if (!Array.isArray(value) || value.length !== 2) {
     return null;
   }
@@ -66,10 +64,7 @@ function numericInterval2D(
   return x === null || y === null ? null : [x, y];
 }
 
-function sameInterval2D(
-  current: unknown,
-  next: [[number, number], [number, number]],
-): boolean {
+function sameInterval2D(current: unknown, next: [[number, number], [number, number]]): boolean {
   return (
     Array.isArray(current) &&
     current.length === 2 &&
@@ -89,10 +84,7 @@ function finitePixel(
   return typeof pixel === 'number' && Number.isFinite(pixel) ? pixel : null;
 }
 
-function moveSilently(
-  interactor: VgplotSelectionInteractor,
-  extent: unknown,
-): void {
+function moveSilently(interactor: VgplotSelectionInteractor, extent: unknown): void {
   const moveSilent = interactor.brush?.moveSilent;
   const call = interactor.g?.call;
   if (typeof moveSilent !== 'function' || typeof call !== 'function') {
@@ -112,9 +104,7 @@ export function syncVgplotSelectionInteractors(
   bindings: ReadonlyArray<VgplotSelectionBinding>,
 ): void {
   for (const binding of bindings) {
-    const matching = interactors.filter(
-      (candidate) => candidate.selection === binding.selection,
-    );
+    const matching = interactors.filter((candidate) => candidate.selection === binding.selection);
     for (const interactor of matching) {
       if (!binding.active) {
         if (interactor.value != null) {

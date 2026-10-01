@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+
 import { baseConfig } from '../../../playwright.config.base';
 
 const PORT = 5121;

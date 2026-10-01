@@ -1,12 +1,9 @@
-/**
- * The detail table: user-owned `useReactTable` in fully manual mode. Column
- * filters become Selection clauses through the TanStack Table filter bridge
- * (including the struct-path `related_phrase.phrase` column) and land in
- * `$detail` — which the table's own context includes, so, matching the
- * legacy page, the detail table is filtered by its own filters while every
- * sibling widget sees them too.
- */
-import { useState } from 'react';
+import {
+  paginationToWindow,
+  useTanStackTableFilterBridge,
+} from '@nozzleio/mosaic-tanstack-react-table';
+import type { FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicRows } from '@nozzleio/react-mosaic';
 import {
   columnFilteringFeature,
   columnSizingFeature,
@@ -16,15 +13,6 @@ import {
   tableFeatures,
   useTable,
 } from '@tanstack/react-table';
-import { Query, sql } from '@uwdata/mosaic-sql';
-import { useMosaicRows } from '@nozzleio/react-mosaic';
-import {
-  paginationToWindow,
-  useTanStackTableFilterBridge,
-} from '@nozzleio/mosaic-tanstack-react-table';
-import { tableName } from '../page-context';
-import { usePageContexts, usePageFilterSet } from '../topology';
-import { WidgetSqlPopover } from './widget-sql-details';
 import type {
   Column,
   ColumnDef,
@@ -32,7 +20,20 @@ import type {
   OnChangeFn,
   PaginationState,
 } from '@tanstack/react-table';
-import type { FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-react-table';
+import { Query, sql } from '@uwdata/mosaic-sql';
+/**
+ * The detail table: user-owned `useReactTable` in fully manual mode. Column
+ * filters become Selection clauses through the TanStack Table filter bridge
+ * (including the struct-path `related_phrase.phrase` column) and land in
+ * `$detail` — which the table's own context includes, so, matching the
+ * legacy page, the detail table is filtered by its own filters while every
+ * sibling widget sees them too.
+ */
+import { useState } from 'react';
+
+import { tableName } from '../page-context';
+import { usePageContexts, usePageFilterSet } from '../topology';
+import { WidgetSqlPopover } from './widget-sql-details';
 
 const features = tableFeatures({
   rowPaginationFeature,
@@ -132,9 +133,7 @@ export function DetailTable(props: { enabled: boolean }) {
   // can early-return instead of landing on a stale page derived from the
   // in-flight window.
   const pageCount =
-    details.totalRows === undefined
-      ? null
-      : Math.max(1, Math.ceil(details.totalRows / PAGE_SIZE));
+    details.totalRows === undefined ? null : Math.max(1, Math.ceil(details.totalRows / PAGE_SIZE));
 
   const goToFirstPage = (): void => {
     table.setPageIndex(0);
@@ -151,10 +150,7 @@ export function DetailTable(props: { enabled: boolean }) {
     <div className="flex h-full flex-col" data-testid="detail-table">
       <div className="relative flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/50 p-4 font-semibold text-slate-800">
         <span>Detailed Breakdown</span>
-        <WidgetSqlPopover
-          store={details.client.store}
-          label="Detailed Breakdown"
-        />
+        <WidgetSqlPopover store={details.client.store} label="Detailed Breakdown" />
       </div>
       <div className="flex-1 overflow-auto">
         <table className="w-full text-sm">
@@ -167,10 +163,7 @@ export function DetailTable(props: { enabled: boolean }) {
                     className="px-3 py-2 font-medium"
                     style={{ width: header.column.getSize() }}
                   >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
-                    )}
+                    {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 ))}
               </tr>
@@ -249,9 +242,7 @@ export function DetailTable(props: { enabled: boolean }) {
   );
 }
 
-function ColumnFilter(props: {
-  column: Column<typeof features, DetailRow, unknown>;
-}) {
+function ColumnFilter(props: { column: Column<typeof features, DetailRow, unknown> }) {
   const value = (props.column.getFilterValue() as string | undefined) ?? '';
   return (
     <input

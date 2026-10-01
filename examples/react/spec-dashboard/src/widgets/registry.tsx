@@ -1,3 +1,7 @@
+import type { FilterSet, Topology } from '@nozzleio/react-mosaic';
+import type { ReactElement } from 'react';
+
+import type { RendererName, WidgetSpec } from '../spec/schema';
 /**
  * The widget component registry, keyed by the spec widget `renderer`. The
  * cross-reference validator checks every widget `renderer` against these keys.
@@ -15,9 +19,6 @@ import { KpiWidget } from './kpi';
 import { SelectionTableWidget } from './summary-table';
 import { VariableSelectWidget } from './variable-select';
 import { VgplotWidget } from './vgplot-widget';
-import type { ReactElement } from 'react';
-import type { FilterSet, Topology } from '@nozzleio/react-mosaic';
-import type { RendererName, WidgetSpec } from '../spec/schema';
 
 /**
  * How a widget slot is being rendered. Only the expandable `selection-table`
@@ -53,9 +54,7 @@ export interface WidgetComponentProps {
   mode?: WidgetRenderMode;
 }
 
-export type WidgetComponent = (
-  props: WidgetComponentProps,
-) => ReactElement | null;
+export type WidgetComponent = (props: WidgetComponentProps) => ReactElement | null;
 
 export const widgetRegistry: Record<RendererName, WidgetComponent> = {
   'kpi-card': KpiWidget,
@@ -66,6 +65,4 @@ export const widgetRegistry: Record<RendererName, WidgetComponent> = {
 };
 
 /** The registered renderer keys — consumed by cross-reference validation. */
-export const rendererKeys: Array<RendererName> = Object.keys(
-  widgetRegistry,
-) as Array<RendererName>;
+export const rendererKeys: Array<RendererName> = Object.keys(widgetRegistry) as Array<RendererName>;

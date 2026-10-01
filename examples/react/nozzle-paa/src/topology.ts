@@ -1,3 +1,5 @@
+import { useMosaicTopology, useTopology } from '@nozzleio/react-mosaic';
+import type { FilterSet, Topology } from '@nozzleio/react-mosaic';
 /**
  * App-side glue over the declared page topology (see {@link page-context}).
  *
@@ -12,7 +14,7 @@
  *   topology.
  */
 import { useMemo } from 'react';
-import { useMosaicTopology, useTopology } from '@nozzleio/react-mosaic';
+
 import {
   FILTERS_ENTRY,
   resolvePageContexts,
@@ -20,7 +22,6 @@ import {
   topologyOptions,
 } from './page-context';
 import type { PageContexts } from './page-context';
-import type { FilterSet, Topology } from '@nozzleio/react-mosaic';
 
 /** Build the page topology (stable object identity → one topology for the page). */
 export function usePageTopology(): Topology {
