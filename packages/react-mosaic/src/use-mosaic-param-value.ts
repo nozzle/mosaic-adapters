@@ -1,5 +1,5 @@
-import { useSyncExternalStore } from 'react';
 import type { Param } from '@uwdata/mosaic-core';
+import { useSyncExternalStore } from 'react';
 
 /**
  * Read a Param's current value reactively — the read-back half of param

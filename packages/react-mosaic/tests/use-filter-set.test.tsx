@@ -1,3 +1,5 @@
+import { createFilterSet } from '@nozzleio/mosaic-core';
+import { interact, renderHook, waitFor } from '@nozzleio/test-support/react';
 /**
  * React bindings for the page-level FilterSet. The set is a long-lived
  * page-scope object created next to the page's Selections (module/test scope
@@ -7,10 +9,8 @@
  * double-rendering a subscriber never writes to a persister-backed set.
  */
 import { Selection } from '@uwdata/mosaic-core';
-import { createFilterSet } from '@nozzleio/mosaic-core';
 import { describe, expect, test, vi } from 'vitest';
 
-import { interact, renderHook, waitFor } from '@nozzleio/test-support/react';
 import { useFilterSetChips, useFilterSetState } from '../src/index';
 import type { FilterSet, FilterSpec, Persister } from '../src/index';
 
@@ -22,11 +22,9 @@ function memoryPersister(initial: Array<FilterSpec> | null = null): {
 } {
   const writes: Array<{ state: Array<FilterSpec> | null; reason: string }> = [];
   const read = vi.fn(() => initial);
-  const write = vi.fn(
-    (state: Array<FilterSpec> | null, context: { reason: string }) => {
-      writes.push({ state, reason: context.reason });
-    },
-  );
+  const write = vi.fn((state: Array<FilterSpec> | null, context: { reason: string }) => {
+    writes.push({ state, reason: context.reason });
+  });
   return { persister: { read, write }, write, writes };
 }
 
@@ -48,9 +46,7 @@ describe('useFilterSetState / useFilterSetChips', () => {
     expect(hook.result.current.chips).toEqual([]);
 
     // set(...) publishes a spec → specs and chips update.
-    await interact(() =>
-      set.set({ id: 'sport', column: 'sport', kind: 'point', value: 'run' }),
-    );
+    await interact(() => set.set({ id: 'sport', column: 'sport', kind: 'point', value: 'run' }));
     await waitFor(() => {
       expect(hook.result.current.state.specs).toHaveLength(1);
       expect(hook.result.current.chips).toHaveLength(1);
@@ -123,9 +119,7 @@ describe('useFilterSetState / useFilterSetChips', () => {
     expect(write).not.toHaveBeenCalled();
 
     // A real interaction still works and does write.
-    await interact(() =>
-      set.set({ id: 'weight', column: 'weight', kind: 'point', value: 70 }),
-    );
+    await interact(() => set.set({ id: 'weight', column: 'weight', kind: 'point', value: 70 }));
     await waitFor(() => {
       expect(hook.result.current.chips).toHaveLength(2);
     });

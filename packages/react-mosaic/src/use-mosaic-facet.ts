@@ -1,22 +1,15 @@
-import { useSelector } from '@tanstack/react-store';
-import {
-  createFacetClient,
-  isFilterSetPublishTarget,
-} from '@nozzleio/mosaic-core';
-import {
-  deriveStatus,
-  paramsKey,
-  skipSourcesKey,
-  useBoundClient,
-} from './use-data-client';
-import { useMosaicCoordinator } from './context';
-import type { Coordinator } from '@uwdata/mosaic-core';
+import { createFacetClient, isFilterSetPublishTarget } from '@nozzleio/mosaic-core';
 import type {
   FacetClient,
   FacetClientOptions,
   FacetClientState,
   FacetInputs,
 } from '@nozzleio/mosaic-core';
+import { useSelector } from '@tanstack/react-store';
+import type { Coordinator } from '@uwdata/mosaic-core';
+
+import { useMosaicCoordinator } from './context';
+import { deriveStatus, paramsKey, skipSourcesKey, useBoundClient } from './use-data-client';
 
 export type UseMosaicFacetOptions = Omit<FacetClientOptions, 'coordinator'> & {
   /** Defaults to the nearest `MosaicProvider`, then the global coordinator. */
@@ -39,9 +32,7 @@ export type UseMosaicFacetResult = FacetClientState & {
  * persister identity stable (module scope or `useMemo`) or the client
  * recreates every render.
  */
-export function useMosaicFacet(
-  options: UseMosaicFacetOptions,
-): UseMosaicFacetResult {
+export function useMosaicFacet(options: UseMosaicFacetOptions): UseMosaicFacetResult {
   const coordinator = useMosaicCoordinator(options.coordinator);
   const enabled = options.enabled ?? true;
 
@@ -54,8 +45,7 @@ export function useMosaicFacet(
     : [publish?.as];
 
   const client = useBoundClient<FacetInputs, FacetClient>({
-    create: () =>
-      createFacetClient({ ...options, coordinator, enabled: false }),
+    create: () => createFacetClient({ ...options, coordinator, enabled: false }),
     structuralKey: [
       coordinator,
       options.filterBy,

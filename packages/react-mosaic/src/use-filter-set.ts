@@ -1,9 +1,5 @@
+import type { FilterSet, FilterSetChip, FilterSetState } from '@nozzleio/mosaic-core';
 import { useSelector } from '@tanstack/react-store';
-import type {
-  FilterSet,
-  FilterSetChip,
-  FilterSetState,
-} from '@nozzleio/mosaic-core';
 
 /**
  * Subscribe to a filter set's whole reactive state (specs + chips). The set

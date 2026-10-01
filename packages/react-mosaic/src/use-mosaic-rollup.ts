@@ -1,24 +1,17 @@
-import { useSelector } from '@tanstack/react-store';
 import { createRollupClient } from '@nozzleio/mosaic-core';
-import {
-  deriveStatus,
-  paramsKey,
-  skipSourcesKey,
-  useBoundClient,
-} from './use-data-client';
-import { useMosaicCoordinator } from './context';
-import type { Coordinator } from '@uwdata/mosaic-core';
 import type {
   RollupClient,
   RollupClientOptions,
   RollupClientState,
   RollupInputs,
 } from '@nozzleio/mosaic-core';
+import { useSelector } from '@tanstack/react-store';
+import type { Coordinator } from '@uwdata/mosaic-core';
 
-export type UseMosaicRollupOptions<TRow> = Omit<
-  RollupClientOptions<TRow>,
-  'coordinator'
-> & {
+import { useMosaicCoordinator } from './context';
+import { deriveStatus, paramsKey, skipSourcesKey, useBoundClient } from './use-data-client';
+
+export type UseMosaicRollupOptions<TRow> = Omit<RollupClientOptions<TRow>, 'coordinator'> & {
   /** Defaults to the nearest `MosaicProvider`, then the global coordinator. */
   coordinator?: Coordinator;
 };
@@ -40,8 +33,7 @@ export function useMosaicRollup<TRow>(
   const enabled = options.enabled ?? true;
 
   const client = useBoundClient<RollupInputs, RollupClient<TRow>>({
-    create: () =>
-      createRollupClient<TRow>({ ...options, coordinator, enabled: false }),
+    create: () => createRollupClient<TRow>({ ...options, coordinator, enabled: false }),
     structuralKey: [
       coordinator,
       options.filterBy,

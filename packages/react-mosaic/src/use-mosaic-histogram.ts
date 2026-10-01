@@ -1,27 +1,17 @@
-import { useSelector } from '@tanstack/react-store';
-import {
-  createHistogramClient,
-  isFilterSetPublishTarget,
-} from '@nozzleio/mosaic-core';
-import {
-  deriveStatus,
-  paramsKey,
-  skipSourcesKey,
-  useBoundClient,
-} from './use-data-client';
-import { useMosaicCoordinator } from './context';
-import type { Coordinator } from '@uwdata/mosaic-core';
+import { createHistogramClient, isFilterSetPublishTarget } from '@nozzleio/mosaic-core';
 import type {
   HistogramClient,
   HistogramClientOptions,
   HistogramClientState,
   HistogramInputs,
 } from '@nozzleio/mosaic-core';
+import { useSelector } from '@tanstack/react-store';
+import type { Coordinator } from '@uwdata/mosaic-core';
 
-export type UseMosaicHistogramOptions = Omit<
-  HistogramClientOptions,
-  'coordinator'
-> & {
+import { useMosaicCoordinator } from './context';
+import { deriveStatus, paramsKey, skipSourcesKey, useBoundClient } from './use-data-client';
+
+export type UseMosaicHistogramOptions = Omit<HistogramClientOptions, 'coordinator'> & {
   /** Defaults to the nearest `MosaicProvider`, then the global coordinator. */
   coordinator?: Coordinator;
 };
@@ -41,9 +31,7 @@ export type UseMosaicHistogramResult = HistogramClientState & {
  * persister identity stable (module scope or `useMemo`) or the client
  * recreates every render.
  */
-export function useMosaicHistogram(
-  options: UseMosaicHistogramOptions,
-): UseMosaicHistogramResult {
+export function useMosaicHistogram(options: UseMosaicHistogramOptions): UseMosaicHistogramResult {
   const coordinator = useMosaicCoordinator(options.coordinator);
   const enabled = options.enabled ?? true;
 
@@ -56,8 +44,7 @@ export function useMosaicHistogram(
     : [publish?.as];
 
   const client = useBoundClient<HistogramInputs, HistogramClient>({
-    create: () =>
-      createHistogramClient({ ...options, coordinator, enabled: false }),
+    create: () => createHistogramClient({ ...options, coordinator, enabled: false }),
     structuralKey: [
       coordinator,
       options.filterBy,

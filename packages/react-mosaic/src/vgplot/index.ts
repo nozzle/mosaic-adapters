@@ -1,6 +1,6 @@
+import type { MosaicClient } from '@uwdata/mosaic-core';
 import { useCallback, useEffect, useRef } from 'react';
 import type { RefCallback } from 'react';
-import type { MosaicClient } from '@uwdata/mosaic-core';
 
 export type VgPlotElement = HTMLElement | SVGElement;
 
@@ -88,8 +88,7 @@ export function useVgPlot(
       return;
     }
     const unchanged =
-      prev.length === deps.length &&
-      deps.every((dep, index) => Object.is(dep, prev[index]));
+      prev.length === deps.length && deps.every((dep, index) => Object.is(dep, prev[index]));
     if (unchanged) {
       return;
     }

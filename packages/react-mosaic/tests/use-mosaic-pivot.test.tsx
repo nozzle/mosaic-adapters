@@ -1,12 +1,8 @@
+import { createAthletesDb, renderHook, waitFor } from '@nozzleio/test-support/react';
+import type { TestDb } from '@nozzleio/test-support/react';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  renderHook,
-  waitFor,
-} from '@nozzleio/test-support/react';
 import { useMosaicPivot, useMosaicSchema } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/react';
 
 let db: TestDb;
 

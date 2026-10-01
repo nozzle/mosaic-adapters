@@ -1,6 +1,6 @@
-import { useEffect, useReducer, useRef } from 'react';
-import type { Param } from '@uwdata/mosaic-core';
 import type { DataClient, DataClientStatus } from '@nozzleio/mosaic-core';
+import type { Param } from '@uwdata/mosaic-core';
+import { useEffect, useReducer, useRef } from 'react';
 
 /**
  * The controlled-binding engine shared by every client hook. Option handling
@@ -87,10 +87,7 @@ export function useBoundClient<
  * surfaces only while disabled. The core keeps 'idle' as its pre-first-query
  * state.
  */
-export function deriveStatus(
-  status: DataClientStatus,
-  enabled: boolean,
-): DataClientStatus {
+export function deriveStatus(status: DataClientStatus, enabled: boolean): DataClientStatus {
   if (status === 'idle' && enabled) {
     return 'pending';
   }
@@ -98,9 +95,7 @@ export function deriveStatus(
 }
 
 /** Structural-key entries for the `params` option (order-insensitive). */
-export function paramsKey(
-  params: Record<string, Param<any>> | undefined,
-): Array<unknown> {
+export function paramsKey(params: Record<string, Param<any>> | undefined): Array<unknown> {
   if (!params) {
     return [];
   }
@@ -109,19 +104,14 @@ export function paramsKey(
 }
 
 /** Structural-key entry for the `skipSources` option (order-insensitive). */
-export function skipSourcesKey(
-  skipSources: ReadonlySet<string> | undefined,
-): string | undefined {
+export function skipSourcesKey(skipSources: ReadonlySet<string> | undefined): string | undefined {
   if (!skipSources || skipSources.size === 0) {
     return undefined;
   }
   return [...skipSources].sort().join('\u0000');
 }
 
-function sameKey(
-  a: ReadonlyArray<unknown> | null,
-  b: ReadonlyArray<unknown>,
-): boolean {
+function sameKey(a: ReadonlyArray<unknown> | null, b: ReadonlyArray<unknown>): boolean {
   if (a === null || a.length !== b.length) {
     return false;
   }

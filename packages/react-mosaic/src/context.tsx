@@ -1,7 +1,7 @@
-import { createContext, useContext } from 'react';
 import { coordinator as defaultCoordinator } from '@uwdata/mosaic-core';
-import type { ReactNode } from 'react';
 import type { Coordinator } from '@uwdata/mosaic-core';
+import { createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
 
 const MosaicCoordinatorContext = createContext<Coordinator | null>(null);
 

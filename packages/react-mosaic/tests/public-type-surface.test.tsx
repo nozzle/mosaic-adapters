@@ -8,6 +8,7 @@
  * trivial guard so vitest (test:lib) also has a case to execute.
  */
 import { describe, expect, test } from 'vitest';
+
 import type {
   DataClientOptions,
   DataClientStatus,

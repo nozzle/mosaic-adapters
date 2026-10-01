@@ -1,10 +1,7 @@
 import { createTopology } from '@nozzleio/mosaic-core';
+import type { Topology, TopologyConfig, TopologyOptions } from '@nozzleio/mosaic-core';
+
 import { useCompositionHandle } from './use-topology-helpers';
-import type {
-  Topology,
-  TopologyConfig,
-  TopologyOptions,
-} from '@nozzleio/mosaic-core';
 
 /** Construction-time application hook invoked before a new topology is returned. */
 export type TopologyInitializer = (topology: Topology) => void;
@@ -68,17 +65,11 @@ function getObjectId(value: object): number {
  *   recreates. The bag object itself may be created inline every render.
  * @returns A live {@link Topology} instance, stable across re-renders.
  */
-export function useTopology(
-  config: TopologyConfig,
-  options?: UseTopologyOptions,
-): Topology {
+export function useTopology(config: TopologyConfig, options?: UseTopologyOptions): Topology {
   const configId = getObjectId(config);
-  const selectionsId =
-    options?.selections === undefined ? 0 : getObjectId(options.selections);
-  const filterSetsId =
-    options?.filterSets === undefined ? 0 : getObjectId(options.filterSets);
-  const paramsId =
-    options?.params === undefined ? 0 : getObjectId(options.params);
+  const selectionsId = options?.selections === undefined ? 0 : getObjectId(options.selections);
+  const filterSetsId = options?.filterSets === undefined ? 0 : getObjectId(options.filterSets);
+  const paramsId = options?.params === undefined ? 0 : getObjectId(options.params);
   const paramOptionsId =
     options?.paramOptions === undefined ? 0 : getObjectId(options.paramOptions);
   const key = `${configId}::${selectionsId}::${filterSetsId}::${paramsId}::${paramOptionsId}`;

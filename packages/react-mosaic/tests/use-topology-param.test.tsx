@@ -1,3 +1,5 @@
+import { interact, renderHook } from '@nozzleio/test-support/react';
+import { Param } from '@uwdata/mosaic-core';
 /**
  * React bindings for #181's topology params: `useMosaicParamRef` (the
  * provider-resolving sugar mirroring `useMosaicSelectionRef`, but for owned /
@@ -10,17 +12,15 @@
  * queue), so mutations are wrapped act-safe and awaited via `param.pending`.
  */
 import { createElement } from 'react';
-import { Param } from '@uwdata/mosaic-core';
+import type { PropsWithChildren } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import { interact, renderHook } from '@nozzleio/test-support/react';
 import {
   MosaicTopologyProvider,
   createTopology,
   useMosaicParamRef,
   useMosaicParamValue,
 } from '../src/index';
-import type { PropsWithChildren } from 'react';
 import type { Topology, TopologyConfig } from '../src/index';
 
 /** Apply a param update act-safe and let its async `value` dispatch settle. */
@@ -49,9 +49,7 @@ describe('useMosaicParamRef', () => {
       { initialProps: {}, wrapper },
     );
 
-    expect(hook.result.current.threshold).toBe(
-      topology.resolveParam('threshold'),
-    );
+    expect(hook.result.current.threshold).toBe(topology.resolveParam('threshold'));
     expect(hook.result.current.mode).toBe(topology.resolveParam('mode'));
 
     await hook.unmount();
@@ -150,8 +148,7 @@ describe('useMosaicParamValue', () => {
     const first = Param.value('a');
     const second = Param.value('b');
     const hook = await renderHook(
-      ({ param }: { param: Param<string> }) =>
-        useMosaicParamValue<string>(param),
+      ({ param }: { param: Param<string> }) => useMosaicParamValue<string>(param),
       { initialProps: { param: first } },
     );
 

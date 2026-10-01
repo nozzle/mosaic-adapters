@@ -1,13 +1,9 @@
+import { createAthletesDb, renderHook, waitFor } from '@nozzleio/test-support/react';
+import type { TestDb } from '@nozzleio/test-support/react';
 import { Query, count, sum } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  renderHook,
-  waitFor,
-} from '@nozzleio/test-support/react';
 import { rollupRowsToTree, useMosaicRollup } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/react';
 
 interface WeightRollup {
   sport: string | null;
@@ -39,9 +35,7 @@ describe('useMosaicRollup', () => {
     await waitFor(() => {
       expect(hook.result.current.rows).toHaveLength(3);
     });
-    expect(
-      hook.result.current.rows.map((r) => [r.level, r.data.sport, r.isLeaf]),
-    ).toEqual([
+    expect(hook.result.current.rows.map((r) => [r.level, r.data.sport, r.isLeaf])).toEqual([
       [0, null, false],
       [1, 'run', true],
       [1, 'swim', true],

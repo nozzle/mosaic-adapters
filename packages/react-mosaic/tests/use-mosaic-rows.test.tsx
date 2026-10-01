@@ -1,7 +1,3 @@
-import { Selection } from '@uwdata/mosaic-core';
-import { Query, eq, literal } from '@uwdata/mosaic-sql';
-import { beforeEach, describe, expect, test } from 'vitest';
-
 import {
   createAthletesDb,
   interact,
@@ -9,9 +5,13 @@ import {
   settle,
   waitFor,
 } from '@nozzleio/test-support/react';
+import type { TestDb } from '@nozzleio/test-support/react';
+import { Selection } from '@uwdata/mosaic-core';
+import { Query, eq, literal } from '@uwdata/mosaic-sql';
+import { beforeEach, describe, expect, test } from 'vitest';
+
 import { useMosaicRows } from '../src/index';
 import type { QuerySource, RowsInputs } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/react';
 
 interface AthleteRow {
   id: number;
@@ -30,8 +30,7 @@ function athleteQuery() {
   return Query.from('athletes').select('id', 'name', 'sport', 'weight');
 }
 
-const allAthletes: QuerySource<RowsInputs> = ({ where }) =>
-  athleteQuery().where(where);
+const allAthletes: QuerySource<RowsInputs> = ({ where }) => athleteQuery().where(where);
 
 describe('status semantics', () => {
   test('enabled hooks never report idle; disabled hooks do', async () => {
@@ -65,9 +64,7 @@ describe('status semantics', () => {
     // first queryPending). The first enabled render must already be 'pending'.
     const firstEnabledIndex = statuses.indexOf('pending');
     expect(firstEnabledIndex).toBeGreaterThan(0);
-    expect(statuses.slice(0, firstEnabledIndex)).toEqual(
-      Array(firstEnabledIndex).fill('idle'),
-    );
+    expect(statuses.slice(0, firstEnabledIndex)).toEqual(Array(firstEnabledIndex).fill('idle'));
     expect(statuses.slice(firstEnabledIndex)).not.toContain('idle');
 
     await hook.unmount();
@@ -209,10 +206,7 @@ describe('structural identity', () => {
 
     await waitFor(() => {
       expect(hook.result.current.client).not.toBe(clientA);
-      expect(hook.result.current.rows.map((r) => r.sport)).toEqual([
-        'run',
-        'run',
-      ]);
+      expect(hook.result.current.rows.map((r) => r.sport)).toEqual(['run', 'run']);
     });
     expect(clientA.destroyed).toBe(true);
     expect(db.coordinator.clients.has(clientA.mosaicClient)).toBe(false);
@@ -276,9 +270,7 @@ describe('StrictMode', () => {
     // The simulated unmount destroyed the first client; exactly one live
     // client remains connected.
     expect(db.coordinator.clients.size).toBe(1);
-    expect(
-      db.coordinator.clients.has(hook.result.current.client.mosaicClient),
-    ).toBe(true);
+    expect(db.coordinator.clients.has(hook.result.current.client.mosaicClient)).toBe(true);
 
     await hook.unmount();
     expect(db.coordinator.clients.size).toBe(0);

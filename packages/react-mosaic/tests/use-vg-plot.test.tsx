@@ -1,16 +1,12 @@
+import { createAthletesDb, render, waitFor } from '@nozzleio/test-support/react';
+import type { TestDb } from '@nozzleio/test-support/react';
+import type { Selection } from '@uwdata/mosaic-core';
 import { createAPIContext } from '@uwdata/vgplot';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  render,
-  waitFor,
-} from '@nozzleio/test-support/react';
 import { useTopology } from '../src/index';
-import { useVgPlot } from '../src/vgplot';
-import type { TestDb } from '@nozzleio/test-support/react';
-import type { Selection } from '@uwdata/mosaic-core';
 import type { Topology, TopologyConfig } from '../src/index';
+import { useVgPlot } from '../src/vgplot';
 
 let db: TestDb;
 

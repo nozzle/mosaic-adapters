@@ -1,3 +1,4 @@
+import { renderHook } from '@nozzleio/test-support/react';
 /**
  * React bindings for the Selection topology helpers. These tests pin the
  * React-visible contract of the singular `useMosaicSelection` hook: it hands
@@ -8,7 +9,6 @@
 import { Selection } from '@uwdata/mosaic-core';
 import { describe, expect, test } from 'vitest';
 
-import { renderHook } from '@nozzleio/test-support/react';
 import { useMosaicSelection } from '../src/index';
 
 describe('useMosaicSelection', () => {

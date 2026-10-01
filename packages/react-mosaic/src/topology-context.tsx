@@ -1,6 +1,6 @@
-import { createContext, useContext } from 'react';
 import type { Topology } from '@nozzleio/mosaic-core';
 import type { Param, Selection } from '@uwdata/mosaic-core';
+import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
 
 const MosaicTopologyContext = createContext<Topology | null>(null);
@@ -72,9 +72,7 @@ export function useMosaicSelectionRef(ref: string): Selection {
  * @param ref - A bare topology param ref (`entry`).
  * @returns The resolved Param.
  */
-export function useMosaicParamRef<TParamValue = any>(
-  ref: string,
-): Param<TParamValue> {
+export function useMosaicParamRef<TParamValue = any>(ref: string): Param<TParamValue> {
   const topology = useMosaicTopology();
   return topology.resolveParam<TParamValue>(ref);
 }
