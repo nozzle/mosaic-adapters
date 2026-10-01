@@ -69,15 +69,9 @@ export function clampPagination(
   pagination: PaginationState,
   totalRows: number | undefined,
 ): PaginationState {
-  const hasRows =
-    typeof totalRows === 'number' && totalRows > 0 && pagination.pageSize > 0;
-  const lastPageIndex = hasRows
-    ? Math.ceil(totalRows / pagination.pageSize) - 1
-    : 0;
-  const clampedIndex = Math.min(
-    Math.max(pagination.pageIndex, 0),
-    lastPageIndex,
-  );
+  const hasRows = typeof totalRows === 'number' && totalRows > 0 && pagination.pageSize > 0;
+  const lastPageIndex = hasRows ? Math.ceil(totalRows / pagination.pageSize) - 1 : 0;
+  const clampedIndex = Math.min(Math.max(pagination.pageIndex, 0), lastPageIndex);
 
   if (clampedIndex === pagination.pageIndex) {
     return pagination;

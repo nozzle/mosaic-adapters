@@ -1,12 +1,8 @@
+import type { OrderByItem } from '@nozzleio/mosaic-core';
+import type { PaginationState, SortingState } from '@tanstack/table-core';
 import { describe, expect, test } from 'vitest';
 
-import {
-  clampPagination,
-  paginationToWindow,
-  sortingToOrderBy,
-} from '../src/index';
-import type { PaginationState, SortingState } from '@tanstack/table-core';
-import type { OrderByItem } from '@nozzleio/mosaic-core';
+import { clampPagination, paginationToWindow, sortingToOrderBy } from '../src/index';
 
 describe('sortingToOrderBy', () => {
   const cases: Array<{

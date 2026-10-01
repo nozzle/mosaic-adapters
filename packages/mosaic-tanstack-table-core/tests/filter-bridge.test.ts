@@ -1,19 +1,15 @@
-import { Selection } from '@uwdata/mosaic-core';
-import { Query } from '@uwdata/mosaic-sql';
 import { createFilterSet, createRowsClient } from '@nozzleio/mosaic-core';
+import type { FilterSet } from '@nozzleio/mosaic-core';
+import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
+import type { ColumnFiltersState } from '@tanstack/table-core';
+import { Selection } from '@uwdata/mosaic-core';
+import type { SelectionClause } from '@uwdata/mosaic-core';
+import { Query } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/duckdb';
 import { createTanStackTableFilterBridge } from '../src/index';
-import type { FilterSet } from '@nozzleio/mosaic-core';
-import type { SelectionClause } from '@uwdata/mosaic-core';
-import type { ColumnFiltersState } from '@tanstack/table-core';
 import type { FilterBridgeColumns } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 function predicateSql(clause: SelectionClause | undefined): string {
   return String(clause?.predicate);
@@ -89,10 +85,7 @@ describe('clause kinds', () => {
   });
 
   test('half-open ranges use plain comparisons and carry no optimizer meta', () => {
-    const from = publish({ weight: { clause: 'range' } }, 'weight', [
-      70,
-      undefined,
-    ]);
+    const from = publish({ weight: { clause: 'range' } }, 'weight', [70, undefined]);
     expect(from?.meta).toBeUndefined();
     expect(predicateSql(from)).toContain('>=');
 
@@ -102,10 +95,7 @@ describe('clause kinds', () => {
   });
 
   test('range coerces numeric strings and treats junk bounds as open', () => {
-    const clause = publish({ weight: { clause: 'range' } }, 'weight', [
-      '60',
-      'not-a-number',
-    ]);
+    const clause = publish({ weight: { clause: 'range' } }, 'weight', ['60', 'not-a-number']);
     expect(clause?.value).toEqual([60, null]);
     expect(predicateSql(clause)).toContain('>=');
   });
@@ -669,8 +659,7 @@ describe('end-to-end against DuckDB', () => {
     const set = createFilterSet({ targets: { where: $page } });
     const rows = createRowsClient({
       coordinator: db.coordinator,
-      query: ({ where }) =>
-        Query.from('athletes').select('id', 'name', 'sport').where(where),
+      query: ({ where }) => Query.from('athletes').select('id', 'name', 'sport').where(where),
       filterBy: $page,
     });
     await waitFor(() => {
@@ -699,9 +688,10 @@ describe('end-to-end against DuckDB', () => {
       { id: 'weight', value: [65, 85] },
     ]);
     await waitFor(() => {
-      expect(
-        rows.store.state.rows.map((row) => (row as { name: string }).name),
-      ).toEqual(['Bo', 'Cy']);
+      expect(rows.store.state.rows.map((row) => (row as { name: string }).name)).toEqual([
+        'Bo',
+        'Cy',
+      ]);
     });
 
     bridge.setFilters([{ id: 'name', value: 'AD' }]);
@@ -729,8 +719,7 @@ describe('end-to-end against DuckDB', () => {
     const set = createFilterSet({ targets: { where: $page } });
     const rows = createRowsClient({
       coordinator: db.coordinator,
-      query: ({ where }) =>
-        Query.from('athletes').select('id', 'sport').where(where),
+      query: ({ where }) => Query.from('athletes').select('id', 'sport').where(where),
       filterBy: $page,
     });
     const bridge = createTanStackTableFilterBridge({

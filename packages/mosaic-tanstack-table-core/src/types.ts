@@ -22,8 +22,7 @@ import type { ColumnFiltersState } from '@tanstack/table-core';
  * - `'in'` — membership over an array of values (spec kind `points`). A scalar
  *   is treated as a single-element array; an empty array clears the spec.
  */
-export type ColumnFilterClauseKind =
-  'equals' | 'ilike' | 'prefix' | 'range' | 'date-range' | 'in';
+export type ColumnFilterClauseKind = 'equals' | 'ilike' | 'prefix' | 'range' | 'date-range' | 'in';
 
 export interface FilterBridgeColumn {
   /**
