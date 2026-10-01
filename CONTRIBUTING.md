@@ -26,7 +26,7 @@ If you have been assigned to fix an issue or develop a new feature, please follo
 
 ## Releases
 
-Package releases are managed with Changesets and GitHub Actions trusted publishing.
+Package releases are managed with [Changesets](https://changesets.dev) v3 and GitHub Actions trusted publishing.
 
 - Create a changeset for any user-facing package change:
 
@@ -34,11 +34,13 @@ Package releases are managed with Changesets and GitHub Actions trusted publishi
   pnpm changeset
   ```
 
-- Changesets maintains a separate `CHANGELOG.md` for each published package.
-- The release workflow on `main` opens or updates a versioning PR until the version changes are merged.
-- After versioned changes land on `main`, the same workflow publishes to npm through GitHub Actions OIDC.
-- npm trusted publishing currently requires npm CLI `11.5.1` or newer. Keep `.nvmrc` on a Node release that bundles a compatible npm version so the release workflow can publish without extra npm bootstrapping.
-- npm trusted publishers should reference `.github/workflows/release.yml`.
+- Changesets maintains a separate `CHANGELOG.md` for each published package. Private packages (`@nozzleio/test-support` and the example apps) are never versioned or published.
+- The Changeset Status workflow comments on each PR with the changesets it adds, or a link to add one. It does not block merging.
+- On every push to `main`, the release workflow (`.github/workflows/release.yml`) runs the CI checks and then does one of two things:
+  - **Version:** while unreleased changesets exist, it opens or updates the `ci: version packages` PR.
+  - **Publish:** once that PR is merged, it publishes the package tarballs packed from the CI job's build to npm, then pushes git tags and creates GitHub releases. Only this job gets `id-token: write`, and it does not build anything.
+- Publishing uses npm trusted publishing (GitHub Actions OIDC) through pnpm's native `publish`, so no npm token is needed. The `packageManager` pnpm version must stay on `11.1.3` or newer. The publish job fails if a published version is missing its npm provenance attestation.
+- npm trusted publishers should reference `.github/workflows/release.yml` with no GitHub environment.
 
 This project is friendly towards contributors using AI tools to assist in code generation and improvements. If you are using AI assisted tooling, please point it to the [AGENTS.md](./AGENTS.md) file for guidelines on code style, testing, and overall development workflow.
 
