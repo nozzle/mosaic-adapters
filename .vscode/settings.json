@@ -1,5 +1,5 @@
 {
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.defaultFormatter": "oxc.oxc-vscode",
   "workbench.colorCustomizations": {
     "titleBar.activeBackground": "#1f0d49",
     "titleBar.activeForeground": "#e2e8f0",
@@ -7,13 +7,13 @@
     "titleBar.inactiveForeground": "#b1b6bd"
   },
   "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "oxc.oxc-vscode"
   },
   "[typescript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "oxc.oxc-vscode"
   },
   "[typescriptreact]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "oxc.oxc-vscode"
   },
   "js/ts.preferences.autoImportFileExcludePatterns": ["dist", "gen"],
   "js/ts.tsdk.path": "node_modules/typescript",

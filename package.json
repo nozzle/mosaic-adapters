@@ -5,7 +5,6 @@
     "type": "git",
     "url": "https://github.com/nozzle/mosaic-adapters.git"
   },
-  "packageManager": "pnpm@11.2.2",
   "type": "module",
   "scripts": {
     "clear-build": "nx run-many --target=clear-build --exclude=examples/**",
@@ -14,7 +13,7 @@
     "changeset:version": "changeset version",
     "actions:pin-check": "node ./tools/check-github-action-pins.mjs",
     "test:ci": "pnpm run test:format && pnpm run test:manifests && pnpm run actions:pin-check && pnpm run test:types:all && pnpm run test:lint:all && pnpm run test:lib:all && pnpm run build:all",
-    "test:format": "prettier . --check",
+    "test:format": "oxfmt --check",
     "test:manifests": "node ./tools/check-internal-peer-ranges.mjs",
     "test:types": "nx run-many --target=test:types",
     "test:types:all": "nx run-many --target=test:types --all",
@@ -30,7 +29,7 @@
     "build:packages": "nx affected --target=build --exclude=examples/**",
     "build:all": "nx run-many --target=build --all",
     "watch": "pnpm run build:packages && nx watch --all -- pnpm run build:packages",
-    "format": "prettier . --write",
+    "format": "oxfmt",
     "dev": "pnpm run watch"
   },
   "devDependencies": {
@@ -42,14 +41,15 @@
     "@uwdata/vgplot": "catalog:",
     "jsdom": "catalog:",
     "nx": "^23.2.1",
+    "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
-    "prettier": "^3.9.9",
     "publint": "catalog:",
     "rimraf": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
-  }
+  },
+  "packageManager": "pnpm@11.2.2"
 }
