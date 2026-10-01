@@ -55,9 +55,9 @@
   },
   "devDependencies": {
     "@nozzleio/test-support": "workspace:*",
+    "@typescript/native": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
-    "rimraf": "catalog:",
-    "typescript": "catalog:"
+    "rimraf": "catalog:"
   }
 }

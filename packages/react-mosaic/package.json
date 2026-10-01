@@ -70,13 +70,13 @@
     "@nozzleio/test-support": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@typescript/native": "catalog:",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
     "@uwdata/vgplot": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "rimraf": "catalog:",
-    "typescript": "catalog:"
+    "rimraf": "catalog:"
   }
 }

@@ -3,6 +3,7 @@
     "esbenp.prettier-vscode",
     "oxc.oxc-vscode",
     "yoavbls.pretty-ts-errors",
+    "TypeScriptTeam.native-preview",
     "streetsidesoftware.code-spell-checker"
   ]
 }
