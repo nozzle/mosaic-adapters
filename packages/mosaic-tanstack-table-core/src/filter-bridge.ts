@@ -1,6 +1,7 @@
 import { deepEqual } from '@nozzleio/mosaic-core';
 import type { FilterSet, FilterSpec } from '@nozzleio/mosaic-core';
 import type { ColumnFilter, ColumnFiltersState } from '@tanstack/table-core';
+
 import type {
   ColumnFilterClauseKind,
   FilterBridge,
@@ -19,9 +20,7 @@ type NormalizedFilter = { active: false } | { active: true; value: unknown };
 
 const INACTIVE: NormalizedFilter = { active: false };
 
-export function createTanStackTableFilterBridge(
-  options: FilterBridgeOptions,
-): FilterBridge {
+export function createTanStackTableFilterBridge(options: FilterBridgeOptions): FilterBridge {
   return new TanStackTableFilterBridge(options);
 }
 
@@ -39,8 +38,7 @@ export function createTanStackTableFilterBridge(
 class TanStackTableFilterBridge implements FilterBridge {
   readonly #set: FilterSet;
   readonly #idPrefix: string;
-  readonly #onExternalChange:
-    ((filters: ColumnFiltersState) => void) | undefined;
+  readonly #onExternalChange: ((filters: ColumnFiltersState) => void) | undefined;
   #columns: FilterBridgeColumns;
   #filters: ColumnFiltersState = [];
   #destroyed = false;
@@ -167,9 +165,7 @@ class TanStackTableFilterBridge implements FilterBridge {
       if (this.#published.has(id)) {
         continue;
       }
-      const spec = this.#set.store.state.specs.find(
-        (candidate) => candidate.id === id,
-      );
+      const spec = this.#set.store.state.specs.find((candidate) => candidate.id === id);
       if (spec === undefined) {
         continue;
       }
@@ -227,11 +223,7 @@ class TanStackTableFilterBridge implements FilterBridge {
   }
 
   /** Builds the {@link FilterSpec} for an active, normalized column filter. */
-  #specFor(
-    columnId: string,
-    config: FilterBridgeColumn,
-    value: unknown,
-  ): FilterSpec {
+  #specFor(columnId: string, config: FilterBridgeColumn, value: unknown): FilterSpec {
     const column = config.column ?? columnId;
     const spec: FilterSpec = {
       id: this.#specId(columnId),
@@ -258,9 +250,7 @@ class TanStackTableFilterBridge implements FilterBridge {
     for (const columnId of Object.keys(this.#columns)) {
       managedIds.add(this.#specId(columnId));
     }
-    return this.#set.store.state.specs.filter((spec) =>
-      managedIds.has(spec.id),
-    );
+    return this.#set.store.state.specs.filter((spec) => managedIds.has(spec.id));
   }
 
   /**
@@ -342,10 +332,7 @@ function invertSpecValue(spec: FilterSpec): unknown {
   return spec.value;
 }
 
-function normalizeFilterValue(
-  kind: ColumnFilterClauseKind,
-  raw: unknown,
-): NormalizedFilter {
+function normalizeFilterValue(kind: ColumnFilterClauseKind, raw: unknown): NormalizedFilter {
   switch (kind) {
     case 'equals': {
       if (raw === undefined) {
@@ -415,10 +402,7 @@ function toDateBound(value: unknown): Date | null {
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : value;
   }
-  if (
-    (typeof value === 'string' && value.trim() !== '') ||
-    typeof value === 'number'
-  ) {
+  if ((typeof value === 'string' && value.trim() !== '') || typeof value === 'number') {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }

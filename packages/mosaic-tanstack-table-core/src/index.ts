@@ -1,8 +1,4 @@
-export {
-  clampPagination,
-  paginationToWindow,
-  sortingToOrderBy,
-} from './translators';
+export { clampPagination, paginationToWindow, sortingToOrderBy } from './translators';
 
 export { createTanStackTableFilterBridge } from './filter-bridge';
 
