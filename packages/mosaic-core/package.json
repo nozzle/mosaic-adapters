@@ -1,6 +1,6 @@
 {
   "name": "@nozzleio/mosaic-core",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Framework-agnostic reactive data clients for Mosaic coordinators.",
   "keywords": [
     "data-client",

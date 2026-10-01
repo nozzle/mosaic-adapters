@@ -1,5 +1,11 @@
 # @nozzleio/mosaic-core
 
+## 0.9.1
+
+### Patch Changes
+
+- [#250](https://github.com/nozzle/mosaic-adapters/pull/250) [`0fb10fc`](https://github.com/nozzle/mosaic-adapters/commit/0fb10fcc1f26795763b9e00fea97943ed69c66e9) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Document the `@uwdata/mosaic-core`/`@uwdata/mosaic-sql` peer range in the README, and that the two must stay on the same minor version. Link the `docs/core/` reference so it resolves from npm. No code changes.
+
 ## 0.9.0
 
 ### Minor Changes
