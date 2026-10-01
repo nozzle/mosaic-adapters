@@ -12,7 +12,7 @@ import {
   unnest,
 } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
-import { createValueClause } from './clause-factory';
+import { createClearClause, createValueClause } from './clause-factory';
 import { PersisterLifecycle } from './persistence';
 import { isFilterSetPublishTarget } from './types';
 import { deepEqual, toResultRows } from './utils';
@@ -286,6 +286,11 @@ class FacetDataClient
       });
     }
     if ((this.#options.select ?? 'single') === 'multi') {
+      // Mosaic 0.32's `clausePoints` turns `[]` into a `FALSE` predicate; an
+      // empty multi-selection must instead remove the source's clause.
+      if (selected.length === 0) {
+        return createClearClause(this.#source, clients);
+      }
       return clausePoints(
         [field],
         selected.map((value) => [value]),
