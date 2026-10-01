@@ -116,25 +116,25 @@ jobs:
           PNPM_CONFIG_PROVENANCE: 'true'
 
       # A publish without an attestation does not fail on its own, so check
-      # that every published version carries npm provenance. Retries cover
-      # registry propagation lag right after publishing.
+      # that every published version carries npm provenance. The registry can
+      # take a couple of minutes to expose a new version after `publish`
+      # returns, and the packument `npm view` reads is CDN-cached for up to
+      # 5 minutes on top of that. So poll the uncached attestations endpoint
+      # instead, against one 10-minute deadline shared by all packages.
       - name: Verify provenance attestations
         if: steps.publish.outputs.published == 'true'
         env:
           PUBLISHED_PACKAGES: ${{ steps.publish.outputs.published-packages }}
         run: |
+          deadline=$((SECONDS + 600))
           for spec in $(jq -r '.[] | "\(.name)@\(.version)"' <<< "$PUBLISHED_PACKAGES"); do
-            verified=false
-            for attempt in 1 2 3 4 5 6; do
-              if npm view "$spec" dist.attestations.provenance.predicateType 2>/dev/null | grep -q 'slsa.dev/provenance'; then
-                verified=true
-                break
+            url="https://registry.npmjs.org/-/npm/v1/attestations/${spec/\//%2f}"
+            until curl -fsS "$url" | jq -e 'any(.attestations[]; .predicateType | startswith("https://slsa.dev/provenance/"))' > /dev/null; do
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::No provenance attestation found for $spec within 10 minutes of publishing"
+                exit 1
               fi
-              sleep 10
+              sleep 15
             done
-            if [ "$verified" != true ]; then
-              echo "::error::No provenance attestation found for $spec"
-              exit 1
-            fi
             echo "Provenance verified for $spec"
           done
