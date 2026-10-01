@@ -1,5 +1,33 @@
 # @nozzleio/mosaic-tanstack-react-table
 
+## 0.14.0
+
+### Minor Changes
+
+- [#241](https://github.com/nozzle/mosaic-adapters/pull/241) [`6bdf67f`](https://github.com/nozzle/mosaic-adapters/commit/6bdf67fd6ce2de5f527802c62d60c00a40221532) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - **BREAKING — require `@uwdata/mosaic-core` and `@uwdata/mosaic-sql` `>=0.32.0 <1`** (and `@uwdata/vgplot` `>=0.32.0 <1` for the optional `@nozzleio/react-mosaic/vgplot` subpath). Upgrade the Mosaic packages together when installing any of the four adapter packages: `@uwdata/mosaic-core@0.32` depends on `@uwdata/mosaic-sql@^0.32`, and a mismatched pair nests a second SQL AST copy in the tree, which breaks the pre-aggregator's class-identity matching of clause `fields`.
+
+  No adapter APIs change. Adapting to Mosaic 0.32:
+
+  - Clearing a multi-select facet (`select: 'multi'`) or a rows client's row selection/hover (`selectRows([])`, `setSelectedValues([])`, `hoverRow(null)`, destroy-time cleanup) still **removes** the published clause. Mosaic 0.32's `clausePoints` turns an empty value list into an active `FALSE` predicate (uwdata/mosaic#1256), which would otherwise have filtered every consumer down to zero rows; these paths now publish a clear clause instead.
+  - Mosaic 0.32 drops JSON query transport and moves Arrow IPC decoding from connectors into the coordinator's `QueryManager` (set IPC extraction options with `new Coordinator(connector, { ipc })`). Custom `Connector` implementations must return raw Arrow IPC bytes for `arrow` queries; the built-in `wasmConnector`/`socketConnector`/`restConnector` already do.
+  - The `QueryManager` now shares one in-flight connector request between concurrent requests for identical SQL (uwdata/mosaic#1171), so a `refetch()` that rebuilds the same SQL as a pending query joins it rather than issuing a second round trip. The current-request guarantee is unaffected: the store settles once, on the current request.
+  - Date literals in generated SQL are now zero-padded (`DATE '2024-01-01'`).
+
+  The adapters' own current-request guarantee and the `skipSources` projection in front of the coordinator remain in place: upstream `Coordinator.updateClient` still delivers completions without request identity, and `updateSelection` still re-queries on every `'value'` event without comparing predicates.
+
+### Patch Changes
+
+- [#247](https://github.com/nozzle/mosaic-adapters/pull/247) [`f3546b5`](https://github.com/nozzle/mosaic-adapters/commit/f3546b5339ae85cdd6fbc8b09f2cf8b62e43bdc9) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Reformat the source with oxfmt. There are no runtime or API changes. The published `package.json` lists its fields in a new order.
+
+- [#245](https://github.com/nozzle/mosaic-adapters/pull/245) [`ee4eae3`](https://github.com/nozzle/mosaic-adapters/commit/ee4eae3e790105c53791a3430374be1b7bf4297b) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Build the published packages with tsdown instead of Vite library mode, with type declarations emitted by TypeScript 7. There are no runtime or API changes. The `dist/esm` layout, entry points, and `exports` map are unchanged.
+
+  - Declaration files that no public type refers to are no longer emitted (`base-client.d.ts` and `topology/wiring.d.ts` in `@nozzleio/mosaic-core`, `use-data-client.d.ts` in `@nozzleio/react-mosaic`).
+  - The emitted JavaScript and declarations are formatted differently (for example `const` instead of `var` for module-level bindings).
+
+- Updated dependencies [[`6bdf67f`](https://github.com/nozzle/mosaic-adapters/commit/6bdf67fd6ce2de5f527802c62d60c00a40221532), [`71e7827`](https://github.com/nozzle/mosaic-adapters/commit/71e7827dcd633368dd600858f5e5cdaace811e6f), [`5a75b38`](https://github.com/nozzle/mosaic-adapters/commit/5a75b38fd4c82231e6a3e168ac0827a2b3d35542), [`aa5855f`](https://github.com/nozzle/mosaic-adapters/commit/aa5855f111c8b583605b813f48aef1e649a33d03), [`21f2afd`](https://github.com/nozzle/mosaic-adapters/commit/21f2afd3e5893746032bf224e491edaea26502b9), [`ee4eae3`](https://github.com/nozzle/mosaic-adapters/commit/ee4eae3e790105c53791a3430374be1b7bf4297b)]:
+  - @nozzleio/mosaic-core@0.9.0
+  - @nozzleio/mosaic-tanstack-table-core@0.13.0
+
 ## 0.13.2
 
 ### Patch Changes
