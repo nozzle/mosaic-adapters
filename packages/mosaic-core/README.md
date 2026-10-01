@@ -12,6 +12,8 @@ Most apps install a framework package instead (e.g. `@nozzleio/react-mosaic`), w
 npm install @nozzleio/mosaic-core @uwdata/mosaic-core @uwdata/mosaic-sql
 ```
 
+`@uwdata/mosaic-core` and `@uwdata/mosaic-sql` are peer dependencies (`>=0.32.0 <1`). Keep them on the same minor version: a mismatched pair installs a second copy of `@uwdata/mosaic-sql`, which breaks the pre-aggregator.
+
 ## What lives here
 
 - `createRowsClient` — paginated/sorted rows with `filterBy` (WHERE) / `havingBy` (HAVING) Selections, `rowCount` totals, row-selection/hover clause publishing, and page prefetch
@@ -44,4 +46,4 @@ athletes.store.subscribe(() => {
 athletes.setInputs({ offset: 25 }); // value-diffed; exactly one re-query
 ```
 
-See `docs/core/` in the repository for concepts and the full client reference.
+See [`docs/core/`](https://github.com/nozzle/mosaic-adapters/tree/main/docs/core) in the repository for concepts and the full client reference.
