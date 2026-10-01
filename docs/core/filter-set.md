@@ -59,9 +59,7 @@ Both call `set()` with the same shape, land on the same targets, and produce the
 
 ```ts
 // Config-defined: a fixed row rendered as a text input.
-const TOP_BAR = [
-  { id: 'phrase', column: 'phrase', kind: 'match', label: 'Keyword' },
-] as const;
+const TOP_BAR = [{ id: 'phrase', column: 'phrase', kind: 'match', label: 'Keyword' }] as const;
 filters.set({ ...TOP_BAR[0], operator: 'contains', value: input.value });
 
 // User-built: the same spec assembled from a builder row's current choices.

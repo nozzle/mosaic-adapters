@@ -49,8 +49,7 @@ function sourceToSelect(source: DataSource): string {
 /** Ordered `CREATE OR REPLACE TABLE` statements, one per config entry. */
 export function buildDataLoadStatements(config: DataLoadConfig): Array<string> {
   return Object.entries(config).map(
-    ([table, source]) =>
-      `CREATE OR REPLACE TABLE ${table} AS ${sourceToSelect(source)}`,
+    ([table, source]) => `CREATE OR REPLACE TABLE ${table} AS ${sourceToSelect(source)}`,
   );
 }
 ```
@@ -123,10 +122,7 @@ export interface DataLoadState {
   done: boolean;
 }
 
-export function useDataLoad(
-  coordinator: Coordinator,
-  config: DataLoadConfig,
-): DataLoadState {
+export function useDataLoad(coordinator: Coordinator, config: DataLoadConfig): DataLoadState {
   const [state, setState] = useState<DataLoadState>(() => ({
     tables: initialTables(config),
     error: null,

@@ -83,9 +83,7 @@ function AthletesTable() {
 
   const athletes = useMosaicRows<AthleteRow>({
     query: ({ where }) =>
-      Query.from('athletes')
-        .select('id', 'name', 'sport', 'weight')
-        .where(where),
+      Query.from('athletes').select('id', 'name', 'sport', 'weight').where(where),
     filterBy: $page,
     inputs: {
       orderBy: sortingToOrderBy(sorting), // serializable intent in…

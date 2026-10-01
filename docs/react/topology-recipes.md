@@ -66,17 +66,15 @@ function useActiveFilters(filterSet: FilterSet): Array<ActiveFilterChip> {
 
   return useMemo(() => {
     // 1. FilterSet chips — narrow/drop the spec on remove.
-    const chips: Array<ActiveFilterChip> = filterSetChips.map(
-      (chip: FilterSetChip) => ({
-        key: `fs:${chip.key}`,
-        label: chip.label,
-        value: chip.formattedValue,
-        target: chip.target,
-        operator: chip.operator,
-        foreign: false,
-        remove: () => filterSet.removeChip(chip),
-      }),
-    );
+    const chips: Array<ActiveFilterChip> = filterSetChips.map((chip: FilterSetChip) => ({
+      key: `fs:${chip.key}`,
+      label: chip.label,
+      value: chip.formattedValue,
+      target: chip.target,
+      operator: chip.operator,
+      foreign: false,
+      remove: () => filterSet.removeChip(chip),
+    }));
 
     // 2. Foreign clauses — clear the WHOLE clause on remove. Each surfaces
     // exactly once: shared read-contexts are declared `compose` entries, which

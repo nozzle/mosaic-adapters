@@ -9,11 +9,7 @@
       "{workspaceRoot}/package.json",
       "{workspaceRoot}/tsconfig.json"
     ],
-    "default": [
-      "sharedGlobals",
-      "{projectRoot}/**/*",
-      "!{projectRoot}/**/*.md"
-    ],
+    "default": ["sharedGlobals", "{projectRoot}/**/*", "!{projectRoot}/**/*.md"],
     "production": ["default", "!{projectRoot}/tests/**/*"]
   },
   "targetDefaults": {

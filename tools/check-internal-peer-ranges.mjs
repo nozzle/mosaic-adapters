@@ -56,22 +56,14 @@ async function main() {
     })),
   );
 
-  const publishablePackages = manifests.filter(({ manifest }) =>
-    isPublishablePackage(manifest),
-  );
-  const internalPackageNames = new Set(
-    publishablePackages.map(({ manifest }) => manifest.name),
-  );
+  const publishablePackages = manifests.filter(({ manifest }) => isPublishablePackage(manifest));
+  const internalPackageNames = new Set(publishablePackages.map(({ manifest }) => manifest.name));
   const violations = [];
 
   for (const { manifest, manifestPath } of publishablePackages) {
-    const peerDependencies = isObject(manifest.peerDependencies)
-      ? manifest.peerDependencies
-      : {};
+    const peerDependencies = isObject(manifest.peerDependencies) ? manifest.peerDependencies : {};
 
-    for (const [dependencyName, dependencyRange] of Object.entries(
-      peerDependencies,
-    )) {
+    for (const [dependencyName, dependencyRange] of Object.entries(peerDependencies)) {
       if (!internalPackageNames.has(dependencyName)) {
         continue;
       }
