@@ -1,3 +1,4 @@
+// oxlint-disable-next-line no-unused-vars -- FilterSpec is referenced by the {@link} tags below
 import type { FilterSet, FilterSpec } from '@nozzleio/mosaic-core';
 import type { ColumnFiltersState } from '@tanstack/table-core';
 

@@ -32,7 +32,9 @@ describe('sparkline batching', () => {
     expect(db.clientQueries).toHaveLength(1);
 
     const series = spark.store.state.series;
-    expect([...series.keys()].sort()).toEqual(['run', 'swim']);
+    expect(
+      [...series.keys()].map(String).sort((a, b) => a.localeCompare(b)),
+    ).toEqual(['run', 'swim']);
     // swim weights 60, 70, 80, 90 → floor-to-10 bins.
     expect(series.get('swim')).toEqual([
       { x: 60, y: 1 },

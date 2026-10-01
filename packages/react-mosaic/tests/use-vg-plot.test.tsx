@@ -61,6 +61,7 @@ describe('useVgPlot', () => {
 
     function PlotHost() {
       const topology = useTopology(config);
+      // oxlint-disable-next-line react/globals -- the test records the last render's topology
       liveTopology = topology;
       const brush = topology.resolve('brush');
       const plotRef = useVgPlot(() => {

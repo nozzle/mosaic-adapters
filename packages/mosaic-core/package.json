@@ -44,7 +44,7 @@
     "build": "vite build",
     "test:types": "tsc --noEmit",
     "test:lib": "vitest",
-    "test:lint": "eslint ./src ./tests"
+    "test:lint": "oxlint ./src ./tests"
   },
   "dependencies": {
     "@tanstack/store": "catalog:"
@@ -57,7 +57,6 @@
     "@nozzleio/test-support": "workspace:*",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
-    "eslint": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:"
   }

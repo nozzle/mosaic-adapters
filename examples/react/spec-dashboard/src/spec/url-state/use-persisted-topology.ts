@@ -146,7 +146,7 @@ export function usePersistedTopology(compiled: CompiledSpec): Topology {
         search,
         commit: (patch) => searchCommitter.schedule(patch, 'selection'),
       })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `search` is excluded deliberately: see the comment above.
+    // oxlint-disable-next-line react/exhaustive-deps -- `search` is excluded deliberately: see the comment above.
     [compiled, searchCommitter],
   );
 

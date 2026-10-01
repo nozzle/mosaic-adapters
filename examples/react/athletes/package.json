@@ -6,7 +6,7 @@
     "clear-build": "rimraf dist",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ./src ./tests",
+    "lint": "oxlint ./src ./tests",
     "build": "pnpm run typecheck && vite build",
     "preview": "vite preview",
     "test:lint": "pnpm run lint",

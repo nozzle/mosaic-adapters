@@ -1540,9 +1540,6 @@ test.describe('spec-driven dashboard', () => {
     const input = page.getByTestId('detail-detail-filter-domain');
     await input.click();
     const original = await input.elementHandle();
-    if (original === null) {
-      throw new Error('detail domain filter input was not found');
-    }
     let expected = '';
     for (const character of 'stove') {
       expected += character;

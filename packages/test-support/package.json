@@ -11,7 +11,7 @@
   },
   "scripts": {
     "test:types": "tsc --noEmit",
-    "test:lint": "eslint ./src"
+    "test:lint": "oxlint ./src"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "catalog:",
@@ -26,7 +26,6 @@
   "devDependencies": {
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "eslint": "catalog:",
     "typescript": "catalog:"
   }
 }

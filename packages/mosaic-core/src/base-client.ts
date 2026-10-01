@@ -282,7 +282,7 @@ export abstract class BaseDataClient<
       if (this.#destroyed) {
         return;
       }
-      this.#client.requestQuery();
+      void this.#client.requestQuery();
     });
   }
 
