@@ -6,6 +6,7 @@ import {
   tableFeatures,
   useTable,
 } from '@tanstack/react-table';
+import { useMemo } from 'react';
 import { Query, count, sum } from '@uwdata/mosaic-sql';
 import { useMosaicRollup } from '@nozzleio/react-mosaic';
 import { tableName } from '../page-context';
@@ -107,7 +108,8 @@ export function RollupView() {
   // Rebuild the nested tree from the flat, pre-ordered rows: each row nests
   // under the last-seen ancestor one level shallower. The roots (the grand
   // total, level 0) feed the table as `data`; `getSubRows` walks the rest.
-  const data = buildTree(rollup.rows);
+  // Memoized because a new `data` identity resets the expanded state.
+  const data = useMemo(() => buildTree(rollup.rows), [rollup.rows]);
 
   // The grand total (root) stays expanded and its toggle stays disabled, so
   // the sport subtotals are always visible — matching the prior behavior.
