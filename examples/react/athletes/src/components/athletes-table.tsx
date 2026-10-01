@@ -312,8 +312,10 @@ function ColumnFilter(props: {
   }
   if (column.id === 'weight') {
     const range = (column.getFilterValue() as
-      | [number | undefined, number | undefined]
-      | undefined) ?? [undefined, undefined];
+      [number | undefined, number | undefined] | undefined) ?? [
+      undefined,
+      undefined,
+    ];
     const setBound = (index: 0 | 1, raw: string) => {
       const bound = raw === '' ? undefined : Number(raw);
       const next: [number | undefined, number | undefined] = [...range];

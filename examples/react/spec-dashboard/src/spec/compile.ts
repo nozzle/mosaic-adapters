@@ -122,8 +122,7 @@ export interface CompiledSpec {
 }
 
 export type CompileResult =
-  | { ok: true; compiled: CompiledSpec }
-  | { ok: false; errors: Array<string> };
+  { ok: true; compiled: CompiledSpec } | { ok: false; errors: Array<string> };
 
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);

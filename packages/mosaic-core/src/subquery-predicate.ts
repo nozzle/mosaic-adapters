@@ -24,9 +24,7 @@ import type { ExprNode, Query } from '@uwdata/mosaic-sql';
  * - `null` -> no predicate (the filter is cleared / inactive)
  */
 export type SubqueryFilterQuery =
-  | Query
-  | { query: Query; negate?: boolean }
-  | null;
+  Query | { query: Query; negate?: boolean } | null;
 
 export interface BuildSubqueryPredicateOptions {
   /** The outer column (or struct path "a.b") tested for membership. */

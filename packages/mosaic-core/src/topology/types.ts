@@ -19,21 +19,14 @@ import type { Store } from '@tanstack/store';
 
 /** Standalone Selection resolution strategies. */
 export type StandaloneSelectionType =
-  | 'intersect'
-  | 'union'
-  | 'single'
-  | 'crossfilter';
+  'intersect' | 'union' | 'single' | 'crossfilter';
 
 /**
  * The value a `param` entry holds and resets to. A scalar or a flat array of
  * scalars — the JSON-serialisable shape a Mosaic `Param` carries.
  */
 export type ParamValue =
-  | string
-  | number
-  | boolean
-  | null
-  | Array<string | number | boolean | null>;
+  string | number | boolean | null | Array<string | number | boolean | null>;
 
 /**
  * Fields every declaration accepts. `label` and `meta` are opaque passthrough

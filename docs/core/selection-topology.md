@@ -292,11 +292,7 @@ A **`param`** is topology-owned — constructed as `Param.value(default)` and to
 
 ```ts
 type ParamValue =
-  | string
-  | number
-  | boolean
-  | null
-  | Array<string | number | boolean | null>;
+  string | number | boolean | null | Array<string | number | boolean | null>;
 ```
 
 That is exactly the set Mosaic interpolates: a metric name, a grain string, an N, a boolean toggle, a multi-select of scalars.

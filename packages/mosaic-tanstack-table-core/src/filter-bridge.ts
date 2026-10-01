@@ -40,8 +40,7 @@ class TanStackTableFilterBridge implements FilterBridge {
   readonly #set: FilterSet;
   readonly #idPrefix: string;
   readonly #onExternalChange:
-    | ((filters: ColumnFiltersState) => void)
-    | undefined;
+    ((filters: ColumnFiltersState) => void) | undefined;
   #columns: FilterBridgeColumns;
   #filters: ColumnFiltersState = [];
   #destroyed = false;

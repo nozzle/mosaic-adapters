@@ -6,11 +6,7 @@ import type { SelectionUrlRegistry } from './selection-url';
 import type { VariableUrlRegistry } from './variable-url';
 
 export type ParamOwnership =
-  | 'spec'
-  | 'filter'
-  | 'selection'
-  | 'variable'
-  | 'other';
+  'spec' | 'filter' | 'selection' | 'variable' | 'other';
 
 export interface DashboardUrlInfo {
   classify: (name: string) => ParamOwnership;
