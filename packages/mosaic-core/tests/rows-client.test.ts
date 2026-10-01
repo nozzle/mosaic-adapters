@@ -1,11 +1,11 @@
+import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
+import type { ClauseSource } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
 import { createRowsClient } from '../src/index';
-import type { ClauseSource } from '@uwdata/mosaic-core';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface AthleteRow {
   id: number;
@@ -42,12 +42,7 @@ describe('rowCount: "window"', () => {
     expect(client.store.state.rows).toHaveLength(2);
     expect(client.store.state.totalRows).toBe(6);
     // The window count column is plumbing, not data.
-    expect(Object.keys(client.store.state.rows[0]!)).toEqual([
-      'id',
-      'name',
-      'sport',
-      'weight',
-    ]);
+    expect(Object.keys(client.store.state.rows[0]!)).toEqual(['id', 'name', 'sport', 'weight']);
 
     // An externally published column filter (a facet menu, a TanStack Table filter
     // bridge, ...). Its clause does not list our client in `clients`, so the
@@ -104,8 +99,7 @@ describe('rowCount: "window"', () => {
     // reference lives outside the subquery, against the projected alias.
     const client = createRowsClient<{ id: number; kg: number }>({
       coordinator: db.coordinator,
-      query: ({ where }) =>
-        Query.from('athletes').select('id', { kg: 'weight' }).where(where),
+      query: ({ where }) => Query.from('athletes').select('id', { kg: 'weight' }).where(where),
       inputs: { orderBy: [{ column: 'kg', desc: true }], limit: 2, offset: 0 },
       rowCount: 'window',
     });
@@ -128,8 +122,7 @@ describe('rowCount: "window"', () => {
     // in-scope `count(*) OVER ()` would have seen.
     const client = createRowsClient<{ sport: string }>({
       coordinator: db.coordinator,
-      query: ({ where }) =>
-        Query.from('athletes').select('sport').distinct().where(where),
+      query: ({ where }) => Query.from('athletes').select('sport').distinct().where(where),
       inputs: { orderBy: [{ column: 'sport' }], limit: 1, offset: 0 },
       rowCount: 'window',
     });
@@ -199,8 +192,7 @@ describe('rowCount: "query"', () => {
     // (the SQL-string cache would otherwise hide duplicate issuances).
     const querySpy = vi.spyOn(db.coordinator, 'query');
     const countCalls = () =>
-      querySpy.mock.calls.filter(([q]) => /__total_rows__/.test(String(q)))
-        .length;
+      querySpy.mock.calls.filter(([q]) => /__total_rows__/.test(String(q))).length;
 
     const client = createRowsClient<AthleteRow>({
       coordinator: db.coordinator,
@@ -238,8 +230,7 @@ describe('rowCount: "query"', () => {
   test('re-issues the count when the WHERE predicate changes', async () => {
     const querySpy = vi.spyOn(db.coordinator, 'query');
     const countCalls = () =>
-      querySpy.mock.calls.filter(([q]) => /__total_rows__/.test(String(q)))
-        .length;
+      querySpy.mock.calls.filter(([q]) => /__total_rows__/.test(String(q))).length;
 
     const $page = Selection.crossfilter();
     const client = createRowsClient<AthleteRow>({
@@ -270,8 +261,7 @@ describe('rowCount: "query"', () => {
   test('refetch forces a fresh count even when the predicate is unchanged', async () => {
     const querySpy = vi.spyOn(db.coordinator, 'query');
     const countCalls = () =>
-      querySpy.mock.calls.filter(([q]) => /__total_rows__/.test(String(q)))
-        .length;
+      querySpy.mock.calls.filter(([q]) => /__total_rows__/.test(String(q))).length;
 
     const client = createRowsClient<AthleteRow>({
       coordinator: db.coordinator,
@@ -309,19 +299,15 @@ describe('rowCount: "query"', () => {
     const loggerError = vi.spyOn(db.coordinator.logger(), 'error');
     const originalQuery = db.coordinator.query.bind(db.coordinator);
     let countAttempts = 0;
-    const querySpy = vi
-      .spyOn(db.coordinator, 'query')
-      .mockImplementation((query, options) => {
-        if (/__total_rows__/.test(String(query))) {
-          countAttempts += 1;
-          if (countAttempts === 1) {
-            return Promise.reject(countError) as ReturnType<
-              typeof db.coordinator.query
-            >;
-          }
+    const querySpy = vi.spyOn(db.coordinator, 'query').mockImplementation((query, options) => {
+      if (/__total_rows__/.test(String(query))) {
+        countAttempts += 1;
+        if (countAttempts === 1) {
+          return Promise.reject(countError) as ReturnType<typeof db.coordinator.query>;
         }
-        return originalQuery(query, options);
-      });
+      }
+      return originalQuery(query, options);
+    });
 
     const client = createRowsClient<AthleteRow>({
       coordinator: db.coordinator,
@@ -401,9 +387,7 @@ describe('inputMode', () => {
       expect(client.store.state.rows).toHaveLength(3);
     });
     // The client did not double-append the window.
-    expect((client.store.state.lastQuery!.match(/LIMIT/gi) ?? []).length).toBe(
-      1,
-    );
+    expect((client.store.state.lastQuery!.match(/LIMIT/gi) ?? []).length).toBe(1);
 
     client.destroy();
   });
@@ -478,9 +462,7 @@ describe('prefetch', () => {
 
     client.prefetch({ offset: 2 });
     await waitFor(() => {
-      expect(db.connectorQueries.some((sql) => /OFFSET 2/i.test(sql))).toBe(
-        true,
-      );
+      expect(db.connectorQueries.some((sql) => /OFFSET 2/i.test(sql))).toBe(true);
     });
 
     // Navigating to the prefetched page is served from the coordinator

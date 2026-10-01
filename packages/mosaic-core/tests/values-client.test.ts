@@ -1,10 +1,10 @@
+import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { Query, avg, count, max } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
 import { createValuesClient } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 let db: TestDb;
 
@@ -58,8 +58,7 @@ describe('values client', () => {
 
     const kpis = createValuesClient<{ athletes: number }>({
       coordinator: db.coordinator,
-      query: ({ where }) =>
-        Query.from('athletes').select({ athletes: count() }).where(where),
+      query: ({ where }) => Query.from('athletes').select({ athletes: count() }).where(where),
       filterBy: $page,
       enabled: false,
     });

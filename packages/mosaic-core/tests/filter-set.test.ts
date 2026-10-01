@@ -1,12 +1,9 @@
+import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection } from '@uwdata/mosaic-core';
 import { Query, count, gt } from '@uwdata/mosaic-sql';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import {
-  createAthletesDb,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/duckdb';
 import {
   conditionFilterKind,
   createFilterSet,
@@ -14,7 +11,6 @@ import {
   subqueryFilterKind,
 } from '../src/index';
 import type { FilterKind, FilterSpec, Persister } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 let db: TestDb;
 
@@ -127,9 +123,7 @@ describe('built-in kinds → predicate SQL', () => {
       operator: 'prefix',
       value: 'A',
     });
-    expect(predicateSql($where)).toBe(
-      'starts_with(lower("name"), lower(\'A\'))',
-    );
+    expect(predicateSql($where)).toBe('starts_with(lower("name"), lower(\'A\'))');
     set.destroy();
   });
 
@@ -210,9 +204,7 @@ describe('built-in kinds → predicate SQL', () => {
         operator: 'list_has_any',
         value: ['x', 'y'],
       });
-      expect(predicateSql($where)).toContain(
-        "list_has_any(\"tags\", ['x', 'y'])",
-      );
+      expect(predicateSql($where)).toContain("list_has_any(\"tags\", ['x', 'y'])");
       set.destroy();
     });
   });
@@ -457,9 +449,7 @@ describe('chip routing target', () => {
     // A self-routing kind that also explodes array values.
     const selfRoutingExplode: FilterKind = {
       explodeValues: true,
-      emit: () => [
-        { target: 'having:a', clause: { predicate: gt(count(), 1) } },
-      ],
+      emit: () => [{ target: 'having:a', clause: { predicate: gt(count(), 1) } }],
     };
     const set = createFilterSet({
       targets: { where: $where, 'having:a': $havingA },
@@ -585,10 +575,7 @@ describe('subquery context rebuild', () => {
       source: { id: 'sibling' },
       value: 70,
       fields: [],
-      predicate: gt(
-        { toString: () => '"weight"' } as never,
-        { toString: () => '70' } as never,
-      ),
+      predicate: gt({ toString: () => '"weight"' } as never, { toString: () => '70' } as never),
     };
 
     // Context gains a sibling clause → the subquery must rebuild with new SQL.
@@ -651,10 +638,7 @@ describe('subquery context rebuild', () => {
       source: { id: 'sibling' },
       value: 70,
       fields: [],
-      predicate: gt(
-        { toString: () => '"weight"' } as never,
-        { toString: () => '70' } as never,
-      ),
+      predicate: gt({ toString: () => '"weight"' } as never, { toString: () => '70' } as never),
     };
     const clearSibling = { ...siblingClause, value: null, predicate: null };
 
@@ -708,9 +692,7 @@ describe('persistence round-trip', () => {
     }
     const sql1 = $where1._resolved.map((c) => String(c.predicate)).sort();
 
-    const persisted = JSON.parse(
-      JSON.stringify(set1.store.state.specs),
-    ) as Array<FilterSpec>;
+    const persisted = JSON.parse(JSON.stringify(set1.store.state.specs)) as Array<FilterSpec>;
     set1.destroy();
 
     const $where2 = Selection.crossfilter();
@@ -825,9 +807,9 @@ describe('dev warnings', () => {
     const $where = Selection.crossfilter();
     const set = createFilterSet({ targets: { where: $where } });
 
-    expect(() =>
-      set.set({ id: 'x', column: 'sport', kind: 'nope', value: 'swim' }),
-    ).toThrow(/unknown kind/);
+    expect(() => set.set({ id: 'x', column: 'sport', kind: 'nope', value: 'swim' })).toThrow(
+      /unknown kind/,
+    );
 
     // An emission addressed to a target with no Selection is skipped + warned.
     const stray: FilterKind = {

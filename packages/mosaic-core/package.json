@@ -2,42 +2,42 @@
   "name": "@nozzleio/mosaic-core",
   "version": "0.8.2",
   "description": "Framework-agnostic reactive data clients for Mosaic coordinators.",
+  "keywords": [
+    "data-client",
+    "duckdb",
+    "headless",
+    "mosaic"
+  ],
+  "homepage": "https://github.com/nozzle/mosaic-adapters/tree/main/packages/mosaic-core",
+  "bugs": {
+    "url": "https://github.com/nozzle/mosaic-adapters/issues"
+  },
   "license": "MIT",
-  "type": "module",
-  "main": "dist/esm/index.js",
-  "module": "dist/esm/index.js",
-  "types": "dist/esm/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nozzle/mosaic-adapters.git",
     "directory": "packages/mosaic-core"
   },
-  "homepage": "https://github.com/nozzle/mosaic-adapters/tree/main/packages/mosaic-core",
-  "bugs": {
-    "url": "https://github.com/nozzle/mosaic-adapters/issues"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
-  "keywords": [
-    "mosaic",
-    "duckdb",
-    "headless",
-    "data-client"
-  ],
   "files": [
     "dist",
     "README.md",
     "LICENSE"
   ],
+  "type": "module",
   "sideEffects": false,
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/esm/index.d.ts",
       "default": "./dist/esm/index.js"
     },
     "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "clear-build": "rimraf dist",
@@ -49,15 +49,15 @@
   "dependencies": {
     "@tanstack/store": "catalog:"
   },
-  "peerDependencies": {
-    "@uwdata/mosaic-core": ">=0.32.0 <1",
-    "@uwdata/mosaic-sql": ">=0.32.0 <1"
-  },
   "devDependencies": {
     "@nozzleio/test-support": "workspace:*",
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@uwdata/mosaic-core": ">=0.32.0 <1",
+    "@uwdata/mosaic-sql": ">=0.32.0 <1"
   }
 }

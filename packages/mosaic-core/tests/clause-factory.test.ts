@@ -1,13 +1,9 @@
+import { waitFor } from '@nozzleio/test-support/duckdb';
 import { Selection } from '@uwdata/mosaic-core';
 import { count, eq, gt, literal } from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
-import { waitFor } from '@nozzleio/test-support/duckdb';
-import {
-  createClearClause,
-  createValueClause,
-  updateClauseIfChanged,
-} from '../src/index';
+import { createClearClause, createValueClause, updateClauseIfChanged } from '../src/index';
 
 // `selection.clauses` reads the last *emitted* value event, which lags one
 // tick once listeners attach; `_resolved` is the synchronously-maintained
@@ -53,9 +49,7 @@ describe('updateClauseIfChanged', () => {
     const selection = Selection.intersect();
     const source = {};
 
-    expect(updateClauseIfChanged(selection, createClearClause(source))).toBe(
-      false,
-    );
+    expect(updateClauseIfChanged(selection, createClearClause(source))).toBe(false);
     expect(resolved(selection)).toHaveLength(0);
 
     updateClauseIfChanged(
@@ -69,9 +63,7 @@ describe('updateClauseIfChanged', () => {
     );
     expect(resolved(selection)).toHaveLength(1);
 
-    expect(updateClauseIfChanged(selection, createClearClause(source))).toBe(
-      true,
-    );
+    expect(updateClauseIfChanged(selection, createClearClause(source))).toBe(true);
     expect(resolved(selection)).toHaveLength(0);
   });
 });

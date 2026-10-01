@@ -1,9 +1,9 @@
+import { createTestDb, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import { createTestDb, waitFor } from '@nozzleio/test-support/duckdb';
 import { createPivotClient } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface SalesRow extends Record<string, unknown> {
   region: string;
@@ -41,11 +41,7 @@ describe('pivot client', () => {
 
     // Columns derive from the data, not the config; the aggregate alias
     // suffixes each pivot value column (DuckDB naming).
-    expect(pivot.store.state.pivotColumns).toEqual([
-      'Q1_total',
-      'Q2_total',
-      'Q3_total',
-    ]);
+    expect(pivot.store.state.pivotColumns).toEqual(['Q1_total', 'Q2_total', 'Q3_total']);
     const rows = pivot.store.state.rows;
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ region: 'east' });
@@ -74,9 +70,7 @@ describe('pivot client', () => {
     });
 
     // Filtering away Q2/Q3 rows shrinks the dynamic column set.
-    $page.update(
-      clausePoint('quarter', 'Q1', { source: { peer: true } as object }),
-    );
+    $page.update(clausePoint('quarter', 'Q1', { source: { peer: true } as object }));
     await waitFor(() => {
       expect(pivot.store.state.pivotColumns).toEqual(['Q1']);
     });

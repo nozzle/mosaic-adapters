@@ -1,10 +1,7 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
-import {
-  buildSubqueryPredicate,
-  normalizeSubqueryFilterQuery,
-} from '../src/subquery-predicate';
+import { buildSubqueryPredicate, normalizeSubqueryFilterQuery } from '../src/subquery-predicate';
 
 function popularQuestions(threshold: number) {
   return mSql.Query.select('question')

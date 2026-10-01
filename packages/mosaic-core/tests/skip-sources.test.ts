@@ -1,16 +1,12 @@
+import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection } from '@uwdata/mosaic-core';
+import type { ClauseSource } from '@uwdata/mosaic-core';
 import { Query, count, eq, gte, literal, lte } from '@uwdata/mosaic-sql';
+import type { FilterExpr } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/duckdb';
 import { createRowsClient } from '../src/index';
-import type { ClauseSource } from '@uwdata/mosaic-core';
-import type { FilterExpr } from '@uwdata/mosaic-sql';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 /**
  * A clause source carrying a string `id` (what `skipSources` matches on).
@@ -39,13 +35,7 @@ function athleteQuery() {
 }
 
 /** Grouped query exposing a `total` aggregate usable in WHERE and HAVING. */
-function sportTotalsQuery({
-  where,
-  having,
-}: {
-  where: FilterExpr;
-  having: FilterExpr;
-}) {
+function sportTotalsQuery({ where, having }: { where: FilterExpr; having: FilterExpr }) {
   return Query.from('athletes')
     .select('sport', { total: count() })
     .groupby('sport')
@@ -305,10 +295,7 @@ describe('skipSources', () => {
     // The skipped clause is dropped from WHERE and HAVING alike → both groups.
     await waitFor(() => {
       expect(client.store.state.status).toBe('success');
-      expect(client.store.state.rows.map((r) => r.sport).sort()).toEqual([
-        'run',
-        'swim',
-      ]);
+      expect(client.store.state.rows.map((r) => r.sport).sort()).toEqual(['run', 'swim']);
     });
     expect(client.store.state.lastQuery).not.toMatch(/swim/);
 

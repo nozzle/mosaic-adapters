@@ -7,16 +7,14 @@
  * or propagation survives teardown.
  */
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
+import type { MosaicClient } from '@uwdata/mosaic-core';
 import { describe, expect, test } from 'vitest';
 
 import { createComposedSelection } from '../src/index';
-import type { MosaicClient } from '@uwdata/mosaic-core';
 
 /** Publish a point clause from an independent source onto a Selection. */
 function publish(selection: Selection, column: string, value: string): void {
-  selection.update(
-    clausePoint(column, value, { source: { column, value } as object }),
-  );
+  selection.update(clausePoint(column, value, { source: { column, value } as object }));
 }
 
 /** A stand-in Mosaic client (only object identity matters for self-exclusion). */
@@ -41,9 +39,7 @@ function publishForClient(
 
 /** Column names of the context's synchronously resolved clauses. */
 function resolvedColumns(context: Selection): Array<string> {
-  return context._resolved.map((clause) =>
-    String((clause.source as { column: string }).column),
-  );
+  return context._resolved.map((clause) => String((clause.source as { column: string }).column));
 }
 
 describe('createComposedSelection', () => {
@@ -93,9 +89,7 @@ describe('createComposedSelection', () => {
     // Reading for the owning client self-excludes (its own only clause drops).
     expect(handle.selection.predicate(client)).toBeUndefined();
     // A different client still sees the clause.
-    expect(String(handle.selection.predicate(fakeClient()))).toContain(
-      '"sport"',
-    );
+    expect(String(handle.selection.predicate(fakeClient()))).toContain('"sport"');
     handle.destroy();
   });
 

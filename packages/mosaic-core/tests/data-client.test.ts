@@ -1,14 +1,10 @@
+import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Param, QueryError, Selection } from '@uwdata/mosaic-core';
 import { Query, count, eq, gte, literal } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/duckdb';
 import { createRowsClient } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface AthleteRow {
   id: number;
@@ -42,9 +38,7 @@ describe('latest-ref query factory', () => {
     const queriesAfterInit = db.clientQueries.length;
 
     // New factory identity: swim-only. Must NOT trigger a query by itself.
-    client.setQuery(({ where }) =>
-      athleteQuery().where(eq('sport', literal('swim')), where),
-    );
+    client.setQuery(({ where }) => athleteQuery().where(eq('sport', literal('swim')), where));
     await settle();
     expect(db.clientQueries.length).toBe(queriesAfterInit);
     expect(client.store.state.rows).toHaveLength(6);
@@ -69,9 +63,7 @@ describe('latest-ref query factory', () => {
       expect(client.store.state.rows).toHaveLength(6);
     });
 
-    client.setQuery(({ where }) =>
-      athleteQuery().where(eq('sport', literal('run')), where),
-    );
+    client.setQuery(({ where }) => athleteQuery().where(eq('sport', literal('run')), where));
     await client.refetch();
     expect(client.store.state.rows).toHaveLength(2);
 
@@ -205,8 +197,7 @@ describe('param wiring', () => {
 
     const client = createRowsClient<AthleteRow>({
       coordinator: db.coordinator,
-      query: ({ where }) =>
-        athleteQuery().where(gte('weight', literal($minWeight.value!)), where),
+      query: ({ where }) => athleteQuery().where(gte('weight', literal($minWeight.value!)), where),
       params: { minWeight: $minWeight },
     });
 

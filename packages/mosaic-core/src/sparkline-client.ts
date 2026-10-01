@@ -12,9 +12,9 @@ import {
   sql,
   sum,
 } from '@uwdata/mosaic-sql';
-import { BaseDataClient } from './base-client';
-import { toResultRows } from './utils';
 import type { ExprNode, SelectQuery } from '@uwdata/mosaic-sql';
+
+import { BaseDataClient } from './base-client';
 import type {
   QueryContext,
   SparklineClient,
@@ -24,6 +24,7 @@ import type {
   SparklinePoint,
   SparklineY,
 } from './types';
+import { toResultRows } from './utils';
 
 /** Aliases inside the batched query; never surfaced to consumers. */
 const KEY_COLUMN = '__key__';
@@ -37,9 +38,7 @@ const Y_COLUMN = '__y__';
  * client's visible page. X is a declarative raw column, numeric bin, or date
  * bin; Y a declarative aggregate.
  */
-export function createSparklineClient(
-  options: SparklineClientOptions,
-): SparklineClient {
+export function createSparklineClient(options: SparklineClientOptions): SparklineClient {
   validateAggregate(options.y);
   return new SparklineDataClient(options);
 }
@@ -53,11 +52,9 @@ class SparklineDataClient
   constructor(options: SparklineClientOptions) {
     // Filtering changes which (key, x) groups exist, so pre-aggregation is
     // unsafe by default (overridable for callers who know better).
-    super(
-      { ...options, filterStable: options.filterStable ?? false },
-      options.from,
-      { series: new Map() },
-    );
+    super({ ...options, filterStable: options.filterStable ?? false }, options.from, {
+      series: new Map(),
+    });
     this.#options = options;
   }
 

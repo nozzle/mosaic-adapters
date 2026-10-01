@@ -1,13 +1,9 @@
+import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/duckdb';
 import { createHistogramClient, createRowsClient } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface AthleteRow {
   id: number;
@@ -66,9 +62,7 @@ describe('histogram bins', () => {
     await waitFor(() => {
       expect(hist.store.state.status).toBe('success');
     });
-    expect(
-      db.connectorQueries.filter((sql) => /min\(/i.test(sql)),
-    ).toHaveLength(0);
+    expect(db.connectorQueries.filter((sql) => /min\(/i.test(sql))).toHaveLength(0);
     // All six weights (55–90) land in the upper [50, 100) bin.
     expect(hist.store.state.bins.map((b) => b.count)).toEqual([0, 6]);
 
@@ -139,9 +133,7 @@ describe('histogram bins', () => {
     expect(db.clientQueries.length).toBe(queriesAfterInit + 1);
 
     // A peer clause changes the counts, never the boundaries.
-    $page.update(
-      clausePoint('sport', 'run', { source: { peer: true } as object }),
-    );
+    $page.update(clausePoint('sport', 'run', { source: { peer: true } as object }));
     await waitFor(() => {
       expect(hist.store.state.bins.map((b) => b.count)).toEqual([1, 1, 0]);
     });

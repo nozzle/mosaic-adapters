@@ -1,6 +1,7 @@
 import { Store } from '@tanstack/store';
 import { queryFieldInfo } from '@uwdata/mosaic-core';
 import type { Coordinator, FieldInfo, Stat } from '@uwdata/mosaic-core';
+
 import type { DataClientStatus } from './types';
 
 export interface SchemaClientOptions {

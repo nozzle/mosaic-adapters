@@ -1,14 +1,10 @@
+import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection } from '@uwdata/mosaic-core';
 import { Query, count } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import {
-  createAthletesDb,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/duckdb';
 import { createRowsClient } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface AthleteRow {
   id: number;
@@ -34,9 +30,7 @@ function createPublishingClient($picked: Selection, $hovered?: Selection) {
     inputs: { orderBy: [{ column: 'id' }] },
     publish: {
       select: { as: $picked, columns: ['id'] },
-      ...($hovered
-        ? { hover: { as: $hovered, columns: ['id'], throttleMs: 0 } }
-        : {}),
+      ...($hovered ? { hover: { as: $hovered, columns: ['id'], throttleMs: 0 } } : {}),
     },
   });
 }
@@ -208,10 +202,7 @@ describe('row-selection publishing', () => {
     const client = createRowsClient<{ key: string; n: number }>({
       coordinator: db.coordinator,
       query: ({ where }) =>
-        Query.from('athletes')
-          .select({ key: 'sport', n: count() })
-          .groupby('sport')
-          .where(where),
+        Query.from('athletes').select({ key: 'sport', n: count() }).groupby('sport').where(where),
       inputMode: 'manual',
       filterStable: false,
       publish: {
@@ -252,9 +243,7 @@ describe('row-selection publishing', () => {
       },
     });
     structClient.selectRows([{ key: 'q1' }]);
-    expect(String($structSel.clauses[0]!.predicate)).toContain(
-      '"related_phrase"."phrase"',
-    );
+    expect(String($structSel.clauses[0]!.predicate)).toContain('"related_phrase"."phrase"');
 
     client.destroy();
     consumer.destroy();

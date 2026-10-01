@@ -1,18 +1,10 @@
+import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection } from '@uwdata/mosaic-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import {
-  createAthletesDb,
-  settle,
-  waitFor,
-} from '@nozzleio/test-support/duckdb';
-import {
-  createFacetClient,
-  createHistogramClient,
-  createRowsClient,
-} from '../src/index';
+import { createFacetClient, createHistogramClient, createRowsClient } from '../src/index';
 import type { Persister } from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
 
 interface AthleteRow {
   id: number;
@@ -65,9 +57,7 @@ describe('facet persistence', () => {
     expect($page.clauses).toHaveLength(1);
     // …and the facet issued exactly one query (its own clause self-excludes,
     // so its options query is unfiltered — but no unfiltered→refiltered pair).
-    const facetQueries = db.clientQueries.filter((sql) =>
-      /group by/i.test(sql),
-    );
+    const facetQueries = db.clientQueries.filter((sql) => /group by/i.test(sql));
     expect(facetQueries).toHaveLength(1);
 
     facet.destroy();

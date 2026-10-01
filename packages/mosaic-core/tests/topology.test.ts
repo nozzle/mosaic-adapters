@@ -1,3 +1,4 @@
+import { settle, waitFor } from '@nozzleio/test-support/duckdb';
 /**
  * Tests for {@link createTopology}: the named-Selection-graph primitive.
  *
@@ -8,13 +9,12 @@
  * point clauses published directly onto Selections — no coordinator required.
  */
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
+import type { MosaicClient } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import { describe, expect, test, vi } from 'vitest';
 
-import { settle, waitFor } from '@nozzleio/test-support/duckdb';
 import { createTopology, subqueryFilterKind } from '../src/index';
 import type { FilterSpec, Persister } from '../src/index';
-import type { MosaicClient } from '@uwdata/mosaic-core';
 
 /** Publish a point clause from an independent (foreign) source. */
 function publishForeign(
@@ -62,10 +62,7 @@ describe('createTopology — happy-path resolution', () => {
     publishForeign(topology.resolve('a'), 'sport', 'swim');
     publishForeign(topology.resolve('b'), 'name', 'Ada');
 
-    expect(resolvedColumns(topology.resolve('combined')).sort()).toEqual([
-      'name',
-      'sport',
-    ]);
+    expect(resolvedColumns(topology.resolve('combined')).sort()).toEqual(['name', 'sport']);
     topology.destroy();
   });
 
@@ -135,10 +132,7 @@ describe('createTopology — happy-path resolution', () => {
 
   test('external declaration resolves to the supplied instance', () => {
     const brush = Selection.crossfilter();
-    const topology = createTopology(
-      { brush: { type: 'external' } },
-      { selections: { brush } },
-    );
+    const topology = createTopology({ brush: { type: 'external' } }, { selections: { brush } });
     expect(topology.resolve('brush')).toBe(brush);
     topology.destroy();
   });
@@ -161,15 +155,7 @@ describe('createTopology — happy-path resolution', () => {
     );
 
     expect([...topology.validNames].sort()).toEqual(
-      [
-        'a',
-        'b',
-        'combined',
-        'brush',
-        'cascade.a',
-        'cascade.b',
-        'filters.where',
-      ].sort(),
+      ['a', 'b', 'combined', 'brush', 'cascade.a', 'cascade.b', 'filters.where'].sort(),
     );
     // Compound entries have no bare name.
     expect(topology.validNames.has('cascade')).toBe(false);
@@ -189,9 +175,7 @@ describe('createTopology — validation errors', () => {
   });
 
   test('dot in an entry name throws', () => {
-    expect(() => createTopology({ 'a.b': { type: 'intersect' } })).toThrow(
-      /contains a dot/,
-    );
+    expect(() => createTopology({ 'a.b': { type: 'intersect' } })).toThrow(/contains a dot/);
   });
 
   test('dangling ref throws naming the undeclared entry', () => {
@@ -254,9 +238,9 @@ describe('createTopology — validation errors', () => {
 
   test('supplied instance for a non-external declaration throws', () => {
     const sel = Selection.crossfilter();
-    expect(() =>
-      createTopology({ sel: { type: 'intersect' } }, { selections: { sel } }),
-    ).toThrow(/declared as 'intersect', not 'external'/);
+    expect(() => createTopology({ sel: { type: 'intersect' } }, { selections: { sel } })).toThrow(
+      /declared as 'intersect', not 'external'/,
+    );
   });
 
   test('unknown ref after construction lists validNames', () => {
@@ -275,9 +259,7 @@ describe('createTopology — validation errors', () => {
     const topology = createTopology({
       filters: { type: 'filter-set', targets: { where: 'crossfilter' } },
     });
-    expect(() => topology.resolve('filters')).toThrow(
-      /bare reference to compound entry 'filters'/,
-    );
+    expect(() => topology.resolve('filters')).toThrow(/bare reference to compound entry 'filters'/);
     topology.destroy();
   });
 
@@ -445,10 +427,7 @@ describe('createTopology — destroy()', () => {
   test('destroy does not touch external instances', () => {
     const brush = Selection.crossfilter();
     publishForeign(brush, 'brushed', 'v');
-    const topology = createTopology(
-      { brush: { type: 'external' } },
-      { selections: { brush } },
-    );
+    const topology = createTopology({ brush: { type: 'external' } }, { selections: { brush } });
 
     topology.destroy();
 
@@ -563,10 +542,7 @@ describe('createTopology — two-phase compose construction', () => {
     publishForeign(topology.resolve('x'), 'colX', 'v');
 
     // outer sees a (via inner) and x directly.
-    expect(resolvedColumns(topology.resolve('outer')).sort()).toEqual([
-      'colA',
-      'colX',
-    ]);
+    expect(resolvedColumns(topology.resolve('outer')).sort()).toEqual(['colA', 'colX']);
     // inner sees a but not x.
     expect(resolvedColumns(topology.resolve('inner'))).toEqual(['colA']);
     topology.destroy();
@@ -652,9 +628,7 @@ describe('createTopology — two-phase compose construction', () => {
     );
 
     // The hydrated point clause on filters.where was seeded into the compose.
-    expect(String(topology.resolve('page')._resolved[0]?.predicate)).toContain(
-      '"sport"',
-    );
+    expect(String(topology.resolve('page')._resolved[0]?.predicate)).toContain('"sport"');
     topology.destroy();
   });
 });
@@ -708,12 +682,8 @@ describe("createTopology — compose as: 'crossfilter'", () => {
     publishForClient(topology.resolve('a'), 'sport', 'swim', client);
 
     // Default and explicit intersect both keep the client's own predicate.
-    expect(
-      String(topology.resolve('pageIntersect').predicate(client)),
-    ).toContain('"sport"');
-    expect(
-      String(topology.resolve('pageExplicit').predicate(client)),
-    ).toContain('"sport"');
+    expect(String(topology.resolve('pageIntersect').predicate(client))).toContain('"sport"');
+    expect(String(topology.resolve('pageExplicit').predicate(client))).toContain('"sport"');
     topology.destroy();
   });
 
@@ -731,9 +701,7 @@ describe("createTopology — compose as: 'crossfilter'", () => {
     expect(topology.resolve('inner').predicate(client)).toBeUndefined();
     // Reading the intersect outer does NOT — the inner's cross flag is not
     // inherited by the entry the client reads.
-    expect(String(topology.resolve('outer').predicate(client))).toContain(
-      '"sport"',
-    );
+    expect(String(topology.resolve('outer').predicate(client))).toContain('"sport"');
     topology.destroy();
   });
 

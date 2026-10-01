@@ -1,6 +1,6 @@
-import { BaseDataClient } from './base-client';
-import { toResultRows } from './utils';
 import type { SelectQuery } from '@uwdata/mosaic-sql';
+
+import { BaseDataClient } from './base-client';
 import type {
   QueryContext,
   ValuesClient,
@@ -8,6 +8,7 @@ import type {
   ValuesClientState,
   ValuesInputs,
 } from './types';
+import { toResultRows } from './utils';
 
 /**
  * Single-row aggregate query → typed record. One round trip serves any

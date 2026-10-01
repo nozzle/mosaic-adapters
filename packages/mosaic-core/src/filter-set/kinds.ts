@@ -14,27 +14,20 @@
  * shared subquery builders; its emissions likewise carry NO `meta`.
  */
 import { clauseMatch, clausePoint, clausePoints } from '@uwdata/mosaic-core';
+import type { ClauseMetadata, ClauseSource } from '@uwdata/mosaic-core';
 import * as mSql from '@uwdata/mosaic-sql';
+import type { ExprNode } from '@uwdata/mosaic-sql';
+
 import {
   SqlIdentifier,
   createStructAccess,
   createTypedAccess,
   escapeSqlLikePattern,
 } from '../sql-access';
-import {
-  buildSubqueryClauseParts,
-  normalizeSubqueryFilterQuery,
-} from '../subquery-predicate';
-import { formatRange } from './format';
-import type { ClauseMetadata, ClauseSource } from '@uwdata/mosaic-core';
-import type { ExprNode } from '@uwdata/mosaic-sql';
+import { buildSubqueryClauseParts, normalizeSubqueryFilterQuery } from '../subquery-predicate';
 import type { SubqueryFilterQuery } from '../subquery-predicate';
-import type {
-  FilterKind,
-  FilterKindArgs,
-  FilterSpec,
-  OperatorDescriptor,
-} from './types';
+import { formatRange } from './format';
+import type { FilterKind, FilterKindArgs, FilterSpec, OperatorDescriptor } from './types';
 
 /** A throwaway source for the upstream clause factories we only read from. */
 const SCRATCH_SOURCE: ClauseSource = {};
@@ -124,12 +117,8 @@ export const pointsFilterKind: FilterKind = {
       if (tuples.length === 0 || columns.length === 0) {
         return [];
       }
-      const fields = columns.map((c) =>
-        createStructAccess(SqlIdentifier.from(c)),
-      );
-      const extracted = extractClause(
-        clausePoints(fields, tuples, { source: SCRATCH_SOURCE }),
-      );
+      const fields = columns.map((c) => createStructAccess(SqlIdentifier.from(c)));
+      const extracted = extractClause(clausePoints(fields, tuples, { source: SCRATCH_SOURCE }));
       if (extracted === null) {
         return [];
       }
@@ -199,10 +188,7 @@ export const intervalFilterKind: FilterKind = {
         {
           clause: {
             value: [lo, hi],
-            predicate: mSql.isBetween(args.column, [
-              mSql.literal(lo),
-              mSql.literal(hi),
-            ]),
+            predicate: mSql.isBetween(args.column, [mSql.literal(lo), mSql.literal(hi)]),
             // `args.column` is the exact node the BETWEEN predicate references,
             // so the PreAggregator can match this interval clause by identity.
             fields: [args.column],
@@ -244,12 +230,7 @@ export const intervalFilterKind: FilterKind = {
 
 type MatchMethod = 'contains' | 'prefix' | 'suffix' | 'regexp';
 
-const MATCH_METHODS = new Set<MatchMethod>([
-  'contains',
-  'prefix',
-  'suffix',
-  'regexp',
-]);
+const MATCH_METHODS = new Set<MatchMethod>(['contains', 'prefix', 'suffix', 'regexp']);
 
 function resolveMatchMethod(operator: string | undefined): MatchMethod {
   if (operator !== undefined && MATCH_METHODS.has(operator as MatchMethod)) {
@@ -531,10 +512,7 @@ function buildCollectionPredicate(
  * Resolves the two `between` bounds (value+valueTo, or a `[from, to]` array
  * value) into a predicate: both → BETWEEN; only from → `>=`; only to → `<=`.
  */
-function buildBetweenPredicate(
-  column: ExprNode,
-  spec: FilterSpec,
-): ExprNode | null {
+function buildBetweenPredicate(column: ExprNode, spec: FilterSpec): ExprNode | null {
   let from: unknown = spec.value;
   let to: unknown = spec.valueTo;
   if (Array.isArray(spec.value)) {
@@ -659,9 +637,7 @@ function buildConditionPredicate(
  * operator-alias resolution, keyed on `(operator, value, valueTo)`. Emissions
  * carry NO `meta`.
  */
-export function conditionFilterKind(
-  options?: ConditionKindOptions,
-): FilterKind {
+export function conditionFilterKind(options?: ConditionKindOptions): FilterKind {
   const columnType = options?.columnType ?? 'scalar';
 
   return {
@@ -670,18 +646,13 @@ export function conditionFilterKind(
       const { spec } = args;
       const operator = spec.operator ?? 'eq';
       const dataType =
-        options?.dataType ??
-        (columnType === 'array' ? 'string' : inferDataType(spec.value));
+        options?.dataType ?? (columnType === 'array' ? 'string' : inferDataType(spec.value));
       const resolved: Required<ConditionKindOptions> = { columnType, dataType };
 
       let predicate: ExprNode | null = null;
 
       if (operator === 'is_empty' || operator === 'is_not_empty') {
-        predicate = buildEmptyPredicate(
-          args.column,
-          resolved,
-          operator === 'is_not_empty',
-        );
+        predicate = buildEmptyPredicate(args.column, resolved, operator === 'is_not_empty');
       } else if (operator === 'excludes_all') {
         const values = Array.isArray(spec.value) ? spec.value : [];
         predicate = buildCollectionPredicate(args.column, values, 'any', true, {
@@ -695,12 +666,7 @@ export function conditionFilterKind(
             : OPERATOR_ALIASES[operator]
         ) as CanonicalOperator | undefined;
         if (canonical !== undefined) {
-          predicate = buildConditionPredicate(
-            canonical,
-            args.column,
-            spec,
-            resolved,
-          );
+          predicate = buildConditionPredicate(canonical, args.column, spec, resolved);
         }
       }
 
@@ -731,9 +697,7 @@ export function subqueryFilterKind(
         query: normalized.query,
         negate: normalized.negate,
       });
-      return [
-        { clause: { value: args.spec.value, predicate, fields: [field] } },
-      ];
+      return [{ clause: { value: args.spec.value, predicate, fields: [field] } }];
     },
   };
 }

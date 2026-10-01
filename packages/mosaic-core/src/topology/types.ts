@@ -1,3 +1,7 @@
+import type { Store } from '@tanstack/store';
+import type { ClauseSource, Param, Selection } from '@uwdata/mosaic-core';
+import type { ExprNode } from '@uwdata/mosaic-sql';
+
 /**
  * Public types for {@link createTopology} — the named-Selection-graph primitive.
  *
@@ -13,20 +17,15 @@
  */
 import type { FilterKind, FilterSet, FilterSpec } from '../filter-set/types';
 import type { Persister } from '../persistence';
-import type { ClauseSource, Param, Selection } from '@uwdata/mosaic-core';
-import type { ExprNode } from '@uwdata/mosaic-sql';
-import type { Store } from '@tanstack/store';
 
 /** Standalone Selection resolution strategies. */
-export type StandaloneSelectionType =
-  'intersect' | 'union' | 'single' | 'crossfilter';
+export type StandaloneSelectionType = 'intersect' | 'union' | 'single' | 'crossfilter';
 
 /**
  * The value a `param` entry holds and resets to. A scalar or a flat array of
  * scalars — the JSON-serialisable shape a Mosaic `Param` carries.
  */
-export type ParamValue =
-  string | number | boolean | null | Array<string | number | boolean | null>;
+export type ParamValue = string | number | boolean | null | Array<string | number | boolean | null>;
 
 /**
  * Fields every declaration accepts. `label` and `meta` are opaque passthrough

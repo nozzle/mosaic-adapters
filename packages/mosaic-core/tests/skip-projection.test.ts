@@ -1,3 +1,4 @@
+import { rowsToIPC, settle } from '@nozzleio/test-support/duckdb';
 /**
  * `skipSources` in front of the coordinator (#229): a skipped-only clause
  * change must produce no query and no `'pending'` transition, while every
@@ -5,11 +6,6 @@
  * caching off so a cache hit cannot hide a redundant request.
  */
 import { Coordinator, Selection, clausePoint } from '@uwdata/mosaic-core';
-import { Query, count } from '@uwdata/mosaic-sql';
-import { describe, expect, test } from 'vitest';
-
-import { rowsToIPC, settle } from '@nozzleio/test-support/duckdb';
-import { createSkipProjectedSelection, createValuesClient } from '../src/index';
 import type {
   ArrowQueryRequest,
   Connector,
@@ -17,6 +13,10 @@ import type {
   MosaicClient,
   SelectionClause,
 } from '@uwdata/mosaic-core';
+import { Query, count } from '@uwdata/mosaic-sql';
+import { describe, expect, test } from 'vitest';
+
+import { createSkipProjectedSelection, createValuesClient } from '../src/index';
 import type { DataClientStatus, ValuesClient } from '../src/index';
 
 interface CountingDb {
@@ -58,8 +58,7 @@ function recordStatuses(client: ValuesClient<Totals>): Array<DataClientStatus> {
 
 const device = (value: string, clients?: Set<MosaicClient>) =>
   clausePoint('device', value, { source: { id: 'device' } as object, clients });
-const sport = (value: string) =>
-  clausePoint('sport', value, { source: { id: 'sport' } as object });
+const sport = (value: string) => clausePoint('sport', value, { source: { id: 'sport' } as object });
 
 function totals(where: unknown) {
   return Query.from('t')
@@ -87,9 +86,7 @@ describe('skipSources projection', () => {
     filterBy.update(device('mobile'));
     await filterBy.pending('value');
     await settle();
-    filterBy.update(
-      clausePoint('device', null, { source: { id: 'device' } as object }),
-    );
+    filterBy.update(clausePoint('device', null, { source: { id: 'device' } as object }));
     await filterBy.pending('value');
     await settle();
 
@@ -159,11 +156,7 @@ describe('skipSources projection', () => {
       havingBy,
       skipSources: new Set(['device']),
       query: ({ where, having }) =>
-        Query.from('t')
-          .select({ total: count() })
-          .where(where)
-          .groupby('sport')
-          .having(having),
+        Query.from('t').select({ total: count() }).where(where).groupby('sport').having(having),
     });
     await settle();
     expect(db.queries).toHaveLength(1);
@@ -207,9 +200,7 @@ describe('skipSources projection', () => {
     expect(db.queries).toHaveLength(1);
 
     // Another publisher's kept clause queries, still excluding our own.
-    filterBy.update(
-      clausePoint('weight', 70, { source: { id: 'weight' } as object }),
-    );
+    filterBy.update(clausePoint('weight', 70, { source: { id: 'weight' } as object }));
     await filterBy.pending('value');
     await settle();
     expect(db.queries).toHaveLength(2);

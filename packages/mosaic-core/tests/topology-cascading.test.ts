@@ -12,15 +12,11 @@ import { describe, expect, test } from 'vitest';
 import { createCascadingContexts } from '../src/index';
 
 function publish(selection: Selection, column: string, value: string): void {
-  selection.update(
-    clausePoint(column, value, { source: { column, value } as object }),
-  );
+  selection.update(clausePoint(column, value, { source: { column, value } as object }));
 }
 
 function resolvedColumns(context: Selection): Array<string> {
-  return context._resolved.map((clause) =>
-    String((clause.source as { column: string }).column),
-  );
+  return context._resolved.map((clause) => String((clause.source as { column: string }).column));
 }
 
 describe('createCascadingContexts', () => {
@@ -35,20 +31,11 @@ describe('createCascadingContexts', () => {
     publish($c, 'colC', 'z');
 
     // a's context sees b + c, never a.
-    expect(resolvedColumns(handle.contexts.a!).sort()).toEqual([
-      'colB',
-      'colC',
-    ]);
+    expect(resolvedColumns(handle.contexts.a!).sort()).toEqual(['colB', 'colC']);
     // b's context sees a + c, never b.
-    expect(resolvedColumns(handle.contexts.b!).sort()).toEqual([
-      'colA',
-      'colC',
-    ]);
+    expect(resolvedColumns(handle.contexts.b!).sort()).toEqual(['colA', 'colC']);
     // c's context sees a + b, never c.
-    expect(resolvedColumns(handle.contexts.c!).sort()).toEqual([
-      'colA',
-      'colB',
-    ]);
+    expect(resolvedColumns(handle.contexts.c!).sort()).toEqual(['colA', 'colB']);
 
     handle.destroy();
   });
@@ -104,10 +91,7 @@ describe('createCascadingContexts', () => {
 
     publish($a, 'colA', 'x');
     publish($ext, 'tableFilter', 'v');
-    expect(resolvedColumns(handle.contexts.b!).sort()).toEqual([
-      'colA',
-      'tableFilter',
-    ]);
+    expect(resolvedColumns(handle.contexts.b!).sort()).toEqual(['colA', 'tableFilter']);
 
     handle.destroy();
     expect(handle.destroyed).toBe(true);

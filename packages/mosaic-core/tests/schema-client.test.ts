@@ -1,12 +1,8 @@
+import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
+import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
-import {
-  createRowsClient,
-  createSchemaClient,
-  resolveCoerce,
-} from '../src/index';
-import type { TestDb } from '@nozzleio/test-support/duckdb';
+import { createRowsClient, createSchemaClient, resolveCoerce } from '../src/index';
 
 let db: TestDb;
 
@@ -25,12 +21,7 @@ describe('schema client', () => {
       expect(schema.store.state.status).toBe('success');
     });
     const fields = schema.store.state.fields;
-    expect(fields.map((f) => f.column)).toEqual([
-      'id',
-      'name',
-      'sport',
-      'weight',
-    ]);
+    expect(fields.map((f) => f.column)).toEqual(['id', 'name', 'sport', 'weight']);
     expect(fields.find((f) => f.column === 'weight')).toMatchObject({
       table: 'athletes',
       type: 'number',

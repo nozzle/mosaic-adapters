@@ -6,6 +6,7 @@
  * clauses.
  */
 import { Selection } from '@uwdata/mosaic-core';
+
 import {
   attachIncludedSelection,
   clearSeededClauses,

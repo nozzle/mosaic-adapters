@@ -1,4 +1,5 @@
 import { clausePoint, clausePoints } from '@uwdata/mosaic-core';
+import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import {
   Query,
   asc,
@@ -11,14 +12,13 @@ import {
   sql,
   unnest,
 } from '@uwdata/mosaic-sql';
+import type { ExprValue, SelectQuery } from '@uwdata/mosaic-sql';
+
 import { BaseDataClient } from './base-client';
 import { createClearClause, createValueClause } from './clause-factory';
+import type { FilterSpec } from './filter-set/types';
 import { PersisterLifecycle } from './persistence';
 import { isFilterSetPublishTarget } from './types';
-import { deepEqual, toResultRows } from './utils';
-import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
-import type { ExprValue, SelectQuery } from '@uwdata/mosaic-sql';
-import type { FilterSpec } from './filter-set/types';
 import type {
   FacetClient,
   FacetClientOptions,
@@ -28,6 +28,7 @@ import type {
   FilterSetPublishTarget,
   QueryContext,
 } from './types';
+import { deepEqual, toResultRows } from './utils';
 
 /**
  * Distinct values of a column (options + counts) in, point/list clauses out.
@@ -41,10 +42,7 @@ export function createFacetClient(options: FacetClientOptions): FacetClient {
   return new FacetDataClient(options);
 }
 
-class FacetDataClient
-  extends BaseDataClient<FacetInputs, FacetClientState>
-  implements FacetClient
-{
+class FacetDataClient extends BaseDataClient<FacetInputs, FacetClientState> implements FacetClient {
   readonly #options: FacetClientOptions;
   readonly #source: ClauseSource = {};
   #selected: Array<unknown> = [];
@@ -103,12 +101,10 @@ class FacetDataClient
     }
     if ((this.#options.select ?? 'single') === 'multi') {
       const kept = this.#selected.filter((v) => !deepEqual(v, value));
-      this.#selected =
-        kept.length === this.#selected.length ? [...kept, value] : kept;
+      this.#selected = kept.length === this.#selected.length ? [...kept, value] : kept;
     } else {
       const active = this.#selected[0];
-      this.#selected =
-        this.#selected.length > 0 && deepEqual(active, value) ? [] : [value];
+      this.#selected = this.#selected.length > 0 && deepEqual(active, value) ? [] : [value];
     }
     this.#publishAction();
   }
@@ -120,9 +116,7 @@ class FacetDataClient
     const copy = [...values];
     // Mirror toggle's single-select semantics: at most one value survives.
     this.#selected =
-      (this.#options.select ?? 'single') === 'multi' || copy.length <= 1
-        ? copy
-        : [copy[0]];
+      (this.#options.select ?? 'single') === 'multi' || copy.length <= 1 ? copy : [copy[0]];
     this.#publishAction();
   }
 
@@ -149,17 +143,11 @@ class FacetDataClient
     });
 
     const query = Query.from(values)
-      .select(
-        counts
-          ? { value: column('value'), count: count() }
-          : { value: column('value') },
-      )
+      .select(counts ? { value: column('value'), count: count() } : { value: column('value') })
       .where(isNotNull(column('value')))
       .groupby('value');
     if (search !== undefined && search !== '') {
-      query.where(
-        sql`CAST(${column('value')} AS VARCHAR) ILIKE ${literal(`%${search}%`)}`,
-      );
+      query.where(sql`CAST(${column('value')} AS VARCHAR) ILIKE ${literal(`%${search}%`)}`);
     }
     if (sort === 'count') {
       query.orderby(desc('count'), asc('value'));
@@ -276,10 +264,7 @@ class FacetDataClient
         source: this.#source,
         clients,
         value: selected,
-        predicate:
-          selected.length > 0
-            ? listHasAny(field, selected as Array<ExprValue>)
-            : null,
+        predicate: selected.length > 0 ? listHasAny(field, selected as Array<ExprValue>) : null,
         // `field` is the exact node the predicate references (identity matters
         // for pre-aggregation); an empty selection has a null predicate.
         fields: selected.length > 0 ? [field] : [],
@@ -320,9 +305,7 @@ class FacetDataClient
       if (this.destroyed || this.#selected.length === 0) {
         return;
       }
-      const present = target.as.clauses.some(
-        (clause) => clause.source === this.#source,
-      );
+      const present = target.as.clauses.some((clause) => clause.source === this.#source);
       if (!present) {
         this.#selected = [];
         this.patchState({ selected: [] });
@@ -349,9 +332,7 @@ class FacetDataClient
       if (this.destroyed || this.#writingToSet) {
         return;
       }
-      const spec = target.into.store.state.specs.find(
-        (candidate) => candidate.id === target.id,
-      );
+      const spec = target.into.store.state.specs.find((candidate) => candidate.id === target.id);
       if (spec === undefined) {
         if (this.#selected.length > 0) {
           this.#selected = [];
@@ -408,9 +389,7 @@ class FacetDataClient
     if (this.destroyed) {
       return;
     }
-    const spec = target.into.store.state.specs.find(
-      (candidate) => candidate.id === target.id,
-    );
+    const spec = target.into.store.state.specs.find((candidate) => candidate.id === target.id);
     if (spec === undefined) {
       return;
     }

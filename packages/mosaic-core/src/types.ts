@@ -1,3 +1,4 @@
+import type { Store } from '@tanstack/store';
 import type {
   ClauseSource,
   Coordinator,
@@ -6,9 +7,9 @@ import type {
   Selection,
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
-import type { Store } from '@tanstack/store';
-import type { Persister } from './persistence';
+
 import type { FilterSet } from './filter-set/types';
+import type { Persister } from './persistence';
 
 /**
  * A publish target that routes a widget's interaction into a page-level
@@ -51,7 +52,8 @@ export function isFilterSetPublishTarget(
  * is built from the latest factory.
  */
 export type QuerySource<TInputs extends object> =
-  string | ((ctx: QueryContext<TInputs>) => SelectQuery);
+  | string
+  | ((ctx: QueryContext<TInputs>) => SelectQuery);
 
 export interface QueryContext<TInputs extends object> {
   /**
@@ -132,10 +134,7 @@ export interface DataClientOptions<TInputs extends object> {
   enabled?: boolean;
 }
 
-export interface DataClient<
-  TInputs extends object,
-  TState extends DataClientState<TInputs>,
-> {
+export interface DataClient<TInputs extends object, TState extends DataClientState<TInputs>> {
   /** Read `store.state`, subscribe via `store.subscribe` (@tanstack/store). */
   readonly store: Store<TState>;
   /**
@@ -174,8 +173,7 @@ export type CoerceDescriptorMap = Record<string, CoerceDescriptor>;
  * Per-row mapper (raw result values → TRow): a closure, or the serializable
  * descriptor map. Presentational only; held by latest-ref either way.
  */
-export type CoerceOption<TRow> =
-  ((raw: Record<string, unknown>) => TRow) | CoerceDescriptorMap;
+export type CoerceOption<TRow> = ((raw: Record<string, unknown>) => TRow) | CoerceDescriptorMap;
 
 // ── Rows client ──────────────────────────────────────────────────────────────
 
@@ -292,10 +290,7 @@ export interface RowsClientState<TRow> extends DataClientState<RowsInputs> {
   totalRows: number | undefined;
 }
 
-export interface RowsClient<TRow> extends DataClient<
-  RowsInputs,
-  RowsClientState<TRow>
-> {
+export interface RowsClient<TRow> extends DataClient<RowsInputs, RowsClientState<TRow>> {
   /** Publish the given rows as a point clause; `[]` clears the clause. */
   selectRows: (rows: Array<TRow>) => void;
   /**
@@ -446,10 +441,7 @@ export interface HistogramClientState extends DataClientState<HistogramInputs> {
   range: [number, number] | null;
 }
 
-export interface HistogramClient extends DataClient<
-  HistogramInputs,
-  HistogramClientState
-> {
+export interface HistogramClient extends DataClient<HistogramInputs, HistogramClientState> {
   /** Publish [lo, hi] as an interval clause; `null` clears. */
   setRange: (range: [number, number] | null) => void;
 }
@@ -504,9 +496,7 @@ export type SparklineClient = DataClient<SparklineInputs, SparklineClientState>;
 /** The rollup client fetches the whole tree; it carries no serializable inputs. */
 export type RollupInputs = Record<string, never>;
 
-export interface RollupClientOptions<
-  TRow,
-> extends DataClientOptions<RollupInputs> {
+export interface RollupClientOptions<TRow> extends DataClientOptions<RollupInputs> {
   /**
    * Aggregate select over the base relation — no groupby: the client owns
    * `GROUP BY ROLLUP(...)`, the `GROUPING()` level tag, and the tree order.
@@ -532,10 +522,7 @@ export interface RollupClientState<TRow> extends DataClientState<RollupInputs> {
   rows: Array<RollupRow<TRow>>;
 }
 
-export interface RollupClient<TRow> extends DataClient<
-  RollupInputs,
-  RollupClientState<TRow>
-> {
+export interface RollupClient<TRow> extends DataClient<RollupInputs, RollupClientState<TRow>> {
   /** Swap the coerce mapper (latest-ref semantics; never re-queries). */
   setCoerce: (coerce: CoerceOption<TRow> | undefined) => void;
 }
@@ -557,9 +544,7 @@ export interface PivotAggregate {
   as?: string;
 }
 
-export interface PivotClientOptions<
-  TRow,
-> extends DataClientOptions<RowsInputs> {
+export interface PivotClientOptions<TRow> extends DataClientOptions<RowsInputs> {
   /** Base relation to pivot (filtered via the query context). */
   from: QuerySource<RowsInputs>;
   /** Column whose distinct values become the pivot output columns. */
@@ -584,10 +569,7 @@ export interface PivotClientState<TRow> extends DataClientState<RowsInputs> {
   pivotColumns: Array<string>;
 }
 
-export interface PivotClient<TRow> extends DataClient<
-  RowsInputs,
-  PivotClientState<TRow>
-> {
+export interface PivotClient<TRow> extends DataClient<RowsInputs, PivotClientState<TRow>> {
   /** Swap the coerce mapper (latest-ref semantics; never re-queries). */
   setCoerce: (coerce: CoerceOption<TRow> | undefined) => void;
 }
