@@ -12,6 +12,8 @@ const packageConfig = defineConfig({
     watch: false,
     environment: 'jsdom',
     testTimeout: 30_000,
+    isolate: false,
+    setupFiles: ['@nozzleio/test-support/setup-react'],
     typecheck: { enabled: true },
   },
 });

@@ -10,6 +10,7 @@ const packageConfig = defineConfig({
     watch: false,
     environment: 'node',
     testTimeout: 30_000,
+    isolate: false,
     typecheck: { enabled: true },
   },
 });
