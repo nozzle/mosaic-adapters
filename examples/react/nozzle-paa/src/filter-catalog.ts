@@ -42,8 +42,7 @@
  * - `facet-multi-array`→ the shared multi-select facet list (list/array column).
  * - `date-range`       → two date inputs (interval `value`/`valueTo`).
  */
-export type FieldValueKind =
-  'facet-multi' | 'facet-multi-array' | 'text' | 'number' | 'date-range';
+export type FieldValueKind = 'facet-multi' | 'facet-multi-array' | 'text' | 'number' | 'date-range';
 
 /**
  * One authoring placement for a field: a routing target on the set plus the
@@ -228,24 +227,11 @@ export const FILTER_CATALOG: Array<CatalogField> = [
  * - Array facet columns (Keyword Group): the array operators
  *   `list_has_any`/`list_has_all`/`excludes_all`.
  */
-export const FACET_SCALAR_OPERATORS = [
-  'in',
-  'not_in',
-  'is_empty',
-  'is_not_empty',
-] as const;
+export const FACET_SCALAR_OPERATORS = ['in', 'not_in', 'is_empty', 'is_not_empty'] as const;
 
-export const FACET_ARRAY_OPERATORS = [
-  'list_has_any',
-  'list_has_all',
-  'excludes_all',
-] as const;
+export const FACET_ARRAY_OPERATORS = ['list_has_any', 'list_has_all', 'excludes_all'] as const;
 
 /** The operator ids a facet field of a given value kind is allowed to offer. */
-export function facetOperatorIds(
-  valueKind: FieldValueKind,
-): ReadonlyArray<string> {
-  return valueKind === 'facet-multi-array'
-    ? FACET_ARRAY_OPERATORS
-    : FACET_SCALAR_OPERATORS;
+export function facetOperatorIds(valueKind: FieldValueKind): ReadonlyArray<string> {
+  return valueKind === 'facet-multi-array' ? FACET_ARRAY_OPERATORS : FACET_SCALAR_OPERATORS;
 }

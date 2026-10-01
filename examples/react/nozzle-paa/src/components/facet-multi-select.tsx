@@ -1,3 +1,5 @@
+import { useFilterSetState, useMosaicFacet } from '@nozzleio/react-mosaic';
+import type { FilterSpec } from '@nozzleio/react-mosaic';
 /**
  * The ONE shared facet multi-select control, used by BOTH the Classic
  * Domain/Device/Keyword-Group controls AND the Builder facet value editors.
@@ -28,15 +30,10 @@
  * hides this control for them.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useFilterSetState, useMosaicFacet } from '@nozzleio/react-mosaic';
+
+import { facetTriggerLabel, useDebouncedRun, useSelectedValues } from '../filter-controls';
 import { tableName } from '../page-context';
 import { usePageContexts, usePageFilterSet } from '../topology';
-import {
-  facetTriggerLabel,
-  useDebouncedRun,
-  useSelectedValues,
-} from '../filter-controls';
-import type { FilterSpec } from '@nozzleio/react-mosaic';
 
 /**
  * How long a keystroke in the search box waits before it reaches the facet
@@ -125,10 +122,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
   // to that domain's co-occurring values — you could never pick a second.
   // (This is exactly what `publish.into` wired automatically before this facet
   // went read-only; we replicate it on the manual `set`.)
-  const clients = useMemo(
-    () => new Set([facet.client.mosaicClient]),
-    [facet.client],
-  );
+  const clients = useMemo(() => new Set([facet.client.mosaicClient]), [facet.client]);
 
   // The selection is derived from the committed spec, so it is correct even
   // while this facet client is idle (menu closed, page just switched views).
@@ -138,9 +132,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
   // Builder-authored spec preserve the operator the Builder chose (e.g.
   // `not_in`) instead of stamping this control's prop default.
   const { specs } = useFilterSetState(filterSet);
-  const committedOperator = specs.find(
-    (entry) => entry.id === specId,
-  )?.operator;
+  const committedOperator = specs.find((entry) => entry.id === specId)?.operator;
 
   // Whether the ACTIVE operator includes (checkmark = "in your selection") or
   // excludes (`not_in`/`excludes_all`) its values. For an exclusion operator the
@@ -190,11 +182,8 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
   // predicate. Keyed on the client identity: a remount / StrictMode revive /
   // structural recreation yields a new `clients` set and re-runs this.
   useEffect(() => {
-    const committed = filterSet.store.state.specs.find(
-      (entry) => entry.id === specId,
-    );
-    const isSelfReferential =
-      committed !== undefined && Array.isArray(committed.value);
+    const committed = filterSet.store.state.specs.find((entry) => entry.id === specId);
+    const isSelfReferential = committed !== undefined && Array.isArray(committed.value);
     if (isSelfReferential) {
       // Reading committed at effect time (not via the render-scope `selected`)
       // keeps this a pure re-attach — deps are the client identity + spec id.
@@ -229,9 +218,7 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
     // Preserve the committed operator when it is a compatible multi-value
     // operator (a Builder-authored `not_in`/`list_has_all`/…); fall back to the
     // prop default when it is valueless (`is_empty`/`is_not_empty`) or absent.
-    const nextOperator = isMultiValueOperator(committedOperator)
-      ? committedOperator
-      : operator;
+    const nextOperator = isMultiValueOperator(committedOperator) ? committedOperator : operator;
     writeSpec(next, nextOperator);
   };
 
@@ -275,20 +262,15 @@ export function FacetMultiSelect(props: FacetMultiSelectProps) {
       </div>
       <div className="max-h-40 min-w-[180px] overflow-y-auto rounded border border-slate-100 bg-white">
         {facet.options.length === 0 && facet.status !== 'pending' ? (
-          <div className="py-3 text-center text-xs text-slate-400">
-            No results.
-          </div>
+          <div className="py-3 text-center text-xs text-slate-400">No results.</div>
         ) : null}
         {facet.status === 'pending' && facet.options.length === 0 ? (
-          <div className="py-3 text-center text-xs text-slate-400 italic">
-            Loading options…
-          </div>
+          <div className="py-3 text-center text-xs text-slate-400 italic">Loading options…</div>
         ) : null}
         {facet.options.map((option) => {
           // Under an exclusion operator the spec's values are filtered OUT, so
           // options are never rendered checked (see `isExclusionOperator`).
-          const isSelected =
-            !isExclusionOperator && selected.includes(String(option.value));
+          const isSelected = !isExclusionOperator && selected.includes(String(option.value));
           return (
             <button
               key={String(option.value)}

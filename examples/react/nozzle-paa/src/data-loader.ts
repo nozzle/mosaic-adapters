@@ -1,3 +1,4 @@
+import type { Coordinator } from '@uwdata/mosaic-core';
 /**
  * Recipe 2 — declarative, serializable data loading.
  *
@@ -11,7 +12,6 @@
  * `window.location.origin` before reaching `read_parquet`/`read_csv`/etc.
  */
 import { useEffect, useRef, useState } from 'react';
-import type { Coordinator } from '@uwdata/mosaic-core';
 
 /**
  * A table's source. Only the `parquet` variant is exercised by this example;
@@ -49,8 +49,7 @@ function sourceToSelect(source: DataSource): string {
 /** Ordered `CREATE OR REPLACE TABLE` statements, one per config entry. */
 export function buildDataLoadStatements(config: DataLoadConfig): Array<string> {
   return Object.entries(config).map(
-    ([table, source]) =>
-      `CREATE OR REPLACE TABLE ${table} AS ${sourceToSelect(source)}`,
+    ([table, source]) => `CREATE OR REPLACE TABLE ${table} AS ${sourceToSelect(source)}`,
   );
 }
 
@@ -107,9 +106,7 @@ export async function runDataLoad(
 }
 
 /** A `'pending'` status for every table in `config`. */
-function initialTables(
-  config: DataLoadConfig,
-): Record<string, TableLoadStatus> {
+function initialTables(config: DataLoadConfig): Record<string, TableLoadStatus> {
   const tables: Record<string, TableLoadStatus> = {};
   for (const table of Object.keys(config)) {
     tables[table] = 'pending';
@@ -121,10 +118,7 @@ function initialTables(
  * Load `config` into `coordinator`, tracking per-table status. Reruns whenever
  * the coordinator identity changes (a recreated connection).
  */
-export function useDataLoad(
-  coordinator: Coordinator,
-  config: DataLoadConfig,
-): DataLoadState {
+export function useDataLoad(coordinator: Coordinator, config: DataLoadConfig): DataLoadState {
   const [state, setState] = useState<DataLoadState>(() => ({
     tables: initialTables(config),
     error: null,

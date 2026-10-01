@@ -1,24 +1,17 @@
 import { useMosaicHistogram } from '@nozzleio/react-mosaic';
-import { $page, tableName } from '../page-context';
 import type { HistogramBin } from '@nozzleio/react-mosaic';
 
-function withinRange(
-  bin: HistogramBin,
-  range: [number, number] | null,
-): boolean {
+import { $page, tableName } from '../page-context';
+
+function withinRange(bin: HistogramBin, range: [number, number] | null): boolean {
   if (range === null) {
     return false;
   }
   return bin.x0 >= range[0] && bin.x1 <= range[1];
 }
 
-function rangeEquals(
-  range: [number, number] | null,
-  candidate: [number, number],
-): boolean {
-  return (
-    range !== null && range[0] === candidate[0] && range[1] === candidate[1]
-  );
+function rangeEquals(range: [number, number] | null, candidate: [number, number]): boolean {
+  return range !== null && range[0] === candidate[0] && range[1] === candidate[1];
 }
 
 /**
@@ -56,9 +49,7 @@ export function WeightHistogram() {
             title={`${bin.x0}–${bin.x1}kg: ${bin.count.toLocaleString('en-US')} athletes`}
             onClick={() =>
               hist.client.setRange(
-                rangeEquals(hist.range, [bin.x0, bin.x1])
-                  ? null
-                  : [bin.x0, bin.x1],
+                rangeEquals(hist.range, [bin.x0, bin.x1]) ? null : [bin.x0, bin.x1],
               )
             }
           >

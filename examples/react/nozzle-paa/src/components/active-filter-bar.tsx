@@ -1,13 +1,14 @@
-import { useMemo } from 'react';
-import { clauseNone } from '@uwdata/mosaic-core';
 import {
   useFilterSetChips,
   useMosaicActiveClauses,
   useMosaicTopology,
 } from '@nozzleio/react-mosaic';
+import type { FilterSetChip } from '@nozzleio/react-mosaic';
+import { clauseNone } from '@uwdata/mosaic-core';
+import { useMemo } from 'react';
+
 import { SPOTLIGHT_ENTRY } from '../page-context';
 import { usePageFilterSet } from '../topology';
-import type { FilterSetChip } from '@nozzleio/react-mosaic';
 
 /**
  * Removable chips for every active filter on the page. Chips come from the
@@ -97,17 +98,15 @@ function useActiveFilters(): Array<ActiveFilterChip> {
   const foreignClauses = useMosaicActiveClauses();
 
   return useMemo(() => {
-    const chips: Array<ActiveFilterChip> = filterSetChips.map(
-      (chip: FilterSetChip) => ({
-        key: `fs:${chip.key}`,
-        label: chip.label,
-        value: chip.formattedValue,
-        target: chip.target,
-        operator: chip.operator,
-        foreign: false,
-        remove: () => filterSet.removeChip(chip),
-      }),
-    );
+    const chips: Array<ActiveFilterChip> = filterSetChips.map((chip: FilterSetChip) => ({
+      key: `fs:${chip.key}`,
+      label: chip.label,
+      value: chip.formattedValue,
+      target: chip.target,
+      operator: chip.operator,
+      foreign: false,
+      remove: () => filterSet.removeChip(chip),
+    }));
 
     // Foreign clauses (on `spotlight` / `volumeBrush`) surface exactly once:
     // the derived crossfilter read-contexts are declared `compose` entries,
@@ -184,9 +183,7 @@ export function ActiveFilterBar() {
       data-testid="active-filter-bar"
       className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white p-4"
     >
-      <div className="mr-2 text-xs font-bold text-slate-500 uppercase">
-        Active:
-      </div>
+      <div className="mr-2 text-xs font-bold text-slate-500 uppercase">Active:</div>
 
       {ordered.map((chip) => (
         <div
@@ -212,9 +209,7 @@ export function ActiveFilterBar() {
               {chip.operator}
             </span>
           ) : null}
-          <span
-            className={`font-semibold ${chip.foreign ? 'text-purple-900' : 'text-blue-900'}`}
-          >
+          <span className={`font-semibold ${chip.foreign ? 'text-purple-900' : 'text-blue-900'}`}>
             {chip.label}:
           </span>
           <span className="max-w-[150px] truncate" title={chip.value}>

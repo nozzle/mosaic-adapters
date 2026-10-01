@@ -1,3 +1,4 @@
+import { SqlIdentifier } from '@nozzleio/react-mosaic';
 /**
  * The dashboard spec schema — the entire contract between the spec YAML
  * (`public/spec/*.yaml`) and the interpreter. Everything the app renders is validated here first; the
@@ -24,7 +25,6 @@
  * key.
  */
 import { z } from 'zod';
-import { SqlIdentifier } from '@nozzleio/react-mosaic';
 
 // ── Query form ───────────────────────────────────────────────────────────────
 
@@ -94,12 +94,7 @@ export const dataSchema = z
 // After zod validation this section is a `TopologyConfig` — `toTopologyConfig`
 // is a typed pass-through.
 
-const selectionStrategySchema = z.enum([
-  'intersect',
-  'union',
-  'single',
-  'crossfilter',
-]);
+const selectionStrategySchema = z.enum(['intersect', 'union', 'single', 'crossfilter']);
 
 const declarationBase = {
   label: z.string().optional(),
@@ -125,10 +120,7 @@ const persistedSelectionColumnSchema = z
     } catch (error) {
       context.addIssue({
         code: 'custom',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'invalid persisted selection column',
+        message: error instanceof Error ? error.message : 'invalid persisted selection column',
       });
     }
   });
@@ -227,17 +219,9 @@ const filterSetDeclarationSchema = z
  * those scalars — the JSON-serializable shape a Mosaic `Param` carries. Nested
  * arrays and objects are rejected (an array element must itself be a scalar).
  */
-const variableScalarSchema = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-  z.null(),
-]);
+const variableScalarSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
-export const variableDefaultSchema = z.union([
-  variableScalarSchema,
-  z.array(variableScalarSchema),
-]);
+export const variableDefaultSchema = z.union([variableScalarSchema, z.array(variableScalarSchema)]);
 
 /**
  * Spec-declared URL persistence for a `variable`'s live value. Object form only;
@@ -335,12 +319,7 @@ export const filterKindsSchema = z.record(z.string(), filterKindDefSchema);
 
 // ── Filters section (builder field catalog) ──────────────────────────────────
 
-export const filterValueKindSchema = z.enum([
-  'facet',
-  'text',
-  'number',
-  'date',
-]);
+export const filterValueKindSchema = z.enum(['facet', 'text', 'number', 'date']);
 
 /**
  * One entry in the central `filters.defaults` list. It names a `spec_id`
@@ -434,11 +413,7 @@ export const fieldEncodingSchema = z.union([
  * vgplot path). A `$name` INSIDE a `bin` / `date_bin` / aggregate column is not
  * a binding position and is a compile error (see `validate.ts`).
  */
-export const channelSchema = z.union([
-  z.string().min(1),
-  z.number(),
-  fieldEncodingSchema,
-]);
+export const channelSchema = z.union([z.string().min(1), z.number(), fieldEncodingSchema]);
 
 /**
  * A color channel value (`fill`/`stroke`): a CSS color string OR a bare column
@@ -463,10 +438,7 @@ export const colorChannelSchema = z.string().min(1);
  * publish, metric_threshold, or bridge column). Both rules are enforced at the
  * compile boundary (see `validate.ts`).
  */
-export const excludeSchema = z.union([
-  z.array(z.string().min(1)).min(1),
-  z.literal('all'),
-]);
+export const excludeSchema = z.union([z.array(z.string().min(1)).min(1), z.literal('all')]);
 
 /** Per-mark data source: a base table, optionally cascaded by a topology ref. */
 export const plotMarkDataSchema = z
@@ -512,9 +484,7 @@ export const plotSelectSchema = z
     as: z.string().min(1),
     brush: brushStyleSchema.optional(),
     /** `toggle` only: the channels the point clause tests (e.g. `[x]`, `[fill]`). */
-    channels: z
-      .array(z.enum(['x', 'y', 'z', 'fill', 'stroke', 'color']))
-      .optional(),
+    channels: z.array(z.enum(['x', 'y', 'z', 'fill', 'stroke', 'color'])).optional(),
   })
   .strict();
 
@@ -801,18 +771,14 @@ export type TopologySpec = z.infer<typeof topologySchema>;
 export type VariableDefaultSpec = z.infer<typeof variableDefaultSchema>;
 
 export type ThresholdOperator = z.infer<typeof thresholdOperatorSchema>;
-export type AggregateThresholdConfig = z.infer<
-  typeof aggregateThresholdConfigSchema
->;
+export type AggregateThresholdConfig = z.infer<typeof aggregateThresholdConfigSchema>;
 export type FilterKindDef = z.infer<typeof filterKindDefSchema>;
 export type FilterKindsSpec = z.infer<typeof filterKindsSchema>;
 
 export type FilterSetPersistSpec = z.infer<typeof filterSetPersistSchema>;
 export type VariablePersistSpec = z.infer<typeof variablePersistSchema>;
 export type SelectionPersistSpec = z.infer<typeof selectionPersistSchema>;
-export type SelectionPersistValueSpec = z.infer<
-  typeof selectionPersistValueSchema
->;
+export type SelectionPersistValueSpec = z.infer<typeof selectionPersistValueSchema>;
 
 export type FilterValueKind = z.infer<typeof filterValueKindSchema>;
 export type FilterDefaultSpec = z.infer<typeof filterDefaultSchema>;
@@ -842,9 +808,7 @@ export type BridgeColumnSpec = z.infer<typeof bridgeColumnSchema>;
 export type KpiCardWidgetSpec = z.infer<typeof kpiCardWidgetSchema> & {
   id: string;
 };
-export type SelectionTableWidgetSpec = z.infer<
-  typeof selectionTableWidgetSchema
-> & { id: string };
+export type SelectionTableWidgetSpec = z.infer<typeof selectionTableWidgetSchema> & { id: string };
 export type DataTableWidgetSpec = z.infer<typeof dataTableWidgetSchema> & {
   id: string;
 };
@@ -852,9 +816,7 @@ export type VgplotWidgetSpec = z.infer<typeof vgplotWidgetSchema> & {
   id: string;
 };
 export type VariableOptionSpec = z.infer<typeof variableOptionSchema>;
-export type VariableSelectWidgetSpec = z.infer<
-  typeof variableSelectWidgetSchema
-> & { id: string };
+export type VariableSelectWidgetSpec = z.infer<typeof variableSelectWidgetSchema> & { id: string };
 export type WidgetSpec =
   | KpiCardWidgetSpec
   | SelectionTableWidgetSpec
@@ -870,9 +832,6 @@ export type LayoutSpec = z.infer<typeof layoutSchema>;
 // The parse shape's `widgets` is a `Record<string, <widget minus id>>`. The
 // normalized runtime spec (produced at the compile boundary) replaces it with a
 // record of id-carrying {@link WidgetSpec} values, keyed by the same ids.
-export type DashboardSpec = Omit<
-  z.infer<typeof dashboardSpecSchema>,
-  'widgets'
-> & {
+export type DashboardSpec = Omit<z.infer<typeof dashboardSpecSchema>, 'widgets'> & {
   widgets: Record<string, WidgetSpec>;
 };

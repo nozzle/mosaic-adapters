@@ -1,19 +1,16 @@
+import { createTopology } from '@nozzleio/react-mosaic';
 import { describe, expect, test } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
-import { createTopology } from '@nozzleio/react-mosaic';
+
+import { compileSpec } from '../src/spec/compile';
 import {
   topologyDeclarationSchema,
   variableDefaultSchema,
   variableSelectWidgetSchema,
   widgetSchema,
 } from '../src/spec/schema';
-import {
-  resolveVariable,
-  toTopologyConfig,
-  variableEntryNames,
-} from '../src/spec/topology';
-import { compileSpec } from '../src/spec/compile';
 import type { TopologySpec } from '../src/spec/schema';
+import { resolveVariable, toTopologyConfig, variableEntryNames } from '../src/spec/topology';
 
 // ── variableDefaultSchema (the ParamValue value domain) ───────────────────────
 
@@ -28,9 +25,7 @@ describe('variableDefaultSchema', () => {
     expect(variableDefaultSchema.safeParse([]).success).toBe(true);
     expect(variableDefaultSchema.safeParse(['a', 'b']).success).toBe(true);
     expect(variableDefaultSchema.safeParse([1, 2, 3]).success).toBe(true);
-    expect(variableDefaultSchema.safeParse(['a', 1, true, null]).success).toBe(
-      true,
-    );
+    expect(variableDefaultSchema.safeParse(['a', 1, true, null]).success).toBe(true);
   });
 
   test('rejects objects and nested arrays', () => {
@@ -44,10 +39,9 @@ describe('variableDefaultSchema', () => {
 
 describe('variable topology declaration', () => {
   test('accepts scalar, array, and null defaults with optional base fields', () => {
-    expect(
-      topologyDeclarationSchema.safeParse({ type: 'variable', default: 0.5 })
-        .success,
-    ).toBe(true);
+    expect(topologyDeclarationSchema.safeParse({ type: 'variable', default: 0.5 }).success).toBe(
+      true,
+    );
     expect(
       topologyDeclarationSchema.safeParse({
         type: 'variable',
@@ -57,16 +51,13 @@ describe('variable topology declaration', () => {
         reset: false,
       }).success,
     ).toBe(true);
-    expect(
-      topologyDeclarationSchema.safeParse({ type: 'variable', default: null })
-        .success,
-    ).toBe(true);
+    expect(topologyDeclarationSchema.safeParse({ type: 'variable', default: null }).success).toBe(
+      true,
+    );
   });
 
   test('rejects a missing default', () => {
-    expect(
-      topologyDeclarationSchema.safeParse({ type: 'variable' }).success,
-    ).toBe(false);
+    expect(topologyDeclarationSchema.safeParse({ type: 'variable' }).success).toBe(false);
   });
 
   test('rejects a non-scalar (object) default', () => {
@@ -289,10 +280,9 @@ describe('variableSelectWidgetSchema', () => {
 
   test('accepts every scalar the option value domain allows', () => {
     for (const value of ['a', 42, 3.14, true, false, null]) {
-      expect(
-        variableSelectWidgetSchema.safeParse({ ...base, options: [{ value }] })
-          .success,
-      ).toBe(true);
+      expect(variableSelectWidgetSchema.safeParse({ ...base, options: [{ value }] }).success).toBe(
+        true,
+      );
     }
   });
 
@@ -311,9 +301,7 @@ describe('variableSelectWidgetSchema', () => {
   });
 
   test('rejects empty options', () => {
-    expect(
-      variableSelectWidgetSchema.safeParse({ ...base, options: [] }).success,
-    ).toBe(false);
+    expect(variableSelectWidgetSchema.safeParse({ ...base, options: [] }).success).toBe(false);
   });
 
   test('rejects a non-scalar (array) option value', () => {
@@ -335,9 +323,7 @@ describe('variableSelectWidgetSchema', () => {
   });
 
   test('rejects an unknown key (strict)', () => {
-    expect(
-      variableSelectWidgetSchema.safeParse({ ...base, bogus: true }).success,
-    ).toBe(false);
+    expect(variableSelectWidgetSchema.safeParse({ ...base, bogus: true }).success).toBe(false);
   });
 });
 
@@ -376,9 +362,7 @@ function baseSpec(): Record<string, unknown> {
   };
 }
 
-function compileMutated(
-  mutate: (spec: any) => void,
-): ReturnType<typeof compileSpec> {
+function compileMutated(mutate: (spec: any) => void): ReturnType<typeof compileSpec> {
   const spec = structuredClone(baseSpec());
   mutate(spec);
   return compileSpec(stringifyYaml(spec));
@@ -466,9 +450,7 @@ describe('variable compile plumbing', () => {
     }
     expect(
       result.errors.some(
-        (error) =>
-          error.includes("'nope'") &&
-          error.includes('is not a declared variable'),
+        (error) => error.includes("'nope'") && error.includes('is not a declared variable'),
       ),
     ).toBe(true);
   });
@@ -490,8 +472,7 @@ describe('variable compile plumbing', () => {
     expect(
       result.errors.some(
         (error) =>
-          error.includes("'page'") &&
-          error.includes('is a topology selection, not a variable'),
+          error.includes("'page'") && error.includes('is a topology selection, not a variable'),
       ),
     ).toBe(true);
   });

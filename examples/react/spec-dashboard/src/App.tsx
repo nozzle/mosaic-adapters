@@ -1,3 +1,5 @@
+import { MosaicProvider, MosaicTopologyProvider, useMosaicTopology } from '@nozzleio/react-mosaic';
+import type { Coordinator } from '@uwdata/mosaic-core';
 /**
  * The spec-driven dashboard shell. Fetches the active spec YAML, compiles it
  * (YAML → zod → topology `validNames` → cross-reference validation), owns the
@@ -6,37 +8,24 @@
  * bar, and spec editor panel.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  MosaicProvider,
-  MosaicTopologyProvider,
-  useMosaicTopology,
-} from '@nozzleio/react-mosaic';
-import { ConnectorProvider, useConnector } from './connector';
-import { useDataLoad } from './data-loader';
-import {
-  compileSpec,
-  fetchManifest,
-  fetchSpecText,
-  resolveSpecEntry,
-} from './spec/compile';
-import { buildSelfRoutingKindNames } from './spec/kinds';
-import {
-  FILTERS_ENTRY,
-  getPrimaryFilterSet,
-  resolveSelection,
-} from './spec/topology';
-import { usePersistedTopology } from './spec/url-state/use-persisted-topology';
-import { widgetRegistry } from './widgets/registry';
+
+import { useNavigateSearch, useSearch, useSearchParam } from '@/router';
+
 import { ActiveFilterBar } from './chrome/active-filter-bar';
 import { FilterBuilder } from './chrome/filter-builder';
 import { SpecEditorPanel, SpecEditorToggle } from './chrome/spec-editor';
 import { UrlParamsPopover } from './chrome/url-params-popover';
-import type { Coordinator } from '@uwdata/mosaic-core';
+import { ConnectorProvider, useConnector } from './connector';
+import { useDataLoad } from './data-loader';
+import { compileSpec, fetchManifest, fetchSpecText, resolveSpecEntry } from './spec/compile';
 import type { CompiledSpec, SpecManifest } from './spec/compile';
-import type { DashboardUrlInfo } from './spec/url-state/info';
+import { buildSelfRoutingKindNames } from './spec/kinds';
 import type { DashboardSpec, LayoutSpec, WidgetSpec } from './spec/schema';
+import { FILTERS_ENTRY, getPrimaryFilterSet, resolveSelection } from './spec/topology';
+import type { DashboardUrlInfo } from './spec/url-state/info';
+import { usePersistedTopology } from './spec/url-state/use-persisted-topology';
+import { widgetRegistry } from './widgets/registry';
 import type { WidgetContext } from './widgets/registry';
-import { useNavigateSearch, useSearch, useSearchParam } from '@/router';
 
 // The URL search param that selects the active spec id. The URL is the source of
 // truth: `useSearchParam(SPEC_PARAM)` drives the load and `navigateSearch` writes
@@ -125,8 +114,7 @@ function Bootstrap() {
 
   // The active spec id is derived from the URL param + manifest, so the URL is
   // the single source of truth. Null until the manifest is known.
-  const activeSpecId =
-    manifest === null ? null : resolveSpecEntry(manifest, specParam ?? null).id;
+  const activeSpecId = manifest === null ? null : resolveSpecEntry(manifest, specParam ?? null).id;
 
   // Fetch the manifest once; a fetch failure surfaces the fetch-error panel and
   // leaves `manifest` null, so the load effect below stays inert.
@@ -314,9 +302,7 @@ function SpecDashboard(props: {
  */
 function filterSetContextRef(spec: DashboardSpec): string | undefined {
   const entry = spec.topology[FILTERS_ENTRY];
-  return entry !== undefined && entry.type === 'filter-set'
-    ? entry.context
-    : undefined;
+  return entry !== undefined && entry.type === 'filter-set' ? entry.context : undefined;
 }
 
 function DashboardBody(props: {
@@ -371,10 +357,7 @@ function DashboardBody(props: {
 
   // Kind names that emit their own routing targets, so the builder must not
   // stamp a decorative `spec.target` on their specs.
-  const selfRoutingKinds = useMemo(
-    () => buildSelfRoutingKindNames(spec),
-    [spec],
-  );
+  const selfRoutingKinds = useMemo(() => buildSelfRoutingKindNames(spec), [spec]);
 
   const context = useMemo<WidgetContext>(
     () => ({
@@ -396,9 +379,7 @@ function DashboardBody(props: {
       <header className="sticky top-0 z-20 flex h-12 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-line bg-panel px-4">
         <div className="flex items-center gap-2">
           <DashboardGlyph />
-          <h1 className="text-sm font-semibold tracking-tight text-ink">
-            {title}
-          </h1>
+          <h1 className="text-sm font-semibold tracking-tight text-ink">{title}</h1>
         </div>
         <div className="flex items-center gap-2">
           <SpecSelect
@@ -407,10 +388,7 @@ function DashboardBody(props: {
             onSelectSpec={props.onSelectSpec}
           />
           <UrlParamsPopover info={props.urlInfo} />
-          <SpecEditorToggle
-            open={editorOpen}
-            onToggle={() => setEditorOpen((prev) => !prev)}
-          />
+          <SpecEditorToggle open={editorOpen} onToggle={() => setEditorOpen((prev) => !prev)} />
         </div>
       </header>
 
@@ -461,12 +439,7 @@ function DashboardBody(props: {
 /** A small dashboards-style glyph for the toolbar title (decorative). */
 function DashboardGlyph() {
   return (
-    <svg
-      aria-hidden
-      viewBox="0 0 16 16"
-      className="h-4 w-4 text-gf-orange"
-      fill="currentColor"
-    >
+    <svg aria-hidden viewBox="0 0 16 16" className="h-4 w-4 text-gf-orange" fill="currentColor">
       <rect x="1" y="1" width="6" height="6" rx="1" />
       <rect x="9" y="1" width="6" height="4" rx="1" />
       <rect x="1" y="9" width="6" height="6" rx="1" />
@@ -486,11 +459,8 @@ function LayoutRow(props: {
 
   // When an expandable widget in this row is enlarged, its grid slot renders the
   // `placeholder` and the full-width `promoted` copy renders below the row.
-  const expandedEntry = row.widgets.find(
-    (entry) => entry.ref === context.expandedId,
-  );
-  const expandedWidget =
-    expandedEntry === undefined ? undefined : widgetsById[expandedEntry.ref];
+  const expandedEntry = row.widgets.find((entry) => entry.ref === context.expandedId);
+  const expandedWidget = expandedEntry === undefined ? undefined : widgetsById[expandedEntry.ref];
 
   return (
     <>
@@ -502,8 +472,7 @@ function LayoutRow(props: {
           }
           const Component = widgetRegistry[widget.renderer];
           const spanClass = COL_SPAN_CLASS[entry.col_span] ?? '';
-          const mode =
-            entry.ref === context.expandedId ? 'placeholder' : 'default';
+          const mode = entry.ref === context.expandedId ? 'placeholder' : 'default';
           return (
             <div key={entry.ref} className={spanClass}>
               <Component widget={widget} context={context} mode={mode} />
@@ -516,11 +485,7 @@ function LayoutRow(props: {
             const Component = widgetRegistry[expandedWidget.renderer];
             return (
               <div className="w-full">
-                <Component
-                  widget={expandedWidget}
-                  context={context}
-                  mode="promoted"
-                />
+                <Component widget={expandedWidget} context={context} mode="promoted" />
               </div>
             );
           })()
@@ -546,9 +511,7 @@ function SpecSelect(props: {
   }
   return (
     <label className="flex items-center overflow-hidden rounded-gf border border-line text-xs">
-      <span className="bg-panel-header px-2 py-1 font-medium text-muted">
-        Dashboard
-      </span>
+      <span className="bg-panel-header px-2 py-1 font-medium text-muted">Dashboard</span>
       <select
         data-testid="spec-select"
         value={activeSpecId}
@@ -572,9 +535,7 @@ function SpecErrorPanel(props: { errors: Array<string> }) {
         data-testid="spec-error-panel"
         className="mx-auto max-w-3xl rounded-gf border border-line border-l-2 border-l-gf-red bg-panel p-6"
       >
-        <h1 className="text-sm font-semibold text-gf-red">
-          Spec validation failed
-        </h1>
+        <h1 className="text-sm font-semibold text-gf-red">Spec validation failed</h1>
         <p className="mt-1 text-xs text-muted">
           The dashboard spec did not compile. Fix the following and reload:
         </p>

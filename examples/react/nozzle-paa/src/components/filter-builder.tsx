@@ -1,3 +1,10 @@
+import { useFilterSetState } from '@nozzleio/react-mosaic';
+import type {
+  FilterSet,
+  FilterSpec,
+  OperatorArity,
+  OperatorDescriptor,
+} from '@nozzleio/react-mosaic';
 /**
  * The dynamic "Builder" authoring view over the page {@link filterSet} — the
  * full-power authoring surface (issue #180 / #181). The Classic view is a
@@ -37,27 +44,19 @@
  * already holds a spec.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useFilterSetState } from '@nozzleio/react-mosaic';
+
+import { FILTER_CATALOG, facetOperatorIds } from '../filter-catalog';
+import type { CatalogField, CatalogPlacement } from '../filter-catalog';
+import { useDebouncedRun } from '../filter-controls';
 import { kindRegistry } from '../page-context';
 import { usePageFilterSet } from '../topology';
-import { FILTER_CATALOG, facetOperatorIds } from '../filter-catalog';
-import { useDebouncedRun } from '../filter-controls';
 import { FacetMultiSelect } from './facet-multi-select';
 import { usePopoverDismiss } from './use-popover-dismiss';
-import type {
-  FilterSet,
-  FilterSpec,
-  OperatorArity,
-  OperatorDescriptor,
-} from '@nozzleio/react-mosaic';
-import type { CatalogField, CatalogPlacement } from '../filter-catalog';
 
-const inputClassName =
-  'h-9 rounded border border-slate-200 bg-white px-3 text-sm';
+const inputClassName = 'h-9 rounded border border-slate-200 bg-white px-3 text-sm';
 const selectClassName =
   'h-9 rounded border border-slate-200 bg-white px-2 text-sm disabled:bg-slate-100 disabled:text-slate-500';
-const labelClassName =
-  'text-xs font-semibold tracking-wider text-slate-500 uppercase';
+const labelClassName = 'text-xs font-semibold tracking-wider text-slate-500 uppercase';
 
 /**
  * Kinds that emit their own routing targets (having:/members:) and ignore
@@ -72,9 +71,7 @@ function isSelfRoutingKind(kind: string): boolean {
 
 /** True when the field's value control is one of the shared facet families. */
 function isFacetField(field: CatalogField): boolean {
-  return (
-    field.valueKind === 'facet-multi' || field.valueKind === 'facet-multi-array'
-  );
+  return field.valueKind === 'facet-multi' || field.valueKind === 'facet-multi-array';
 }
 
 /**
@@ -110,10 +107,7 @@ function defaultOperatorId(
   field: CatalogField,
   operators: ReadonlyArray<OperatorDescriptor>,
 ): string {
-  if (
-    field.valueKind === 'text' &&
-    operators.some((entry) => entry.id === 'contains')
-  ) {
+  if (field.valueKind === 'text' && operators.some((entry) => entry.id === 'contains')) {
     return 'contains';
   }
   return operators[0]?.id ?? '';
@@ -129,9 +123,7 @@ function defaultOperatorId(
  * — so the button badge and the chip badge stay consistent.
  */
 function isHavingPlacement(placement: CatalogPlacement): boolean {
-  return (
-    placement.target.startsWith('having:') || isSelfRoutingKind(placement.kind)
-  );
+  return placement.target.startsWith('having:') || isSelfRoutingKind(placement.kind);
 }
 
 /** Format a committed spec's value into a compact, human-readable fragment. */
@@ -180,10 +172,7 @@ interface FieldSummary {
  * holds a spec (independent of the popover's live placement selection) and
  * render its operator + value. An unconfigured field returns `configured:false`.
  */
-function summarizeField(
-  field: CatalogField,
-  specs: ReadonlyArray<FilterSpec>,
-): FieldSummary {
+function summarizeField(field: CatalogField, specs: ReadonlyArray<FilterSpec>): FieldSummary {
   const placement = field.placements.find((entry) =>
     specs.some((spec) => spec.id === entry.specId),
   );
@@ -195,10 +184,7 @@ function summarizeField(
     return { configured: false, badge: null, text: '' };
   }
   const operators = operatorsForBlock(field, placement);
-  const opLabel =
-    typeof spec.operator === 'string'
-      ? operatorLabel(operators, spec.operator)
-      : '';
+  const opLabel = typeof spec.operator === 'string' ? operatorLabel(operators, spec.operator) : '';
   const valueText = formatSummaryValue(field, spec);
   const text = [opLabel, valueText].filter((part) => part !== '').join(' ');
   return {
@@ -210,8 +196,7 @@ function summarizeField(
 
 /** Trigger-button classes: cyan accent when configured, dashed when not. */
 function filterButtonClassName(configured: boolean, open: boolean): string {
-  const base =
-    'flex h-9 max-w-full items-center gap-1.5 rounded border px-3 text-sm';
+  const base = 'flex h-9 max-w-full items-center gap-1.5 rounded border px-3 text-sm';
   const state = configured
     ? 'border-cyan-300 bg-cyan-50 text-slate-800'
     : 'border-dashed border-slate-300 bg-white text-slate-500 hover:text-slate-700';
@@ -239,9 +224,7 @@ export function FilterBuilder() {
   // (`filter-builder-confirm`) materializes its button and opens its popover.
   const [pendingFieldId, setPendingFieldId] = useState('');
   // The single field whose popover is open (null = all closed).
-  const [openPopoverFieldId, setOpenPopoverFieldId] = useState<string | null>(
-    null,
-  );
+  const [openPopoverFieldId, setOpenPopoverFieldId] = useState<string | null>(null);
 
   // Adopt fields that gained a spec elsewhere (classic view / shared link),
   // without dropping buttons the user opened but has not yet filled. This never
@@ -270,9 +253,7 @@ export function FilterBuilder() {
       return;
     }
     const fieldId = pendingFieldId;
-    setOpenFieldIds((prev) =>
-      prev.includes(fieldId) ? prev : [...prev, fieldId],
-    );
+    setOpenFieldIds((prev) => (prev.includes(fieldId) ? prev : [...prev, fieldId]));
     setPendingFieldId('');
     setOpenPopoverFieldId(fieldId);
   };
@@ -291,9 +272,7 @@ export function FilterBuilder() {
     setOpenPopoverFieldId((prev) => (prev === fieldId ? null : fieldId));
   };
 
-  const available = FILTER_CATALOG.filter(
-    (field) => !openFieldIds.includes(field.id),
-  );
+  const available = FILTER_CATALOG.filter((field) => !openFieldIds.includes(field.id));
 
   return (
     <div className="flex w-full flex-col gap-3" data-testid="filter-builder">
@@ -336,9 +315,9 @@ export function FilterBuilder() {
       </div>
 
       <p className="text-xs text-slate-500">
-        Pick a field and choose “Add &amp; edit”, then set where it applies
-        (row-level WHERE vs aggregate HAVING), how it compares, and its value.
-        These edit the same page filters as the Classic view.
+        Pick a field and choose “Add &amp; edit”, then set where it applies (row-level WHERE vs
+        aggregate HAVING), how it compares, and its value. These edit the same page filters as the
+        Classic view.
       </p>
     </div>
   );
@@ -349,10 +328,7 @@ export function FilterBuilder() {
  * Returns `prev` unchanged (referentially) when nothing was added, so the
  * hydrate effect does not force a needless re-render on every spec change.
  */
-function hydrateOpenFields(
-  filterSet: FilterSet,
-  prev: Array<string>,
-): Array<string> {
+function hydrateOpenFields(filterSet: FilterSet, prev: Array<string>): Array<string> {
   const state = filterSet.store.state;
   const added: Array<string> = [];
   for (const field of FILTER_CATALOG) {
@@ -405,10 +381,7 @@ function FilterButton(props: FilterButtonProps) {
   const [placementIndex, setPlacementIndex] = useState(initialPlacement);
   const placement = field.placements[placementIndex] ?? field.placements[0]!;
 
-  const operators = useMemo(
-    () => operatorsForBlock(field, placement),
-    [field, placement],
-  );
+  const operators = useMemo(() => operatorsForBlock(field, placement), [field, placement]);
 
   const specColumn = placement.specColumn ?? field.column;
   const singlePlacement = field.placements.length === 1;
@@ -455,9 +428,7 @@ function FilterButton(props: FilterButtonProps) {
         }`}
       >
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-semibold text-slate-700">
-            {field.label}
-          </span>
+          <span className="text-sm font-semibold text-slate-700">{field.label}</span>
           <button
             type="button"
             data-testid={`${testId}-remove`}
@@ -597,9 +568,7 @@ function ScalarValue(props: {
   const { specs } = useFilterSetState(filterSet);
   const committed = specs.find((spec) => spec.id === placement.specId);
 
-  const [operatorId, setOperatorId] = useState<string>(() =>
-    defaultOperatorId(field, operators),
-  );
+  const [operatorId, setOperatorId] = useState<string>(() => defaultOperatorId(field, operators));
   const [value, setValue] = useState('');
   const [valueTo, setValueTo] = useState('');
   const debounce = useDebouncedRun(300);
@@ -614,9 +583,7 @@ function ScalarValue(props: {
   // Reset the operator to a valid one when the placement's kind changes.
   useEffect(() => {
     setOperatorId((prev) =>
-      operators.some((entry) => entry.id === prev)
-        ? prev
-        : defaultOperatorId(field, operators),
+      operators.some((entry) => entry.id === prev) ? prev : defaultOperatorId(field, operators),
     );
   }, [field, operators]);
 
@@ -627,9 +594,7 @@ function ScalarValue(props: {
     if (pendingWriteRef.current) {
       return;
     }
-    const current = filterSet.store.state.specs.find(
-      (spec) => spec.id === placement.specId,
-    );
+    const current = filterSet.store.state.specs.find((spec) => spec.id === placement.specId);
     if (current === undefined) {
       // External removal (chip ✕, Clear All, cross-view edit): drop stale local
       // state and cancel any armed publish so a later operator change cannot
@@ -788,10 +753,7 @@ function ScalarValue(props: {
 }
 
 /** The label shown for the current operator (static-control fallback). */
-function operatorLabel(
-  operators: ReadonlyArray<OperatorDescriptor>,
-  operatorId: string,
-): string {
+function operatorLabel(operators: ReadonlyArray<OperatorDescriptor>, operatorId: string): string {
   const match = operators.find((entry) => entry.id === operatorId);
   return match?.label ?? operatorId;
 }
@@ -850,8 +812,7 @@ function FacetValue(props: {
 
   const onOperatorChange = (next: string) => {
     setOperatorId(next);
-    const nextArity =
-      operators.find((entry) => entry.id === next)?.arity ?? 'set';
+    const nextArity = operators.find((entry) => entry.id === next)?.arity ?? 'set';
     if (nextArity === 'none') {
       // Emptiness operator: write a valueless spec immediately.
       filterSet.set({
@@ -947,9 +908,7 @@ function DateRangeValue(props: {
   const filterSet = usePageFilterSet();
   const { specs } = useFilterSetState(filterSet);
   const committed = specs.find((spec) => spec.id === placement.specId);
-  const bounds = Array.isArray(committed?.value)
-    ? committed.value
-    : [null, null];
+  const bounds = Array.isArray(committed?.value) ? committed.value : [null, null];
   const start = typeof bounds[0] === 'string' ? bounds[0] : '';
   const end = typeof bounds[1] === 'string' ? bounds[1] : '';
 

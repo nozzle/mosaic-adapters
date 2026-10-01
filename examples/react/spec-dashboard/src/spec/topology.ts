@@ -1,3 +1,10 @@
+import type {
+  FilterKind,
+  FilterSet,
+  Topology,
+  TopologyConfig,
+  TopologyOptions,
+} from '@nozzleio/react-mosaic';
 /**
  * Topology plumbing: turn the validated spec `topology:` section into the
  * arguments `useTopology` consumes.
@@ -12,13 +19,7 @@
  * instances.
  */
 import type { Param, Selection } from '@uwdata/mosaic-core';
-import type {
-  FilterKind,
-  FilterSet,
-  Topology,
-  TopologyConfig,
-  TopologyOptions,
-} from '@nozzleio/react-mosaic';
+
 import type { TopologySpec } from './schema';
 
 /** The one `filter-set` entry name the dashboard declares. */
@@ -41,12 +42,7 @@ export function toTopologyConfig(topology: TopologySpec): TopologyConfig {
   const config: TopologyConfig = {};
   for (const [name, declaration] of Object.entries(topology)) {
     if (declaration.type === 'variable') {
-      const {
-        type: _type,
-        default: defaultValue,
-        persist: _persist,
-        ...rest
-      } = declaration;
+      const { type: _type, default: defaultValue, persist: _persist, ...rest } = declaration;
       config[name] = { type: 'param', default: defaultValue, ...rest };
       continue;
     }
@@ -137,9 +133,7 @@ export function resolveVariable<TParamValue = any>(
 export function getPrimaryFilterSet(topology: Topology): FilterSet {
   const filterSet = topology.getFilterSet(FILTERS_ENTRY);
   if (filterSet === undefined) {
-    throw new Error(
-      `no FilterSet is declared for topology entry '${FILTERS_ENTRY}'.`,
-    );
+    throw new Error(`no FilterSet is declared for topology entry '${FILTERS_ENTRY}'.`);
   }
   return filterSet;
 }

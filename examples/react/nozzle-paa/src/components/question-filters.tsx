@@ -1,3 +1,5 @@
+import { useFilterSetState } from '@nozzleio/react-mosaic';
+import type { FilterSpec } from '@nozzleio/react-mosaic';
 /**
  * Top-bar Classic filter inputs, all authoring the page {@link filterSet}.
  *
@@ -18,27 +20,16 @@
  * empties it) and writes a spec (debounced) or removes it when empty.
  */
 import { useEffect, useRef, useState } from 'react';
-import { useFilterSetState } from '@nozzleio/react-mosaic';
-import { usePageFilterSet } from '../topology';
-import {
-  facetTriggerLabel,
-  useDebouncedRun,
-  useSelectedValues,
-} from '../filter-controls';
-import { FacetMultiSelect } from './facet-multi-select';
-import type { FilterSpec } from '@nozzleio/react-mosaic';
 
-function FilterShell(props: {
-  label: string;
-  width?: string;
-  children: React.ReactNode;
-}) {
+import { facetTriggerLabel, useDebouncedRun, useSelectedValues } from '../filter-controls';
+import { usePageFilterSet } from '../topology';
+import { FacetMultiSelect } from './facet-multi-select';
+
+function FilterShell(props: { label: string; width?: string; children: React.ReactNode }) {
   return (
     // shrink-0: fixed-width flex items must wrap to the next row rather than
     // shrink below their content and overlap their neighbors.
-    <div
-      className={`flex shrink-0 flex-col gap-1 ${props.width ?? 'w-[180px]'}`}
-    >
+    <div className={`flex shrink-0 flex-col gap-1 ${props.width ?? 'w-[180px]'}`}>
       <label className="text-xs font-semibold tracking-wider text-slate-500 uppercase">
         {props.label}
       </label>
@@ -205,8 +196,7 @@ export function TextFilter(props: {
   // Divergence: the shared spec exists with an operator this contains-only
   // control can't represent (anything but `contains`). Keyed on spec existence
   // + operator — an `is_empty` spec has no value but is still an active filter.
-  const builderHint =
-    committedOperator !== undefined && committedOperator !== 'contains';
+  const builderHint = committedOperator !== undefined && committedOperator !== 'contains';
   const [draft, setDraft] = useState('');
   const debounce = useDebouncedRun(300);
 
@@ -326,9 +316,7 @@ export function QuestionMinDomainsFilter() {
 
   useEffect(() => {
     setDraft(
-      typeof committed === 'number' || typeof committed === 'string'
-        ? String(committed)
-        : '',
+      typeof committed === 'number' || typeof committed === 'string' ? String(committed) : '',
     );
   }, [committed]);
 

@@ -1,3 +1,5 @@
+import { useMosaicRollup } from '@nozzleio/react-mosaic';
+import type { RollupRow } from '@nozzleio/react-mosaic';
 import {
   columnVisibilityFeature,
   createExpandedRowModel,
@@ -6,12 +8,11 @@ import {
   tableFeatures,
   useTable,
 } from '@tanstack/react-table';
-import { useMemo } from 'react';
-import { Query, count, sum } from '@uwdata/mosaic-sql';
-import { useMosaicRollup } from '@nozzleio/react-mosaic';
-import { tableName } from '../page-context';
 import type { ColumnDef, ExpandedState } from '@tanstack/react-table';
-import type { RollupRow } from '@nozzleio/react-mosaic';
+import { Query, count, sum } from '@uwdata/mosaic-sql';
+import { useMemo } from 'react';
+
+import { tableName } from '../page-context';
 
 interface MedalRollup {
   sport: string | null;
@@ -65,9 +66,7 @@ const columns: Array<ColumnDef<typeof features, RollupNode>> = [
             'All athletes'
           ) : (
             <>
-              <span className="text-xs text-slate-400">
-                {row.getIsExpanded() ? '▼' : '▶'}
-              </span>
+              <span className="text-xs text-slate-400">{row.getIsExpanded() ? '▼' : '▶'}</span>
               {node.data.sport}
             </>
           )}
@@ -78,14 +77,12 @@ const columns: Array<ColumnDef<typeof features, RollupNode>> = [
   {
     id: 'athletes',
     header: 'Athletes',
-    cell: (cell) =>
-      Number(cell.row.original.data.athletes).toLocaleString('en-US'),
+    cell: (cell) => Number(cell.row.original.data.athletes).toLocaleString('en-US'),
   },
   {
     id: 'gold',
     header: 'Gold medals',
-    cell: (cell) =>
-      Number(cell.row.original.data.gold ?? 0).toLocaleString('en-US'),
+    cell: (cell) => Number(cell.row.original.data.gold ?? 0).toLocaleString('en-US'),
   },
 ];
 
@@ -126,8 +123,7 @@ export function RollupView() {
     <section className="space-y-2">
       <p className="text-sm text-slate-500">
         One <code>GROUP BY ROLLUP</code> query fetched the entire tree (
-        {rollup.rows.length.toLocaleString('en-US')} rows); expansion is pure
-        visibility.
+        {rollup.rows.length.toLocaleString('en-US')} rows); expansion is pure visibility.
       </p>
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm" data-testid="rollup-table">
@@ -136,10 +132,7 @@ export function RollupView() {
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <th key={header.id} className="px-3 py-2 font-medium">
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
-                    )}
+                    {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 ))}
               </tr>
@@ -156,9 +149,7 @@ export function RollupView() {
                 {row.getVisibleCells().map((cell, index) => (
                   <td
                     key={cell.id}
-                    className={
-                      index === 0 ? 'px-3 py-1.5' : 'px-3 py-1.5 tabular-nums'
-                    }
+                    className={index === 0 ? 'px-3 py-1.5' : 'px-3 py-1.5 tabular-nums'}
                     style={
                       index === 0
                         ? {

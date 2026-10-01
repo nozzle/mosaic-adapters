@@ -1,3 +1,7 @@
+import { useMosaicValues } from '@nozzleio/react-mosaic';
+import type { ValuesInputs } from '@nozzleio/react-mosaic';
+import type { Param } from '@uwdata/mosaic-core';
+import type { ParamLike } from '@uwdata/mosaic-sql';
 /**
  * A single KPI card: one `useMosaicValues` client reading a `value` column from
  * the widget's compiled (structured) query, formatted through
@@ -11,16 +15,13 @@
  * Selection by ref.
  */
 import { useMemo } from 'react';
-import { useMosaicValues } from '@nozzleio/react-mosaic';
-import { compileStructuredQuery } from '../spec/query-compiler';
+import type { ReactElement } from 'react';
+
 import { compileExclude } from '../spec/exclude';
+import { compileStructuredQuery } from '../spec/query-compiler';
+import type { KpiCardWidgetSpec } from '../spec/schema';
 import { resolveSelection, resolveVariable } from '../spec/topology';
 import { getFormatter } from './formatters';
-import type { ReactElement } from 'react';
-import type { Param } from '@uwdata/mosaic-core';
-import type { ParamLike } from '@uwdata/mosaic-sql';
-import type { ValuesInputs } from '@nozzleio/react-mosaic';
-import type { KpiCardWidgetSpec } from '../spec/schema';
 import type { WidgetComponentProps, WidgetContext } from './registry';
 
 /** The single row/column shape every KPI query returns. */
@@ -33,10 +34,7 @@ interface KpiValues extends Record<string, unknown> {
  * we narrow to this renderer here and render the inner card so that all hooks
  * run unconditionally (rules-of-hooks) on the already-narrowed widget.
  */
-export function KpiWidget({
-  widget,
-  context,
-}: WidgetComponentProps): ReactElement | null {
+export function KpiWidget({ widget, context }: WidgetComponentProps): ReactElement | null {
   if (widget.renderer !== 'kpi-card') {
     return null;
   }
@@ -78,10 +76,7 @@ function KpiCard({ widget, context }: KpiCardProps): ReactElement {
   }, [compiled, topology]);
   // `exclude` (see spec/exclude.ts): `'all'` drops filterBy (full opt-out); a
   // list yields a stable `skipSources` set dropping just those clauses.
-  const exclude = useMemo(
-    () => compileExclude(widget.exclude),
-    [widget.exclude],
-  );
+  const exclude = useMemo(() => compileExclude(widget.exclude), [widget.exclude]);
   const applyFilterBy = filterBy !== undefined && !exclude.omitFilterBy;
 
   const result = useMosaicValues<KpiValues>({
@@ -89,21 +84,17 @@ function KpiCard({ widget, context }: KpiCardProps): ReactElement {
     // Honor the opt-out contract: no `filterBy` key at all when absent or when
     // `exclude: all` drops it.
     ...(applyFilterBy ? { filterBy } : {}),
-    ...(exclude.skipSources !== undefined
-      ? { skipSources: exclude.skipSources }
-      : {}),
+    ...(exclude.skipSources !== undefined ? { skipSources: exclude.skipSources } : {}),
     ...(compiled.variables.length > 0 ? { params } : {}),
     enabled,
   });
 
   const formatter = getFormatter(widget.format);
-  const display =
-    result.values === undefined ? '…' : formatter(result.values.value);
+  const display = result.values === undefined ? '…' : formatter(result.values.value);
 
   // A subtle Grafana-stat cue: cross-filtered stats read green, the opt-out
   // ("all data") stat reads viz-blue so the constant one is visibly distinct.
-  const valueColor =
-    widget.filter_by === undefined ? 'text-gf-viz-blue' : 'text-gf-green';
+  const valueColor = widget.filter_by === undefined ? 'text-gf-viz-blue' : 'text-gf-green';
 
   return (
     <div

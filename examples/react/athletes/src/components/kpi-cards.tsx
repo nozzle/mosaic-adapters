@@ -1,9 +1,6 @@
+import { useMosaicParamRef, useMosaicParamValue, useMosaicValues } from '@nozzleio/react-mosaic';
 import { Query, column, count, sum } from '@uwdata/mosaic-sql';
-import {
-  useMosaicParamRef,
-  useMosaicParamValue,
-  useMosaicValues,
-} from '@nozzleio/react-mosaic';
+
 import { $page, tableName } from '../page-context';
 import type { MedalMetric } from '../page-context';
 
@@ -83,9 +80,7 @@ function KpiCard(props: {
 }) {
   return (
     <div className="min-w-36 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <div className="text-xs uppercase tracking-wide text-slate-500">
-        {props.label}
-      </div>
+      <div className="text-xs uppercase tracking-wide text-slate-500">{props.label}</div>
       <div
         className={`text-2xl font-semibold tabular-nums ${
           props.pending ? 'text-slate-400' : 'text-slate-900'

@@ -118,25 +118,13 @@ data: # ordered CREATE OR REPLACE TABLE sources
       query: SELECT *, CASE … END AS volume_bucket FROM questions
 
 topology: # → useTopology (Selections + the filter set)
-  filters:
-    { type: filter-set, targets: { where: crossfilter, … }, context: page }
-  page:
-    {
-      type: compose,
-      as: crossfilter,
-      include: [filters.where, volume_brush, …],
-    }
+  filters: { type: filter-set, targets: { where: crossfilter, … }, context: page }
+  page: { type: compose, as: crossfilter, include: [filters.where, volume_brush, …] }
 
 filter_kinds: # generic behavior factories instantiated with config
   metric_threshold:
     behavior: aggregate-threshold
-    config:
-      {
-        table: questions_enriched,
-        group_by: phrase,
-        aggregate: 'max(search_volume)',
-        …,
-      }
+    config: { table: questions_enriched, group_by: phrase, aggregate: 'max(search_volume)', … }
 
 filters: # the filter-builder field catalog (the only filter UI)
   fields:
@@ -144,16 +132,11 @@ filters: # the filter-builder field catalog (the only filter UI)
       label: Phrase
       column: phrase
       value_kind: text
-      placements:
-        [{ label: WHERE, target: where, kind: condition, spec_id: text:phrase }]
+      placements: [{ label: WHERE, target: where, kind: condition, spec_id: text:phrase }]
 
 widgets: # a map keyed by widget id; `renderer` selects the widget registry entry
   kpi_phrases:
-    {
-      renderer: kpi-card,
-      filter_by: page,
-      query: { type: select, from: …, select: { value: … } },
-    }
+    { renderer: kpi-card, filter_by: page, query: { type: select, from: …, select: { value: … } } }
 
 layout: # a CSS grid: rows of { ref, col_span } widgets
   columns: 5

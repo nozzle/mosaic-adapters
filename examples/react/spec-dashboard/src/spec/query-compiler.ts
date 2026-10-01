@@ -1,3 +1,5 @@
+import { SqlIdentifier, createStructAccess } from '@nozzleio/react-mosaic';
+import type { QueryContext, QuerySource } from '@nozzleio/react-mosaic';
 /**
  * The query compiler — the core bridge from a spec `query:` block to a Mosaic
  * `QuerySource` factory. Pure functions: spec in, `(ctx) => SelectQuery` out.
@@ -30,9 +32,8 @@
  * cross-reference validation, so the two never diverge).
  */
 import { Query, column, sql } from '@uwdata/mosaic-sql';
-import { SqlIdentifier, createStructAccess } from '@nozzleio/react-mosaic';
 import type { ExprNode, ParamLike, SelectQuery } from '@uwdata/mosaic-sql';
-import type { QueryContext, QuerySource } from '@nozzleio/react-mosaic';
+
 import type { StructuredQuery } from './schema';
 
 /**
@@ -210,10 +211,7 @@ function compileFragment(
  * source order. Mirrors {@link columnExpr}'s routing so the two never disagree:
  * a whole-expression `$name` ref, a simple column (none), or a fragment's tokens.
  */
-function columnExprRefs(
-  expr: string,
-  declared: ReadonlySet<string>,
-): Array<string> {
+function columnExprRefs(expr: string, declared: ReadonlySet<string>): Array<string> {
   const whole = parseVariableRef(expr);
   if (whole !== null) {
     return [whole];
@@ -247,9 +245,7 @@ export function columnExpr(
   const variable = parseVariableRef(expr);
   if (variable !== null) {
     if (resolveVariable === undefined) {
-      throw new Error(
-        `variable ref '${expr}' cannot be compiled without a variable resolver.`,
-      );
+      throw new Error(`variable ref '${expr}' cannot be compiled without a variable resolver.`);
     }
     return column(resolveVariable(variable));
   }
@@ -328,22 +324,16 @@ export function compileStructuredQuery<TInputs extends object>(
     const query = Query.from(spec.from).select(selection).where(ctx.where);
 
     for (const fragment of spec.where ?? []) {
-      query.where(
-        compileFragment(fragment, declaredVariables, resolveVariable),
-      );
+      query.where(compileFragment(fragment, declaredVariables, resolveVariable));
     }
     if (spec.group_by !== undefined && spec.group_by.length > 0) {
       query.groupby(
-        ...spec.group_by.map((expr) =>
-          columnExpr(expr, resolveVariable, declaredVariables),
-        ),
+        ...spec.group_by.map((expr) => columnExpr(expr, resolveVariable, declaredVariables)),
       );
     }
     query.having(ctx.having);
     for (const fragment of spec.having ?? []) {
-      query.having(
-        compileFragment(fragment, declaredVariables, resolveVariable),
-      );
+      query.having(compileFragment(fragment, declaredVariables, resolveVariable));
     }
 
     return query;

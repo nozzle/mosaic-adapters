@@ -1,17 +1,16 @@
 import { describe, expect, test } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
-import { excludeSchema } from '../src/spec/schema';
-import { compileExclude } from '../src/spec/exclude';
+
 import { compileSpec } from '../src/spec/compile';
+import { compileExclude } from '../src/spec/exclude';
+import { excludeSchema } from '../src/spec/schema';
 
 // ── excludeSchema (shape) ─────────────────────────────────────────────────────
 
 describe('excludeSchema', () => {
   test('accepts a non-empty list of spec ids', () => {
     expect(excludeSchema.safeParse(['facet:domain']).success).toBe(true);
-    expect(
-      excludeSchema.safeParse(['facet:domain', 'text:phrase']).success,
-    ).toBe(true);
+    expect(excludeSchema.safeParse(['facet:domain', 'text:phrase']).success).toBe(true);
   });
 
   test("accepts the literal 'all'", () => {
@@ -49,10 +48,7 @@ describe('compileExclude', () => {
     const compiled = compileExclude(['facet:domain', 'text:phrase']);
     expect(compiled.omitFilterBy).toBe(false);
     expect(compiled.skipSources).toBeInstanceOf(Set);
-    expect([...compiled.skipSources!].sort()).toEqual([
-      'facet:domain',
-      'text:phrase',
-    ]);
+    expect([...compiled.skipSources!].sort()).toEqual(['facet:domain', 'text:phrase']);
   });
 });
 
@@ -114,9 +110,7 @@ function baseSpec(): Record<string, unknown> {
 }
 
 /** Deep clone the base spec, apply a mutator, and compile the resulting YAML. */
-function compileMutated(
-  mutate: (spec: any) => void,
-): ReturnType<typeof compileSpec> {
+function compileMutated(mutate: (spec: any) => void): ReturnType<typeof compileSpec> {
   const spec = structuredClone(baseSpec());
   mutate(spec);
   return compileSpec(stringifyYaml(spec));
@@ -153,8 +147,7 @@ describe('exclude cross-reference validation', () => {
     expect(
       result.errors.some(
         (error) =>
-          error.includes("'facet:nope'") &&
-          error.includes('not a declared filter spec id'),
+          error.includes("'facet:nope'") && error.includes('not a declared filter spec id'),
       ),
     ).toBe(true);
   });
@@ -169,9 +162,7 @@ describe('exclude cross-reference validation', () => {
     if (result.ok) {
       throw new Error('expected failure');
     }
-    expect(
-      result.errors.some((error) => error.includes('nothing to exclude from')),
-    ).toBe(true);
+    expect(result.errors.some((error) => error.includes('nothing to exclude from'))).toBe(true);
   });
 
   test('a list exclude on a vgplot mark is rejected with guidance', () => {
@@ -203,8 +194,7 @@ describe('exclude cross-reference validation', () => {
     expect(
       result.errors.some(
         (error) =>
-          error.includes('vgplot mark cannot apply') &&
-          error.includes("plot mark 'rectY'"),
+          error.includes('vgplot mark cannot apply') && error.includes("plot mark 'rectY'"),
       ),
     ).toBe(true);
   });

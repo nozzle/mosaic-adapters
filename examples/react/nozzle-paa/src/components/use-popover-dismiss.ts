@@ -24,11 +24,7 @@ export function usePopoverDismiss(
     }
     const onMouseDown = (event: MouseEvent): void => {
       const root = rootRef.current;
-      if (
-        root !== null &&
-        event.target instanceof Node &&
-        root.contains(event.target)
-      ) {
+      if (root !== null && event.target instanceof Node && root.contains(event.target)) {
         return;
       }
       onDismiss();

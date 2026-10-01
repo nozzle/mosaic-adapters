@@ -28,19 +28,13 @@ async function firstRowName(page: Page): Promise<string> {
   return tableRows(page).first().locator('td').first().innerText();
 }
 
-test('loads the dashboard: table, KPIs, and vgplot scatter from one DuckDB', async ({
-  page,
-}) => {
+test('loads the dashboard: table, KPIs, and vgplot scatter from one DuckDB', async ({ page }) => {
   await gotoDashboard(page);
 
-  await expect(page.getByTestId('total-rows')).toHaveText(
-    `${TOTAL} athletes match`,
-  );
+  await expect(page.getByTestId('total-rows')).toHaveText(`${TOTAL} athletes match`);
   await expect(page.getByTestId('kpi-medals')).toHaveText('666'); // sum(gold)
   // The dot mark renders one circle per (weight, height) row.
-  await expect
-    .poll(async () => scatterDots(page).count())
-    .toBeGreaterThan(1_000);
+  await expect.poll(async () => scatterDots(page).count()).toBeGreaterThan(1_000);
 });
 
 test('sorting executes in SQL across the whole dataset', async ({ page }) => {
@@ -50,9 +44,7 @@ test('sorting executes in SQL across the whole dataset', async ({ page }) => {
   // ORDER BY runs in SQL — getCoreRowModel never sorts. TanStack Table's default
   // toggle order for numeric columns is desc first.
   await page.getByTestId('sort-weight').click();
-  await expect(tableRows(page).first().locator('td').nth(5)).toHaveText(
-    '170kg',
-  );
+  await expect(tableRows(page).first().locator('td').nth(5)).toHaveText('170kg');
 
   await page.getByTestId('sort-weight').click();
   await expect(tableRows(page).first().locator('td').nth(5)).toHaveText('31kg');
@@ -96,9 +88,7 @@ test('bridge-published column filters drive the table, KPIs, and the vgplot scat
   // Range filter → interval clause.
   await page.getByTestId('filter-weight-min').fill('60');
   await page.getByTestId('filter-weight-max').fill('70');
-  await expect(page.getByTestId('total-rows')).toHaveText(
-    '3,342 athletes match',
-  );
+  await expect(page.getByTestId('total-rows')).toHaveText('3,342 athletes match');
   await expect(page.getByTestId('kpi-athletes')).toHaveText('3,342');
 });
 
@@ -109,13 +99,9 @@ test('brushing the scatter filters the table and KPIs, but not the scatter itsel
 
   // Wait for the scatter's initial vgplot render to finish (same invariant
   // as above) before taking the baseline count.
-  await expect
-    .poll(async () => scatterDots(page).count())
-    .toBeGreaterThan(1_000);
+  await expect.poll(async () => scatterDots(page).count()).toBeGreaterThan(1_000);
   const dotsBefore = await scatterDots(page).count();
-  const box = await page
-    .locator('[data-testid="scatter-plot"] svg')
-    .boundingBox();
+  const box = await page.locator('[data-testid="scatter-plot"] svg').boundingBox();
   if (box === null) {
     throw new Error('scatter svg not found');
   }
@@ -129,12 +115,8 @@ test('brushing the scatter filters the table and KPIs, but not the scatter itsel
 
   // The brush clause filters the table and KPI clients…
   await expect(page.getByTestId('kpi-athletes')).not.toHaveText(TOTAL);
-  await expect(page.getByTestId('total-rows')).not.toHaveText(
-    `${TOTAL} athletes match`,
-  );
-  const filtered = Number(
-    (await page.getByTestId('kpi-athletes').innerText()).replaceAll(',', ''),
-  );
+  await expect(page.getByTestId('total-rows')).not.toHaveText(`${TOTAL} athletes match`);
+  const filtered = Number((await page.getByTestId('kpi-athletes').innerText()).replaceAll(',', ''));
   expect(filtered).toBeGreaterThan(0);
   expect(filtered).toBeLessThan(11_538);
 
@@ -174,9 +156,7 @@ test('the sport facet is data-driven, cascades KPIs, and never filters itself', 
   const options = facet.locator('option');
   // Data-driven options: every sport in the dataset plus "All sports" —
   // strictly more than the 7 hardcoded sports this select replaces.
-  await expect
-    .poll(async () => options.count(), { timeout: 15_000 })
-    .toBeGreaterThan(8);
+  await expect.poll(async () => options.count(), { timeout: 15_000 }).toBeGreaterThan(8);
 
   // Each option label carries its cascading count; selecting a sport must
   // filter every other client to exactly that count.
@@ -190,9 +170,7 @@ test('the sport facet is data-driven, cascades KPIs, and never filters itself', 
 
   await facet.selectOption(sport!);
   await expect(page.getByTestId('kpi-athletes')).toHaveText(count!);
-  await expect(page.getByTestId('total-rows')).toHaveText(
-    `${count} athletes match`,
-  );
+  await expect(page.getByTestId('total-rows')).toHaveText(`${count} athletes match`);
 
   // Crossfilter self-exclusion: its own clause never prunes its own options.
   await expect(options).toHaveCount(optionCountBefore);
@@ -207,9 +185,7 @@ test('clicking a histogram bar publishes an interval clause, but never filters i
   await gotoDashboard(page);
 
   const bars = page.locator('[data-testid="histogram-bar"]');
-  await expect
-    .poll(async () => bars.count(), { timeout: 15_000 })
-    .toBeGreaterThan(10);
+  await expect.poll(async () => bars.count(), { timeout: 15_000 }).toBeGreaterThan(10);
 
   // Bin counts before the brush, from the client's zero-filled bins.
   const countsBefore = await bars.evaluateAll((nodes) =>
@@ -222,9 +198,7 @@ test('clicking a histogram bar publishes an interval clause, but never filters i
 
   // The interval clause filters the table and KPIs…
   await expect(page.getByTestId('kpi-athletes')).not.toHaveText(TOTAL);
-  const filtered = Number(
-    (await page.getByTestId('kpi-athletes').innerText()).replaceAll(',', ''),
-  );
+  const filtered = Number((await page.getByTestId('kpi-athletes').innerText()).replaceAll(',', ''));
   expect(filtered).toBeGreaterThan(0);
   expect(filtered).toBeLessThan(11_538);
 
@@ -239,15 +213,13 @@ test('clicking a histogram bar publishes an interval clause, but never filters i
   await expect(page.getByTestId('kpi-athletes')).toHaveText(TOTAL);
 });
 
-test('one batched sparkline client feeds every table cell', async ({
-  page,
-}) => {
+test('one batched sparkline client feeds every table cell', async ({ page }) => {
   await gotoDashboard(page);
 
   // Every rendered row gets a sparkline from the shared batched series.
-  await expect(
-    tableRows(page).first().locator('[data-testid="sparkline"]'),
-  ).toHaveCount(1, { timeout: 15_000 });
+  await expect(tableRows(page).first().locator('[data-testid="sparkline"]')).toHaveCount(1, {
+    timeout: 15_000,
+  });
   await expect(page.locator('[data-testid="sparkline"]')).toHaveCount(25);
 });
 
@@ -260,9 +232,7 @@ test('a non-TanStack Table $page narrowing while paginated deep clamps the page 
   // narrowing is dataset-exact instead of pixel-dependent.
   const facet = page.getByTestId('sport-facet');
   const options = facet.locator('option');
-  await expect
-    .poll(async () => options.count(), { timeout: 15_000 })
-    .toBeGreaterThan(8);
+  await expect.poll(async () => options.count(), { timeout: 15_000 }).toBeGreaterThan(8);
   const labels = await options.allInnerTexts();
   const sports = labels
     .map((label) => /^(.+) \(([\d,]+)\)$/.exec(label.trim()))
@@ -281,9 +251,7 @@ test('a non-TanStack Table $page narrowing while paginated deep clamps the page 
   for (let i = 1; i < startPage; i += 1) {
     await page.getByTestId('page-next').click();
   }
-  await expect(page.getByTestId('page-label')).toHaveText(
-    `Page ${startPage} of 462`,
-  );
+  await expect(page.getByTestId('page-label')).toHaveText(`Page ${startPage} of 462`);
 
   await facet.selectOption(smallest.sport);
   await expect(page.getByTestId('total-rows')).toHaveText(
@@ -293,9 +261,7 @@ test('a non-TanStack Table $page narrowing while paginated deep clamps the page 
   // The clamp lands on a populated page — never an empty one. With
   // rowCount: 'window' the stranded offset returns zero rows (total reads
   // 0), so the clamp resolves to page one.
-  await expect(page.getByTestId('page-label')).toHaveText(
-    `Page 1 of ${lastPage}`,
-  );
+  await expect(page.getByTestId('page-label')).toHaveText(`Page 1 of ${lastPage}`);
   await expect.poll(async () => tableRows(page).count()).toBeGreaterThan(0);
 });
 
@@ -315,15 +281,11 @@ test('the rollup view fetches the whole tree in one query and expands without re
   // Sport subtotals are visible; leaves are not until expanded.
   const level1Before = await rows.count();
   expect(level1Before).toBeGreaterThan(8);
-  await expect(
-    page.locator('[data-testid="rollup-row"][data-level="2"]'),
-  ).toHaveCount(0);
+  await expect(page.locator('[data-testid="rollup-row"][data-level="2"]')).toHaveCount(0);
 
   await page.locator('[data-testid="rollup-toggle"]').nth(1).click();
   await expect
-    .poll(async () =>
-      page.locator('[data-testid="rollup-row"][data-level="2"]').count(),
-    )
+    .poll(async () => page.locator('[data-testid="rollup-row"][data-level="2"]').count())
     .toBeGreaterThan(0);
 });
 

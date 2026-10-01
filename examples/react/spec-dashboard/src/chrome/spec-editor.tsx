@@ -40,6 +40,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import { parseDocument } from 'yaml';
+
 import { compileSpec } from '../spec/compile';
 import type { CompiledSpec } from '../spec/compile';
 
@@ -102,11 +103,7 @@ function isMultiLine(value: string, start: number, end: number): boolean {
  * selection); a multi-line selection indents every covered line by two spaces
  * and restores the selection to cover the whole block.
  */
-export function indentSelection(
-  value: string,
-  start: number,
-  end: number,
-): TextEdit {
+export function indentSelection(value: string, start: number, end: number): TextEdit {
   if (!isMultiLine(value, start, end)) {
     return {
       start,
@@ -137,11 +134,7 @@ export function indentSelection(
  * line rides left by however many spaces its own line lost. Returns null (a
  * no-op) when no line had a leading space to remove.
  */
-export function dedentSelection(
-  value: string,
-  start: number,
-  end: number,
-): TextEdit | null {
+export function dedentSelection(value: string, start: number, end: number): TextEdit | null {
   const { blockStart, blockEnd } = lineBlockBounds(value, start, end);
   const lines = value.slice(blockStart, blockEnd).split('\n');
   let removedFirst = 0;
@@ -257,16 +250,11 @@ export function duplicateLines(
  * by one two-space level when the text before the caret (ignoring trailing
  * spaces) ends with `:` or `-`.
  */
-export function autoIndentEnter(
-  value: string,
-  start: number,
-  end: number,
-): TextEdit {
+export function autoIndentEnter(value: string, start: number, end: number): TextEdit {
   const lineStart = value.lastIndexOf('\n', start - 1) + 1;
   const leading = leadingWhitespace(value.slice(lineStart));
   const beforeCaret = value.slice(lineStart, start).replace(/[ \t]+$/, '');
-  const deepen =
-    beforeCaret.endsWith(':') || beforeCaret.endsWith('-') ? '  ' : '';
+  const deepen = beforeCaret.endsWith(':') || beforeCaret.endsWith('-') ? '  ' : '';
   const text = `\n${leading}${deepen}`;
   const caret = start + text.length;
   return {
@@ -286,20 +274,14 @@ export function autoIndentEnter(
  * when the block has no non-blank line to toggle. The selection is restored to
  * cover the whole block.
  */
-export function toggleComment(
-  value: string,
-  start: number,
-  end: number,
-): TextEdit | null {
+export function toggleComment(value: string, start: number, end: number): TextEdit | null {
   const { blockStart, blockEnd } = lineBlockBounds(value, start, end);
   const lines = value.slice(blockStart, blockEnd).split('\n');
   const nonBlank = lines.filter((line) => line.trim() !== '');
   if (nonBlank.length === 0) {
     return null;
   }
-  const allCommented = nonBlank.every((line) =>
-    line.replace(/^[ \t]*/, '').startsWith('#'),
-  );
+  const allCommented = nonBlank.every((line) => line.replace(/^[ \t]*/, '').startsWith('#'));
   const toggled = lines
     .map((line) => {
       if (line.trim() === '') {
@@ -326,10 +308,7 @@ export function toggleComment(
 }
 
 /** The 1-based line/column of `offset` within `value`. */
-export function caretPosition(
-  value: string,
-  offset: number,
-): { line: number; col: number } {
+export function caretPosition(value: string, offset: number): { line: number; col: number } {
   const clamped = Math.max(0, Math.min(offset, value.length));
   const before = value.slice(0, clamped);
   const lastNewline = before.lastIndexOf('\n');
@@ -361,10 +340,7 @@ export function applyTextEdit(
 }
 
 /** The Grafana-style toolbar button that opens/closes the editor panel. */
-export function SpecEditorToggle(props: {
-  open: boolean;
-  onToggle: () => void;
-}) {
+export function SpecEditorToggle(props: { open: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
@@ -509,18 +485,14 @@ export function SpecEditorPanel(props: SpecEditorPanelProps) {
     if (event.key === 'Tab') {
       event.preventDefault();
       applyEdit(
-        event.shiftKey
-          ? dedentSelection(value, from, to)
-          : indentSelection(value, from, to),
+        event.shiftKey ? dedentSelection(value, from, to) : indentSelection(value, from, to),
       );
       return;
     }
     if (event.altKey && event.key === 'ArrowUp') {
       event.preventDefault();
       applyEdit(
-        event.shiftKey
-          ? duplicateLines(value, from, to, 'up')
-          : moveLines(value, from, to, 'up'),
+        event.shiftKey ? duplicateLines(value, from, to, 'up') : moveLines(value, from, to, 'up'),
       );
       return;
     }
@@ -579,10 +551,7 @@ export function SpecEditorPanel(props: SpecEditorPanelProps) {
         </span>
         {dirty ? (
           <span className="flex items-center gap-1 text-gf-orange">
-            <span
-              aria-hidden
-              className="inline-block h-1.5 w-1.5 rounded-full bg-gf-orange"
-            />
+            <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-gf-orange" />
             Unsaved changes
           </span>
         ) : null}
@@ -614,8 +583,7 @@ export function SpecEditorPanel(props: SpecEditorPanelProps) {
           Reset
         </button>
         <span className="text-[11px] text-faint">
-          Apply recompiles and reloads the dashboard; invalid specs keep the
-          current one running.
+          Apply recompiles and reloads the dashboard; invalid specs keep the current one running.
         </span>
       </div>
 

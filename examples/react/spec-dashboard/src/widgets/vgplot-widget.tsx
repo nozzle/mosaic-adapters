@@ -1,3 +1,9 @@
+import { useMosaicActiveClauses, useMosaicCoordinator } from '@nozzleio/react-mosaic';
+import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
+import type { VgPlotElement } from '@nozzleio/react-mosaic/vgplot';
+import type { Coordinator } from '@uwdata/mosaic-core';
+import type { ParamLike } from '@uwdata/mosaic-sql';
+import * as vg from '@uwdata/vgplot';
 /**
  * The generic `vgplot` renderer: compiles the spec's app-owned plot DSL into a
  * live vgplot plot via the pure interpreter (`buildPlotSpec`), on an API context
@@ -53,23 +59,9 @@
  * as an inline error card rather than crashing the app.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as vg from '@uwdata/vgplot';
-import {
-  useMosaicActiveClauses,
-  useMosaicCoordinator,
-} from '@nozzleio/react-mosaic';
-import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
-import {
-  PlotSpecError,
-  buildPlotSpec,
-  collectFixedDomainRequests,
-} from '../spec/plot-interpreter';
-import { resolveSelection, resolveVariable } from '../spec/topology';
-import { syncVgplotSelectionInteractors } from './vgplot-selection-sync';
 import type { ReactElement } from 'react';
-import type { Coordinator } from '@uwdata/mosaic-core';
-import type { ParamLike } from '@uwdata/mosaic-sql';
-import type { VgPlotElement } from '@nozzleio/react-mosaic/vgplot';
+
+import { PlotSpecError, buildPlotSpec, collectFixedDomainRequests } from '../spec/plot-interpreter';
 import type {
   DomainBounds,
   FixedDomainRequest,
@@ -79,11 +71,10 @@ import type {
   PlotGeometry,
 } from '../spec/plot-interpreter';
 import type { VgplotWidgetSpec } from '../spec/schema';
+import { resolveSelection, resolveVariable } from '../spec/topology';
 import type { WidgetComponentProps, WidgetContext } from './registry';
-import type {
-  VgplotSelectionBinding,
-  VgplotSelectionInteractor,
-} from './vgplot-selection-sync';
+import { syncVgplotSelectionInteractors } from './vgplot-selection-sync';
+import type { VgplotSelectionBinding, VgplotSelectionInteractor } from './vgplot-selection-sync';
 
 /** Floor width so a narrow column never collapses the plot to nothing. */
 const MIN_WIDTH = 240;
@@ -172,9 +163,7 @@ function toDomainBound(value: unknown): number | Date | null {
 function firstRow(result: unknown): Record<string, unknown> | null {
   const table = result as { get?: (index: number) => unknown } | null;
   const row = table?.get?.(0);
-  return row != null && typeof row === 'object'
-    ? (row as Record<string, unknown>)
-    : null;
+  return row != null && typeof row === 'object' ? (row as Record<string, unknown>) : null;
 }
 
 /**
@@ -182,11 +171,7 @@ function firstRow(result: unknown): Record<string, unknown> | null {
  * log-scaled — mosaic's log binning drops rows ≤ 0, so the extent must match the
  * rendered support or the domain stretches below it and degenerates the axis.
  */
-function extentAggregate(
-  fn: 'min' | 'max',
-  column: string,
-  positiveOnly: boolean,
-): string {
+function extentAggregate(fn: 'min' | 'max', column: string, positiveOnly: boolean): string {
   if (!positiveOnly) {
     return `${fn}(${column})`;
   }
@@ -262,10 +247,7 @@ async function resolveFixedDomain(
  * Thin narrowing wrapper. Narrow to this renderer and hand the already-narrowed
  * widget to the inner figure so every hook runs unconditionally (rules-of-hooks).
  */
-export function VgplotWidget({
-  widget,
-  context,
-}: WidgetComponentProps): ReactElement | null {
+export function VgplotWidget({ widget, context }: WidgetComponentProps): ReactElement | null {
   if (widget.renderer !== 'vgplot') {
     return null;
   }
@@ -300,10 +282,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
 
   // The `fixed` axes that need an unfiltered-extent query (none → the plot has
   // no explicit domain to resolve and never waits on one).
-  const fixedRequests = useMemo(
-    () => collectFixedDomainRequests(widget.plot),
-    [widget.plot],
-  );
+  const fixedRequests = useMemo(() => collectFixedDomainRequests(widget.plot), [widget.plot]);
 
   // Resolve the declared `fixed` axes to their FULL unfiltered extent once the
   // data load finishes. Runs off the coordinator directly (no mark client, no
@@ -348,9 +327,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
   const plotElementRef = useRef<VgPlotElement | null>(null);
   // The geometry the factory builds at, kept current so a deps-triggered rebuild
   // comes up at the active size, not the initial one.
-  const geometryRef = useRef<Required<PlotGeometry>>(
-    geometryFor(MIN_WIDTH, false),
-  );
+  const geometryRef = useRef<Required<PlotGeometry>>(geometryFor(MIN_WIDTH, false));
   // The card content box we measure for width (present in every state, so the
   // width is known before the plot mounts).
   const measureRef = useRef<HTMLDivElement | null>(null);
@@ -371,15 +348,12 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
     () =>
       resolvableSelects.map((select) => ({
         name: select.as,
-        value: activeClauses.find((clause) => clause.ref === select.as)?.clause
-          .value,
+        value: activeClauses.find((clause) => clause.ref === select.as)?.clause.value,
       })),
     [resolvableSelects, activeClauses],
   );
   const hasCommitted = committed.some(
-    (entry) =>
-      entry.value != null &&
-      !(Array.isArray(entry.value) && entry.value.length === 0),
+    (entry) => entry.value != null && !(Array.isArray(entry.value) && entry.value.length === 0),
   );
   const selectionBindings = useMemo<Array<VgplotSelectionBinding>>(
     () =>
@@ -387,8 +361,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
         selection: topology.resolve(select.as),
         kind: select.select,
         active: activeClauses.some((clause) => clause.ref === select.as),
-        value: activeClauses.find((clause) => clause.ref === select.as)?.clause
-          .value,
+        value: activeClauses.find((clause) => clause.ref === select.as)?.clause.value,
       })),
     [activeClauses, resolvableSelects, topology],
   );
@@ -419,9 +392,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
       return element;
     } catch (error) {
       const message =
-        error instanceof PlotSpecError || error instanceof Error
-          ? error.message
-          : String(error);
+        error instanceof PlotSpecError || error instanceof Error ? error.message : String(error);
       setSpecError(message);
       // Return an empty element so `useVgPlot` has something to mount; the render
       // below swaps to the error card, unmounting it on the next commit.
@@ -508,8 +479,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
   // `fixed` axes) their unfiltered domains have resolved, so it never comes up
   // against the first-render-frozen `Fixed`. A plot with no resolvable fixed
   // axis never waits.
-  const plotReady =
-    enabled && (fixedRequests.length === 0 || fixedDomains !== null);
+  const plotReady = enabled && (fixedRequests.length === 0 || fixedDomains !== null);
 
   return (
     <figure
@@ -519,9 +489,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
     >
       <div className="flex h-[30px] shrink-0 items-center justify-between gap-3 border-b border-line px-3">
         <div className="flex min-w-0 items-baseline gap-2">
-          <figcaption className="shrink-0 text-xs font-medium text-ink">
-            {widget.label}
-          </figcaption>
+          <figcaption className="shrink-0 text-xs font-medium text-ink">{widget.label}</figcaption>
           {showChrome ? (
             <span
               data-testid={`vgplot-${widget.id}-range`}
@@ -532,9 +500,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
                     .filter(
                       (entry) =>
                         entry.value != null &&
-                        !(
-                          Array.isArray(entry.value) && entry.value.length === 0
-                        ),
+                        !(Array.isArray(entry.value) && entry.value.length === 0),
                     )
                     .map((entry) => formatSelectValue(entry.value))
                     .join('  ·  ')
@@ -547,9 +513,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
             type="button"
             data-testid={`vgplot-${widget.id}-toggle`}
             aria-expanded={expanded}
-            aria-label={
-              expanded ? `Collapse ${widget.label}` : `Expand ${widget.label}`
-            }
+            aria-label={expanded ? `Collapse ${widget.label}` : `Expand ${widget.label}`}
             disabled={!enabled}
             className="flex h-6 shrink-0 items-center rounded-gf border border-line bg-panel-header px-2 text-[11px] font-medium text-muted hover:border-line-strong hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-gf-blue disabled:opacity-50"
             onClick={() => setExpanded((prev) => !prev)}
@@ -568,11 +532,7 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
             Plot spec error: {specError}
           </div>
         ) : plotReady ? (
-          <div
-            data-testid={`vgplot-${widget.id}-plot`}
-            className="overflow-x-auto"
-            ref={plotRef}
-          />
+          <div data-testid={`vgplot-${widget.id}-plot`} className="overflow-x-auto" ref={plotRef} />
         ) : (
           <div
             data-testid={`vgplot-${widget.id}-loading`}
@@ -584,8 +544,8 @@ function VgplotFigure({ widget, context }: VgplotFigureProps): ReactElement {
 
       {showChrome && expanded ? (
         <p className="px-3 pb-2 text-[11px] text-faint">
-          Drag across the plot to brush a range. The range cross-filters every
-          widget on the page and appears as a removable chip above.
+          Drag across the plot to brush a range. The range cross-filters every widget on the page
+          and appears as a removable chip above.
         </p>
       ) : null}
     </figure>

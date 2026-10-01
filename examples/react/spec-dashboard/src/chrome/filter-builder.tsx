@@ -1,3 +1,12 @@
+import { useFilterSetState } from '@nozzleio/react-mosaic';
+import type {
+  FilterKind,
+  FilterSet,
+  FilterSpec,
+  OperatorArity,
+  OperatorDescriptor,
+} from '@nozzleio/react-mosaic';
+import type { Selection } from '@uwdata/mosaic-core';
 /**
  * The spec-driven filter builder — the only filter authoring surface on the
  * page, driven from `spec.filters.fields`.
@@ -30,18 +39,10 @@
  * spec on the current set.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useFilterSetState } from '@nozzleio/react-mosaic';
+
+import type { FilterFieldSpec, FilterPlacementSpec } from '../spec/schema';
 import { FacetMultiSelect } from './facet-multi-select';
 import { usePopoverDismiss } from './use-popover-dismiss';
-import type { Selection } from '@uwdata/mosaic-core';
-import type {
-  FilterKind,
-  FilterSet,
-  FilterSpec,
-  OperatorArity,
-  OperatorDescriptor,
-} from '@nozzleio/react-mosaic';
-import type { FilterFieldSpec, FilterPlacementSpec } from '../spec/schema';
 
 /** The kind registry the builder resolves operators against (built by `compile`). */
 export type KindRegistry = Record<string, FilterKind>;
@@ -50,8 +51,7 @@ const inputClassName =
   'h-7 rounded-gf border border-line bg-field px-2 text-xs text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-gf-blue';
 const selectClassName =
   'h-7 rounded-gf border border-line bg-field px-2 text-xs text-ink disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gf-blue';
-const labelClassName =
-  'text-[11px] font-medium tracking-wide text-muted uppercase';
+const labelClassName = 'text-[11px] font-medium tracking-wide text-muted uppercase';
 
 /**
  * The operator subset a facet field exposes. The `condition` kind advertises the
@@ -75,10 +75,7 @@ function operatorsForBlock(
   if (!isFacetField(field)) {
     return declared;
   }
-  const subset =
-    field.array_column === true
-      ? FACET_ARRAY_OPERATORS
-      : FACET_SCALAR_OPERATORS;
+  const subset = field.array_column === true ? FACET_ARRAY_OPERATORS : FACET_SCALAR_OPERATORS;
   return subset
     .map((id) => declared.find((entry) => entry.id === id))
     .filter((entry): entry is OperatorDescriptor => entry !== undefined);
@@ -89,23 +86,15 @@ function defaultOperatorId(
   field: FilterFieldSpec,
   operators: ReadonlyArray<OperatorDescriptor>,
 ): string {
-  if (
-    field.value_kind === 'text' &&
-    operators.some((entry) => entry.id === 'contains')
-  ) {
+  if (field.value_kind === 'text' && operators.some((entry) => entry.id === 'contains')) {
     return 'contains';
   }
   return operators[0]?.id ?? '';
 }
 
 /** The label shown for the current operator (static-control fallback). */
-function operatorLabel(
-  operators: ReadonlyArray<OperatorDescriptor>,
-  operatorId: string,
-): string {
-  return (
-    operators.find((entry) => entry.id === operatorId)?.label ?? operatorId
-  );
+function operatorLabel(operators: ReadonlyArray<OperatorDescriptor>, operatorId: string): string {
+  return operators.find((entry) => entry.id === operatorId)?.label ?? operatorId;
 }
 
 /** Coerce a raw text entry to the field's value type (numbers for number fields). */
@@ -175,10 +164,7 @@ function hydrateOpenFields(
 
 /** A placement whose routing target lands in a HAVING/membership clause. */
 function isHavingPlacement(placement: FilterPlacementSpec): boolean {
-  return (
-    placement.target.startsWith('having:') ||
-    placement.target.startsWith('members:')
-  );
+  return placement.target.startsWith('having:') || placement.target.startsWith('members:');
 }
 
 /** Format a committed spec's value into a compact, human-readable fragment. */
@@ -243,10 +229,7 @@ function summarizeField(
     return { configured: false, badge: null, text: '' };
   }
   const operators = operatorsForBlock(field, placement, kindRegistry);
-  const opLabel =
-    typeof spec.operator === 'string'
-      ? operatorLabel(operators, spec.operator)
-      : '';
+  const opLabel = typeof spec.operator === 'string' ? operatorLabel(operators, spec.operator) : '';
   const valueText = formatSummaryValue(field, spec);
   const text = [opLabel, valueText].filter((part) => part !== '').join(' ');
   return {
@@ -298,9 +281,7 @@ export function FilterBuilder(props: FilterBuilderProps) {
   // (`filter-builder-confirm`) materializes its button and opens its popover.
   const [pendingFieldId, setPendingFieldId] = useState('');
   // The single field whose popover is open (null = all closed).
-  const [openPopoverFieldId, setOpenPopoverFieldId] = useState<string | null>(
-    null,
-  );
+  const [openPopoverFieldId, setOpenPopoverFieldId] = useState<string | null>(null);
 
   // Merge in any field that now holds a committed spec (hydration / re-apply)
   // during render. `hydrateOpenFields` returns `prev` unchanged when nothing was
@@ -332,9 +313,7 @@ export function FilterBuilder(props: FilterBuilderProps) {
       return;
     }
     const fieldId = pendingFieldId;
-    setOpenFieldIds((prev) =>
-      prev.includes(fieldId) ? prev : [...prev, fieldId],
-    );
+    setOpenFieldIds((prev) => (prev.includes(fieldId) ? prev : [...prev, fieldId]));
     setPendingFieldId('');
     setOpenPopoverFieldId(fieldId);
   };
@@ -400,8 +379,8 @@ export function FilterBuilder(props: FilterBuilderProps) {
       </div>
 
       <p className="text-[11px] text-faint">
-        Pick a field and choose “Add &amp; edit”, then set where it applies
-        (row-level WHERE vs aggregate HAVING), how it compares, and its value.
+        Pick a field and choose “Add &amp; edit”, then set where it applies (row-level WHERE vs
+        aggregate HAVING), how it compares, and its value.
       </p>
     </div>
   );
@@ -479,9 +458,7 @@ function FilterButton(props: FilterButtonProps) {
             {summary.badge}
           </span>
         ) : null}
-        {summary.text !== '' ? (
-          <span className="truncate text-muted">{summary.text}</span>
-        ) : null}
+        {summary.text !== '' ? <span className="truncate text-muted">{summary.text}</span> : null}
         <span aria-hidden className="shrink-0 text-faint">
           {open ? '▴' : '▾'}
         </span>
@@ -686,10 +663,7 @@ function ScalarValue(props: {
     specId: placement.spec_id,
     exists: committedExists,
   });
-  if (
-    mirrorKey.specId !== placement.spec_id ||
-    mirrorKey.exists !== committedExists
-  ) {
+  if (mirrorKey.specId !== placement.spec_id || mirrorKey.exists !== committedExists) {
     setMirrorKey({ specId: placement.spec_id, exists: committedExists });
     if (!pendingWrite) {
       if (committed === undefined) {
@@ -704,9 +678,7 @@ function ScalarValue(props: {
           setOperatorId(committed.operator);
         }
         setValue(committed.value === undefined ? '' : String(committed.value));
-        setValueTo(
-          committed.valueTo === undefined ? '' : String(committed.valueTo),
-        );
+        setValueTo(committed.valueTo === undefined ? '' : String(committed.valueTo));
       }
     }
   }
@@ -729,10 +701,7 @@ function ScalarValue(props: {
       operator: nextOperatorId,
       label: field.label,
     };
-    if (
-      placement.target !== 'where' &&
-      !props.selfRoutingKinds.has(placement.kind)
-    ) {
+    if (placement.target !== 'where' && !props.selfRoutingKinds.has(placement.kind)) {
       spec.target = placement.target;
     }
 
@@ -868,10 +837,7 @@ function FacetValue(props: {
     committed: FilterSpec | undefined;
     operators: ReadonlyArray<OperatorDescriptor>;
   }>({ committed, operators });
-  if (
-    reconciled.committed !== committed ||
-    reconciled.operators !== operators
-  ) {
+  if (reconciled.committed !== committed || reconciled.operators !== operators) {
     setReconciled({ committed, operators });
     if (committed === undefined) {
       setOperatorId(operators[0]?.id ?? '');
@@ -888,8 +854,7 @@ function FacetValue(props: {
 
   const onOperatorChange = (next: string) => {
     setOperatorId(next);
-    const nextArity =
-      operators.find((entry) => entry.id === next)?.arity ?? 'set';
+    const nextArity = operators.find((entry) => entry.id === next)?.arity ?? 'set';
     if (nextArity === 'none') {
       filterSet.set({
         id: placement.spec_id,
@@ -956,9 +921,7 @@ function DateRangeValue(props: {
   const { field, placement, testId, filterSet } = props;
   const { specs } = useFilterSetState(filterSet);
   const committed = specs.find((spec) => spec.id === placement.spec_id);
-  const bounds = Array.isArray(committed?.value)
-    ? committed.value
-    : [null, null];
+  const bounds = Array.isArray(committed?.value) ? committed.value : [null, null];
   const start = typeof bounds[0] === 'string' ? bounds[0] : '';
   const end = typeof bounds[1] === 'string' ? bounds[1] : '';
 

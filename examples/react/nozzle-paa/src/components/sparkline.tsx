@@ -1,9 +1,9 @@
+import type { SparklinePoint } from '@nozzleio/react-mosaic';
 /**
  * Inline SVG sparkline with a nearest-point tooltip. Purely presentational:
  * the points come from the phrase table's one batched sparkline client.
  */
 import { useCallback, useMemo, useState } from 'react';
-import type { SparklinePoint } from '@nozzleio/react-mosaic';
 
 const WIDTH = 100;
 const HEIGHT = 28;
@@ -56,8 +56,7 @@ export function Sparkline(props: { points: Array<SparklinePoint> }) {
     }
     return scaled
       .map(
-        (point, index) =>
-          `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)},${point.y.toFixed(1)}`,
+        (point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)},${point.y.toFixed(1)}`,
       )
       .join(' ');
   }, [scaled]);
@@ -129,12 +128,7 @@ export function Sparkline(props: { points: Array<SparklinePoint> }) {
           ) : null}
           {hovered !== null ? (
             <>
-              <circle
-                cx={hovered.x}
-                cy={hovered.y}
-                r={2.5}
-                className="fill-cyan-600"
-              />
+              <circle cx={hovered.x} cy={hovered.y} r={2.5} className="fill-cyan-600" />
               <line
                 x1={hovered.x}
                 y1={0}

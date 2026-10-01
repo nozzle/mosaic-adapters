@@ -1,3 +1,5 @@
+import type { FilterSpec, Persister } from '@nozzleio/react-mosaic';
+
 /**
  * A consumer-owned URL {@link Persister} for the page {@link filterSet}.
  *
@@ -68,12 +70,7 @@
  * still — drive the filter setters *from* the router's reactive search params
  * so browser back/forward works. See `docs/react/router-persistence.md`.
  */
-import {
-  FACET_ARRAY_OPERATORS,
-  FACET_SCALAR_OPERATORS,
-  FILTER_CATALOG,
-} from './filter-catalog';
-import type { FilterSpec, Persister } from '@nozzleio/react-mosaic';
+import { FACET_ARRAY_OPERATORS, FACET_SCALAR_OPERATORS, FILTER_CATALOG } from './filter-catalog';
 
 /** The `f.` namespace keeps our params from colliding with foreign ones. */
 const PARAM_PREFIX = 'f.';
@@ -110,12 +107,7 @@ function parseOperatorEnvelope(raw: string): {
 }
 
 /** Text operators that carry no value tail (arity `none`). */
-const VALUELESS_TEXT_OPERATORS = new Set([
-  'is_empty',
-  'is_not_empty',
-  'is_null',
-  'not_null',
-]);
+const VALUELESS_TEXT_OPERATORS = new Set(['is_empty', 'is_not_empty', 'is_null', 'not_null']);
 
 /**
  * The static parts of a spec, plus a per-family value codec. The URL param
@@ -183,8 +175,7 @@ function conditionTextCodec(column: string, label: string): SpecCodec {
     operator: 'contains',
     label,
     encode: (spec) => {
-      const operator =
-        typeof spec.operator === 'string' ? spec.operator : 'contains';
+      const operator = typeof spec.operator === 'string' ? spec.operator : 'contains';
       if (!TEXT_OPERATORS.has(operator)) {
         return null;
       }
@@ -364,8 +355,7 @@ function listCodec(config: {
     operator: config.operator,
     label: config.label,
     encode: (spec) => {
-      const operator =
-        typeof spec.operator === 'string' ? spec.operator : config.operator;
+      const operator = typeof spec.operator === 'string' ? spec.operator : config.operator;
       // A valueless operator carries no list; encode as an empty envelope.
       if (operator !== undefined && valueless.has(operator)) {
         return encodeOperatorEnvelope(operator, '');
@@ -388,17 +378,13 @@ function listCodec(config: {
       // Bare form (legacy + default operator): a non-empty value list.
       if (operator === null) {
         const values = decodeList(valueTail);
-        return values.length === 0
-          ? null
-          : buildSpec(id, config.operator, values);
+        return values.length === 0 ? null : buildSpec(id, config.operator, values);
       }
       // Unknown/garbage operator: fall back to the default, treating the whole
       // raw param as a bare value list (consistent with the drop-malformed rule).
       if (!allowed.has(operator)) {
         const values = decodeList(raw);
-        return values.length === 0
-          ? null
-          : buildSpec(id, config.operator, values);
+        return values.length === 0 ? null : buildSpec(id, config.operator, values);
       }
       if (valueless.has(operator)) {
         return buildValueless(id, operator);
@@ -549,9 +535,7 @@ const EXACT_CODECS: Record<string, SpecCodec> = {
  */
 function searchVolumeWhereConfig(): { column: string; label: string } {
   const field = FILTER_CATALOG.find((entry) => entry.id === 'search-volume');
-  const placement = field?.placements.find(
-    (entry) => entry.specId === 'built:search-volume',
-  );
+  const placement = field?.placements.find((entry) => entry.specId === 'built:search-volume');
   return {
     column: placement?.specColumn ?? field?.column ?? 'search_volume',
     label: field?.label ?? 'Search Volume',
@@ -646,12 +630,7 @@ const SEARCH_VOLUME_OPERATORS = new Set([
 ]);
 
 /** Search Volume operators that carry no value (arity `none`). */
-const SEARCH_VOLUME_VALUELESS = new Set([
-  'is_null',
-  'not_null',
-  'is_empty',
-  'is_not_empty',
-]);
+const SEARCH_VOLUME_VALUELESS = new Set(['is_null', 'not_null', 'is_empty', 'is_not_empty']);
 
 /** Per-summary-card metric group-by columns and chip labels. */
 const METRIC_CARDS: Record<string, { column: string; label: string }> = {
@@ -691,20 +670,13 @@ const DETAIL_COLUMNS: Record<string, string> = {
  * alias can hydrate the canonical detail spec regardless of the param key it was
  * read under).
  */
-function detailCodec(
-  column: string,
-  label: string,
-  emitId?: string,
-): SpecCodec {
+function detailCodec(column: string, label: string, emitId?: string): SpecCodec {
   return {
     column,
     kind: 'match',
     operator: 'contains',
     label,
-    encode: (spec) =>
-      typeof spec.value === 'string' && spec.value.length > 0
-        ? spec.value
-        : null,
+    encode: (spec) => (typeof spec.value === 'string' && spec.value.length > 0 ? spec.value : null),
     decode: (specId, raw) =>
       raw.length === 0
         ? null
@@ -791,9 +763,7 @@ function decodeList(raw: string): Array<string> {
 }
 
 /** Parses an `operator:value` param (e.g. `gt:5000`), or `null`. */
-function parseOperatorValue(
-  raw: string,
-): { operator: string; value: string } | null {
+function parseOperatorValue(raw: string): { operator: string; value: string } | null {
   const separator = raw.indexOf(':');
   if (separator < 0) {
     return null;

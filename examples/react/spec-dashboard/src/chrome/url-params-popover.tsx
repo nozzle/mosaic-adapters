@@ -17,10 +17,12 @@
  * closes it on an outside mousedown or Escape.
  */
 import { useCallback, useRef, useState } from 'react';
-import { usePopoverDismiss } from './use-popover-dismiss';
 import type { ReactElement } from 'react';
-import type { DashboardUrlInfo, ParamOwnership } from '../spec/url-state/info';
+
 import { useSearch } from '@/router';
+
+import type { DashboardUrlInfo, ParamOwnership } from '../spec/url-state/info';
+import { usePopoverDismiss } from './use-popover-dismiss';
 
 /** Badge text + color classes per ownership class. */
 const BADGE: Record<ParamOwnership, { label: string; className: string }> = {
@@ -46,9 +48,7 @@ const BADGE: Record<ParamOwnership, { label: string; className: string }> = {
   },
 };
 
-export function UrlParamsPopover(props: {
-  info: DashboardUrlInfo;
-}): ReactElement {
+export function UrlParamsPopover(props: { info: DashboardUrlInfo }): ReactElement {
   const { info } = props;
   const search = useSearch();
 
@@ -125,10 +125,7 @@ export function UrlParamsPopover(props: {
         </div>
 
         {names.length === 0 ? (
-          <div
-            data-testid="url-params-empty"
-            className="mt-3 text-xs text-faint"
-          >
+          <div data-testid="url-params-empty" className="mt-3 text-xs text-faint">
             No parameters — this is the dashboard's default view.
           </div>
         ) : (
@@ -151,9 +148,7 @@ export function UrlParamsPopover(props: {
                   >
                     {badge.label}
                   </span>
-                  <span className="shrink-0 font-medium text-muted">
-                    {name}
-                  </span>
+                  <span className="shrink-0 font-medium text-muted">{name}</span>
                   <span className="text-faint">=</span>
                   <span className="truncate text-ink" title={decoded ?? raw}>
                     {decoded ?? raw}

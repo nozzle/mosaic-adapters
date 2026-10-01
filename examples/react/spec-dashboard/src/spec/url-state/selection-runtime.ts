@@ -1,13 +1,15 @@
+import { SqlIdentifier, createStructAccess } from '@nozzleio/react-mosaic';
+import type { ActiveClause, Topology } from '@nozzleio/react-mosaic';
 /** Runtime bridge between app-owned selection URL descriptors and Mosaic. */
 import { clauseInterval, clauseIntervals } from '@uwdata/mosaic-core';
-import { SqlIdentifier, createStructAccess } from '@nozzleio/react-mosaic';
+
+import type { Search } from '@/router';
+
 import {
   decodeNumericInterval,
   decodeNumericInterval2D,
   encodeSelectionUrlValue,
 } from './selection-url';
-import type { ActiveClause, Topology } from '@nozzleio/react-mosaic';
-import type { Search } from '@/router';
 import type { SelectionUrlRegistry } from './selection-url';
 
 /** Entries that have held a valid runtime value during this topology lifetime. */
@@ -40,11 +42,9 @@ export function hydratePersistedSelections(
       const value = decodeNumericInterval(raw);
       if (value !== null) {
         selection.update(
-          clauseInterval(
-            createStructAccess(SqlIdentifier.from(descriptor.column)),
-            value,
-            { source },
-          ),
+          clauseInterval(createStructAccess(SqlIdentifier.from(descriptor.column)), value, {
+            source,
+          }),
         );
       }
       continue;
@@ -80,9 +80,7 @@ export function buildSelectionUrlPatch(
 ): Record<string, string | null> {
   const patch: Record<string, string | null> = {};
   for (const descriptor of registry.entries) {
-    const active = activeClauses.find(
-      (candidate) => candidate.ref === descriptor.ref,
-    );
+    const active = activeClauses.find((candidate) => candidate.ref === descriptor.ref);
     const encoded = encodeSelectionUrlValue(descriptor, active?.clause.value);
     if (encoded !== null) {
       state.activeEntries.add(descriptor.entry);

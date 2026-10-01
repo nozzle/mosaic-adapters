@@ -1,3 +1,6 @@
+import { useMosaicActiveClauses, useMosaicSelectionRef } from '@nozzleio/react-mosaic';
+import { clausePoint } from '@uwdata/mosaic-core';
+import { column } from '@uwdata/mosaic-sql';
 /**
  * The "Domain spotlight" quick-filter — the page's one genuinely FOREIGN clause
  * source (issue #181 §6).
@@ -15,12 +18,7 @@
  * escape-hatch showcase: a direct-to-Selection publish the FilterSet never sees.
  */
 import { useEffect, useState } from 'react';
-import { clausePoint } from '@uwdata/mosaic-core';
-import { column } from '@uwdata/mosaic-sql';
-import {
-  useMosaicActiveClauses,
-  useMosaicSelectionRef,
-} from '@nozzleio/react-mosaic';
+
 import { SPOTLIGHT_ENTRY } from '../page-context';
 
 // A stable clause source: `spotlight.remove(source)` (chip ✕) and the active-
@@ -37,8 +35,7 @@ export function SpotlightFilter(props: { enabled: boolean }) {
   // clause fills it — the same "derive from state" pattern the other controls
   // use. The foreign-clause store carries the clause's value for our ref.
   const foreign = useMosaicActiveClauses();
-  const committed = foreign.find((clause) => clause.ref === SPOTLIGHT_ENTRY)
-    ?.clause.value;
+  const committed = foreign.find((clause) => clause.ref === SPOTLIGHT_ENTRY)?.clause.value;
   useEffect(() => {
     setDraft(typeof committed === 'string' ? committed : '');
   }, [committed]);
@@ -49,9 +46,7 @@ export function SpotlightFilter(props: { enabled: boolean }) {
       spotlight.remove(SPOTLIGHT_SOURCE);
       return;
     }
-    spotlight.update(
-      clausePoint(column('domain'), value, { source: SPOTLIGHT_SOURCE }),
-    );
+    spotlight.update(clausePoint(column('domain'), value, { source: SPOTLIGHT_SOURCE }));
   };
 
   return (
@@ -67,13 +62,9 @@ export function SpotlightFilter(props: { enabled: boolean }) {
         disabled={!props.enabled}
         onChange={(event) => publish(event.target.value)}
       />
-      <p
-        data-testid="spotlight-domain-note"
-        className="text-[11px] text-slate-400"
-      >
-        Unlike the other controls, this bypasses the FilterSet and publishes a
-        clause straight onto a topology Selection. Its chip comes from the
-        topology's active clauses, not a FilterSpec.
+      <p data-testid="spotlight-domain-note" className="text-[11px] text-slate-400">
+        Unlike the other controls, this bypasses the FilterSet and publishes a clause straight onto
+        a topology Selection. Its chip comes from the topology's active clauses, not a FilterSpec.
       </p>
     </div>
   );

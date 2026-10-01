@@ -14,15 +14,6 @@
     "test:e2e": "playwright test",
     "test:types": "pnpm run typecheck"
   },
-  "nx": {
-    "targets": {
-      "test:lib": {
-        "dependsOn": [
-          "^build"
-        ]
-      }
-    }
-  },
   "dependencies": {
     "@nozzleio/mosaic-tanstack-react-table": "^0.13.2",
     "@nozzleio/react-mosaic": "^0.10.2",
@@ -47,5 +38,14 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
+  },
+  "nx": {
+    "targets": {
+      "test:lib": {
+        "dependsOn": [
+          "^build"
+        ]
+      }
+    }
   }
 }

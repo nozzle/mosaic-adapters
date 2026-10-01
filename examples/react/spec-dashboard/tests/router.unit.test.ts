@@ -1,8 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
-import {
-  interceptOptionsForNavigationType,
-  observeNavigationResult,
-} from '../src/router/core';
+
+import { interceptOptionsForNavigationType, observeNavigationResult } from '../src/router/core';
 
 describe('router NavigationResult handling', () => {
   test('preserves focus/scroll only for state-replacement navigations', () => {
@@ -19,9 +17,7 @@ describe('router NavigationResult handling', () => {
     const error = Object.assign(new Error('Navigation was aborted'), {
       name: 'AbortError',
     });
-    const consoleError = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => {});
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     observeNavigationResult({
       committed: Promise.reject(error),
@@ -35,9 +31,7 @@ describe('router NavigationResult handling', () => {
 
   test('reports unexpected asynchronous navigation failures once', async () => {
     const error = new Error('broken navigation');
-    const consoleError = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => {});
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     observeNavigationResult({
       committed: Promise.reject(error),
@@ -46,10 +40,7 @@ describe('router NavigationResult handling', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(consoleError).toHaveBeenCalledOnce();
-    expect(consoleError).toHaveBeenCalledWith(
-      'router: search navigation failed.',
-      error,
-    );
+    expect(consoleError).toHaveBeenCalledWith('router: search navigation failed.', error);
     consoleError.mockRestore();
   });
 });

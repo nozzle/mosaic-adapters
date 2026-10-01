@@ -20,13 +20,7 @@ export function Sparkline(props: {
   const barWidth = WIDTH / points.length;
 
   return (
-    <svg
-      width={WIDTH}
-      height={HEIGHT}
-      role="img"
-      data-testid="sparkline"
-      className="text-cyan-600"
-    >
+    <svg width={WIDTH} height={HEIGHT} role="img" data-testid="sparkline" className="text-cyan-600">
       {points.map((point, index) => {
         const barHeight = maxY > 0 ? (point.y / maxY) * HEIGHT : 0;
         return (

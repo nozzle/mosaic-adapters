@@ -1,3 +1,11 @@
+import { useFilterSetState, useTopology, useTopologyActiveClauses } from '@nozzleio/react-mosaic';
+import type {
+  ActiveClause,
+  FilterSet,
+  FilterSpec,
+  Persister,
+  Topology,
+} from '@nozzleio/react-mosaic';
 /**
  * React-owned construction + URL synchronization boundary for the dashboard.
  *
@@ -7,40 +15,20 @@
  * Mosaic state is then authoritative for that topology lifetime and an effect
  * writes later FilterSet changes through the hook-provided navigator.
  */
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-} from 'react';
-import {
-  useFilterSetState,
-  useTopology,
-  useTopologyActiveClauses,
-} from '@nozzleio/react-mosaic';
-import {
-  buildFilterUrlPatch,
-  createDefaultsPersister,
-  createUrlPersister,
-} from '../filter-url';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+
+import { useNavigateSearch, useSearch } from '@/router';
+
+import type { CompiledSpec } from '../compile';
+import { buildFilterUrlPatch, createDefaultsPersister, createUrlPersister } from '../filter-url';
+import type { PersisterIo } from '../filter-url';
+import { createSearchPatchCommitter } from './search-patch-committer';
 import {
   buildSelectionUrlPatch,
   createSelectionWriteState,
   hydratePersistedSelections,
 } from './selection-runtime';
-import { createSearchPatchCommitter } from './search-patch-committer';
 import { buildVariableParamOptions } from './variable-url';
-import type {
-  ActiveClause,
-  FilterSet,
-  FilterSpec,
-  Persister,
-  Topology,
-} from '@nozzleio/react-mosaic';
-import type { CompiledSpec } from '../compile';
-import type { PersisterIo } from '../filter-url';
-import { useNavigateSearch, useSearch } from '@/router';
 
 interface FilterSetPersistenceBinding {
   filterSet: FilterSet;
@@ -70,20 +58,14 @@ function filterSetPersistenceBinding(
     }
     return {
       filterSet,
-      persister: createUrlPersister(
-        registry,
-        persistConfig.prefix,
-        defaults,
-        io,
-      ),
+      persister: createUrlPersister(registry, persistConfig.prefix, defaults, io),
     };
   }
   if (defaults.length === 0) {
     return null;
   }
   const firstEntry = Object.keys(topology.filterSets)[0];
-  const filterSet =
-    firstEntry === undefined ? undefined : topology.getFilterSet(firstEntry);
+  const filterSet = firstEntry === undefined ? undefined : topology.getFilterSet(firstEntry);
   return filterSet === undefined
     ? null
     : { filterSet, persister: createDefaultsPersister(defaults) };
@@ -120,11 +102,7 @@ export function usePersistedTopology(compiled: CompiledSpec): Topology {
       if (binding !== null) {
         hydrateFilterSet(binding);
       }
-      hydratePersistedSelections(
-        topology,
-        compiled.urlState.selections,
-        search,
-      );
+      hydratePersistedSelections(topology, compiled.urlState.selections, search);
     },
     [compiled, navigateSearch, search],
   );
@@ -183,11 +161,7 @@ export function usePersistedTopology(compiled: CompiledSpec): Topology {
     if (previous?.topology !== topology) {
       const selections = createSelectionWriteState();
       // Observe seeded valid values without echoing the initializer's URL read.
-      buildSelectionUrlPatch(
-        compiled.urlState.selections,
-        activeClauses,
-        selections,
-      );
+      buildSelectionUrlPatch(compiled.urlState.selections, activeClauses, selections);
       writeGuard.current = {
         topology,
         specs,

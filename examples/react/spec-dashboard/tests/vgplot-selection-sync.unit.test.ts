@@ -1,6 +1,7 @@
-import { describe, expect, test, vi } from 'vitest';
-import { syncVgplotSelectionInteractors } from '../src/widgets/vgplot-selection-sync';
 import type { Selection } from '@uwdata/mosaic-core';
+import { describe, expect, test, vi } from 'vitest';
+
+import { syncVgplotSelectionInteractors } from '../src/widgets/vgplot-selection-sync';
 import type {
   VgplotSelectionBinding,
   VgplotSelectionInteractor,
@@ -67,10 +68,7 @@ describe('vgplot selection visual sync', () => {
       [0, 20],
     ];
 
-    syncVgplotSelectionInteractors(
-      [interactor],
-      [binding(target, value, 'intervalXY')],
-    );
+    syncVgplotSelectionInteractors([interactor], [binding(target, value, 'intervalXY')]);
 
     expect(interactor.value).toEqual(value);
   });

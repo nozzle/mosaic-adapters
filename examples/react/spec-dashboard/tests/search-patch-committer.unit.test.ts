@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+
 import { createSearchPatchCommitter } from '../src/spec/url-state/search-patch-committer';
 
 afterEach(() => {

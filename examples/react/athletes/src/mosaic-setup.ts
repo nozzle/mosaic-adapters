@@ -1,4 +1,5 @@
 import { coordinator, wasmConnector } from '@uwdata/mosaic-core';
+
 import { tableName } from './page-context';
 
 // The dataset is vendored in the repo under media/data and symlinked into this
@@ -20,8 +21,7 @@ export function initAthletesTable(): Promise<void> {
       coordinator().databaseConnector(wasmConnector());
       // DuckDB-WASM only fetches over HTTP for fully-qualified URLs; a bare
       // path would be looked up in its virtual filesystem instead.
-      const parquetUrl = new URL(ATHLETES_PARQUET_PATH, window.location.origin)
-        .href;
+      const parquetUrl = new URL(ATHLETES_PARQUET_PATH, window.location.origin).href;
       await coordinator().exec([
         `CREATE TABLE IF NOT EXISTS ${tableName} AS SELECT * FROM '${parquetUrl}'`,
       ]);

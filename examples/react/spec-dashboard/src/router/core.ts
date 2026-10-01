@@ -181,9 +181,7 @@ function handleNavigate(event: NavigateEventLike): void {
 export function interceptOptionsForNavigationType(
   navigationType: NavigationType,
 ): InterceptOptions {
-  return navigationType === 'replace'
-    ? { focusReset: 'manual', scroll: 'manual' }
-    : undefined;
+  return navigationType === 'replace' ? { focusReset: 'manual', scroll: 'manual' } : undefined;
 }
 
 // Eager, guarded listener install (see the module docstring for the rationale).
@@ -209,10 +207,7 @@ let warnedUnsupported = false;
 
 function isAbortError(error: unknown): boolean {
   return (
-    error !== null &&
-    typeof error === 'object' &&
-    'name' in error &&
-    error.name === 'AbortError'
+    error !== null && typeof error === 'object' && 'name' in error && error.name === 'AbortError'
   );
 }
 
@@ -227,16 +222,11 @@ export function observeNavigationResult(result: NavigationResultLike): void {
   });
 }
 
-export function navigateSearch(
-  updater: SearchUpdater,
-  options?: NavigateSearchOptions,
-): void {
+export function navigateSearch(updater: SearchUpdater, options?: NavigateSearchOptions): void {
   if (navigation === undefined) {
     if (!warnedUnsupported) {
       warnedUnsupported = true;
-      console.warn(
-        'router: window.navigation is unavailable; navigateSearch is a no-op.',
-      );
+      console.warn('router: window.navigation is unavailable; navigateSearch is a no-op.');
     }
     return;
   }
@@ -264,7 +254,5 @@ export function navigateSearch(
 
   const url = new URL(window.location.href);
   url.search = nextString;
-  observeNavigationResult(
-    navigation.navigate(url.href, { history: options?.history ?? 'push' }),
-  );
+  observeNavigationResult(navigation.navigate(url.href, { history: options?.history ?? 'push' }));
 }

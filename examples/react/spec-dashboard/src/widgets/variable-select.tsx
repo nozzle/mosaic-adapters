@@ -12,9 +12,10 @@
  * least-surprising sane fallback for a control whose Param is out of range.
  */
 import { useMosaicParamValue } from '@nozzleio/react-mosaic';
-import { resolveVariable } from '../spec/topology';
 import type { ReactElement } from 'react';
+
 import type { VariableSelectWidgetSpec } from '../spec/schema';
+import { resolveVariable } from '../spec/topology';
 import type { WidgetComponentProps, WidgetContext } from './registry';
 
 /**
@@ -37,10 +38,7 @@ interface VariableSelectProps {
   context: WidgetContext;
 }
 
-function VariableSelect({
-  widget,
-  context,
-}: VariableSelectProps): ReactElement {
+function VariableSelect({ widget, context }: VariableSelectProps): ReactElement {
   // `variable` is required and compile-validated to name a declared variable, so
   // `resolveVariable` always returns the Param (never undefined) here. The
   // explicit `<unknown>` asserts the value type at the call site instead of

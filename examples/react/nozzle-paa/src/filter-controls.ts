@@ -1,3 +1,4 @@
+import { useFilterSetState } from '@nozzleio/react-mosaic';
 /**
  * Shared helpers for the two authoring views (Classic `question-filters.tsx`
  * and the `filter-builder.tsx` Builder) and the facet control they share.
@@ -8,7 +9,7 @@
  * cancel handle without drifting between call sites).
  */
 import { useEffect, useMemo, useRef } from 'react';
-import { useFilterSetState } from '@nozzleio/react-mosaic';
+
 import { usePageFilterSet } from './topology';
 
 /**

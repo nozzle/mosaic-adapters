@@ -11,10 +11,7 @@ export interface SearchPatchCommitter {
   cancel: () => void;
 }
 
-type NavigateSearch = (
-  patch: SearchPatch,
-  options?: NavigateSearchOptions,
-) => void;
+type NavigateSearch = (patch: SearchPatch, options?: NavigateSearchOptions) => void;
 
 /**
  * Create one latest-value queue shared by FilterSet and Selection URL state.

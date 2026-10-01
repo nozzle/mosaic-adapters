@@ -1,3 +1,4 @@
+import { Coordinator, wasmConnector } from '@uwdata/mosaic-core';
 /**
  * Recipe 1 — app-owned connector lifecycle.
  *
@@ -12,14 +13,7 @@
  * load) is layered on top via the data loader (recipe 2), and the two combine
  * into the app's single status gate in `App.tsx`.
  */
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from 'react';
-import { Coordinator, wasmConnector } from '@uwdata/mosaic-core';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export interface ConnectorState {
@@ -55,11 +49,7 @@ export function ConnectorProvider(props: { children: ReactNode }) {
     [coordinator, connectionId, recreate],
   );
 
-  return (
-    <ConnectorContext.Provider value={value}>
-      {props.children}
-    </ConnectorContext.Provider>
-  );
+  return <ConnectorContext.Provider value={value}>{props.children}</ConnectorContext.Provider>;
 }
 
 /** Read the current connector state; throws outside a {@link ConnectorProvider}. */

@@ -1,3 +1,28 @@
+import {
+  paginationToWindow,
+  useTanStackTableFilterBridge,
+} from '@nozzleio/mosaic-tanstack-react-table';
+import type { FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-react-table';
+import { useMosaicRows } from '@nozzleio/react-mosaic';
+import type { RowsInputs } from '@nozzleio/react-mosaic';
+import {
+  columnFilteringFeature,
+  columnSizingFeature,
+  columnVisibilityFeature,
+  flexRender,
+  rowPaginationFeature,
+  tableFeatures,
+  useTable,
+} from '@tanstack/react-table';
+import type {
+  Column,
+  ColumnDef,
+  ColumnFiltersState,
+  OnChangeFn,
+  PaginationState,
+} from '@tanstack/react-table';
+import type { Param } from '@uwdata/mosaic-core';
+import type { ParamLike } from '@uwdata/mosaic-sql';
 /**
  * The detail table: user-owned `useTable` (TanStack Table v9) in fully manual
  * mode, driven by the spec. Columns come straight from `widget.columns`; the
@@ -10,38 +35,14 @@
  * while every sibling widget sees them too.
  */
 import { useMemo, useState } from 'react';
-import {
-  columnFilteringFeature,
-  columnSizingFeature,
-  columnVisibilityFeature,
-  flexRender,
-  rowPaginationFeature,
-  tableFeatures,
-  useTable,
-} from '@tanstack/react-table';
-import { useMosaicRows } from '@nozzleio/react-mosaic';
-import {
-  paginationToWindow,
-  useTanStackTableFilterBridge,
-} from '@nozzleio/mosaic-tanstack-react-table';
-import { compileStructuredQuery } from '../spec/query-compiler';
-import { compileExclude } from '../spec/exclude';
-import { resolveSelection, resolveVariable } from '../spec/topology';
-import { WidgetSqlPopover } from './widget-sql-details';
 import type { ReactElement } from 'react';
-import type { Param } from '@uwdata/mosaic-core';
-import type { ParamLike } from '@uwdata/mosaic-sql';
-import type {
-  Column,
-  ColumnDef,
-  ColumnFiltersState,
-  OnChangeFn,
-  PaginationState,
-} from '@tanstack/react-table';
-import type { FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-react-table';
-import type { RowsInputs } from '@nozzleio/react-mosaic';
+
+import { compileExclude } from '../spec/exclude';
+import { compileStructuredQuery } from '../spec/query-compiler';
 import type { DataTableWidgetSpec } from '../spec/schema';
+import { resolveSelection, resolveVariable } from '../spec/topology';
 import type { WidgetComponentProps, WidgetContext } from './registry';
+import { WidgetSqlPopover } from './widget-sql-details';
 
 const features = tableFeatures({
   rowPaginationFeature,
@@ -83,10 +84,7 @@ function downloadCsv(filename: string, content: string): void {
  * Thin narrowing wrapper. Narrow to this renderer and hand the already-narrowed
  * widget to the inner table so every hook runs unconditionally (rules-of-hooks).
  */
-export function DataTableWidget({
-  widget,
-  context,
-}: WidgetComponentProps): ReactElement | null {
+export function DataTableWidget({ widget, context }: WidgetComponentProps): ReactElement | null {
   if (widget.renderer !== 'data-table') {
     return null;
   }
@@ -106,10 +104,7 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
   // stable `skipSources` set dropping just those clauses. The bridged column
   // filters this table publishes still land in the page (they are not resolved
   // through this client's own filterBy).
-  const exclude = useMemo(
-    () => compileExclude(widget.exclude),
-    [widget.exclude],
-  );
+  const exclude = useMemo(() => compileExclude(widget.exclude), [widget.exclude]);
   const detailFilterBy = exclude.omitFilterBy ? undefined : filterBy;
   // A structured column may be a `$variable` ref — compiled to a `column(param)`
   // named by the variable's value. The compiler stays pure by taking a resolver
@@ -169,9 +164,7 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
   const details = useMosaicRows<DetailRow>({
     query,
     filterBy: detailFilterBy,
-    ...(exclude.skipSources !== undefined
-      ? { skipSources: exclude.skipSources }
-      : {}),
+    ...(exclude.skipSources !== undefined ? { skipSources: exclude.skipSources } : {}),
     ...(compiled.variables.length > 0 ? { params } : {}),
     inputs: paginationToWindow(pagination),
     rowCount: 'window',
@@ -223,9 +216,7 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
   const exportable = widget.meta?.['exportable'] === true;
 
   const exportCsv = () => {
-    const headerRow = widget.columns
-      .map((column) => escapeCsvField(column.header))
-      .join(',');
+    const headerRow = widget.columns.map((column) => escapeCsvField(column.header)).join(',');
     const bodyRows = table.getRowModel().rows.map((row) => {
       const original = row.original;
       return widget.columns
@@ -255,10 +246,7 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
                     className="px-3 py-1.5 text-[11px] font-medium tracking-wide text-muted uppercase"
                     style={{ width: header.column.getSize() }}
                   >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
-                    )}
+                    {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 ))}
               </tr>
@@ -273,10 +261,7 @@ function DataTable({ widget, context }: DataTableProps): ReactElement {
           </thead>
           <tbody data-testid={`detail-${widget.id}-body`}>
             {table.getRowModel().rows.map((row) => (
-              <tr
-                key={row.id}
-                className="border-b border-line align-top hover:bg-hover"
-              >
+              <tr key={row.id} className="border-b border-line align-top hover:bg-hover">
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-3 py-1.5 text-muted">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}

@@ -1,3 +1,6 @@
+import { MosaicProvider, MosaicTopologyProvider, useMosaicValues } from '@nozzleio/react-mosaic';
+import type { DataClientStatus } from '@nozzleio/react-mosaic';
+import { Query, column, count, isNotNull, sql } from '@uwdata/mosaic-sql';
 /**
  * The People Also Ask dashboard on the data-client stack (issue #165): KPI
  * header, four cross-filtering group-by summary tables with row-select
@@ -11,21 +14,15 @@
  * topology-owned Selection.
  */
 import { useMemo, useState } from 'react';
-import { Query, column, count, isNotNull, sql } from '@uwdata/mosaic-sql';
-import {
-  MosaicProvider,
-  MosaicTopologyProvider,
-  useMosaicValues,
-} from '@nozzleio/react-mosaic';
-import { ConnectorProvider, useConnector } from './connector';
-import { useDataLoad } from './data-loader';
-import { tableName } from './page-context';
-import { usePageContexts, usePageTopology } from './topology';
+
 import { ActiveFilterBar } from './components/active-filter-bar';
-import { SpotlightFilter } from './components/spotlight-filter';
-import { VolumeBrushPanel } from './components/volume-brush-panel';
 import { DetailTable } from './components/detail-table';
 import { FilterBuilder } from './components/filter-builder';
+import {
+  MetricThresholdControls,
+  useMetricThresholdFilter,
+} from './components/metric-threshold-filter';
+import type { MetricThresholdFilterState } from './components/metric-threshold-filter';
 import {
   DateRangeFilter,
   DeviceFilter,
@@ -34,19 +31,16 @@ import {
   QuestionMinDomainsFilter,
   TextFilter,
 } from './components/question-filters';
-import {
-  MetricThresholdControls,
-  useMetricThresholdFilter,
-} from './components/metric-threshold-filter';
-import {
-  SummaryTable,
-  SummaryTablePlaceholder,
-} from './components/summary-table';
-import type { DataClientStatus } from '@nozzleio/react-mosaic';
-import type { DataLoadConfig } from './data-loader';
-import type { MetricThresholdFilterState } from './components/metric-threshold-filter';
+import { SpotlightFilter } from './components/spotlight-filter';
+import { SummaryTable, SummaryTablePlaceholder } from './components/summary-table';
 import type { SummaryTableConfig } from './components/summary-table';
+import { VolumeBrushPanel } from './components/volume-brush-panel';
+import { ConnectorProvider, useConnector } from './connector';
+import { useDataLoad } from './data-loader';
+import type { DataLoadConfig } from './data-loader';
+import { tableName } from './page-context';
 import type { SummaryTableId } from './page-context';
+import { usePageContexts, usePageTopology } from './topology';
 
 // Declarative source config (recipe 2). The dataset is vendored under
 // media/data and symlinked into this app's public/data, so it is served from
@@ -145,9 +139,7 @@ function PageTopology(props: { status: BootstrapStatus; error: Error | null }) {
 function Dashboard(props: { status: BootstrapStatus; error: Error | null }) {
   const { status, error } = props;
   const isReady = status === 'ready';
-  const [expandedTableId, setExpandedTableId] = useState<SummaryTableId | null>(
-    null,
-  );
+  const [expandedTableId, setExpandedTableId] = useState<SummaryTableId | null>(null);
   // Which authoring view is active. Default 'classic' so the existing e2e
   // (dashboard + share-loop) sees the hardcoded controls unchanged. Both views
   // author the SAME page filterSet, so switching only re-renders the editor.
@@ -216,23 +208,13 @@ function Dashboard(props: { status: BootstrapStatus; error: Error | null }) {
           {filterView === 'classic' ? (
             // Classic view: the app's hardcoded top-bar controls, as-is.
             <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
-              <div className="mr-2 self-center text-sm font-bold text-slate-700">
-                FILTER BY:
-              </div>
+              <div className="mr-2 self-center text-sm font-bold text-slate-700">FILTER BY:</div>
               <DomainFilter enabled={isReady} />
-              <TextFilter
-                label="Phrase"
-                runtime="phrase"
-                testId="filter-phrase"
-              />
+              <TextFilter label="Phrase" runtime="phrase" testId="filter-phrase" />
               <KeywordGroupFilter enabled={isReady} />
               <DateRangeFilter />
               <DeviceFilter enabled={isReady} />
-              <TextFilter
-                label="Question Contains"
-                runtime="question"
-                testId="filter-question"
-              />
+              <TextFilter label="Question Contains" runtime="question" testId="filter-question" />
               <QuestionMinDomainsFilter />
               <SpotlightFilter enabled={isReady} />
             </div>
@@ -265,9 +247,7 @@ function Dashboard(props: { status: BootstrapStatus; error: Error | null }) {
               config={config}
               enabled={isReady}
               heightClassName="h-[700px]"
-              headerControls={
-                <MetricThresholdControls state={metricFilters[config.id]} />
-              }
+              headerControls={<MetricThresholdControls state={metricFilters[config.id]} />}
               promotionButton={
                 <button
                   type="button"
@@ -291,11 +271,7 @@ function Dashboard(props: { status: BootstrapStatus; error: Error | null }) {
             enabled={isReady}
             heightClassName="h-[820px]"
             promoted
-            headerControls={
-              <MetricThresholdControls
-                state={metricFilters[expandedTable.id]}
-              />
-            }
+            headerControls={<MetricThresholdControls state={metricFilters[expandedTable.id]} />}
             promotionButton={
               <button
                 type="button"
@@ -321,22 +297,15 @@ function Dashboard(props: { status: BootstrapStatus; error: Error | null }) {
 
 type FilterView = 'classic' | 'builder';
 
-function FilterViewToggle(props: {
-  view: FilterView;
-  onChange: (next: FilterView) => void;
-}) {
+function FilterViewToggle(props: { view: FilterView; onChange: (next: FilterView) => void }) {
   const { view, onChange } = props;
   const buttonClass = (target: FilterView) =>
     `h-8 rounded px-3 text-xs font-semibold tracking-wide transition-colors ${
-      view === target
-        ? 'bg-white text-cyan-800 shadow-sm'
-        : 'text-slate-500 hover:text-slate-700'
+      view === target ? 'bg-white text-cyan-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
     }`;
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs font-semibold tracking-wider text-slate-500 uppercase">
-        Filters
-      </span>
+      <span className="text-xs font-semibold tracking-wider text-slate-500 uppercase">Filters</span>
       <div
         data-testid="filter-view-toggle"
         className="inline-flex rounded-md border border-slate-200 bg-slate-100 p-0.5"
@@ -391,9 +360,7 @@ function HeaderSection(props: { enabled: boolean }) {
     <div className="bg-[#0e7490] px-6 pt-8 pb-12 text-white">
       <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
         <div>
-          <h1 className="text-3xl font-light tracking-wide">
-            People Also Ask Report
-          </h1>
+          <h1 className="text-3xl font-light tracking-wide">People Also Ask Report</h1>
           <p className="mt-1 text-sm text-cyan-100">
             SEO Intelligence Dashboard — Mosaic data clients
           </p>
@@ -445,11 +412,7 @@ function KpiCard(props: {
       <div className="mb-1 text-xs font-semibold tracking-wider text-cyan-200 uppercase">
         {props.label}
       </div>
-      <div
-        className="text-3xl font-bold"
-        data-testid={props.testId}
-        data-status={props.status}
-      >
+      <div className="text-3xl font-bold" data-testid={props.testId} data-status={props.status}>
         {props.value === undefined ? '…' : Number(props.value).toLocaleString()}
       </div>
     </div>

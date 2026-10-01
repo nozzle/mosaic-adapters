@@ -1,3 +1,7 @@
+import { useFilterSetState, useMosaicRows, useMosaicSparkline } from '@nozzleio/react-mosaic';
+import type { FilterSet, RowsInputs } from '@nozzleio/react-mosaic';
+import type { Param } from '@uwdata/mosaic-core';
+import type { ParamLike } from '@uwdata/mosaic-sql';
 /**
  * A grouped summary table driven by the spec: one rows client whose compiled
  * (structured) query owns the GROUP BY (so `filterStable: false`
@@ -13,26 +17,16 @@
  * no compiler surgery).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  useFilterSetState,
-  useMosaicRows,
-  useMosaicSparkline,
-} from '@nozzleio/react-mosaic';
-import { compileStructuredQuery } from '../spec/query-compiler';
-import { compileExclude } from '../spec/exclude';
-import { resolveSelection, resolveVariable } from '../spec/topology';
+import type { ReactElement } from 'react';
+
 import { usePopoverDismiss } from '../chrome/use-popover-dismiss';
+import { compileExclude } from '../spec/exclude';
+import { compileStructuredQuery } from '../spec/query-compiler';
+import type { MetricThresholdSpec, SelectionTableWidgetSpec } from '../spec/schema';
+import { resolveSelection, resolveVariable } from '../spec/topology';
+import type { WidgetComponentProps, WidgetContext } from './registry';
 import { Sparkline } from './sparkline';
 import { WidgetSqlPopover } from './widget-sql-details';
-import type { ReactElement } from 'react';
-import type { Param } from '@uwdata/mosaic-core';
-import type { ParamLike } from '@uwdata/mosaic-sql';
-import type { FilterSet, RowsInputs } from '@nozzleio/react-mosaic';
-import type {
-  MetricThresholdSpec,
-  SelectionTableWidgetSpec,
-} from '../spec/schema';
-import type { WidgetComponentProps, WidgetContext } from './registry';
 
 const PAGE_SIZE = 10;
 
@@ -43,10 +37,7 @@ interface GroupRow {
 }
 
 /** Reads a card's selected scalar values back from its `select:` spec. */
-function useSelectedValues(
-  filterSet: FilterSet,
-  specId: string,
-): Array<string | number | null> {
+function useSelectedValues(filterSet: FilterSet, specId: string): Array<string | number | null> {
   const { specs } = useFilterSetState(filterSet);
   const value = specs.find((spec) => spec.id === specId)?.value;
   return useMemo(() => {
@@ -100,8 +91,7 @@ function useMetricThreshold(options: {
   const { filterSet, config } = options;
   const specId = config?.spec_id;
   const { specs } = useFilterSetState(filterSet);
-  const spec =
-    specId === undefined ? undefined : specs.find((s) => s.id === specId);
+  const spec = specId === undefined ? undefined : specs.find((s) => s.id === specId);
   const applied = spec !== undefined;
 
   const [comparison, setComparison] = useState<MetricComparison>('gt');
@@ -124,15 +114,11 @@ function useMetricThreshold(options: {
     }
   }
 
-  const commit = (
-    nextComparison: MetricComparison,
-    nextValue: number | null,
-  ): void => {
+  const commit = (nextComparison: MetricComparison, nextValue: number | null): void => {
     if (config === undefined) {
       return;
     }
-    const active =
-      nextValue !== null && Number.isFinite(nextValue) && nextValue >= 0;
+    const active = nextValue !== null && Number.isFinite(nextValue) && nextValue >= 0;
     if (!active) {
       filterSet.remove(config.spec_id);
       return;
@@ -225,17 +211,10 @@ function MetricThresholdControl(props: {
             : 'border-transparent text-muted hover:border-line hover:text-ink'
         }`}
       >
-        <svg
-          viewBox="0 0 16 16"
-          className="size-3 shrink-0"
-          fill="currentColor"
-          aria-hidden="true"
-        >
+        <svg viewBox="0 0 16 16" className="size-3 shrink-0" fill="currentColor" aria-hidden="true">
           <path d="M1.5 2.5h13l-5 6v4l-3 1.5V8.5l-5-6Z" />
         </svg>
-        {badge !== null ? (
-          <span className="tabular-nums whitespace-nowrap">{badge}</span>
-        ) : null}
+        {badge !== null ? <span className="tabular-nums whitespace-nowrap">{badge}</span> : null}
       </button>
       {/* Stays mounted while closed (`hidden`) so the draft operator/value
           survive an open/close. z-30 clears the sticky thead (z-10). */}
@@ -258,9 +237,7 @@ function MetricThresholdControl(props: {
               aria-label={`${label} comparison`}
               className="h-7 rounded-gf border border-line bg-field px-1 text-xs text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-gf-blue"
               value={state.comparison}
-              onChange={(event) =>
-                state.setComparison(event.target.value as MetricComparison)
-              }
+              onChange={(event) => state.setComparison(event.target.value as MetricComparison)}
             >
               <option value="gt">&gt;</option>
               <option value="lt">&lt;</option>
@@ -327,21 +304,9 @@ export function SelectionTableWidget({
     return null;
   }
   if (mode === 'placeholder') {
-    return (
-      <SummaryPlaceholder
-        id={widget.id}
-        title={widget.title}
-        onRestore={context.onRestore}
-      />
-    );
+    return <SummaryPlaceholder id={widget.id} title={widget.title} onRestore={context.onRestore} />;
   }
-  return (
-    <SummaryTableBody
-      widget={widget}
-      context={context}
-      promoted={mode === 'promoted'}
-    />
-  );
+  return <SummaryTableBody widget={widget} context={context} promoted={mode === 'promoted'} />;
 }
 
 function SummaryTableBody(props: {
@@ -381,10 +346,7 @@ function SummaryTableBody(props: {
   // `exclude` (see spec/exclude.ts): `'all'` drops BOTH the WHERE (`filter_by`)
   // and HAVING (`having_by`) selections; a list yields a stable `skipSources`
   // the core applies to both automatically.
-  const exclude = useMemo(
-    () => compileExclude(widget.exclude),
-    [widget.exclude],
-  );
+  const exclude = useMemo(() => compileExclude(widget.exclude), [widget.exclude]);
   const rowsFilterBy = exclude.omitFilterBy ? undefined : filterBy;
   const rowsHavingBy = exclude.omitFilterBy ? undefined : havingBy;
 
@@ -399,9 +361,7 @@ function SummaryTableBody(props: {
     query,
     filterBy: rowsFilterBy,
     havingBy: rowsHavingBy,
-    ...(exclude.skipSources !== undefined
-      ? { skipSources: exclude.skipSources }
-      : {}),
+    ...(exclude.skipSources !== undefined ? { skipSources: exclude.skipSources } : {}),
     ...(compiled.variables.length > 0 ? { params } : {}),
     // The factory GROUP BYs a key whose domain changes under filtering, so the
     // pre-aggregation assumptions do not hold.
@@ -422,9 +382,7 @@ function SummaryTableBody(props: {
         into: filterSet,
         id: widget.publish.spec_id,
         label: widget.publish.label,
-        columns: widget.publish.columns as Array<
-          Extract<keyof GroupRow, string>
-        >,
+        columns: widget.publish.columns as Array<Extract<keyof GroupRow, string>>,
         fields: widget.publish.fields,
       },
     },
@@ -470,21 +428,16 @@ function SummaryTableBody(props: {
   // One batched sparkline client serves every cell on the visible page. Its
   // source is EXPLICIT (`table` + `key`) in the spec — no FROM-regex derivation.
   const sparkline = widget.sparkline;
-  const sparklineKey =
-    sparkline?.key ?? widget.publish.fields[0] ?? widget.publish.columns[0]!;
+  const sparklineKey = sparkline?.key ?? widget.publish.fields[0] ?? widget.publish.columns[0]!;
   const sparklines = useMosaicSparkline({
     from: sparkline?.table ?? 'unused',
     key: sparklineKey,
     x: sparkline?.x ?? { column: sparklineKey },
     y: sparkline?.y ?? { agg: 'count' },
     filterBy: rowsFilterBy,
-    ...(exclude.skipSources !== undefined
-      ? { skipSources: exclude.skipSources }
-      : {}),
+    ...(exclude.skipSources !== undefined ? { skipSources: exclude.skipSources } : {}),
     inputs: {
-      keys: sparkline
-        ? rows.rows.map((row) => row.key).filter((key) => key != null)
-        : [],
+      keys: sparkline ? rows.rows.map((row) => row.key).filter((key) => key != null) : [],
     },
     enabled: enabled && sparkline !== undefined,
   });
@@ -494,9 +447,7 @@ function SummaryTableBody(props: {
   };
 
   const toggleRow = (row: GroupRow) => {
-    const isSelected = selectedValues.some((value) =>
-      Object.is(value, row.key),
-    );
+    const isSelected = selectedValues.some((value) => Object.is(value, row.key));
     const next = isSelected
       ? selectedValues.filter((value) => !Object.is(value, row.key))
       : [...selectedValues, row.key];
@@ -504,9 +455,7 @@ function SummaryTableBody(props: {
   };
 
   const pageCount =
-    rows.totalRows === undefined
-      ? null
-      : Math.max(1, Math.ceil(rows.totalRows / PAGE_SIZE));
+    rows.totalRows === undefined ? null : Math.max(1, Math.ceil(rows.totalRows / PAGE_SIZE));
 
   const goToFirstPage = () => {
     setPageIndex(0);
@@ -530,9 +479,7 @@ function SummaryTableBody(props: {
       className={`flex flex-col overflow-hidden rounded-gf border border-line bg-panel transition-colors hover:border-line-strong ${heightClass}`}
     >
       <div className="relative flex h-[30px] shrink-0 items-center justify-between gap-2 border-b border-line px-3">
-        <div className="truncate text-xs font-medium text-ink">
-          {widget.title}
-        </div>
+        <div className="truncate text-xs font-medium text-ink">{widget.title}</div>
         <div className="flex items-center gap-2">
           {promoted ? (
             <span className="rounded-gf bg-gf-blue/15 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-gf-blue uppercase">
@@ -545,14 +492,10 @@ function SummaryTableBody(props: {
               type="button"
               className="flex h-6 items-center rounded-gf border border-line bg-panel-header px-2 text-[11px] font-medium text-muted hover:border-line-strong hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-gf-blue"
               aria-label={
-                promoted
-                  ? `Return ${widget.title} table to grid`
-                  : `Enlarge ${widget.title} table`
+                promoted ? `Return ${widget.title} table to grid` : `Enlarge ${widget.title} table`
               }
               data-testid={`summary-table-${widget.id}-toggle`}
-              onClick={() =>
-                promoted ? context.onRestore() : context.onExpand(widget.id)
-              }
+              onClick={() => (promoted ? context.onRestore() : context.onExpand(widget.id))}
             >
               {promoted ? '↙ Return' : '↗ Enlarge'}
             </button>
@@ -578,11 +521,7 @@ function SummaryTableBody(props: {
                 className="flex h-4 w-4 items-center justify-center rounded-gf text-gf-blue hover:bg-gf-blue/20"
                 aria-label={`Remove ${widget.title} selection ${String(value)}`}
                 onClick={() =>
-                  publishValues(
-                    selectedValues.filter(
-                      (candidate) => !Object.is(candidate, value),
-                    ),
-                  )
+                  publishValues(selectedValues.filter((candidate) => !Object.is(candidate, value)))
                 }
               >
                 ✕
@@ -620,16 +559,12 @@ function SummaryTableBody(props: {
                   ) : null}
                 </div>
               </th>
-              {hasSparkline ? (
-                <th className="w-[120px] px-3 py-1.5 font-medium">Trend</th>
-              ) : null}
+              {hasSparkline ? <th className="w-[120px] px-3 py-1.5 font-medium">Trend</th> : null}
             </tr>
           </thead>
           <tbody>
             {rows.rows.map((row) => {
-              const isSelected = selectedValues.some((value) =>
-                Object.is(value, row.key),
-              );
+              const isSelected = selectedValues.some((value) => Object.is(value, row.key));
               const dimmed = selectedValues.length > 0 && !isSelected;
               return (
                 <tr
@@ -647,10 +582,7 @@ function SummaryTableBody(props: {
                       className="size-3.5 cursor-pointer accent-gf-blue"
                     />
                   </td>
-                  <td
-                    className="truncate px-3 text-ink"
-                    title={String(row.key ?? '')}
-                  >
+                  <td className="truncate px-3 text-ink" title={String(row.key ?? '')}>
                     {row.key === null ? '' : String(row.key)}
                   </td>
                   <td className="px-3 text-right tabular-nums text-muted">
@@ -658,13 +590,10 @@ function SummaryTableBody(props: {
                   </td>
                   {hasSparkline ? (
                     <td className="px-3">
-                      {sparklines.status === 'pending' &&
-                      !sparklines.series.has(row.key) ? (
+                      {sparklines.status === 'pending' && !sparklines.series.has(row.key) ? (
                         <div className="h-7 w-[100px] animate-pulse rounded-gf bg-hover" />
                       ) : (
-                        <Sparkline
-                          points={sparklines.series.get(row.key) ?? []}
-                        />
+                        <Sparkline points={sparklines.series.get(row.key) ?? []} />
                       )}
                     </td>
                   ) : null}
@@ -673,10 +602,7 @@ function SummaryTableBody(props: {
             })}
             {rows.rows.length === 0 && rows.status === 'success' ? (
               <tr>
-                <td
-                  colSpan={columnCount}
-                  className="px-3 py-6 text-center text-xs text-faint"
-                >
+                <td colSpan={columnCount} className="px-3 py-6 text-center text-xs text-faint">
                   No results.
                 </td>
               </tr>
@@ -727,9 +653,7 @@ function SummaryTableBody(props: {
           {pageCount === null ? '' : ` of ${pageCount}`}
         </span>
         <span className="flex-1 text-right">
-          {rows.totalRows === undefined
-            ? '…'
-            : `${rows.totalRows.toLocaleString()} groups`}
+          {rows.totalRows === undefined ? '…' : `${rows.totalRows.toLocaleString()} groups`}
         </span>
       </div>
     </div>
@@ -749,12 +673,10 @@ function SummaryPlaceholder(props: {
       <div className="space-y-3">
         <div className="text-xs font-medium text-ink">{props.title}</div>
         <div className="rounded-gf border border-line bg-panel-header p-4">
-          <div className="text-xs font-semibold text-ink">
-            This table is enlarged below
-          </div>
+          <div className="text-xs font-semibold text-ink">This table is enlarged below</div>
           <p className="mt-2 text-xs leading-5 text-muted">
-            Row selections live in the page-level Selection topology, so they
-            survive the move between regions of the page.
+            Row selections live in the page-level Selection topology, so they survive the move
+            between regions of the page.
           </p>
         </div>
       </div>

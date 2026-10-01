@@ -10,9 +10,7 @@ import type { TopologySpec } from '../schema';
 
 const PARAM_PREFIX = 's';
 const NUMBER_TOKEN = '-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?';
-const INTERVAL_GRAMMAR = new RegExp(
-  `^(${NUMBER_TOKEN})\\.\\.(${NUMBER_TOKEN})$`,
-);
+const INTERVAL_GRAMMAR = new RegExp(`^(${NUMBER_TOKEN})\\.\\.(${NUMBER_TOKEN})$`);
 
 export type NumericInterval = [number, number];
 export type NumericInterval2D = [NumericInterval, NumericInterval];
@@ -46,9 +44,7 @@ export interface SelectionUrlRegistry {
 }
 
 /** Build the ordered descriptor registry. Invalid strategy use is reported later. */
-export function buildSelectionUrlRegistry(
-  topology: TopologySpec,
-): SelectionUrlRegistry {
+export function buildSelectionUrlRegistry(topology: TopologySpec): SelectionUrlRegistry {
   const entries: Array<SelectionUrlDescriptor> = [];
   for (const [entry, declaration] of Object.entries(topology)) {
     if (
@@ -150,9 +146,7 @@ export function decodeSelectionUrlValue(
   descriptor: SelectionUrlDescriptor,
   raw: string,
 ): NumericInterval | NumericInterval2D | null {
-  return descriptor.dimensions === 1
-    ? decodeNumericInterval(raw)
-    : decodeNumericInterval2D(raw);
+  return descriptor.dimensions === 1 ? decodeNumericInterval(raw) : decodeNumericInterval2D(raw);
 }
 
 /**

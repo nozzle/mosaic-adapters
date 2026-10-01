@@ -1,4 +1,12 @@
+import type { ParamValue } from '@nozzleio/react-mosaic';
 import { describe, expect, test, vi } from 'vitest';
+
+import type { Search } from '../src/router';
+import { buildFilterUrlRegistry } from '../src/spec/filter-url';
+import type { FilterUrlInfo } from '../src/spec/filter-url';
+import type { DashboardSpec, TopologySpec } from '../src/spec/schema';
+import { buildDashboardUrlInfo } from '../src/spec/url-state/info';
+import { buildSelectionUrlRegistry } from '../src/spec/url-state/selection-url';
 import {
   buildVariableParamOptions,
   buildVariableUrlRegistry,
@@ -7,14 +15,7 @@ import {
   encodeParamValue,
   validateVariableUrl,
 } from '../src/spec/url-state/variable-url';
-import { buildSelectionUrlRegistry } from '../src/spec/url-state/selection-url';
-import { buildFilterUrlRegistry } from '../src/spec/filter-url';
-import { buildDashboardUrlInfo } from '../src/spec/url-state/info';
-import type { ParamValue } from '@nozzleio/react-mosaic';
-import type { FilterUrlInfo } from '../src/spec/filter-url';
 import type { VariablePersisterIo } from '../src/spec/url-state/variable-url';
-import type { DashboardSpec, TopologySpec } from '../src/spec/schema';
-import type { Search } from '../src/router';
 
 // ── Codec round-trip (the ParamValue value domain) ────────────────────────────
 
@@ -28,15 +29,7 @@ describe('encodeParamValue / decodeParamValue', () => {
   };
 
   test('round-trips scalar strings (including reserved-looking and unicode)', () => {
-    for (const value of [
-      'title',
-      'description',
-      '',
-      'a,b',
-      'π/λ',
-      'n42',
-      '@x',
-    ]) {
+    for (const value of ['title', 'description', '', 'a,b', 'π/λ', 'n42', '@x']) {
       roundTrips(value);
     }
   });
@@ -102,9 +95,7 @@ describe('buildVariableUrlRegistry', () => {
       },
     };
     const registry = buildVariableUrlRegistry(topology);
-    expect(registry.entries).toEqual([
-      { entry: 'answer_field', param: 'v.answer_field' },
-    ]);
+    expect(registry.entries).toEqual([{ entry: 'answer_field', param: 'v.answer_field' }]);
     expect(registry.getByEntry('answer_field')?.param).toBe('v.answer_field');
     expect(registry.getByParam('v.answer_field')?.entry).toBe('answer_field');
   });
@@ -222,9 +213,7 @@ describe('validateVariableUrl', () => {
         persist: { type: 'url' },
       },
     });
-    expect(
-      validateVariableUrl(registry, emptyFilters, null, noSelections),
-    ).toEqual([]);
+    expect(validateVariableUrl(registry, emptyFilters, null, noSelections)).toEqual([]);
   });
 
   test('rejects the reserved spec param', () => {
@@ -235,15 +224,8 @@ describe('validateVariableUrl', () => {
         persist: { type: 'url', param: 'spec' },
       },
     });
-    const errors = validateVariableUrl(
-      registry,
-      emptyFilters,
-      null,
-      noSelections,
-    );
-    expect(errors.some((error) => error.includes("reserved 'spec'"))).toBe(
-      true,
-    );
+    const errors = validateVariableUrl(registry, emptyFilters, null, noSelections);
+    expect(errors.some((error) => error.includes("reserved 'spec'"))).toBe(true);
   });
 
   test('rejects a collision with a prefixed filter namespace', () => {
@@ -260,9 +242,7 @@ describe('validateVariableUrl', () => {
       { entryName: 'filters', prefix: 'f' },
       noSelections,
     );
-    expect(
-      errors.some((error) => error.includes('persisted filter param')),
-    ).toBe(true);
+    expect(errors.some((error) => error.includes('persisted filter param'))).toBe(true);
   });
 
   test('rejects a collision with a persisted selection param', () => {
@@ -286,15 +266,8 @@ describe('validateVariableUrl', () => {
         persist: { type: 'url', param: 's.volume_brush' },
       },
     });
-    const errors = validateVariableUrl(
-      registry,
-      emptyFilters,
-      null,
-      selections,
-    );
-    expect(
-      errors.some((error) => error.includes('persisted selection param')),
-    ).toBe(true);
+    const errors = validateVariableUrl(registry, emptyFilters, null, selections);
+    expect(errors.some((error) => error.includes('persisted selection param'))).toBe(true);
   });
 
   test('rejects two variables owning the same param', () => {
@@ -310,15 +283,8 @@ describe('validateVariableUrl', () => {
         persist: { type: 'url', param: 'dup' },
       },
     });
-    const errors = validateVariableUrl(
-      registry,
-      emptyFilters,
-      null,
-      noSelections,
-    );
-    expect(
-      errors.some((error) => error.includes('another persisted variable')),
-    ).toBe(true);
+    const errors = validateVariableUrl(registry, emptyFilters, null, noSelections);
+    expect(errors.some((error) => error.includes('another persisted variable'))).toBe(true);
   });
 });
 
@@ -340,11 +306,7 @@ describe('buildDashboardUrlInfo variable ownership', () => {
         persist: { type: 'url' },
       },
     });
-    const info = buildDashboardUrlInfo(
-      inertFilters,
-      buildSelectionUrlRegistry({}),
-      variables,
-    );
+    const info = buildDashboardUrlInfo(inertFilters, buildSelectionUrlRegistry({}), variables);
     expect(info.classify('v.answer_field')).toBe('variable');
     expect(info.classify('foreign')).toBe('other');
     expect(info.describe('v.answer_field', 'sdescription')).toBe('description');

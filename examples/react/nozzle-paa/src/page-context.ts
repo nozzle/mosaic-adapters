@@ -1,3 +1,19 @@
+import {
+  SqlIdentifier,
+  buildSubqueryClauseParts,
+  builtinFilterKinds,
+  createStructAccess,
+  subqueryFilterKind,
+} from '@nozzleio/react-mosaic';
+import type {
+  FilterKind,
+  FilterKindArgs,
+  OperatorDescriptor,
+  Topology,
+  TopologyConfig,
+  TopologyOptions,
+} from '@nozzleio/react-mosaic';
+import type { Selection } from '@uwdata/mosaic-core';
 /**
  * The page's Selection topology, declared as data.
  *
@@ -47,43 +63,18 @@
  * validation).
  */
 import * as mSql from '@uwdata/mosaic-sql';
-import {
-  SqlIdentifier,
-  buildSubqueryClauseParts,
-  builtinFilterKinds,
-  createStructAccess,
-  subqueryFilterKind,
-} from '@nozzleio/react-mosaic';
-import { urlPersister } from './filter-url';
-import type {
-  FilterKind,
-  FilterKindArgs,
-  OperatorDescriptor,
-  Topology,
-  TopologyConfig,
-  TopologyOptions,
-} from '@nozzleio/react-mosaic';
 import type { ExprNode } from '@uwdata/mosaic-sql';
-import type { Selection } from '@uwdata/mosaic-core';
+
+import { urlPersister } from './filter-url';
 
 export const tableName = 'questions';
 
 export type SummaryTableId = 'phrase' | 'question' | 'domain' | 'url';
 
-const SUMMARY_IDS: Array<SummaryTableId> = [
-  'phrase',
-  'question',
-  'domain',
-  'url',
-];
+const SUMMARY_IDS: Array<SummaryTableId> = ['phrase', 'question', 'domain', 'url'];
 
-function perSummary<T>(
-  build: (id: SummaryTableId) => T,
-): Record<SummaryTableId, T> {
-  return Object.fromEntries(SUMMARY_IDS.map((id) => [id, build(id)])) as Record<
-    SummaryTableId,
-    T
-  >;
+function perSummary<T>(build: (id: SummaryTableId) => T): Record<SummaryTableId, T> {
+  return Object.fromEntries(SUMMARY_IDS.map((id) => [id, build(id)])) as Record<SummaryTableId, T>;
 }
 
 /** The FilterSet target name a card's HAVING clause routes to. */
@@ -126,9 +117,7 @@ export const metricChipLabels: Record<SummaryTableId, string> = {
 /** Parses `metric:<card>` → the card id, or null when malformed. */
 function metricCardId(specId: string): SummaryTableId | null {
   const suffix = specId.startsWith('metric:') ? specId.slice(7) : '';
-  return (SUMMARY_IDS as Array<string>).includes(suffix)
-    ? (suffix as SummaryTableId)
-    : null;
+  return (SUMMARY_IDS as Array<string>).includes(suffix) ? (suffix as SummaryTableId) : null;
 }
 
 /**
@@ -212,8 +201,7 @@ export const metricThresholdKind: FilterKind = {
       },
     ];
   },
-  formatValue: (spec) =>
-    `${spec.operator === 'lt' ? '<' : '>'} ${String(spec.value)}`,
+  formatValue: (spec) => `${spec.operator === 'lt' ? '<' : '>'} ${String(spec.value)}`,
 };
 
 // ── Min-domains custom kind ──────────────────────────────────────────────────
@@ -374,12 +362,7 @@ export const topologyConfig: TopologyConfig = {
   [PAGE_ENTRY]: {
     type: 'compose',
     as: 'crossfilter',
-    include: [
-      WHERE_REF,
-      SPOTLIGHT_ENTRY,
-      VOLUME_BRUSH_ENTRY,
-      ...SUMMARY_IDS.map(membersRef),
-    ],
+    include: [WHERE_REF, SPOTLIGHT_ENTRY, VOLUME_BRUSH_ENTRY, ...SUMMARY_IDS.map(membersRef)],
   },
   [VOLUME_BRUSH_CONTEXT_ENTRY]: {
     type: 'compose',
@@ -437,9 +420,7 @@ export interface PageContexts {
  * construction), so this is a pure lookup — safe to call during render.
  */
 export function resolvePageContexts(topology: Topology): PageContexts {
-  const summaryFilterBy = perSummary((id) =>
-    topology.resolve(summaryContextEntry(id)),
-  );
+  const summaryFilterBy = perSummary((id) => topology.resolve(summaryContextEntry(id)));
   return {
     page: topology.resolve(PAGE_ENTRY),
     summaryFilterBy,

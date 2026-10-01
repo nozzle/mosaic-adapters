@@ -1,4 +1,5 @@
 import { useMosaicFacet } from '@nozzleio/react-mosaic';
+
 import { $page, tableName } from '../page-context';
 
 /**
@@ -20,9 +21,7 @@ export function SportFacet() {
   // A peer filter can cascade the selected sport's count to zero and drop it
   // from the options; keep it renderable so the select never shows a
   // mismatched value.
-  const options = facet.options.some((option) =>
-    Object.is(option.value, selected),
-  )
+  const options = facet.options.some((option) => Object.is(option.value, selected))
     ? facet.options
     : selected !== undefined
       ? [...facet.options, { value: selected }]
@@ -48,9 +47,7 @@ export function SportFacet() {
         {options.map((option) => (
           <option key={String(option.value)} value={String(option.value)}>
             {String(option.value)}
-            {option.count === undefined
-              ? ''
-              : ` (${option.count.toLocaleString('en-US')})`}
+            {option.count === undefined ? '' : ` (${option.count.toLocaleString('en-US')})`}
           </option>
         ))}
       </select>

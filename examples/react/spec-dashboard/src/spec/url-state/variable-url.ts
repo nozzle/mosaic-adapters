@@ -1,3 +1,7 @@
+import type { ParamValue, Persister } from '@nozzleio/react-mosaic';
+
+import type { Search } from '@/router';
+
 /**
  * Pure compile/runtime vocabulary for URL-persisted `variable`s (topology-owned
  * Mosaic Params).
@@ -34,10 +38,8 @@
  * defensively (core keeps the declared default).
  */
 import type { FilterPersistConfig, FilterUrlRegistry } from '../filter-url';
-import type { SelectionUrlRegistry } from './selection-url';
-import type { ParamValue, Persister } from '@nozzleio/react-mosaic';
-import type { Search } from '@/router';
 import type { TopologySpec } from '../schema';
+import type { SelectionUrlRegistry } from './selection-url';
 
 /** The URL-param class prefix a house-convention variable param carries. */
 export const VARIABLE_PARAM_PREFIX = 'v';
@@ -62,9 +64,7 @@ export interface VariableUrlRegistry {
 }
 
 /** Build the ordered descriptor registry for every persisted `variable`. */
-export function buildVariableUrlRegistry(
-  topology: TopologySpec,
-): VariableUrlRegistry {
+export function buildVariableUrlRegistry(topology: TopologySpec): VariableUrlRegistry {
   const entries: Array<VariableUrlDescriptor> = [];
   for (const [entry, declaration] of Object.entries(topology)) {
     if (declaration.type !== 'variable') {

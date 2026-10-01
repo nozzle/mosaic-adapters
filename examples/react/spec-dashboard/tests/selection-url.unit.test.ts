@@ -1,5 +1,16 @@
-import { describe, expect, test } from 'vitest';
 import { createTopology } from '@nozzleio/react-mosaic';
+import { describe, expect, test } from 'vitest';
+
+import type { FilterPersistConfig, FilterUrlRegistry } from '../src/spec/filter-url';
+import { selectionPersistValueSchema } from '../src/spec/schema';
+import type { TopologySpec } from '../src/spec/schema';
+import { toTopologyConfig } from '../src/spec/topology';
+import { buildDashboardUrlInfo } from '../src/spec/url-state/info';
+import {
+  buildSelectionUrlPatch,
+  createSelectionWriteState,
+  hydratePersistedSelections,
+} from '../src/spec/url-state/selection-runtime';
 import {
   buildSelectionUrlRegistry,
   decodeNumericInterval,
@@ -8,20 +19,7 @@ import {
   encodeNumericInterval2D,
   validateSelectionUrl,
 } from '../src/spec/url-state/selection-url';
-import {
-  buildSelectionUrlPatch,
-  createSelectionWriteState,
-  hydratePersistedSelections,
-} from '../src/spec/url-state/selection-runtime';
-import { toTopologyConfig } from '../src/spec/topology';
-import { selectionPersistValueSchema } from '../src/spec/schema';
-import { buildDashboardUrlInfo } from '../src/spec/url-state/info';
 import { buildVariableUrlRegistry } from '../src/spec/url-state/variable-url';
-import type {
-  FilterPersistConfig,
-  FilterUrlRegistry,
-} from '../src/spec/filter-url';
-import type { TopologySpec } from '../src/spec/schema';
 
 const EMPTY_FILTERS: FilterUrlRegistry = {
   ids: [],
@@ -44,10 +42,7 @@ function selectionTopology(type: 'single' | 'intersect'): TopologySpec {
   };
 }
 
-function selection2DTopology(
-  x = 'plddt_total',
-  y = 'pae_interaction',
-): TopologySpec {
+function selection2DTopology(x = 'plddt_total', y = 'pae_interaction'): TopologySpec {
   return {
     scatter: {
       type: 'single',
@@ -76,20 +71,12 @@ describe('numeric interval URL codec', () => {
     },
   );
 
-  test.each([
-    '',
-    '1',
-    '..',
-    '1..',
-    '..2',
-    '2..1',
-    'a..2',
-    '1..2..3',
-    ' ..2',
-    '0x10..20',
-  ])('rejects malformed decode value %s', (value) => {
-    expect(decodeNumericInterval(value)).toBeNull();
-  });
+  test.each(['', '1', '..', '1..', '..2', '2..1', 'a..2', '1..2..3', ' ..2', '0x10..20'])(
+    'rejects malformed decode value %s',
+    (value) => {
+      expect(decodeNumericInterval(value)).toBeNull();
+    },
+  );
 
   test('round-trips one atomic rectangular interval', () => {
     expect(
@@ -212,9 +199,7 @@ describe('selection URL registry', () => {
   test('rejects persistence on a non-single entry', () => {
     const topology = selectionTopology('intersect');
     const registry = buildSelectionUrlRegistry(topology);
-    expect(
-      validateSelectionUrl(topology, registry, EMPTY_FILTERS, null),
-    ).toEqual([
+    expect(validateSelectionUrl(topology, registry, EMPTY_FILTERS, null)).toEqual([
       "topology entry 'brush' declares selection persistence but has type 'intersect'; persisted selections must use type 'single'.",
     ]);
   });
@@ -226,9 +211,7 @@ describe('selection URL registry', () => {
       entryName: 'filters',
       prefix: 's',
     };
-    expect(
-      validateSelectionUrl(topology, registry, EMPTY_FILTERS, prefixed),
-    ).toHaveLength(1);
+    expect(validateSelectionUrl(topology, registry, EMPTY_FILTERS, prefixed)).toHaveLength(1);
 
     const bareFilters: FilterUrlRegistry = {
       ids: ['s.brush'],
@@ -263,12 +246,10 @@ describe('selection URL runtime', () => {
     });
 
     expect(topology.activeClauses.state.clauses).toHaveLength(1);
-    expect(topology.activeClauses.state.clauses[0]?.clause.value).toEqual([
-      100, 500,
-    ]);
-    expect(
-      String(topology.activeClauses.state.clauses[0]?.clause.predicate),
-    ).toContain('search_volume');
+    expect(topology.activeClauses.state.clauses[0]?.clause.value).toEqual([100, 500]);
+    expect(String(topology.activeClauses.state.clauses[0]?.clause.predicate)).toContain(
+      'search_volume',
+    );
     topology.destroy();
   });
 
@@ -291,9 +272,9 @@ describe('selection URL runtime', () => {
 
     hydratePersistedSelections(topology, registry, { 's.brush': '100..500' });
 
-    expect(
-      String(topology.activeClauses.state.clauses[0]?.clause.predicate),
-    ).toContain('"metrics"."search_volume"');
+    expect(String(topology.activeClauses.state.clauses[0]?.clause.predicate)).toContain(
+      '"metrics"."search_volume"',
+    );
     topology.destroy();
   });
 
@@ -338,9 +319,7 @@ describe('selection URL runtime', () => {
       's.scatter': '70..90,0..20',
     });
 
-    const predicate = String(
-      topology.activeClauses.state.clauses[0]?.clause.predicate,
-    );
+    const predicate = String(topology.activeClauses.state.clauses[0]?.clause.predicate);
     expect(predicate).toContain('"metrics"."x"');
     expect(predicate).toContain('"metrics"."y"');
     topology.destroy();
@@ -428,8 +407,6 @@ describe('selection URL runtime', () => {
 
   test('does not claim an absent entry that has never held a valid value', () => {
     const registry = buildSelectionUrlRegistry(selectionTopology('single'));
-    expect(
-      buildSelectionUrlPatch(registry, [], createSelectionWriteState()),
-    ).toEqual({});
+    expect(buildSelectionUrlPatch(registry, [], createSelectionWriteState())).toEqual({});
   });
 });

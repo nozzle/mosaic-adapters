@@ -1,3 +1,4 @@
+import type { SparklinePoint } from '@nozzleio/react-mosaic';
 /**
  * Inline SVG sparkline with a nearest-point tooltip. Purely presentational: the
  * points come from a summary card's one batched sparkline client
@@ -5,7 +6,6 @@
  */
 import { useCallback, useId, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { SparklinePoint } from '@nozzleio/react-mosaic';
 
 const WIDTH = 100;
 const HEIGHT = 28;
@@ -31,9 +31,7 @@ interface ScaledPoint {
   point: SparklinePoint;
 }
 
-export function Sparkline(props: {
-  points: Array<SparklinePoint>;
-}): ReactElement | null {
+export function Sparkline(props: { points: Array<SparklinePoint> }): ReactElement | null {
   const { points } = props;
   const gradientId = useId();
   const [hovered, setHovered] = useState<ScaledPoint | null>(null);
@@ -61,8 +59,7 @@ export function Sparkline(props: {
     }
     return scaled
       .map(
-        (point, index) =>
-          `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)},${point.y.toFixed(1)}`,
+        (point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)},${point.y.toFixed(1)}`,
       )
       .join(' ');
   }, [scaled]);
@@ -138,29 +135,14 @@ export function Sparkline(props: {
             <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
           ) : null}
           {path !== null ? (
-            <path
-              d={path}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-            />
+            <path d={path} fill="none" stroke="currentColor" strokeWidth={1.5} />
           ) : null}
           {endpoint !== undefined ? (
-            <circle
-              cx={endpoint.x}
-              cy={endpoint.y}
-              r={1.75}
-              fill="currentColor"
-            />
+            <circle cx={endpoint.x} cy={endpoint.y} r={1.75} fill="currentColor" />
           ) : null}
           {hovered !== null ? (
             <>
-              <circle
-                cx={hovered.x}
-                cy={hovered.y}
-                r={2.5}
-                className="fill-gf-green"
-              />
+              <circle cx={hovered.x} cy={hovered.y} r={2.5} className="fill-gf-green" />
               <line
                 x1={hovered.x}
                 y1={0}

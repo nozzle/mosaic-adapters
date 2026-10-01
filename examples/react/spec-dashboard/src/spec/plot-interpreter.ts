@@ -1,3 +1,4 @@
+import type { Selection } from '@uwdata/mosaic-core';
 /**
  * The vgplot plot interpreter — a pure module that compiles the app-owned plot
  * DSL (`plot:` nodes in the spec) into an ordered list of vgplot directives ready
@@ -40,9 +41,9 @@
  * field. The interpreter never inspects the string (domain-blindness).
  */
 import { column } from '@uwdata/mosaic-sql';
-import { parseVariableRef } from './query-compiler';
-import type { Selection } from '@uwdata/mosaic-core';
 import type { ParamLike } from '@uwdata/mosaic-sql';
+
+import { parseVariableRef } from './query-compiler';
 import type {
   BrushStyleSpec,
   ChannelSpec,
@@ -78,24 +79,15 @@ export interface PlotApi {
   areaY: (data: PlotDataSource, channels: PlotChannels) => PlotDirective;
   regressionY: (data: PlotDataSource, channels: PlotChannels) => PlotDirective;
 
-  bin: (
-    column: string,
-    options?: { interval?: string; step?: number },
-  ) => PlotEncoding;
+  bin: (column: string, options?: { interval?: string; step?: number }) => PlotEncoding;
   count: () => PlotEncoding;
   sum: (column: string) => PlotEncoding;
   avg: (column: string) => PlotEncoding;
   min: (column: string) => PlotEncoding;
   max: (column: string) => PlotEncoding;
 
-  intervalX: (options: {
-    as?: Selection;
-    brush?: BrushVgStyle;
-  }) => PlotDirective;
-  intervalXY: (options: {
-    as?: Selection;
-    brush?: BrushVgStyle;
-  }) => PlotDirective;
+  intervalX: (options: { as?: Selection; brush?: BrushVgStyle }) => PlotDirective;
+  intervalXY: (options: { as?: Selection; brush?: BrushVgStyle }) => PlotDirective;
   toggle: (options: {
     as?: Selection;
     channels: Array<string>;
@@ -203,11 +195,7 @@ function isFieldEncoding(value: ChannelSpec): value is FieldEncodingSpec {
 }
 
 /** Compile one channel value (bare column, constant, or encoding) to vgplot. */
-function buildChannel(
-  api: PlotApi,
-  value: ChannelSpec,
-  deps: PlotInterpreterDeps,
-): PlotEncoding {
+function buildChannel(api: PlotApi, value: ChannelSpec, deps: PlotInterpreterDeps): PlotEncoding {
   if (!isFieldEncoding(value)) {
     // A bare `$name` variable ref → `column(param)` (a `ColumnParamNode`): the
     // variable's value names the encoded column, and the vgplot mark collects the
@@ -237,9 +225,7 @@ function buildChannel(
     case 'max': {
       const column = value.column;
       if (column === undefined) {
-        throw new PlotSpecError(
-          `aggregate '${value.agg}' requires a 'column'.`,
-        );
+        throw new PlotSpecError(`aggregate '${value.agg}' requires a 'column'.`);
       }
       return api[value.agg](column);
     }
@@ -255,10 +241,7 @@ function buildChannel(
  * the variable-named column); any other string passes through verbatim (vgplot
  * resolves a CSS color as a constant, any other string as a field).
  */
-function buildColorChannel(
-  value: string,
-  deps: PlotInterpreterDeps,
-): PlotEncoding {
+function buildColorChannel(value: string, deps: PlotInterpreterDeps): PlotEncoding {
   const variable = parseVariableRef(value);
   if (variable !== null) {
     return column(deps.resolveVariable(variable));
@@ -267,10 +250,7 @@ function buildColorChannel(
 }
 
 /** Assemble the mark's channel object from every present encoding. */
-function buildChannels(
-  mark: PlotMarkSpec,
-  deps: PlotInterpreterDeps,
-): PlotChannels {
+function buildChannels(mark: PlotMarkSpec, deps: PlotInterpreterDeps): PlotChannels {
   const { api } = deps;
   const channels: PlotChannels = {};
   if (mark.x !== undefined) {
@@ -307,10 +287,7 @@ const MARK_BUILDERS: Record<
   regressionY: (api, data, channels) => api.regressionY(data, channels),
 };
 
-function buildMark(
-  mark: PlotMarkSpec,
-  deps: PlotInterpreterDeps,
-): PlotDirective {
+function buildMark(mark: PlotMarkSpec, deps: PlotInterpreterDeps): PlotDirective {
   const { api } = deps;
   // A vgplot mark binds its `filterBy` Selection natively and resolves it
   // wholesale, so `exclude` supports only the opt-out form here: `'all'` drops
@@ -332,10 +309,7 @@ function buildMark(
       );
     }
   }
-  const data = api.from(
-    mark.data.from,
-    filterBy !== undefined ? { filterBy } : undefined,
-  );
+  const data = api.from(mark.data.from, filterBy !== undefined ? { filterBy } : undefined);
   // MARK_BUILDERS is keyed by the full mark union, so this is always defined.
   return MARK_BUILDERS[mark.mark](api, data, buildChannels(mark, deps));
 }
@@ -343,9 +317,7 @@ function buildMark(
 // ── Selects (interactors) ─────────────────────────────────────────────────────
 
 /** Map the snake_case brush style onto vgplot's camelCase form. */
-function toVgBrush(
-  brush: BrushStyleSpec | undefined,
-): BrushVgStyle | undefined {
+function toVgBrush(brush: BrushStyleSpec | undefined): BrushVgStyle | undefined {
   if (brush === undefined) {
     return undefined;
   }
@@ -368,16 +340,11 @@ function toVgBrush(
   return vg;
 }
 
-function buildSelect(
-  select: PlotSelectSpec,
-  deps: PlotInterpreterDeps,
-): PlotDirective {
+function buildSelect(select: PlotSelectSpec, deps: PlotInterpreterDeps): PlotDirective {
   const { api } = deps;
   const as = deps.resolveSelection(select.as);
   if (as === undefined) {
-    throw new PlotSpecError(
-      `select.as '${select.as}' does not resolve to a topology selection.`,
-    );
+    throw new PlotSpecError(`select.as '${select.as}' does not resolve to a topology selection.`);
   }
   const brush = toVgBrush(select.brush);
   switch (select.select) {
@@ -409,10 +376,7 @@ function buildSelect(
 
 // ── Semantic + geometry attributes ────────────────────────────────────────────
 
-function buildSemanticAttributes(
-  plot: PlotSpec,
-  deps: PlotInterpreterDeps,
-): Array<PlotDirective> {
+function buildSemanticAttributes(plot: PlotSpec, deps: PlotInterpreterDeps): Array<PlotDirective> {
   const { api } = deps;
   const attrs: Array<PlotDirective> = [];
   if (plot.x_scale !== undefined) {
@@ -436,11 +400,7 @@ function buildSemanticAttributes(
     attrs.push(api.xyDomain(deps.fixedDomains?.xy ?? api.Fixed));
   }
   if (plot.color_domain !== undefined) {
-    attrs.push(
-      api.colorDomain(
-        plot.color_domain === 'fixed' ? api.Fixed : plot.color_domain,
-      ),
-    );
+    attrs.push(api.colorDomain(plot.color_domain === 'fixed' ? api.Fixed : plot.color_domain));
   }
   // Labels: a present key (even `null`) is emitted; `null` hides the label.
   if (plot.x_label !== undefined) {
@@ -459,9 +419,7 @@ function buildSemanticAttributes(
 }
 
 /** Geometry directives, emitted AFTER semantic ones so the caller's sizing wins. */
-function buildGeometryAttributes(
-  deps: PlotInterpreterDeps,
-): Array<PlotDirective> {
+function buildGeometryAttributes(deps: PlotInterpreterDeps): Array<PlotDirective> {
   const { api, geometry } = deps;
   const attrs: Array<PlotDirective> = [];
   if (geometry.width !== undefined) {
@@ -551,9 +509,7 @@ function firstColumnMark(
  * single source column is omitted, so the interpreter falls back to `Fixed` for
  * it. Pure — the caller (which owns coordinator access) runs the queries.
  */
-export function collectFixedDomainRequests(
-  plot: PlotSpec,
-): Array<FixedDomainRequest> {
+export function collectFixedDomainRequests(plot: PlotSpec): Array<FixedDomainRequest> {
   const requests: Array<FixedDomainRequest> = [];
   const xLog = plot.x_scale === 'log';
   const yLog = plot.y_scale === 'log';
@@ -606,10 +562,7 @@ export function collectFixedDomainRequests(
  * caller geometry. Throws {@link PlotSpecError} on vocabulary/ref problems the
  * validator should have collected first.
  */
-export function buildPlotSpec(
-  plot: PlotSpec,
-  deps: PlotInterpreterDeps,
-): Array<PlotDirective> {
+export function buildPlotSpec(plot: PlotSpec, deps: PlotInterpreterDeps): Array<PlotDirective> {
   const directives: Array<PlotDirective> = [];
   for (const mark of plot.marks) {
     directives.push(buildMark(mark, deps));

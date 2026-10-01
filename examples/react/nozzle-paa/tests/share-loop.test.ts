@@ -33,9 +33,7 @@ async function filterParams(page: Page): Promise<Record<string, string>> {
 }
 
 test.describe('people-also-ask share loop', () => {
-  test('filtering via the UI writes exactly the touched per-entry params', async ({
-    page,
-  }) => {
+  test('filtering via the UI writes exactly the touched per-entry params', async ({ page }) => {
     await gotoDashboard(page);
 
     // A first filter: min-domains 4. Its param appears; nothing else does.
@@ -54,17 +52,13 @@ test.describe('people-also-ask share loop', () => {
     await expect(reddit).toBeVisible({ timeout: 15_000 });
     await reddit.click();
 
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'Domain:reddit.com',
-    );
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Domain:reddit.com');
     await expect
       .poll(() => filterParams(page))
       .toEqual({ minDomains: '4', 'facet:domain': 'reddit.com' });
   });
 
-  test('a min-domains URL hydrates to the identical filtered state', async ({
-    page,
-  }) => {
+  test('a min-domains URL hydrates to the identical filtered state', async ({ page }) => {
     await page.goto('/?f.minDomains=4');
     // Hydrates synchronously pre-first-query: the KPI lands on the filtered
     // value, never flashing the unfiltered 4,779.
@@ -72,72 +66,46 @@ test.describe('people-also-ask share loop', () => {
       timeout: 90_000,
     });
     // The chip and the input both reflect the hydrated intent.
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'Min Domains:≥ 4',
-    );
-    await expect(page.getByTestId('question-min-domains-input')).toHaveValue(
-      '4',
-    );
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Min Domains:≥ 4');
+    await expect(page.getByTestId('question-min-domains-input')).toHaveValue('4');
   });
 
-  test('a domain-facet URL hydrates the detail total to the facet count', async ({
-    page,
-  }) => {
+  test('a domain-facet URL hydrates the detail total to the facet count', async ({ page }) => {
     await page.goto('/?f.facet:domain=reddit.com');
     // Pre-filtered on load, so the questions KPI never shows the unfiltered
     // total — assert the narrowed detail total directly (cold-start timeout).
     // reddit.com's answer count is the narrowed detail total (test 12's value).
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      '17,902 rows match',
-      { timeout: 90_000 },
-    );
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'Domain:reddit.com',
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText('17,902 rows match', {
+      timeout: 90_000,
+    });
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Domain:reddit.com');
   });
 
-  test('a metric-threshold URL hydrates the KPI, rows, chip, and checkbox', async ({
-    page,
-  }) => {
+  test('a metric-threshold URL hydrates the KPI, rows, chip, and checkbox', async ({ page }) => {
     await page.goto('/?f.metric:question=gt:5000');
     // Exactly 3 questions appear on more than 5,000 SERPs.
     await expect(page.getByTestId('kpi-questions')).toHaveText('3', {
       timeout: 90_000,
     });
-    await expect(
-      page.getByTestId('summary-table-question').locator('tbody tr'),
-    ).toHaveCount(3);
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'SERP Appears:> 5000',
-    );
+    await expect(page.getByTestId('summary-table-question').locator('tbody tr')).toHaveCount(3);
+    await expect(page.getByTestId('active-filter-bar')).toContainText('SERP Appears:> 5000');
     // The control derives its applied state from the hydrated spec.
-    await expect(
-      page.getByTestId('metric-filter-question-apply'),
-    ).toBeChecked();
+    await expect(page.getByTestId('metric-filter-question-apply')).toBeChecked();
   });
 
-  test('a detail-column URL hydrates the query and the TanStack Table input', async ({
-    page,
-  }) => {
+  test('a detail-column URL hydrates the query and the TanStack Table input', async ({ page }) => {
     await page.goto('/?f.detail:question=coleman');
     // Pre-filtered on load: assert the narrowed detail total directly (the
     // struct-path ilike, test 11's pinned value) with a cold-start timeout.
-    await expect(page.getByTestId('detail-total-rows')).toHaveText(
-      '49,344 rows match',
-      { timeout: 90_000 },
-    );
+    await expect(page.getByTestId('detail-total-rows')).toHaveText('49,344 rows match', {
+      timeout: 90_000,
+    });
     // …and the bridge's adoption path drives the TanStack Table column input.
-    await expect(page.getByTestId('detail-filter-question')).toHaveValue(
-      'coleman',
-    );
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'PAA Question:coleman',
-    );
+    await expect(page.getByTestId('detail-filter-question')).toHaveValue('coleman');
+    await expect(page.getByTestId('active-filter-bar')).toContainText('PAA Question:coleman');
   });
 
-  test('removing a chip clears its URL entry (the external reason path)', async ({
-    page,
-  }) => {
+  test('removing a chip clears its URL entry (the external reason path)', async ({ page }) => {
     await page.goto('/?f.minDomains=4&f.facet:domain=reddit.com');
     await expect(page.getByTestId('kpi-questions')).toHaveText(/^\d/, {
       timeout: 90_000,
@@ -147,12 +115,8 @@ test.describe('people-also-ask share loop', () => {
       .toEqual({ minDomains: '4', 'facet:domain': 'reddit.com' });
 
     // Remove just the domain chip: its param clears, the min-domains one stays.
-    await page
-      .getByRole('button', { name: /Remove filter Domain: reddit\.com/ })
-      .click();
-    await expect(page.getByTestId('active-filter-bar')).not.toContainText(
-      'Domain:reddit.com',
-    );
+    await page.getByRole('button', { name: /Remove filter Domain: reddit\.com/ }).click();
+    await expect(page.getByTestId('active-filter-bar')).not.toContainText('Domain:reddit.com');
     await expect.poll(() => filterParams(page)).toEqual({ minDomains: '4' });
   });
 
@@ -167,17 +131,12 @@ test.describe('people-also-ask share loop', () => {
     await expect.poll(() => filterParams(page)).toEqual({});
   });
 
-  test('summary row selections round-trip through the URL', async ({
-    page,
-    context,
-  }) => {
+  test('summary row selections round-trip through the URL', async ({ page, context }) => {
     await gotoDashboard(page);
 
     // Select two question rows via the UI (no hardcoded row values — the
     // narrowed KPI count is the pinned assertion, as in the main suite).
-    const questionRows = page
-      .getByTestId('summary-table-question')
-      .locator('tbody tr');
+    const questionRows = page.getByTestId('summary-table-question').locator('tbody tr');
     await questionRows.nth(0).click();
     await questionRows.nth(1).click();
     await expect(page.getByTestId('kpi-questions')).toHaveText('2', {
@@ -209,12 +168,8 @@ test.describe('people-also-ask share loop', () => {
       .toEqual(['select:question']);
 
     // …removing the last chip clears the param entirely.
-    await shared
-      .getByRole('button', { name: /Remove filter Selected Question/ })
-      .click();
-    await expect(shared.getByTestId('kpi-questions')).toHaveText(
-      TOTAL_QUESTIONS,
-    );
+    await shared.getByRole('button', { name: /Remove filter Selected Question/ }).click();
+    await expect(shared.getByTestId('kpi-questions')).toHaveText(TOTAL_QUESTIONS);
     await expect.poll(() => filterParams(shared)).toEqual({});
     await shared.close();
   });
@@ -234,11 +189,7 @@ test.describe('people-also-ask share loop', () => {
     await expect(page.getByTestId('kpi-questions')).toHaveText('418', {
       timeout: 90_000,
     });
-    await expect(page.getByTestId('question-min-domains-input')).toHaveValue(
-      '4',
-    );
-    await expect(page.getByTestId('active-filter-bar')).toContainText(
-      'Min Domains:≥ 4',
-    );
+    await expect(page.getByTestId('question-min-domains-input')).toHaveValue('4');
+    await expect(page.getByTestId('active-filter-bar')).toContainText('Min Domains:≥ 4');
   });
 });

@@ -7,16 +7,12 @@
  * query-param (URL search param) navigations on the current path.
  */
 import { useCallback, useSyncExternalStore } from 'react';
+
 import { getSearch, navigateSearch, subscribe } from './core';
 import type { Search } from './core';
 
 // Consumers need the router's types without reaching into the core.
-export type {
-  NavigateSearchOptions,
-  Search,
-  SearchPatch,
-  SearchUpdater,
-} from './core';
+export type { NavigateSearchOptions, Search, SearchPatch, SearchUpdater } from './core';
 
 /** The whole search record, reactive. Re-renders on any search change. */
 export function useSearch(): Search {
@@ -32,10 +28,7 @@ export function useSearch(): Search {
  * re-render the caller.
  */
 export function useSearchParam(key: string): string | undefined {
-  const getSnapshot = useCallback(
-    (): string | undefined => getSearch()[key],
-    [key],
-  );
+  const getSnapshot = useCallback((): string | undefined => getSearch()[key], [key]);
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
