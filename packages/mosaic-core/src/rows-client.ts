@@ -1,6 +1,7 @@
 import { clausePoints } from '@uwdata/mosaic-core';
 import { Query, asc, count, desc, sql } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
+import { createClearClause } from './clause-factory';
 import { SqlIdentifier, createStructAccess } from './sql-access';
 import { PersisterLifecycle } from './persistence';
 import { isFilterSetPublishTarget } from './types';
@@ -422,14 +423,18 @@ class RowsDataClient<TRow>
     source: ClauseSource,
     tuples: Array<Array<unknown>>,
   ): void {
+    const clients = new Set<MosaicClient>([this.mosaicClient]);
+    // Mosaic 0.32's `clausePoints` turns `[]` into a `FALSE` predicate (an
+    // active clause matching nothing); an empty row selection must instead
+    // remove the source's clause.
+    if (tuples.length === 0) {
+      target.as.update(createClearClause(source, clients));
+      return;
+    }
     const fields = (target.fields ?? target.columns).map((field) =>
       createStructAccess(SqlIdentifier.from(field)),
     );
-    const clause = clausePoints(fields, tuples, {
-      source,
-      clients: new Set<MosaicClient>([this.mosaicClient]),
-    });
-    target.as.update(clause);
+    target.as.update(clausePoints(fields, tuples, { source, clients }));
   }
 
   /**
