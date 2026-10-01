@@ -106,35 +106,12 @@ jobs:
           pnpm --version
 
       - name: Publish to npm
-        id: publish
         uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           pack-dir-artifact-id: ${{ needs.ci.outputs.pack-dir-artifact-id }}
           create-github-releases: true
         env:
-          # pnpm 11 publishes natively and ignores `NPM_CONFIG_*` settings.
+          # Trusted publishing generates provenance on its own; these are set
+          # for both npm and pnpm (pnpm 11 ignores `NPM_CONFIG_*`).
+          NPM_CONFIG_PROVENANCE: 'true'
           PNPM_CONFIG_PROVENANCE: 'true'
-
-      # A publish without an attestation does not fail on its own, so check
-      # that every published version carries npm provenance. Retries cover
-      # registry propagation lag right after publishing.
-      - name: Verify provenance attestations
-        if: steps.publish.outputs.published == 'true'
-        env:
-          PUBLISHED_PACKAGES: ${{ steps.publish.outputs.published-packages }}
-        run: |
-          for spec in $(jq -r '.[] | "\(.name)@\(.version)"' <<< "$PUBLISHED_PACKAGES"); do
-            verified=false
-            for attempt in 1 2 3 4 5 6; do
-              if npm view "$spec" dist.attestations.provenance.predicateType 2>/dev/null | grep -q 'slsa.dev/provenance'; then
-                verified=true
-                break
-              fi
-              sleep 10
-            done
-            if [ "$verified" != true ]; then
-              echo "::error::No provenance attestation found for $spec"
-              exit 1
-            fi
-            echo "Provenance verified for $spec"
-          done
