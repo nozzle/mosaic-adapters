@@ -221,24 +221,26 @@ In practice, reset `pageIndex` inside your `onSortingChange`/
 Those handlers only cover filters born in TanStack Table state. Any other `$page`
 publisher — a vgplot brush, a facet toggle, a histogram range — can shrink
 `totalRows` below the current offset with no handler involved, stranding the
-table on an empty page. Clamp against the client's `totalRows` (with
+table on an empty page. Clamp the table's `pagination` state against the
+client's `totalRows` in an effect with `clampPagination` (with
 `rowCount: 'window'` a stranded offset returns zero rows and the total reads
 0, so the clamp resolves to page one):
 
 ```tsx
+const { totalRows } = athletes;
 useEffect(() => {
-  if (athletes.totalRows === undefined) {
-    return;
+  if (totalRows === undefined) {
+    return; // no total yet — keep a restored pageIndex
   }
-  const pageCount = Math.ceil(athletes.totalRows / pagination.pageSize);
-  if (pagination.pageIndex > 0 && pagination.pageIndex >= pageCount) {
-    setPagination((prev) => ({
-      ...prev,
-      pageIndex: Math.max(0, pageCount - 1),
-    }));
-  }
-}, [athletes.totalRows, pagination.pageIndex, pagination.pageSize]);
+  setPagination((prev) => clampPagination(prev, totalRows));
+}, [totalRows]);
 ```
+
+`clampPagination` returns `prev` unchanged when the page is in range, so this
+only re-renders when it actually moves the page. See
+[Clamping a stale page](tanstack-table/integration.md#clamping-a-stale-page)
+for why the clamp writes the state in an effect rather than running during
+render.
 
 ## What you get
 

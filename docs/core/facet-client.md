@@ -27,7 +27,7 @@ The base relation (`from`: table name or query factory) is wrapped as `SELECT va
 
 ## Inputs
 
-`FacetInputs` is plain JSON: `{ search?: string, limit?: number }`. `search` is a case-insensitive substring match on the (stringified) option value; `limit` caps the option list. Both are value-diffed — a change re-queries exactly once.
+`FacetInputs` is plain JSON: `{ search?: string, limit?: number }`. `search` is a case-insensitive, literal substring match on the (stringified) option value — `%`, `_` and `\` in the search text match themselves rather than acting as `LIKE` wildcards (the same literal semantics as upstream's `clauseMatch` `'contains'`); `limit` caps the option list. Both are value-diffed — a change re-queries exactly once.
 
 ## Infinite scroll and search
 

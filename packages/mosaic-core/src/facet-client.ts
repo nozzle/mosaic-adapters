@@ -18,6 +18,7 @@ import { BaseDataClient } from './base-client';
 import { createClearClause, createValueClause } from './clause-factory';
 import type { FilterSpec } from './filter-set/types';
 import { PersisterLifecycle } from './persistence';
+import { escapeSqlLikePattern } from './sql-access';
 import { isFilterSetPublishTarget } from './types';
 import type {
   FacetClient,
@@ -147,7 +148,10 @@ class FacetDataClient extends BaseDataClient<FacetInputs, FacetClientState> impl
       .where(isNotNull(column('value')))
       .groupby('value');
     if (search !== undefined && search !== '') {
-      query.where(sql`CAST(${column('value')} AS VARCHAR) ILIKE ${literal(`%${search}%`)}`);
+      // `search` is literal text (like upstream's `clauseMatch` 'contains'):
+      // escape LIKE metacharacters so `%` / `_` / `\` match themselves.
+      const pattern = `%${escapeSqlLikePattern(search)}%`;
+      query.where(sql`CAST(${column('value')} AS VARCHAR) ILIKE ${literal(pattern)} ESCAPE '\\'`);
     }
     if (sort === 'count') {
       query.orderby(desc('count'), asc('value'));

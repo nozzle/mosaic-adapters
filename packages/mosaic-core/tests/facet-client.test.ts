@@ -90,6 +90,45 @@ describe('facet options', () => {
 
     facet.destroy();
   });
+
+  test('search matches LIKE metacharacters literally', async () => {
+    await db.exec(`
+      CREATE TABLE codes(code TEXT);
+      INSERT INTO codes VALUES
+        ('100%'), ('1000'), ('a_b'), ('axb'), ('c\\d'), ('cd');
+    `);
+    const facet = createFacetClient({
+      coordinator: db.coordinator,
+      from: 'codes',
+      column: 'code',
+      sort: 'alpha',
+    });
+
+    await waitFor(() => {
+      expect(facet.store.state.options).toHaveLength(6);
+    });
+
+    // Unescaped, `0%` would also match '1000' (`%` as a wildcard).
+    facet.setInputs({ search: '0%' });
+    await waitFor(() => {
+      expect(facet.store.state.options.map((o) => o.value)).toEqual(['100%']);
+    });
+
+    // Unescaped, `_` would also match 'axb' (`_` as a single-char wildcard).
+    facet.setInputs({ search: 'a_' });
+    await waitFor(() => {
+      expect(facet.store.state.options.map((o) => o.value)).toEqual(['a_b']);
+    });
+
+    // A backslash is the escape character, so it must itself be escaped.
+    facet.setInputs({ search: 'c\\d' });
+    await waitFor(() => {
+      expect(facet.store.state.options.map((o) => o.value)).toEqual(['c\\d']);
+    });
+    expect(db.clientQueries.at(-1)).toContain("ESCAPE '\\'");
+
+    facet.destroy();
+  });
 });
 
 describe('facet publishing', () => {

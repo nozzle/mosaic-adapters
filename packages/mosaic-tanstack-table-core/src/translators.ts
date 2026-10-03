@@ -58,11 +58,18 @@ export function paginationToWindow(pagination: PaginationState): {
  * rather than dividing by zero. When the incoming `pageIndex` is already in
  * range the input object is returned unchanged, avoiding needless re-renders.
  *
+ * Apply it to the pagination state itself (not a derived copy) after the total
+ * settles, e.g. in a React effect; see the "Clamping a stale page" section of
+ * `docs/tanstack-table/integration.md` for why it must not run during render.
+ *
  * @example
  * ```ts
- * const result = rowsClient.getResult();
- * const safe = clampPagination(pagination, result.totalRows);
- * const window = paginationToWindow(safe);
+ * useEffect(() => {
+ *   if (totalRows === undefined) {
+ *     return;
+ *   }
+ *   setPagination((prev) => clampPagination(prev, totalRows));
+ * }, [totalRows]);
  * ```
  */
 export function clampPagination(

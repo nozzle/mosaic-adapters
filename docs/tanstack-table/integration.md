@@ -14,21 +14,10 @@ You own `useTable` and its state, exactly where TanStack Table manual mode wants
 
 - `sortingToOrderBy(sorting, columnMap?)` → `Array<OrderByItem>` — TanStack Table column ids are used as SQL column names unless remapped via `columnMap`.
 - `paginationToWindow(pagination)` → `{ limit, offset }`.
-- `clampPagination(pagination, totalRows)` → `PaginationState` — clamp a stale `pageIndex` into `[0, lastPage]` when a filter shrinks the result under the current page. This is the sharp edge of the manual-pagination model: an unclamped `pageIndex` renders an empty table with a broken pager and no error. `totalRows` of `0`/`undefined` → page 0; a `pageIndex` already in range is returned unchanged. **Caveat:** under `rowCount: 'window'`, `totalRows: 0` is ambiguous between "empty result" and "past the end", so past-the-end recovers only to page 0, not the true last page — use `rowCount: 'query'` when exact last-page recovery matters.
-
-  ```tsx
-  // Clamp against the rows client's totals before deriving the window.
-  const safePagination = clampPagination(pagination, athletes.totalRows);
-  const athletes = useMosaicRows<AthleteRow>({
-    query: ({ where }) => Query.from('athletes').select('*').where(where),
-    filterBy: $page,
-    inputs: { ...paginationToWindow(safePagination) },
-    rowCount: 'query', // exact last-page recovery
-  });
-  ```
+- `clampPagination(pagination, totalRows)` → `PaginationState` — clamp a stale `pageIndex` into `[0, lastPage]` when a filter shrinks the result under the current page. This is the sharp edge of the manual-pagination model: an unclamped `pageIndex` renders an empty table with a broken pager and no error. `totalRows` of `0`/`undefined` → page 0; a `pageIndex` already in range is returned unchanged. **Caveat:** under `rowCount: 'window'`, `totalRows: 0` is ambiguous between "empty result" and "past the end", so past-the-end recovers only to page 0, not the true last page — use `rowCount: 'query'` when exact last-page recovery matters. Apply it to the table's `pagination` state in an effect — see [Clamping a stale page](#clamping-a-stale-page).
 
 ```tsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   columnFilteringFeature,
   rowPaginationFeature,
@@ -43,6 +32,7 @@ import { Selection } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import { createFilterSet, useMosaicRows } from '@nozzleio/react-mosaic';
 import {
+  clampPagination,
   paginationToWindow,
   sortingToOrderBy,
   useTanStackTableFilterBridge,
@@ -92,6 +82,16 @@ function AthletesTable() {
     rowCount: 'window',
   });
 
+  // Clamp the table's own pagination state once the total settles (see
+  // "Clamping a stale page" below).
+  const { totalRows } = athletes;
+  useEffect(() => {
+    if (totalRows === undefined) {
+      return;
+    }
+    setPagination((prev) => clampPagination(prev, totalRows));
+  }, [totalRows]);
+
   const table = useTable({
     features, // v9: the built-in feature set declared above
     data: athletes.rows, // …data out, verbatim
@@ -110,6 +110,32 @@ function AthletesTable() {
   // …plain TanStack Table rendering.
 }
 ```
+
+### Clamping a stale page
+
+Any `$page` publisher — a column filter, a facet toggle, a brush, a chip bar's X — can shrink `totalRows` below the current offset. The canonical recipe clamps the table's `pagination` state (not just the query window) in an effect keyed on `totalRows`:
+
+```tsx
+const { totalRows } = athletes;
+useEffect(() => {
+  // No total yet (first load, or `rowCount: 'none'`): nothing to clamp
+  // against. Without this guard a restored `pageIndex` resets to 0 on mount.
+  if (totalRows === undefined) {
+    return;
+  }
+  setPagination((prev) => clampPagination(prev, totalRows));
+}, [totalRows]);
+```
+
+`clampPagination` returns `prev` unchanged when the page is already in range, so the state setter bails out and an in-range total costs no re-render. The effect is keyed on `totalRows` only: a page-size change needs no re-clamp, because TanStack Table's `setPageSize` already re-derives `pageIndex` from the top visible row.
+
+Why an effect that writes `pagination`, rather than a clamp during render:
+
+- **Clamp the state, not a derived copy.** Clamping only the value fed to `paginationToWindow` (or to the table's `state`) leaves your `pagination` state on the stale page: anything reading it — a "Page N" label, URL sync — disagrees with the table, and the stale index resurfaces as soon as the total grows back (clearing the filter jumps the user back to the old page).
+- **A store write during render flushes mid-render.** The pagination state is often not a plain `useState` in the reading component: it lives in an atom, a router's search params, or the table's own store (uncontrolled `pagination`). Writing any of these during render notifies their subscribers synchronously, in the middle of React's render pass. React flags it ("Cannot update a component while rendering a different component"), and every notified subscriber re-renders and runs the clamp again. If that write produces a fresh object, even an equal one, the store notifies again and the render never settles.
+- **TanStack Table v9's setters always produce a new state object.** The obvious render-time clamp, `table.setPageIndex(Math.min(pageIndex, lastPage))`, builds a new `{ ...old, pageIndex }` on every call, even when the index doesn't change. With controlled `state: { pagination }`, React compares that object to the current state by identity, sees a change, re-renders, and the clamp runs again. React aborts with "Too many re-renders". `clampPagination` returns the same object when nothing moved, which breaks this cycle — but only when you call it on the state setter directly, never through the table's page setters.
+
+The effect avoids all three: it runs once per committed `totalRows` change, after render, writes through the state owner's own setter, and works wherever the pagination state lives. It costs one extra commit. TanStack Table v9 syncs controlled `state` into its store after commit, so the clamped value reaches the table on the next render.
 
 ## The filter bridge
 
