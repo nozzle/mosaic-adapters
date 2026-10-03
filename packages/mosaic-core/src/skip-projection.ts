@@ -42,6 +42,31 @@ export function isSkippedClause(clause: SelectionClause, skip: ReadonlySet<strin
   return typeof source.id === 'string' && skip.has(source.id);
 }
 
+/** What a batch needs to reproduce a skip projection's `update` / `reset`. */
+export interface SkipProjectionInfo {
+  /** The skipped source ids. */
+  readonly skip: ReadonlySet<string>;
+  /** The Selection the projection derives from. */
+  readonly parent: Selection;
+}
+
+/**
+ * Live skip projections, keyed by the derived Selection. Lets a batch
+ * recognise a projection without widening {@link createMappedSelection}.
+ */
+const skipProjections = new WeakMap<Selection, SkipProjectionInfo>();
+
+/**
+ * The skip set and parent of a skip projection from
+ * {@link createSkipProjectedSelection}, or `null` for any other Selection.
+ * Internal: lets a batch reproduce the projection's filtered `update` /
+ * `reset` (minus the emit), so the projection's own derived Selections are
+ * updated in the same batch.
+ */
+export function getSkipProjection(selection: Selection): SkipProjectionInfo | null {
+  return skipProjections.get(selection) ?? null;
+}
+
 /**
  * Derive a Selection from `parent` that ignores every clause whose
  * `source.id` is in `skip`. Callers pass the derived Selection to the
@@ -59,5 +84,12 @@ export function createSkipProjectedSelection(
     }
     return clause;
   });
-  return { selection: mapped.selection, destroy: mapped.destroy };
+  skipProjections.set(mapped.selection, { skip, parent });
+  return {
+    selection: mapped.selection,
+    destroy: () => {
+      skipProjections.delete(mapped.selection);
+      mapped.destroy();
+    },
+  };
 }

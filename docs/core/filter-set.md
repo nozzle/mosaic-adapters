@@ -47,7 +47,7 @@ type FilterSpec = {
 };
 ```
 
-`set(spec)` upserts by `id` (replace-on-update, publish suppressed when the SQL is unchanged), `remove(id)` deletes the spec and clears its clauses, `clear(id)` keeps the spec but drops its value (inactive — a builder row with no value yet), `reset()` empties the set. Two specs on the same column coexist — `id` is the key, not `column`.
+`set(spec)` upserts by `id` (replace-on-update, publish suppressed when the SQL is unchanged), `remove(id)` deletes the spec and clears its clauses, `clear(id)` keeps the spec but drops its value (inactive — a builder row with no value yet), `reset()` empties the set, and [`batch(fn)`](#several-writes-as-one-update-batch-opt-in) applies several of these writes as one update. Two specs on the same column coexist — `id` is the key, not `column`.
 
 A dotted `column` is a struct path by default: `meta.country` resolves to `"meta"."country"`. For a column whose name itself contains a dot, set `columnPaths: 'literal'` and the set reads it as one identifier, `"meta.country"`, in the kind's `args.column`, in the columns of a multi-column `points` envelope, and in a `subqueryFilterKind`'s outer column. The field is plain JSON, so it persists and hydrates with the spec. Facet and histogram clients created with `columnPaths: 'literal'` write it onto their `publish.into` specs.
 
@@ -61,6 +61,39 @@ filters.reset({ keep: (spec) => spec.id.startsWith('pinned:') });
 ```
 
 Calling `reset()` and then re-adding the pinned specs gives the same end state, but every target runs an extra query round, and one of those rounds runs without the pinned filter. To run this from a page-wide "Clear all" in a [topology](./selection-topology.md), see the [page-wide reset recipe](../react/topology-recipes.md#keeping-some-filter-set-specs).
+
+### Several writes as one update: `batch()` (opt-in)
+
+Every `set` / `remove` / `clear` / `reset` call publishes on its own. When one user action makes several writes — a filter editor's Apply, replaying a saved view — wrap them in `batch()` to publish them as one update:
+
+```ts
+filters.batch((tx) => {
+  tx.remove('date');
+  tx.set(sportSpec);
+  tx.set(weightSpec);
+});
+```
+
+Nothing changes unless you call `batch`. How much it saves depends on the target's resolver:
+
+- **Crossfilter** targets run one query round per write: Mosaic's dispatch queue keeps one pending update per clause source.
+- **Intersect, union and single** targets already collapse to about two rounds: the first write runs right away and the queue keeps only the latest value.
+
+Batched, both run one round. In detail:
+
+- Each write updates the target's resolved clauses as it happens, so context predicates and later writes in the batch see it. When the callback returns, every touched Selection emits once: targets, and the `compose` / `cascading` contexts and skip projections derived from them. Then `store` updates once and the persister is written once (`'update'`, or `null` / `'clear'` if the set ended up empty; `'external'`, as without a batch, when the only change was a clause dropped from outside the set).
+- `store.state` is not updated until the batch ends.
+- On a `single` target only the last write's clause survives, so the combined update drops the clauses of earlier specs written to it. The set treats that like any external drop and removes those specs, as it does without a batch once the dropped clause is delivered. In a batch this happens before anything emits: a removed spec's clauses on its other targets (a kind that also publishes to a `members` target, say) are cleared inside the batch, so each of those targets still emits once, with the final state. `store` updates and the persister is written once, with `'update'`.
+- A kind that reads `contextPredicate` is rebuilt inside the batch, so it ships with its siblings' new clauses even if it was written before them. In a topology whose FilterSets read each other's targets as contexts (A's context is B's target, B's is C's), the rebuilds repeat until nothing changes, so every set in the chain emits once with the final state. A cyclic context graph (A reads B and B reads A) is not guaranteed to settle inside the batch; it may emit again from the usual rebuild after the batch.
+- **Pre-aggregation is skipped for the combined update.** Mosaic's pre-aggregator reuses a cached view for as long as the same clause source stays active, and that view holds the values the _other_ clauses had when it was built. A combined update changes several clauses at once, so it is emitted with a synthetic active clause instead: a fresh source with no predicate. The pre-aggregator drops its cache and the coordinator runs the standard query for that one update; the next ordinary interaction builds views again. Two side effects: `selection.active` is that synthetic clause (`selection.value` still reports the last written value; it has no `meta` and empty `fields`, so code that reads `selection.active.meta` after a batched update gets `undefined`), and on a crossfilter target the widget that published a clause re-queries too (its own clause is still excluded from its query).
+- Only this set's writes are deferred. A write made directly on a Selection (`selection.update`, an interactor) or a Param inside the callback is dispatched as usual, without waiting for the batch. A Param that is still dispatching an earlier update may deliver its new value after the batched Selections emit; see [Params in `topology.batch()`](./selection-topology.md#batch).
+- It is not a transaction. If the callback throws, the writes made before the throw still apply and emit, then the callback's error propagates (even if a listener also throws while the batch closes).
+- `tx` is the set's own mutators; calling `filters.set(...)` inside the callback is batched too. A nested `filters.batch()` joins the outer one. On a destroyed set the callback still runs and its writes are no-ops.
+- Only one batch can be open at a time. Opening a batch on a _different_ FilterSet (or a `topology.batch()`) inside the callback throws, before that inner callback runs. Two separate batches would each flush on their own, so a Selection or context they share would emit more than once, and not always with the final state. To batch writes to several sets, use `topology.batch()` on a topology that owns them all. Writes to another set made without `batch` (a plain `other.set(...)`) are not deferred: they emit immediately, as usual. The batch counts as open until it has emitted, so a `batch()` on another set or a topology from a filter kind rebuilt against the new context throws as well (a `batch()` on the same set joins, as above), and so does any `batch()` from a `value` listener fired by the flush. The error message is exported as `NESTED_BATCH_ERROR_MESSAGE`.
+- Each Selection derived from a target is updated in the same batch, including a skip projection (`skipSources`) and anything composed over it. A custom `Selection` subclass that overrides `update` or `reset` (including one from `createMappedSelection`, other than the skip projection) cannot be deferred: it is written with its own method and emits immediately, as it would without a batch.
+- The callback must be synchronous. With an `async` callback, writes after the first `await` run after the batch has closed and are not batched.
+
+In a [topology](./selection-topology.md#batch), `topology.batch()` shares one batch across every FilterSet it owns, and a `filterSet.batch()` on an owned set inside it joins that batch. The other direction is not supported: `topology.batch()` inside a `filterSet.batch()` throws. Open the topology batch on the outside instead. A `filterSet.batch()` opened on its own (outside any `topology.batch()`) is not a topology batch: an owning topology refreshes `activeClauses` once per Selection the set touched rather than once overall, so prefer `topology.batch()` when one set writes to several targets.
 
 ## One primitive, two authoring styles
 

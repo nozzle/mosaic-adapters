@@ -338,6 +338,61 @@ describe('createMappedSelection', () => {
     handle.destroy();
   });
 
+  test('a dropped clause that displaces kept clauses on a single parent clears them downstream', async () => {
+    const parent = Selection.single();
+    const handle = createMappedSelection(parent, (clause) => {
+      if (clause.source === sportSource) {
+        return null;
+      }
+      return clause;
+    });
+    const composed = Selection.intersect({ include: handle.selection });
+    const included = Selection.single({ include: handle.selection });
+    parent.update(weight(70));
+    await parent.pending('value');
+    await settle(0);
+    expect(composed.clauses).toHaveLength(1);
+    expect(included.clauses).toHaveLength(1);
+    const emitted = countEmits(handle.selection);
+    const composedEmits = countEmits(composed);
+    const includedEmits = countEmits(included);
+
+    // The single parent keeps only `sport`, which the map drops.
+    parent.update(sport('swim'));
+    await parent.pending('value');
+    await settle(0);
+
+    expect(parent.clauses).toHaveLength(1);
+    expect(handle.selection.clauses).toHaveLength(0);
+    expect(composed.clauses).toHaveLength(0);
+    expect(included.clauses).toHaveLength(0);
+    expect(emitted.count).toBe(1);
+    expect(composedEmits.count).toBe(1);
+    expect(includedEmits.count).toBe(1);
+    handle.destroy();
+  });
+
+  test('a removal for an uncarried source on a single parent still drops the displaced clause', async () => {
+    const parent = Selection.single();
+    const handle = createMappedSelection(parent, (clause) => clause);
+    const included = Selection.single({ include: handle.selection });
+    parent.update(weight(70));
+    await parent.pending('value');
+    await settle(0);
+    const emitted = countEmits(handle.selection);
+
+    // A single resolver clears its list on any update, removals included.
+    parent.update(sport(undefined));
+    await parent.pending('value');
+    await settle(0);
+
+    expect(parent.clauses).toHaveLength(0);
+    expect(handle.selection.clauses).toHaveLength(0);
+    expect(included.clauses).toHaveLength(0);
+    expect(emitted.count).toBe(1);
+    handle.destroy();
+  });
+
   test('a mapped Selection of a mapped Selection follows relayed updates', async () => {
     const parent = Selection.intersect();
     const first = createMappedSelection(parent, toDiscipline);

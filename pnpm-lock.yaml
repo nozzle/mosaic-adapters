@@ -300,6 +300,9 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
+      '@nozzleio/test-support':
+        specifier: workspace:*
+        version: link:../../../packages/test-support
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.63.0

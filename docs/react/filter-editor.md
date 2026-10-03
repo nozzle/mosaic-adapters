@@ -51,6 +51,23 @@ function ConditionEditor(props: { id: string; column: string; label: string }) {
 }
 ```
 
+### Applying several specs at once
+
+An editor that applies several rows with one Apply button can wrap the writes in [`filterSet.batch()`](../core/filter-set.md#several-writes-as-one-update-batch-opt-in). It is opt-in. The set then publishes them as one update: one query round, one store update, and one persister write, instead of one per row on crossfilter targets.
+
+```ts
+const apply = (rows: Array<FilterSpec>, removed: Array<string>) => {
+  filterSet.batch((tx) => {
+    for (const id of removed) {
+      tx.remove(id);
+    }
+    for (const spec of rows) {
+      tx.set(spec);
+    }
+  });
+};
+```
+
 ## Driven by operator arity
 
 The value control(s) are chosen by the operator's `arity` (`none | unary | range | set`) — the metadata each operator-interpreting kind carries. This is what lets one editor serve any operator without hard-coding a value input per operator. See the [Operators section of the filter-set docs](../core/filter-set.md#operators) for the full per-kind operator tables and the arity→input mapping (don't duplicate them — enumerate `builtinFilterKinds.<kind>.operators` at runtime and read `arity`).

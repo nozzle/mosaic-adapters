@@ -74,6 +74,8 @@ export type {
 export { createSkipProjectedSelection } from './skip-projection';
 export type { SkipProjectedSelectionHandle } from './skip-projection';
 
+export { NESTED_BATCH_ERROR_MESSAGE } from './selection-batch';
+
 export { isFilterSetPublishTarget } from './types';
 
 export { MOSAIC_CLIENT_META, getClientMeta } from './client-meta';

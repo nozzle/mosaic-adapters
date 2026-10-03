@@ -30,7 +30,7 @@ import {
 } from './selection-runtime';
 import { buildVariableParamOptions } from './variable-url';
 
-interface FilterSetPersistenceBinding {
+export interface FilterSetPersistenceBinding {
   filterSet: FilterSet;
   persister: Persister<Array<FilterSpec>>;
 }
@@ -71,17 +71,36 @@ function filterSetPersistenceBinding(
     : { filterSet, persister: createDefaultsPersister(defaults) };
 }
 
-/** Apply the synchronous URL/default bootstrap read to a newly-built FilterSet. */
-function hydrateFilterSet(binding: FilterSetPersistenceBinding): void {
+/**
+ * Apply the synchronous URL/default bootstrap read to a newly-built FilterSet.
+ *
+ * The replay runs inside an opt-in `topology.batch()`, so the hydrated specs
+ * publish as one update. URL params arrive in whatever order the link has, and
+ * a context-dependent spec (a metric threshold's membership subquery reads the
+ * `page` context) replayed before its siblings would otherwise first publish
+ * a subquery without them and only be rebuilt a microtask later. In the batch
+ * it is rebuilt before anything emits, so every target emits once, already
+ * final. A single spec has nothing to combine and is set directly.
+ */
+export function hydrateFilterSet(topology: Topology, binding: FilterSetPersistenceBinding): void {
   const result = binding.persister.read(undefined);
   if (isThenable(result)) {
     throw new Error(
       'spec-dashboard URL persistence must hydrate synchronously before widgets mount.',
     );
   }
-  for (const spec of result ?? []) {
-    binding.filterSet.set(spec);
+  const specs = result ?? [];
+  const replay = (): void => {
+    for (const spec of specs) {
+      binding.filterSet.set(spec);
+    }
+  };
+  if (specs.length < 2) {
+    // Nothing to combine: publish the (at most one) spec the ordinary way.
+    replay();
+    return;
   }
+  topology.batch(replay);
 }
 
 /** Build one topology from the current hook snapshot and sync later set changes. */
@@ -100,7 +119,7 @@ export function usePersistedTopology(compiled: CompiledSpec): Topology {
         navigateSearch,
       });
       if (binding !== null) {
-        hydrateFilterSet(binding);
+        hydrateFilterSet(topology, binding);
       }
       hydratePersistedSelections(topology, compiled.urlState.selections, search);
     },

@@ -1139,6 +1139,41 @@ test.describe('spec-driven dashboard', () => {
     await expect(page.getByTestId('filter-chip-text-phrase')).toHaveCount(0);
   });
 
+  test('(p4b) a multi-filter link hydrates in one batch in either param order; clear-all drops every param', async ({
+    page,
+  }) => {
+    // The threshold's membership subquery reads the page context, so with its
+    // param first it is replayed before the phrase filter it must include. The
+    // batched hydration rebuilds it before anything emits: both orders land on
+    // the same view.
+    for (const params of [
+      'f.metric:phrase=gt:50000&f.text:phrase=gas',
+      'f.text:phrase=gas&f.metric:phrase=gt:50000',
+    ]) {
+      await page.goto(`/?spec=questions&${params}`);
+      await expect(page.getByTestId('kpi-kpi_phrases_all-value')).toHaveText(TOTAL_PHRASES, {
+        timeout: 90_000,
+      });
+      await expect(page.getByTestId('filter-chip-metric-phrase')).toBeVisible();
+      await expect(page.getByTestId('filter-chip-text-phrase')).toBeVisible();
+      // Only 'gasoline stove' contains "gas" AND peaks above 50,000.
+      await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText('1', {
+        timeout: 30_000,
+      });
+    }
+
+    // Clear All (one batched reset) removes both owned params together.
+    await page.getByTestId('clear-all-filters').click();
+    await expect
+      .poll(() => {
+        const search = new URL(page.url()).searchParams;
+        return search.has('f.metric:phrase') || search.has('f.text:phrase');
+      })
+      .toBe(false);
+    await expect(page.getByTestId('active-filter-bar')).toHaveCount(0);
+    await expect(page.getByTestId('kpi-kpi_phrases-value')).toHaveText(TOTAL_PHRASES);
+  });
+
   test('(p5) switching specs nukes every non-spec param', async ({ page }) => {
     // Load questions with an owned filter param AND a foreign param.
     await page.goto('/?spec=questions&f.text:phrase=stove&foo=bar');
