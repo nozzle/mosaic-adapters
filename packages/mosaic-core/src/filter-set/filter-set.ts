@@ -29,6 +29,11 @@
  * - **Teardown** clears every published clause by default (the targets may
  *   outlive the set). `destroy({ silent: true })` skips the clears — used by
  *   `createTopology`, whose targets die with the set.
+ *
+ * - **Resolution is shared.** Spec → emissions runs through
+ *   {@link resolveFilterSpecEmissions}, the same core behind the public
+ *   `emitFilterSpec`, so a spec's computed clause and its published clause
+ *   cannot drift. Target-existence checks and warnings stay here.
  */
 import { Store } from '@tanstack/store';
 import type { ClauseSource, MosaicClient, Selection, SelectionClause } from '@uwdata/mosaic-core';
@@ -43,19 +48,21 @@ import {
 } from '../clause-factory';
 import { PersisterLifecycle } from '../persistence';
 import type { PersisterWriteReason } from '../persistence';
-import { SqlIdentifier, identifierAccess, isColumnPathMode } from '../sql-access';
+import { isColumnPathMode } from '../sql-access';
+import { DEFAULT_FILTER_TARGET, resolveFilterSpecEmissions } from './emit';
 import { formatFilterValue } from './format';
 import { builtinFilterKinds } from './kinds';
 import type {
   FilterKind,
-  FilterKindArgs,
   FilterSet,
   FilterSetChip,
   FilterSetDestroyOptions,
   FilterSetOptions,
+  FilterSetResetOptions,
   FilterSetSetOptions,
   FilterSetState,
   FilterSpec,
+  FilterSpecEmission,
 } from './types';
 
 /** A clause source descriptor stable per `(spec.id, target)`. */
@@ -105,9 +112,10 @@ export function createFilterSet(options: FilterSetOptions): FilterSet {
 
 class FilterSetImpl implements FilterSet {
   readonly store: Store<FilterSetState>;
+  readonly kinds: Readonly<Record<string, FilterKind>>;
+  readonly defaultTarget: string;
 
   readonly #targets: Record<string, Selection>;
-  readonly #kinds: Record<string, FilterKind>;
   readonly #context: Selection | undefined;
 
   /** Insertion-ordered specs (Map preserves insertion order). */
@@ -146,8 +154,18 @@ class FilterSetImpl implements FilterSet {
   readonly #detachers: Array<() => void> = [];
 
   constructor(options: FilterSetOptions) {
+    // Only an explicit `defaultTarget` is validated: the implicit `'where'`
+    // default keeps its pre-existing per-publish unknown-target warning.
+    const declaredDefault = options.defaultTarget;
+    if (declaredDefault !== undefined && !Object.hasOwn(options.targets, declaredDefault)) {
+      throw new Error(
+        `[mosaic-core] createFilterSet: defaultTarget '${declaredDefault}' is not ` +
+          `one of its targets (${Object.keys(options.targets).join(', ')}).`,
+      );
+    }
     this.#targets = options.targets;
-    this.#kinds = { ...builtinFilterKinds, ...options.kinds };
+    this.kinds = Object.freeze({ ...builtinFilterKinds, ...options.kinds });
+    this.defaultTarget = options.defaultTarget ?? DEFAULT_FILTER_TARGET;
     this.#context = options.context;
     this.store = new Store<FilterSetState>({ specs: [], chips: [] });
 
@@ -181,8 +199,8 @@ class FilterSetImpl implements FilterSet {
     if (this.#destroyed) {
       return;
     }
-    if (this.#kinds[spec.kind] === undefined) {
-      const registered = Object.keys(this.#kinds).join(', ');
+    if (this.kinds[spec.kind] === undefined) {
+      const registered = Object.keys(this.kinds).join(', ');
       throw new Error(
         `[mosaic-core] FilterSet.set received an unknown kind '${spec.kind}'. ` +
           `Registered kinds: ${registered}.`,
@@ -212,11 +230,7 @@ class FilterSetImpl implements FilterSet {
       return;
     }
     this.#clearSpecClauses(id);
-    this.#specs.delete(id);
-    this.#clients.delete(id);
-    this.#contextDependent.delete(id);
-    this.#publishedClients.delete(id);
-    this.#publishedTargets.delete(id);
+    this.#forgetSpec(id);
     this.#syncStore();
     if (this.#specs.size === 0) {
       this.#persistWrite('clear');
@@ -246,10 +260,50 @@ class FilterSetImpl implements FilterSet {
     this.#persistWrite('update');
   }
 
-  reset(): void {
+  reset(options?: FilterSetResetOptions): void {
     if (this.#destroyed) {
       return;
     }
+    const keep = options?.keep;
+    if (keep === undefined) {
+      this.#resetAll();
+      return;
+    }
+    // Decide every spec up front, so a `keep` predicate never observes a
+    // half-reset set.
+    const removed: Array<string> = [];
+    for (const spec of this.#specs.values()) {
+      if (!keep(spec)) {
+        removed.push(spec.id);
+      }
+    }
+    if (removed.length === 0) {
+      return;
+    }
+    // Kept specs are left untouched — their clauses stay published, so no
+    // extra query round runs without them. (A context-dependent kept spec
+    // still rebuilds via the context listener once its siblings are gone.)
+    this.#publishing = true;
+    try {
+      for (const id of removed) {
+        this.#clearSpecClauses(id);
+      }
+    } finally {
+      this.#publishing = false;
+    }
+    for (const id of removed) {
+      this.#forgetSpec(id);
+    }
+    this.#syncStore();
+    if (this.#specs.size === 0) {
+      this.#persistWrite('clear');
+      return;
+    }
+    this.#persistWrite('update');
+  }
+
+  /** Unconditional reset: every spec removed, every clause cleared. */
+  #resetAll(): void {
     this.#publishing = true;
     try {
       for (const id of this.#specs.keys()) {
@@ -265,6 +319,15 @@ class FilterSetImpl implements FilterSet {
     this.#publishedTargets.clear();
     this.#syncStore();
     this.#persistWrite('clear');
+  }
+
+  /** Drops every piece of per-spec bookkeeping (clauses must already be cleared). */
+  #forgetSpec(id: string): void {
+    this.#specs.delete(id);
+    this.#clients.delete(id);
+    this.#contextDependent.delete(id);
+    this.#publishedClients.delete(id);
+    this.#publishedTargets.delete(id);
   }
 
   removeChip(chip: FilterSetChip): void {
@@ -353,71 +416,40 @@ class FilterSetImpl implements FilterSet {
     return source;
   }
 
-  #resolveTarget(name: string | undefined, spec: FilterSpec): string {
-    return name ?? spec.target ?? 'where';
-  }
-
   /**
    * Resolves a spec's emissions and publishes/clears its per-target clauses.
    * Recomputes the spec's context-dependent flag from whether this emit read
    * `contextPredicate`.
    */
   #publishSpec(spec: FilterSpec): void {
-    const kind = this.#kinds[spec.kind];
+    const kind = this.kinds[spec.kind];
     if (kind === undefined) {
       return;
     }
 
-    const columnExpr = identifierAccess(SqlIdentifier.from(spec.column), spec.columnPaths);
-    // Tracked through a cell so the getter's mutation is opaque to the type
-    // narrower (the linter would otherwise treat the flag as never reassigned).
-    const contextRead = { value: false };
-    // oxlint-disable-next-line typescript/no-this-alias -- the getter below rebinds `this`
-    const self = this;
-    const args: FilterKindArgs = {
-      spec,
-      column: columnExpr,
-      get contextPredicate(): ExprNode | null {
-        contextRead.value = true;
-        return self.#computeContextPredicate(spec.id);
-      },
-    };
+    const { emissions, contextRead } = resolveFilterSpecEmissions(spec, kind, {
+      defaultTarget: this.defaultTarget,
+      contextPredicate: () => this.#computeContextPredicate(spec.id),
+    });
 
-    const emissions = kind.emit(args);
-
-    if (contextRead.value) {
+    if (contextRead) {
       this.#contextDependent.add(spec.id);
     } else {
       this.#contextDependent.delete(spec.id);
     }
 
-    // Group emissions by resolved target; last emission to a target wins
-    // (preserves the one-clause-per-source invariant).
-    const byTarget = new Map<
-      string,
-      {
-        predicate: ExprNode | null;
-        value: unknown;
-        fields: Array<ExprNode>;
-        meta: SelectionClause['meta'] | undefined;
-      }
-    >();
+    // `resolveFilterSpecEmissions` already grouped emissions by resolved
+    // target (last emission to a target wins — the one-clause-per-source
+    // invariant). Drop targets this set has no Selection for.
+    const byTarget = new Map<string, FilterSpecEmission>();
     for (const emission of emissions) {
-      const target = this.#resolveTarget(emission.target, spec);
+      const target = emission.target;
       if (this.#targets[target] === undefined) {
         this.#warnUnknownTarget(target);
         continue;
       }
       this.#warnHavingIfNeeded(target);
-      byTarget.set(target, {
-        predicate: emission.clause.predicate,
-        value: emission.clause.value ?? spec.value ?? null,
-        // Default to the resolved column node — the exact instance kinds that
-        // test a single column build their predicate from, so field identity
-        // holds for pre-aggregation without every kind restating it.
-        fields: emission.clause.fields ?? [columnExpr],
-        meta: emission.clause.meta,
-      });
+      byTarget.set(target, emission);
     }
 
     // Record the resolved routing targets this spec publishes to (active
@@ -649,11 +681,7 @@ class FilterSetImpl implements FilterSet {
     // then drop the spec. One store sync + one persist write for the batch.
     for (const id of clearedIds) {
       this.#clearSpecClauses(id);
-      this.#specs.delete(id);
-      this.#clients.delete(id);
-      this.#contextDependent.delete(id);
-      this.#publishedClients.delete(id);
-      this.#publishedTargets.delete(id);
+      this.#forgetSpec(id);
     }
     this.#syncStore();
     this.#persistWrite('external');
@@ -763,8 +791,8 @@ class FilterSetImpl implements FilterSet {
   /**
    * The resolved routing target a chip reports: the primary (first, in
    * kind-declaration order) target of the spec's last publish, falling back to
-   * the declared `spec.target ?? 'where'` when the spec has not published an
-   * active clause yet (validation-only / inactive paths).
+   * the declared `spec.target ?? defaultTarget` when the spec has not
+   * published an active clause yet (validation-only / inactive paths).
    */
   #resolvedChipTarget(spec: FilterSpec): string {
     const published = this.#publishedTargets.get(spec.id);
@@ -772,11 +800,11 @@ class FilterSetImpl implements FilterSet {
     if (primary !== undefined) {
       return primary;
     }
-    return spec.target ?? 'where';
+    return spec.target ?? this.defaultTarget;
   }
 
   #collectChips(chips: Array<FilterSetChip>, spec: FilterSpec): void {
-    const kind = this.#kinds[spec.kind];
+    const kind = this.kinds[spec.kind];
     const label = spec.label ?? spec.column;
     const target = this.#resolvedChipTarget(spec);
     const operator = spec.operator;

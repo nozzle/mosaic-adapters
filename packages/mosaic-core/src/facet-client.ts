@@ -239,10 +239,11 @@ class FacetDataClient extends BaseDataClient<FacetInputs, FacetClientState> impl
    * column as the same single identifier the options query reads.
    */
   #buildSetSpec(target: FilterSetPublishTarget): FilterSpec {
-    const base: Pick<FilterSpec, 'id' | 'column' | 'columnPaths' | 'label'> = {
+    const base: Pick<FilterSpec, 'id' | 'column' | 'columnPaths' | 'label' | 'target'> = {
       id: target.id,
       column: this.#options.column,
       label: target.label,
+      target: target.target,
     };
     if (this.#options.columnPaths === 'literal') {
       base.columnPaths = 'literal';

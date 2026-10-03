@@ -98,6 +98,12 @@ export interface FilterSetDeclaration extends DeclarationBase {
   targets: Record<string, StandaloneSelectionType>;
   /** Ref to a declared selection used as the FilterSet's context. */
   context?: string;
+  /**
+   * The FilterSet's `FilterSetOptions.defaultTarget`: the declared target
+   * a spec routes to when neither its kind's emission nor the spec names one.
+   * Must be one of the `targets` keys. Defaults to `'where'`.
+   */
+  defaultTarget?: string;
 }
 
 /**

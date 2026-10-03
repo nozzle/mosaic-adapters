@@ -275,6 +275,7 @@ class HistogramDataClient
         kind: target.kind ?? 'interval',
         value: [range[0], range[1]],
         label: target.label,
+        target: target.target,
       };
       // Carry the opt-out so the set resolves the column as the same single
       // identifier the bin query reads.

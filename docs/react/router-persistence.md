@@ -57,6 +57,34 @@ const filterSet = createFilterSet({
 });
 ```
 
+### Defaults via the persister
+
+To start a set with default filters when storage is empty (a first visit, or a URL with no filter params), return them from `read`. There is no separate `defaults` option. Hydration already replays whatever `read` returns through `set()`:
+
+```ts
+const DEFAULT_SPECS: FilterSpec[] = [
+  { id: 'season', column: 'season', kind: 'point', value: '2024', label: 'Season' },
+];
+
+const filterSet = createFilterSet({
+  targets: { where: $where },
+  persist: {
+    read: () => {
+      const decoded = JSON.parse(localStorage.getItem('filters') ?? 'null');
+      return decoded ?? DEFAULT_SPECS;
+    },
+    write: (specs) =>
+      specs === null
+        ? localStorage.removeItem('filters')
+        : localStorage.setItem('filters', JSON.stringify(specs)),
+  },
+});
+```
+
+Hydration does not write, so the defaults are not stored until the user changes something. When the user clears every filter, the set writes `null`, the key is removed, and the next visit starts from the defaults again. If an explicitly cleared set should stay cleared across reloads, have `write` store an empty marker such as `'[]'` instead of removing the key. `decoded ?? DEFAULT_SPECS` then only falls back to the defaults when the key is missing, and a persisted empty array hydrates as an empty set.
+
+The same works for a router persister (`read: () => searchToSpecs(search) ?? DEFAULT_SPECS`, where the decoder returns `null` when the URL has no filter params). For the reactive lane, apply the same fallback before calling `reconcile`.
+
 The rule: **a reactive truth drives the setters; a persister is passive storage.** If the router search is your source of truth, drive the setters from it (lane 1) and do not also give the set a persister that reads that same URL — you would hydrate twice and race the write-back.
 
 ## A persister over the router

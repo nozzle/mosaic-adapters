@@ -1,6 +1,6 @@
 # Filter set
 
-`createFilterSet({ targets, kinds?, persist?, context? })` — the single owner of a page's managed filter intent. A keyed store of plain-JSON `FilterSpec` objects; each spec is turned into one standard clause per target Selection through a kind registry, so dashboard filter state is serializable data all the way down.
+`createFilterSet({ targets, defaultTarget?, kinds?, persist?, context? })` — the single owner of a page's managed filter intent. A keyed store of plain-JSON `FilterSpec` objects; each spec is turned into one standard clause per target Selection through a kind registry, so dashboard filter state is serializable data all the way down.
 
 Like Selections, a filter set is a plain long-lived object created next to the page's topology; framework bindings only subscribe to its store.
 
@@ -42,7 +42,7 @@ type FilterSpec = {
   operator?: string;
   value?: unknown; // plain JSON only
   valueTo?: unknown;
-  target?: string; // default 'where'
+  target?: string; // default: the set's `defaultTarget` ('where')
   label?: string; // chip label override
 };
 ```
@@ -50,6 +50,17 @@ type FilterSpec = {
 `set(spec)` upserts by `id` (replace-on-update, publish suppressed when the SQL is unchanged), `remove(id)` deletes the spec and clears its clauses, `clear(id)` keeps the spec but drops its value (inactive — a builder row with no value yet), `reset()` empties the set. Two specs on the same column coexist — `id` is the key, not `column`.
 
 A dotted `column` is a struct path by default: `meta.country` resolves to `"meta"."country"`. For a column whose name itself contains a dot, set `columnPaths: 'literal'` and the set reads it as one identifier, `"meta.country"`, in the kind's `args.column`, in the columns of a multi-column `points` envelope, and in a `subqueryFilterKind`'s outer column. The field is plain JSON, so it persists and hydrates with the spec. Facet and histogram clients created with `columnPaths: 'literal'` write it onto their `publish.into` specs.
+
+### Clear all except some: `reset({ keep })`
+
+`reset({ keep })` removes every spec the predicate rejects and leaves the accepted ones alone — their clauses stay published and the reset itself does not re-publish them. The one exception is a kept spec whose kind reads `contextPredicate` (see [custom kinds](#custom-kinds)): removing its siblings changes the context, so it rebuilds like after any other sibling change (and publishes nothing if its SQL is unchanged). It is still one store update and one persister write (`'update'` with the surviving specs, or `null` / `'clear'` if nothing survives). If `keep` accepts every spec, the call does nothing: no store update and no write.
+
+```ts
+// "Clear all" that keeps pinned filters.
+filters.reset({ keep: (spec) => spec.id.startsWith('pinned:') });
+```
+
+Calling `reset()` and then re-adding the pinned specs gives the same end state, but every target runs an extra query round, and one of those rounds runs without the pinned filter. To run this from a page-wide "Clear all" in a [topology](./selection-topology.md), see the [page-wide reset recipe](../react/topology-recipes.md#keeping-some-filter-set-specs).
 
 ## One primitive, two authoring styles
 
@@ -91,7 +102,16 @@ Hydration replays a persisted `FilterSpec[]` through `set()` — the _same_ code
 
 ## Targets and WHERE/HAVING routing
 
-`targets` is a named map of Selections. Single-Selection pages pass `{ where: $sel }` and never think about it; a spec's `target` (or a kind emission's `target`) picks the Selection its clause lands on. SQL position is decided by how consumers wire the Selection — `filterBy` renders it in WHERE, `havingBy` in HAVING. The set cannot enforce that a `having`-targeted Selection is actually consumed via `havingBy`; it warns once in dev when a spec first emits to a `having` target.
+`targets` is a named map of Selections. Single-Selection pages pass `{ where: $sel }` and never think about it; a spec's `target` (or a kind emission's `target`) picks the Selection its clause lands on. The resolution order is `emission.target ?? spec.target ?? defaultTarget`. `defaultTarget` defaults to `'where'`. Set it when the set has no `where` target; otherwise any spec that names no target (including specs from `publish.into` widgets with no `target`) is warned about and dropped:
+
+```ts
+const filters = createFilterSet({
+  targets: { members: $members, having: $having },
+  defaultTarget: 'members', // specs without a target land on $members
+});
+```
+
+An explicit `defaultTarget` must name one of `targets`, or `createFilterSet` throws. `filters.defaultTarget` reads back the resolved value. SQL position is decided by how consumers wire the Selection — `filterBy` renders it in WHERE, `havingBy` in HAVING. The set cannot enforce that a `having`-targeted Selection is actually consumed via `havingBy`; it warns once in dev when a spec first emits to a `having` target.
 
 A clause cleared elsewhere (chip bar, `selection.reset()`) removes the owning spec and fires a persist write with reason `'external'` — the set mirrors external state exactly like the data clients do.
 
@@ -251,12 +271,45 @@ const kind: FilterKind = {
 
 An emission's `clause.fields` (Mosaic 0.29+) lists the input expressions its predicate filters over; it defaults to the resolved `column` node, so a kind that tests that single column directly can omit it (as the `where` emission above does). Set it explicitly when the predicate references different or no columns, using the exact node instances the predicate holds. Subquery predicates never carry clause metadata (Mosaic's pre-aggregator only understands point/interval shapes).
 
+## Computing a spec's clause without publishing it
+
+Pinned per-widget filters, server-side prefilters, previews and tests often need "the clause this spec would publish" without going through a set. Do not rebuild it by hand. Use `emitFilterSpec` or `filterSpecPredicate`. FilterSet's own publish path calls the same code, so the result always matches what the set would publish:
+
+```ts
+import { emitFilterSpec, filterSpecPredicate } from '@nozzleio/mosaic-core';
+
+const spec = { id: 'sport', column: 'sport', kind: 'points', value: ['judo'] };
+
+emitFilterSpec(spec, { kinds: filters.kinds, defaultTarget: filters.defaultTarget });
+// → [{ target: 'where', predicate, fields, value, meta: { type: 'point' } }]
+
+const where = filterSpecPredicate(spec, { kinds: filters.kinds, target: 'where' });
+Query.from('athletes')
+  .select('*')
+  .where(where ?? []);
+```
+
+- `emitFilterSpec(spec, { kinds?, contextPredicate?, defaultTarget? })` returns one `{ target, predicate, fields, value, meta? }` per resolved target, in the order the kind first emits each target. It applies the set's defaults (target resolution, `value` falls back to `spec.value ?? null`, `fields` falls back to the resolved column). If a kind emits to the same target twice, the last emission wins. `predicate: null` means the spec is inactive on that target. An empty array means the kind emitted nothing.
+- `filterSpecPredicate(spec, { …, target? })` returns the predicate for one target, or `null`. With no `target`, it returns the primary target's predicate: the first emission with a non-null predicate, which is the same target `chip.target` reports.
+- `kinds` is merged over the built-ins, the same way as on `createFilterSet`. `filterSet.kinds` is the set's merged registry (read-only, frozen), so passing it resolves a spec exactly the way that set does.
+- `contextPredicate` is passed to the kind as-is and defaults to `null`. A set computes it from its context Selection. Here you supply it.
+- These functions never warn about unknown targets: they do not know which Selections exist. That check, and the `having` warning, stay in the set. An unregistered kind throws, the same as `set()`.
+
 ## Publishing into the set
 
 Widgets support two publish paths, both Mosaic-native — downstream consumers cannot tell who called `selection.update`:
 
 - `publish: { into: filterSet, id }` — managed: the widget writes specs instead of clauses, so its filter shows up in chips, persistence, and serialized state. External removal of the spec mirrors back into widget state (selection cleared), and self-exclusion survives — the set attaches the widget's client to the published clauses, so `Selection.crossfilter()` semantics are unchanged. Across a remount (an enlarge/return move, or a StrictMode throwaway mount) a freshly-mounted client re-adopts the surviving spec and re-keys its clause to the new client; the re-keyed `clients` set reaches the composed filter context one dispatch later, so the client re-queries once its own clause is confirmed self-excluded there — never left filtered by its own selection. A client destroyed inside that deferred adopt window is a no-op (it never re-keys the clause to a dead client).
 - `publish: { as: selection }` — direct: ephemeral viz interaction.
+
+A `publish.into` target takes `{ into, id, kind?, label?, target? }`. `target` is written to the spec's `target`, so on a multi-target set it chooses which Selection the widget's clause lands on. Without it, the spec falls back to the set's `defaultTarget`. When a remounted widget re-adopts a spec that is already in the set, it republishes that spec unchanged, so the stored `target` is kept:
+
+```ts
+createFacetClient({
+  /* … */
+  publish: { into: filters, id: 'sport', target: 'members' },
+});
+```
 
 The rule: **if the user should see it as "a filter", route it into the set; if it's transient brushing or linking, publish direct.** Facet, histogram, and rows clients accept both forms (`rows` on its `select` target only; hover is transient by definition). Client-level `persist` is ignored under `publish.into` — the set owns persistence.
 
@@ -273,7 +326,7 @@ A chart the packages do not model (a custom-drawn time series, a third-party cha
 
 `store.state.chips` derives from the specs — label from `label`/`column`, value formatted per kind (ranges join as `lo - hi`, arrays explode into one chip per value for multi-value kinds). `removeChip(chip)` narrows an exploded value or removes the spec; `reset()` clears the bar. Foreign clauses published directly onto the Selections are chip-invisible by design; the chip list derives from an iterable so a future adapter can contribute entries additively.
 
-`chip.target` is the **resolved** routing target — where the kind's emission actually landed (`emission.target ?? spec.target ?? 'where'`), not the declared `spec.target`. A self-routing kind that overrides the target on every emission (e.g. metric-threshold → `having:<card>` + `members:<card>`) reports the resolved target on its chip, so a decorative `spec.target` is no longer needed to label such chips (and no longer silently lost on URL hydration). When a kind emits to multiple targets for one spec, `chip.target` is the deterministic primary: the first emission's resolved target in kind-declaration order. Exploded chips report the same resolved target as their parent spec. Before a spec has published an active clause, `chip.target` falls back to `spec.target ?? 'where'`.
+`chip.target` is the **resolved** routing target — where the kind's emission actually landed (`emission.target ?? spec.target ?? defaultTarget`), not the declared `spec.target`. A self-routing kind that overrides the target on every emission (e.g. metric-threshold → `having:<card>` + `members:<card>`) reports the resolved target on its chip, so a decorative `spec.target` is no longer needed to label such chips (and no longer silently lost on URL hydration). When a kind emits to multiple targets for one spec, `chip.target` is the deterministic primary: the first emission's resolved target in kind-declaration order. Exploded chips report the same resolved target as their parent spec. Before a spec has published an active clause, `chip.target` falls back to `spec.target ?? defaultTarget`.
 
 In React, subscribe with `useFilterSetState(filters)` / `useFilterSetChips(filters)` from `@nozzleio/react-mosaic`.
 

@@ -29,6 +29,33 @@ const config = {
 
 (Derived `compose` / `cascading` read-contexts are skipped automatically — they hold no clauses of their own — so they never need `reset: false`.)
 
+### Keeping some filter-set specs
+
+`topology.reset()` delegates a `filter-set` entry to `filterSet.reset()`, which removes every spec. For a "Clear all" that keeps some specs (pinned filters, a scope spec), declare the set `reset: false` so the topology skips it, and call [`filterSet.reset({ keep })`](../core/filter-set.md#clear-all-except-some-reset-keep) next to `topology.reset()`:
+
+```tsx
+const config = {
+  where: { type: 'crossfilter' },
+  filters: { type: 'filter-set', targets: { where: 'crossfilter' }, reset: false },
+} as const;
+
+function ClearAllButton() {
+  const topology = useMosaicTopology();
+  return (
+    <button
+      onClick={() => {
+        topology.reset(); // everything except `filters`
+        topology.getFilterSet('filters')?.reset({ keep: (spec) => spec.id.startsWith('pinned:') });
+      }}
+    >
+      Clear all
+    </button>
+  );
+}
+```
+
+Kept specs are never cleared and re-added, so no query round runs without them, and the set's persister still gets exactly one write.
+
 This replaces the pre-rewrite "selection registry for reset-all" — there is no standalone React-context registry, only a method on the topology object.
 
 ## Active filters / chips

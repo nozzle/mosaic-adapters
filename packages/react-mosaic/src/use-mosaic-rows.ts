@@ -63,7 +63,7 @@ export function useMosaicRows<TRow>(
   // rationale as `persist`: a change in target recreates the client.
   const select = options.publish?.select;
   const selectKey = isFilterSetPublishTarget(select)
-    ? [select.into, select.id, select.kind, select.label]
+    ? [select.into, select.id, select.kind, select.label, select.target]
     : [select?.as, select?.source];
 
   const client = useBoundClient<RowsInputs, RowsClient<TRow>>({
