@@ -10,8 +10,11 @@
  * previously carried a clause from the same source (the map dropped a clause
  * it used to keep), that clause is removed. A `null` result, or a passed-
  * through removal, for a source the derived does not carry is a no-op, so the
- * coordinator never hears about it. `activate` is mapped the same way, so
- * Mosaic's pre-aggregation preview sees the mapped clause.
+ * coordinator never hears about it, unless the parent's resolver displaced
+ * other clauses with it (a `single` parent keeps only its latest clause): the
+ * derived then drops them too, and relays a removal for each to its own
+ * derived Selections. `activate` is mapped the same way, so Mosaic's
+ * pre-aggregation preview sees the mapped clause.
  *
  * The derived list is always the parent's resolved list, mapped clause by
  * clause and folded through the derived's own resolver (which defaults to
@@ -175,8 +178,12 @@ function sameClauseObjects(
   return true;
 }
 
-/** The removal clause published when the map stops keeping a carried source. */
-function removalFor(clause: SelectionClause): SelectionClause {
+/**
+ * The removal clause published when the map stops keeping a carried source,
+ * or when the parent's resolver displaced it. Internal: a batch relays the
+ * same removals for a skip projection.
+ */
+export function removalFor(clause: SelectionClause): SelectionClause {
   // The parent clause's `clients` keep crossfilter self-exclusion of the
   // removal identical to the parent's.
   return {
@@ -353,21 +360,56 @@ class MappedSelection extends Selection {
     this.sync(true);
   };
 
+  /**
+   * Follow a relayed clause the map dropped, for a source this Selection does
+   * not carry. Its own source changes nothing here, but the parent's resolver
+   * may still have displaced other clauses: a `single` parent keeps only its
+   * latest clause, even when the map drops that clause. Re-derive, and relay
+   * a removal for each carried clause the re-derivation lost, so derived
+   * Selections of this one drop it too (no clause they were relayed explains
+   * the loss).
+   */
+  #dropDisplaced(clause: SelectionClause, mapped: SelectionClause | null): void {
+    const next = this.#derive(this.#parent._resolved, {
+      keepActive: false,
+      known: new Map([[clause, mapped]]),
+    });
+    const dropped = this._resolved.filter(
+      (carried) => !next.some((kept) => kept.source === carried.source),
+    );
+    if (dropped.length === 0) {
+      return;
+    }
+    // No active clause: nothing published here was interacted with (as in
+    // `refresh()`), so every consumer re-queries.
+    const removals = dropped.map(removalFor);
+    this.#publish(next, (selection) => {
+      removals.forEach((removal) => {
+        selection.update(removal);
+      });
+    });
+  }
+
   override update(clause: SelectionClause): this {
     const mapped = this.#map(clause);
-    let published = mapped;
-    if (published === null && this.#carriesSource(clause)) {
-      // The map now drops a source the derived still carries: remove it.
-      published = removalFor(clause);
-    }
+    const relayed = this.#parent._resolved.active === clause;
+    const published =
+      mapped === null && this.#carriesSource(clause)
+        ? // The map now drops a source the derived still carries: remove it.
+          removalFor(clause)
+        : mapped;
     if (published === null) {
+      // The map dropped a source the derived does not carry.
+      if (relayed) {
+        this.#dropDisplaced(clause, mapped);
+      }
       return this;
     }
-    if (published.predicate == null && !this.#carriesSource(published)) {
-      // Removing a source the derived never carried changes nothing.
-      return this;
-    }
-    if (this.#parent._resolved.active !== clause) {
+    const removesNothing = published.predicate == null && !this.#carriesSource(published);
+    if (!relayed) {
+      if (removesNothing) {
+        return this;
+      }
       // Published directly on the derived (not relayed): upstream semantics.
       return super.update(published);
     }
@@ -379,6 +421,12 @@ class MappedSelection extends Selection {
       keepActive: false,
       known: new Map([[clause, mapped]]),
     });
+    if (removesNothing && sameClauseList(this._resolved, next)) {
+      // Removing a source the derived never carried changes nothing, unless
+      // the resolver displaced other clauses (a `single` parent clears its
+      // list on any update): then it is published like any other clause.
+      return this;
+    }
     next.active = published;
     return this.#publish(next, (selection) => selection.update(published));
   }

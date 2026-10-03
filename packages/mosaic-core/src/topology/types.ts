@@ -299,9 +299,10 @@ export interface Topology {
    * until they converge, so each emits once with the final state (a cyclic
    * context graph is not guaranteed to converge inside the batch and may
    * emit again from its usual post-emit rebuild). A batch
-   * stays open until it has emitted, so a `batch` from a filter kind rebuilt
-   * while it settles, or from a `value` listener fired by its flush, throws
-   * too.
+   * stays open until it has emitted, so a `batch` this batch does not cover
+   * (on another topology, or a set this topology does not own) from a filter
+   * kind rebuilt while it settles throws too, and so does any `batch` from a
+   * `value` listener fired by its flush.
    *
    * @throws when another batch is open (message
    *   `NESTED_BATCH_ERROR_MESSAGE`).

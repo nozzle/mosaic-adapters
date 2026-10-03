@@ -396,9 +396,10 @@ export interface FilterSet {
    * FilterSet, or a `topology.batch()`, inside `fn`; this set's `batch()`
    * inside another set's batch) throws before the inner callback runs; batch
    * several sets with a `topology.batch()` that owns them all. A batch stays
-   * open until it has emitted, so a `batch()` from a filter kind rebuilt
-   * while it settles, or from a `value` listener fired by its flush, throws
-   * too.
+   * open until it has emitted, so a `batch()` on another set or a topology
+   * from a filter kind rebuilt while it settles throws too (one on this set
+   * joins, as above), and so does any `batch()` from a `value` listener
+   * fired by its flush.
    *
    * @throws when another batch that does not cover this set is open (message
    *   `NESTED_BATCH_ERROR_MESSAGE`).

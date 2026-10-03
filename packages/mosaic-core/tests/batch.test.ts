@@ -5,7 +5,7 @@
  */
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import type { ClauseSource, SelectionClause } from '@uwdata/mosaic-core';
-import { Query, column } from '@uwdata/mosaic-sql';
+import { Query, column, eq, literal } from '@uwdata/mosaic-sql';
 import { describe, expect, test, vi } from 'vitest';
 
 import { joinFilterSetBatch } from '../src/filter-set/filter-set';
@@ -19,7 +19,13 @@ import {
   createTopology,
   subqueryFilterKind,
 } from '../src/index';
-import type { FilterSet, FilterSpec, Persister } from '../src/index';
+import type {
+  FilterKind,
+  FilterKindEmission,
+  FilterSet,
+  FilterSpec,
+  Persister,
+} from '../src/index';
 import {
   NESTED_BATCH_ERROR_MESSAGE,
   SelectionBatch,
@@ -90,6 +96,31 @@ const membership = subqueryFilterKind((args) => {
 function memberSpec(id: string): FilterSpec {
   return { id, column: 'id', kind: 'membership', value: null };
 }
+
+type PairedOrder = 'members-first' | 'where-first';
+
+/**
+ * A kind publishing one spec to two targets: `members` (crossfilter) and
+ * `where` (a `Selection.single()` target in these tests), in `order`.
+ */
+function pairedKind(order: PairedOrder): FilterKind {
+  return {
+    emit: (args) => {
+      const predicate = eq(args.column, literal(String(args.spec.value)));
+      const members: FilterKindEmission = { target: 'members', clause: { predicate } };
+      const where: FilterKindEmission = { target: 'where', clause: { predicate } };
+      return order === 'members-first' ? [members, where] : [where, members];
+    },
+  };
+}
+
+function pairedSpec(id: string, column_: string, value: string): FilterSpec {
+  return { id, column: column_, kind: 'paired', value };
+}
+
+const pairedSwim = pairedSpec('sport', 'sport', 'swim');
+const pairedAda = pairedSpec('name', 'name', 'Ada');
+const pairedRun = pairedSpec('id', 'id', 'run');
 
 describe('SelectionBatch', () => {
   test('defers the emit, keeps _resolved current, and emits once with an activation clause', async () => {
@@ -564,6 +595,355 @@ describe('filterSet.batch', () => {
     set.destroy();
   });
 
+  describe('a Selection.single() target', () => {
+    /**
+     * A single resolver keeps only the latest clause, so the batched emission
+     * drops the earlier spec's clause. The set's external-clear listener sees
+     * that drop when the batch emits (or later, when Mosaic queued the
+     * emission); its store sync and persist write must fold into the batch's
+     * one each.
+     */
+    async function runSingleTargetBatch(options: { pendingDispatch: boolean }): Promise<{
+      syncs: number;
+      writes: Array<{ state: Array<FilterSpec> | null; reason: string }>;
+      emits: number;
+      specIds: Array<string>;
+    }> {
+      const $where = Selection.single();
+      const { persister, writes } = recordingPersister();
+      const set = createFilterSet({ targets: { where: $where }, persist: persister });
+      if (options.pendingDispatch) {
+        // An earlier write whose dispatch is still settling: the batched
+        // emission is queued behind it and its listeners run after the batch.
+        set.set(heavy);
+      }
+      writes.length = 0;
+      const emits = countEmits($where);
+      let syncs = 0;
+      const unsubscribe = set.store.subscribe(() => {
+        syncs += 1;
+      });
+
+      set.batch((tx) => {
+        tx.set(swim);
+        tx.set(ada);
+      });
+      await drain();
+
+      const result = {
+        syncs,
+        writes: [...writes],
+        emits: emits.count,
+        specIds: set.store.state.specs.map((spec) => spec.id),
+      };
+      unsubscribe.unsubscribe();
+      set.destroy();
+      return result;
+    }
+
+    test('two sets for different specs sync the store and persist once', async () => {
+      const result = await runSingleTargetBatch({ pendingDispatch: false });
+
+      expect(result.emits).toBe(1);
+      expect(result.syncs).toBe(1);
+      // The single resolver dropped `sport`; the set mirrors it.
+      expect(result.specIds).toEqual(['name']);
+      expect(result.writes).toEqual([{ state: [ada], reason: 'update' }]);
+    });
+
+    test('still once each when Mosaic queues the batched emission', async () => {
+      const result = await runSingleTargetBatch({ pendingDispatch: true });
+
+      expect(result.syncs).toBe(1);
+      expect(result.specIds).toEqual(['name']);
+      expect(result.writes).toEqual([{ state: [ada], reason: 'update' }]);
+    });
+
+    test('outside a batch the external-clear behaviour is unchanged', async () => {
+      const $where = Selection.single();
+      const { persister, writes } = recordingPersister();
+      const set = createFilterSet({ targets: { where: $where }, persist: persister });
+      let syncs = 0;
+      const unsubscribe = set.store.subscribe(() => {
+        syncs += 1;
+      });
+
+      set.set(swim);
+      set.set(ada);
+      await drain();
+
+      // Each write syncs and persists; the second emission (queued behind the
+      // first) reaches the listener unfenced and drops `sport` externally.
+      expect(syncs).toBe(3);
+      expect(writes.map((write) => write.reason)).toEqual(['update', 'update', 'external']);
+      expect(set.store.state.specs.map((spec) => spec.id)).toEqual(['name']);
+      unsubscribe.unsubscribe();
+      set.destroy();
+    });
+
+    test('an external clear the batch picks up first is persisted as external', async () => {
+      const $where = Selection.single();
+      const { persister, writes } = recordingPersister();
+      const set = createFilterSet({ targets: { where: $where }, persist: persister });
+      // Hold the first delivery, so the external clear below stays queued.
+      let release: (() => void) | undefined;
+      $where.addEventListener('value', () => {
+        if (release !== undefined) {
+          return undefined;
+        }
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      });
+      set.set(swim);
+      const source = $where._resolved[0]!.source;
+      $where.update({ source, value: null, predicate: null, fields: [] } as SelectionClause);
+      writes.length = 0;
+
+      // No writes: the batch's settle notices the dropped clause before Mosaic
+      // delivers it, and the set ends up empty.
+      set.batch(() => {});
+      expect(set.store.state.specs).toEqual([]);
+      expect(writes).toEqual([{ state: null, reason: 'external' }]);
+
+      release?.();
+      await drain();
+      await $where.pending('value');
+      expect(writes).toHaveLength(1);
+      set.destroy();
+    });
+
+    describe('with a skip projection that skips the later spec', () => {
+      interface ProjectionRun {
+        where: Array<string>;
+        projection: Array<string>;
+        /** An intersect Selection composed from the projection. */
+        composed: Array<string>;
+        /** A single Selection including the projection. */
+        included: Array<string>;
+        /** The emitted (`clauses`) lists, which is what clients query. */
+        emitted: Array<Array<string>>;
+        emits: { projection: number; composed: number; included: number };
+        specIds: Array<string>;
+      }
+
+      /**
+       * `sport` (kept) and then `name` (skipped) on a single target: the
+       * target ends up with `name` alone, so the projection and everything
+       * derived from it must end up with no clause. `before` is written,
+       * unbatched, ahead of the measured writes.
+       */
+      async function runProjection(options: {
+        batched: boolean;
+        before: Array<FilterSpec>;
+        writes: Array<FilterSpec>;
+      }): Promise<ProjectionRun> {
+        const $where = Selection.single();
+        const set = createFilterSet({ targets: { where: $where } });
+        const projection = createSkipProjectedSelection($where, new Set(['name']));
+        const composed = createComposedSelection([projection.selection]);
+        const included = Selection.single({ include: projection.selection });
+        for (const spec of options.before) {
+          set.set(spec);
+        }
+        await drain();
+        const projectionEmits = countEmits(projection.selection);
+        const composedEmits = countEmits(composed.selection);
+        const includedEmits = countEmits(included);
+
+        if (options.batched) {
+          set.batch((tx) => {
+            for (const spec of options.writes) {
+              tx.set(spec);
+            }
+          });
+        } else {
+          for (const spec of options.writes) {
+            set.set(spec);
+          }
+        }
+        await drain();
+        await drain();
+
+        const emittedSql = (selection: Selection) =>
+          selection.clauses.map((clause) => String(clause.predicate));
+        const result: ProjectionRun = {
+          where: sql($where),
+          projection: sql(projection.selection),
+          composed: sql(composed.selection),
+          included: sql(included),
+          emitted: [projection.selection, composed.selection, included].map(emittedSql),
+          emits: {
+            projection: projectionEmits.count,
+            composed: composedEmits.count,
+            included: includedEmits.count,
+          },
+          specIds: set.store.state.specs.map((spec) => spec.id),
+        };
+        composed.destroy();
+        projection.destroy();
+        set.destroy();
+        return result;
+      }
+
+      test('a skipped write drops the kept clause it displaced from derived Selections', async () => {
+        const result = await runProjection({ batched: true, before: [], writes: [swim, ada] });
+
+        expect(result.where).toEqual(['("name" IN (\'Ada\'))']);
+        expect(result.specIds).toEqual(['name']);
+        expect(result.projection).toEqual([]);
+        expect(result.composed).toEqual([]);
+        expect(result.included).toEqual([]);
+        expect(result.emitted).toEqual([[], [], []]);
+        // Each started and ended the batch with no clause: nothing to emit.
+        expect(result.emits).toEqual({ projection: 0, composed: 0, included: 0 });
+      });
+
+      test('a kept clause from before the batch is dropped with one emission each', async () => {
+        const result = await runProjection({ batched: true, before: [swim], writes: [ada] });
+
+        expect(result.where).toEqual(['("name" IN (\'Ada\'))']);
+        expect(result.specIds).toEqual(['name']);
+        expect(result.projection).toEqual([]);
+        expect(result.composed).toEqual([]);
+        expect(result.included).toEqual([]);
+        expect(result.emitted).toEqual([[], [], []]);
+        expect(result.emits).toEqual({ projection: 1, composed: 1, included: 1 });
+      });
+
+      test('the Selections end in the same state as the same writes without a batch', async () => {
+        for (const before of [[], [swim]]) {
+          const writes = before.length === 0 ? [swim, ada] : [ada];
+          const batched = await runProjection({ batched: true, before, writes });
+          const plain = await runProjection({ batched: false, before, writes });
+
+          expect(batched.where).toEqual(plain.where);
+          expect(batched.projection).toEqual(plain.projection);
+          expect(batched.composed).toEqual(plain.composed);
+          expect(batched.included).toEqual(plain.included);
+          expect(batched.emitted).toEqual(plain.emitted);
+          // Not `specIds`: without a batch the set notices the displaced spec
+          // only once a target emission reaches it unfenced, which a lone
+          // synchronous write's own emission does not.
+        }
+      });
+    });
+  });
+
+  describe('a single target next to a sibling target of the same spec', () => {
+    interface PairedRun {
+      whereEmits: number;
+      membersEmits: number;
+      pageEmits: number;
+      syncs: number;
+      writes: Array<{ state: Array<FilterSpec> | null; reason: string }>;
+      specIds: Array<string>;
+      where: Array<string>;
+      members: Array<string>;
+      /** The derived context's emitted clauses (what its clients query). */
+      page: Array<string>;
+      membersActivePredicate: unknown;
+      /** Whether `members.active` is one of the set's own clauses. */
+      membersActiveOwned: boolean;
+    }
+
+    /**
+     * Two specs of a kind publishing to `members` (crossfilter) and `where`
+     * (single). The second write displaces the first spec's `where` clause,
+     * so the set drops the first spec and clears its `members` clause. In a
+     * batch that clear must land inside the batch: each Selection emits once,
+     * with the state the same writes reach without a batch.
+     */
+    async function runPaired(options: {
+      order: PairedOrder;
+      pendingDispatch: boolean;
+      batched: boolean;
+    }): Promise<PairedRun> {
+      const $where = Selection.single();
+      const $members = Selection.crossfilter();
+      const composed = createComposedSelection([$where, $members]);
+      const { persister, writes } = recordingPersister();
+      const set = createFilterSet({
+        targets: { where: $where, members: $members },
+        kinds: { paired: pairedKind(options.order) },
+        persist: persister,
+      });
+      if (options.pendingDispatch) {
+        // An unbatched write still dispatching on both targets: the batched
+        // emissions are queued behind it.
+        set.set(pairedRun);
+      }
+      writes.length = 0;
+      const whereEmits = countEmits($where);
+      const membersEmits = countEmits($members);
+      const pageEmits = countEmits(composed.selection);
+      let syncs = 0;
+      const unsubscribe = set.store.subscribe(() => {
+        syncs += 1;
+      });
+
+      if (options.batched) {
+        set.batch((tx) => {
+          tx.set(pairedSwim);
+          tx.set(pairedAda);
+        });
+      } else {
+        set.set(pairedSwim);
+        set.set(pairedAda);
+      }
+      await drain();
+
+      const run: PairedRun = {
+        whereEmits: whereEmits.count,
+        membersEmits: membersEmits.count,
+        pageEmits: pageEmits.count,
+        syncs,
+        writes: [...writes],
+        specIds: set.store.state.specs.map((spec) => spec.id),
+        where: $where.clauses.map((clause) => String(clause.predicate)),
+        members: $members.clauses.map((clause) => String(clause.predicate)),
+        page: composed.selection.clauses.map((clause) => String(clause.predicate)).sort(),
+        membersActivePredicate: $members.active.predicate,
+        membersActiveOwned: set.ownsClauseSource($members.active.source),
+      };
+      unsubscribe.unsubscribe();
+      set.destroy();
+      composed.destroy();
+      return run;
+    }
+
+    test.each([
+      { order: 'members-first' as const, pendingDispatch: false },
+      { order: 'where-first' as const, pendingDispatch: false },
+      { order: 'members-first' as const, pendingDispatch: true },
+      { order: 'where-first' as const, pendingDispatch: true },
+    ])(
+      '$order, pending dispatch $pendingDispatch: each Selection emits once with the final state',
+      async ({ order, pendingDispatch }) => {
+        const batched = await runPaired({ order, pendingDispatch, batched: true });
+        const unbatched = await runPaired({ order, pendingDispatch, batched: false });
+
+        expect(batched.whereEmits).toBe(1);
+        expect(batched.membersEmits).toBe(1);
+        expect(batched.pageEmits).toBe(1);
+        // The emitted clauses (what clients query) match the unbatched result.
+        expect(batched.where).toEqual(['("name" = \'Ada\')']);
+        expect(batched.members).toEqual(['("name" = \'Ada\')']);
+        expect(batched.where).toEqual(unbatched.where);
+        expect(batched.members).toEqual(unbatched.members);
+        expect(batched.page).toEqual(unbatched.page);
+        // Emitted with the synthetic active clause, not a clear clause of the
+        // dropped spec (which would let pre-aggregation reuse a stale view).
+        expect(batched.membersActivePredicate).toBeNull();
+        expect(batched.membersActiveOwned).toBe(false);
+        expect(batched.syncs).toBe(1);
+        expect(batched.specIds).toEqual(['name']);
+        expect(batched.specIds).toEqual(unbatched.specIds);
+        expect(batched.writes).toEqual([{ state: [pairedAda], reason: 'update' }]);
+      },
+    );
+  });
+
   test('a destroyed set runs the callback without writing', () => {
     const $where = Selection.intersect();
     const set = createFilterSet({ targets: { where: $where } });
@@ -767,6 +1147,74 @@ describe('batch members', () => {
     const next = openSelectionBatch();
     next.close();
   });
+
+  test('a filter kind calling batch() on its own set while it settles joins the batch', () => {
+    const $shared = Selection.crossfilter();
+    const $members = Selection.intersect();
+    const innerCallback = vi.fn();
+    const attempt: { armed: boolean; error: unknown } = { armed: false, error: undefined };
+    let self: FilterSet | null = null;
+    const reentrant = subqueryFilterKind((args) => {
+      if (attempt.armed && self !== null) {
+        attempt.armed = false;
+        try {
+          self.batch(innerCallback);
+        } catch (error) {
+          attempt.error = error;
+        }
+      }
+      const query = Query.from('athletes').select('id');
+      if (args.contextPredicate != null) {
+        query.where(args.contextPredicate);
+      }
+      return query;
+    });
+    const set = createFilterSet({
+      targets: { where: $shared, members: $members },
+      kinds: { reentrant },
+      context: $shared,
+    });
+    self = set;
+    const sharedEmits = countEmits($shared);
+    const memberEmits = countEmits($members);
+
+    set.batch((tx) => {
+      tx.set({ id: 'rq', column: 'id', kind: 'reentrant', value: null, target: 'members' });
+      // The next build of `reentrant` is the settle-time rebuild.
+      attempt.armed = true;
+      tx.set(swim);
+    });
+
+    // The set is still writing into the open batch, so its batch() runs the
+    // callback inline instead of throwing.
+    expect(attempt.error).toBeUndefined();
+    expect(innerCallback).toHaveBeenCalledTimes(1);
+    expect(sharedEmits.count).toBe(1);
+    expect(memberEmits.count).toBe(1);
+    set.destroy();
+  });
+
+  test('a write a skip projection drops does not cost the settle loop a round', () => {
+    const $parent = Selection.intersect();
+    const projection = createSkipProjectedSelection($parent, new Set(['skipped']));
+    const skipped = { id: 'skipped' } as ClauseSource;
+    const batch = openSelectionBatch();
+    let rounds = 0;
+    batch.join({
+      settle: () => {
+        rounds += 1;
+        batch.update(projection.selection, point(skipped, 'name', 'Ada'));
+      },
+      detach: () => {},
+      commit: () => {},
+    });
+
+    batch.close();
+
+    expect(rounds).toBe(1);
+    expect(projection.selection._resolved).toHaveLength(0);
+    projection.destroy();
+  });
 });
 
 describe('topology.batch', () => {
@@ -839,6 +1287,88 @@ describe('topology.batch', () => {
     expect(filters.store.state.specs.map((spec) => spec.id)).toEqual(['weight']);
     topology.destroy();
   });
+
+  test('a single target dropping an earlier spec still syncs and persists the set once', async () => {
+    const { persister, writes } = recordingPersister();
+    const topology = createTopology(
+      { filters: { type: 'filter-set', targets: { where: 'single' } } },
+      { filterSets: { filters: { persist: persister } } },
+    );
+    const filters = topology.getFilterSet('filters')!;
+    let syncs = 0;
+    const unsubscribe = filters.store.subscribe(() => {
+      syncs += 1;
+    });
+
+    topology.batch(() => {
+      filters.set(swim);
+      filters.set(ada);
+    });
+    await drain();
+
+    expect(syncs).toBe(1);
+    expect(filters.store.state.specs.map((spec) => spec.id)).toEqual(['name']);
+    expect(writes).toEqual([{ state: [ada], reason: 'update' }]);
+    unsubscribe.unsubscribe();
+    topology.destroy();
+  });
+
+  test.each(['members-first', 'where-first'] as const)(
+    'a single target dropping a spec clears its sibling clause inside the batch (%s)',
+    async (order) => {
+      const { persister, writes } = recordingPersister();
+      const topology = createTopology(
+        {
+          filters: { type: 'filter-set', targets: { where: 'single', members: 'crossfilter' } },
+          page: { type: 'compose', include: ['filters.where', 'filters.members'] },
+          // Reads `page` as its context, so its membership subquery is rebuilt
+          // from the derived context's final state.
+          peers: { type: 'filter-set', targets: { where: 'intersect' }, context: 'page' },
+        },
+        {
+          filterSets: {
+            filters: { kinds: { paired: pairedKind(order) }, persist: persister },
+            peers: { kinds: { membership } },
+          },
+        },
+      );
+      const filters = topology.getFilterSet('filters')!;
+      const peers = topology.getFilterSet('peers')!;
+      peers.set(memberSpec('peer'));
+      await drain();
+      const members = countEmits(topology.resolve('filters.members'));
+      const page = countEmits(topology.resolve('page'));
+      const peersWhere = countEmits(topology.resolve('peers.where'));
+      let syncs = 0;
+      const unsubscribe = filters.store.subscribe(() => {
+        syncs += 1;
+      });
+
+      topology.batch(() => {
+        filters.set(pairedSwim);
+        filters.set(pairedAda);
+      });
+      await drain();
+
+      expect(members.count).toBe(1);
+      expect(page.count).toBe(1);
+      expect(peersWhere.count).toBe(1);
+      expect(sql(topology.resolve('filters.members'))).toEqual(['("name" = \'Ada\')']);
+      // The dropped spec's `members` clause left `page` inside the batch, so
+      // `peers` was rebuilt from the final context before anything emitted.
+      const pageMembers = topology
+        .resolve('page')
+        .clauses.filter((clause) => (clause.source as { target?: string }).target === 'members')
+        .map((clause) => String(clause.predicate));
+      expect(pageMembers).toEqual(['("name" = \'Ada\')']);
+      expect(sql(topology.resolve('peers.where'))[0]).toContain('"name"');
+      expect(syncs).toBe(1);
+      expect(filters.store.state.specs.map((spec) => spec.id)).toEqual(['name']);
+      expect(writes).toEqual([{ state: [pairedAda], reason: 'update' }]);
+      unsubscribe.unsubscribe();
+      topology.destroy();
+    },
+  );
 
   test('activeClauses refreshes once, after the batch', () => {
     const topology = createTopology({

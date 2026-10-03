@@ -10,12 +10,12 @@ import { createAthletesDb, settle, waitFor } from '@nozzleio/test-support/duckdb
 import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Param, Selection, clausePoint, makeClient } from '@uwdata/mosaic-core';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
-import { Query, column, count } from '@uwdata/mosaic-sql';
+import { Query, column, count, eq, literal } from '@uwdata/mosaic-sql';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import { createFilterSet, createTopology } from '../src/index';
-import type { FilterSpec } from '../src/index';
+import { createFilterSet, createTopology, createValuesClient } from '../src/index';
+import type { FilterKind, FilterKindEmission, FilterSpec } from '../src/index';
 import { SelectionBatch } from '../src/selection-batch';
 
 let db: TestDb;
@@ -155,6 +155,45 @@ describe('request rounds', () => {
     topology.destroy();
   });
 
+  test.each(['members-first', 'where-first'] as const)(
+    'a spec dropped by a single target clears its sibling clause in the same round (%s)',
+    async (order) => {
+      db.coordinator.preaggregator.enabled = false;
+      // Publishes each spec to `members` (crossfilter) and `where` (single).
+      const paired: FilterKind = {
+        emit: (args) => {
+          const predicate = eq(args.column, literal(String(args.spec.value)));
+          const members: FilterKindEmission = { target: 'members', clause: { predicate } };
+          const where: FilterKindEmission = { target: 'where', clause: { predicate } };
+          return order === 'members-first' ? [members, where] : [where, members];
+        },
+      };
+      const $members = Selection.crossfilter();
+      const set = createFilterSet({
+        targets: { where: Selection.single(), members: $members },
+        kinds: { paired },
+      });
+      const totals = connectTotals($members);
+      const before = await ready(totals);
+
+      set.batch((tx) => {
+        // `where` keeps only the second clause, so the first spec is dropped
+        // and its `members` clause cleared before anything emits.
+        tx.set({ id: 'sport', column: 'sport', kind: 'paired', value: 'run' });
+        tx.set({ id: 'name', column: 'name', kind: 'paired', value: 'Ada' });
+      });
+
+      await waitFor(() => {
+        expect(lastTotal(totals)).toBe(1);
+      });
+      await settle();
+      // One round, straight to the final state (never sport = run AND name = Ada).
+      expect(totals.queries().length - before).toBe(1);
+      expect(totals.totals).toEqual([6, 1]);
+      set.destroy();
+    },
+  );
+
   test('an idle Param written inside topology.batch emits before the batched Selections', () => {
     const topology = createTopology({
       filters: { type: 'filter-set', targets: { where: 'intersect' } },
@@ -177,6 +216,54 @@ describe('request rounds', () => {
 
     expect(order).toEqual(['param', 'selection']);
     topology.destroy();
+  });
+});
+
+describe('a coalesced data client (filterStable: false)', () => {
+  test('the publishing widget re-queries once, its own clause still excluded', async () => {
+    const $where = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $where } });
+    const widget = createValuesClient<{ total: unknown }>({
+      coordinator: db.coordinator,
+      filterBy: $where,
+      // Pre-aggregation off: `filterBy` changes take the coalesced path.
+      filterStable: false,
+      query: ({ where }) =>
+        Query.from('athletes')
+          .select({ total: count() })
+          .where(where as FilterExpr),
+    });
+    const issued: Array<string> = [];
+    const updateClient = db.coordinator.updateClient.bind(db.coordinator);
+    db.coordinator.updateClient = (target, query, priority) => {
+      if (target === widget.mosaicClient) {
+        issued.push(String(query));
+      }
+      return updateClient(target, query, priority);
+    };
+    await waitFor(() => {
+      expect(Number(widget.store.state.values?.total)).toBe(6);
+    });
+    await settle();
+    const before = issued.length;
+
+    set.batch((tx) => {
+      // The widget published `sport`; crossfilter excludes it from its query.
+      tx.set(pointSpec('sport', 'sport', 'swim'), { clients: new Set([widget.mosaicClient]) });
+      tx.set(pointSpec('name', 'name', 'Ada'));
+    });
+
+    await waitFor(() => {
+      expect(issued.length - before).toBe(1);
+      expect(widget.store.state.status).toBe('success');
+    });
+    await settle();
+    expect(issued.length - before).toBe(1);
+    const sql = issued.at(-1)!;
+    expect(sql).toContain('Ada');
+    expect(sql).not.toContain('swim');
+    widget.destroy();
+    set.destroy();
   });
 });
 

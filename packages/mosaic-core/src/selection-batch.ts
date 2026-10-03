@@ -29,18 +29,24 @@
  * one combined emission. A skip projection is updated through it too, with
  * its own skip filter applied, so the projection's derived Selections are
  * reached and the projection emits once (its `followParent` listener then
- * finds nothing left to change). Any other Selection subclass that overrides
- * `update` / `reset` — including a Selection from the public
+ * finds nothing left to change). A skipped clause can still displace kept
+ * clauses on the parent (a `single` parent keeps only its latest clause);
+ * the projection then re-derives from the parent's resolved list and relays
+ * a removal for each clause it lost, as its own `update` does, so its derived
+ * Selections drop them before the flush. Any other Selection subclass that
+ * overrides `update` / `reset` — including a Selection from the public
  * `createMappedSelection` — cannot be emulated, so it receives the plain
  * upstream call (it emits immediately, as it would without a batch).
  *
  * **Members.** Participants (FilterSets, a topology) join a batch as
  * {@link BatchMember}s; whoever opened the batch closes it with
  * {@link SelectionBatch.close}. Before the flush every member *settles*
- * (FilterSets rebuild context-dependent specs). Settling repeats until a full
- * round writes nothing, so a chain of FilterSets whose contexts read each
- * other's targets (A's context is B's target, B's context is C's target)
- * converges inside the batch whatever order the members joined in.
+ * (FilterSets drop specs whose clauses a write displaced, such as an earlier
+ * clause on a `single` target, and rebuild context-dependent specs). Settling
+ * repeats until a full round writes nothing, so a chain of FilterSets whose
+ * contexts read each other's targets (A's context is B's target, B's context
+ * is C's target) converges inside the batch whatever order the members joined
+ * in.
  *
  * **One open batch at a time.** {@link openSelectionBatch} throws while
  * another batch is open. Callers flatten the nesting they can prove safe (a
@@ -55,7 +61,9 @@
 import { Param, Selection, distinct } from '@uwdata/mosaic-core';
 import type { ClauseSource, SelectionClause } from '@uwdata/mosaic-core';
 
-import { getSkipProjectionSkip, isSkippedClause } from './skip-projection';
+import { removalFor } from './mapped-selection';
+import { getSkipProjection, isSkippedClause } from './skip-projection';
+import type { SkipProjectionInfo } from './skip-projection';
 
 type SelectionClauseArray = Selection['clauses'];
 
@@ -86,7 +94,10 @@ export interface BatchFlushResult {
  * {@link SelectionBatch.close}. Internal.
  */
 export interface BatchMember {
-  /** Last in-batch work before the flush (e.g. FilterSet context rebuilds). */
+  /**
+   * Last in-batch work before the flush (a FilterSet drops specs whose
+   * clauses a write displaced and rebuilds context-dependent specs).
+   */
   settle: () => void;
   /** Stop routing writes into the batch; later writes apply immediately. */
   detach: () => void;
@@ -183,14 +194,17 @@ export class SelectionBatch {
       selection.update(clause);
       return;
     }
-    this.#writes += 1;
-    const skip = getSkipProjectionSkip(selection);
-    if (skip === null && !isDeferrable(selection)) {
-      selection.update(clause);
+    const projection = getSkipProjection(selection);
+    const skip = projection?.skip ?? null;
+    if (projection !== null && isSkippedClause(clause, projection.skip)) {
+      // What the projection's own `update` does: it never carries the skipped
+      // source, but follows any clause the parent's resolver displaced.
+      this.#dropDisplaced(selection, projection, clause);
       return;
     }
-    if (skip !== null && isSkippedClause(clause, skip)) {
-      // What the projection's own `update` does: drop the skipped source.
+    this.#writes += 1;
+    if (skip === null && !isDeferrable(selection)) {
+      selection.update(clause);
       return;
     }
     // Upstream `update` resets the sources of clauses it displaces; a skip
@@ -209,6 +223,50 @@ export class SelectionBatch {
   }
 
   /**
+   * A skip projection's own `update` for a relayed clause it skips, minus the
+   * emit. The skipped source never reaches the projection, but the parent's
+   * resolver may have displaced clauses the projection carries (a `single`
+   * parent keeps only its latest clause, skipped or not). The projection is
+   * re-derived from the parent's complete resolved list, and each derived
+   * Selection is relayed a removal for every clause it lost: no clause they
+   * were relayed explains the loss. Not a write when nothing was displaced,
+   * so a skipped write does not cost the settle loop another round.
+   */
+  #dropDisplaced(
+    selection: Selection,
+    projection: SkipProjectionInfo,
+    clause: SelectionClause,
+  ): void {
+    if (projection.parent._resolved.active !== clause) {
+      // Written directly on the projection, not relayed: ignored, as its own
+      // `update` ignores a skipped clause.
+      return;
+    }
+    let next: SelectionClauseArray = [];
+    for (const candidate of projection.parent._resolved) {
+      if (isSkippedClause(candidate, projection.skip)) {
+        continue;
+      }
+      next = selection._resolver.resolve(next, candidate);
+    }
+    const dropped = selection._resolved.filter(
+      (carried) => !next.some((kept) => kept.source === carried.source),
+    );
+    if (dropped.length === 0) {
+      return;
+    }
+    this.#writes += 1;
+    selection._resolved = next;
+    this.#touch(selection, undefined);
+    const removals = dropped.map(removalFor);
+    for (const relay of selection._relay) {
+      for (const removal of removals) {
+        this.update(relay, removal);
+      }
+    }
+  }
+
+  /**
    * Upstream `selection.reset(clauses)` without the emit: invokes each removed
    * clause source's `reset()`, drops the clauses from `_resolved`, and relays
    * the reset to derived Selections. A skip projection ignores the skipped
@@ -220,7 +278,7 @@ export class SelectionBatch {
       return;
     }
     this.#writes += 1;
-    const skip = getSkipProjectionSkip(selection);
+    const skip = getSkipProjection(selection)?.skip ?? null;
     if (skip === null && !isDeferrable(selection)) {
       selection.reset(clauses);
       return;

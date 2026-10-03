@@ -174,6 +174,13 @@ class FilterSetImpl implements FilterSet {
 
   /** The open batch writes are deferred into; `null` outside a batch. */
   #batch: SelectionBatch | null = null;
+  /**
+   * Store syncs and persist writes are collected for the batch. Set when the
+   * set joins a batch and cleared by its commit, so it outlives `#batch`: the
+   * batch detaches its members before it emits, and a sync or write a `value`
+   * listener triggers while it emits still folds into the batch's one each.
+   */
+  #collecting = false;
   /** A store sync was requested while the batch was open. */
   #pendingSync = false;
   /** The combined persist reason requested while the batch was open. */
@@ -427,6 +434,7 @@ class FilterSetImpl implements FilterSet {
       return;
     }
     this.#batch = batch;
+    this.#collecting = true;
     batch.join({
       settle: () => {
         this.#settleBatch();
@@ -441,21 +449,46 @@ class FilterSetImpl implements FilterSet {
   }
 
   /**
-   * Re-publishes context-dependent specs inside the batch, so a spec written
-   * before its siblings does not ship a predicate built on the old context.
-   * Convergent (`#publishSpec` suppresses unchanged predicates).
+   * Last in-batch work before the batch emits, while writes are still
+   * deferred:
+   *
+   * - Runs the external-clear check on every target. A batched write can
+   *   displace this set's own earlier clause (a `single` target keeps only the
+   *   latest clause), and the listener that would notice only runs once the
+   *   batch emits. Checking here drops those specs and clears their clauses
+   *   on sibling targets inside the batch, so every target still emits once,
+   *   with the final state.
+   * - Re-publishes context-dependent specs, so a spec written before its
+   *   siblings does not ship a predicate built on the old context.
+   *
+   * Convergent: a dropped spec is forgotten, and `#publishSpec` suppresses
+   * unchanged predicates.
    */
   #settleBatch(): void {
     if (this.#destroyed) {
       return;
     }
+    this.#reconcileTargets();
     this.#rebuildContextDependent();
+  }
+
+  /** Runs the external-clear check once per distinct target Selection. */
+  #reconcileTargets(): void {
+    const checked = new Set<Selection>();
+    for (const targetSel of Object.values(this.#targets)) {
+      if (checked.has(targetSel)) {
+        continue;
+      }
+      checked.add(targetSel);
+      this.#onTargetValue(targetSel);
+    }
   }
 
   /** Runs the store sync and persist write the batch collected, once each. */
   #commitBatch(): void {
     const sync = this.#pendingSync;
     const persist = this.#pendingPersist;
+    this.#collecting = false;
     this.#pendingSync = false;
     this.#pendingPersist = null;
     if (this.#destroyed) {
@@ -467,11 +500,17 @@ class FilterSetImpl implements FilterSet {
     if (persist === null) {
       return;
     }
+    if (persist === 'external') {
+      // Every write was external: the same write as without a batch (`null`
+      // when the set ended up empty).
+      this.#persistWrite('external');
+      return;
+    }
     if (this.#specs.size === 0) {
       this.#persistWrite('clear');
       return;
     }
-    this.#persistWrite(persist === 'external' ? 'external' : 'update');
+    this.#persistWrite('update');
   }
 
   /** `selection.update`, deferred into the open batch if there is one. */
@@ -892,7 +931,7 @@ class FilterSetImpl implements FilterSet {
     if (this.#persist === null) {
       return;
     }
-    if (this.#batch !== null) {
+    if (this.#collecting) {
       // One write when the batch closes. 'external' survives only when every
       // write in the batch was external.
       this.#pendingPersist =
@@ -912,7 +951,7 @@ class FilterSetImpl implements FilterSet {
 
   /** Derives the specs + chips arrays and pushes them onto the store. */
   #syncStore(): void {
-    if (this.#batch !== null) {
+    if (this.#collecting) {
       this.#pendingSync = true;
       return;
     }
