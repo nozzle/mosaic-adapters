@@ -7,6 +7,7 @@ import type {
   FilterBridge,
   FilterBridgeColumn,
   FilterBridgeColumns,
+  FilterBridgeDestroyOptions,
   FilterBridgeOptions,
 } from './types';
 
@@ -103,12 +104,21 @@ class TanStackTableFilterBridge implements FilterBridge {
     this.#reconcile();
   }
 
-  destroy(): void {
+  destroy(options?: FilterBridgeDestroyOptions): void {
     if (this.#destroyed) {
       return;
     }
     this.#destroyed = true;
     this.#unsubscribe();
+    if (options?.retainSpecs === true) {
+      // The consumer keeps the intent alive past this bridge (e.g. a table
+      // that unmounts while its filters stay applied): leave every managed
+      // spec in the set. A later bridge re-adopts them via `onExternalChange`;
+      // otherwise their cleanup is the consumer's.
+      this.#published.clear();
+      this.#adopted.clear();
+      return;
+    }
     for (const id of [...this.#published.keys()]) {
       if (this.#adopted.has(id)) {
         // Adopted but never confirmed by consumer state: the bridge did not

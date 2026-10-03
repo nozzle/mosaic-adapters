@@ -2,13 +2,19 @@ import type { FilterSet } from '@nozzleio/mosaic-core';
 import { createTanStackTableFilterBridge } from '@nozzleio/mosaic-tanstack-table-core';
 import type { FilterBridge, FilterBridgeColumns } from '@nozzleio/mosaic-tanstack-table-core';
 import type { ColumnFiltersState } from '@tanstack/react-table';
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 export interface UseTanStackTableFilterBridgeOptions {
   /** TanStack Table column-filter state (consumer-owned, controlled). */
   filters: ColumnFiltersState;
-  /** FilterSet that receives one spec per actively filtered column. */
-  set: FilterSet;
+  /**
+   * FilterSet that receives one spec per actively filtered column. `undefined`
+   * makes the bridge inert — no bridge exists, nothing is published, and
+   * `onExternalChange` never fires — so a conditionally enabled bridge needs
+   * no wrapper component. Switching from a set to `undefined` tears the
+   * bridge down exactly like an unmount (honouring `retainSpecsOnUnmount`).
+   */
+  set: FilterSet | undefined;
   /**
    * Per-column clause config, keyed by TanStack Table column id. Compared by
    * value — inline literals are fine.
@@ -28,6 +34,17 @@ export interface UseTanStackTableFilterBridgeOptions {
    * recreates the bridge.
    */
   onExternalChange?: (filters: ColumnFiltersState) => void;
+  /**
+   * Leave the managed specs in the set when the bridge is torn down (unmount,
+   * a `set`/`idPrefix` change, or `set` becoming `undefined`) instead of
+   * removing them, so the table's filters stay applied while it is gone.
+   * Defaults to `false`: teardown removes every spec the bridge wrote.
+   *
+   * A later bridge re-adopts retained specs only with `onExternalChange`;
+   * removing them eventually is the consumer's responsibility. Read at
+   * teardown time — changing it never recreates the bridge.
+   */
+  retainSpecsOnUnmount?: boolean;
 }
 
 /**
@@ -40,8 +57,9 @@ export interface UseTanStackFilterBridgeOptions extends UseTanStackTableFilterBr
  * `columnFilters` state into {@link FilterSpec}s on a FilterSet.
  *
  * The bridge owns no data client and renders nothing, so its lifecycle is
- * entirely effect-scoped: created post-commit, destroyed (removing every
- * managed spec) on unmount or when `set` changes identity. A new bridge adopts
+ * entirely effect-scoped: created post-commit (only while `set` is defined),
+ * destroyed (removing every managed spec, unless `retainSpecsOnUnmount`) on
+ * unmount or when `set` changes identity or becomes `undefined`. A new bridge adopts
  * any specs already in the set under its managed ids; the sync effect below
  * runs in the same commit and reconciles the current state. `filters` and
  * `columns` are synced every render; the core value-diffs, so re-renders with
@@ -49,11 +67,12 @@ export interface UseTanStackFilterBridgeOptions extends UseTanStackTableFilterBr
  * feedback loop.
  */
 export function useTanStackTableFilterBridge(options: UseTanStackTableFilterBridgeOptions): void {
-  const { filters, set, columns, idPrefix, onExternalChange } = options;
+  const { filters, set, columns, idPrefix, onExternalChange, retainSpecsOnUnmount } = options;
 
   const bridgeRef = useRef<FilterBridge | null>(null);
   const onExternalChangeRef = useRef(onExternalChange);
   const columnsRef = useRef(columns);
+  const retainSpecsRef = useRef(retainSpecsOnUnmount);
   const hasExternalChange = onExternalChange !== undefined;
 
   // Latest-refs: the bridge invokes the callback from set-store events (always
@@ -65,7 +84,20 @@ export function useTanStackTableFilterBridge(options: UseTanStackTableFilterBrid
     columnsRef.current = columns;
   });
 
+  // `retainSpecsOnUnmount` is read by the lifecycle cleanup, which runs in the
+  // passive phase *before* this render's passive effects. Syncing in a layout
+  // effect (which runs earlier in the same commit) means a render that both
+  // flips the flag and tears the bridge down (`set` → `undefined`) honours
+  // the new value.
+  useLayoutEffect(() => {
+    retainSpecsRef.current = retainSpecsOnUnmount;
+  });
+
   useEffect(() => {
+    // Inert without a set: no bridge, so the sync effect below is a no-op.
+    if (set === undefined) {
+      return;
+    }
     // The initial columns must reach the constructor: hydration adoption
     // scans the set for specs under the managed (column-derived) ids, so a
     // column-less bridge would never adopt persisted state at mount.
@@ -82,7 +114,7 @@ export function useTanStackTableFilterBridge(options: UseTanStackTableFilterBrid
     bridgeRef.current = bridge;
     return () => {
       bridgeRef.current = null;
-      bridge.destroy();
+      bridge.destroy({ retainSpecs: retainSpecsRef.current === true });
     };
   }, [set, idPrefix, hasExternalChange]);
 

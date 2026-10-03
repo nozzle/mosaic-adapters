@@ -39,6 +39,8 @@ Opt-in per channel; both publish native `clausePoints` with a stable clause sour
 
 `setSelectedValues(tuples)` is the tuple-level equivalent of `selectRows` — value arrays aligned to `publish.select.columns` (arity-checked), not row objects. Use it to replay stored intent after a reload, where the original row objects no longer exist (`selectRows` needs them). `[]` clears. An external clause removal (chip bar, `selection.reset()`) resets the tracked selection.
 
+`store.state.selected: ReadonlyArray<ReadonlyArray<unknown>>` exposes the published selection as tuples aligned to `publish.select.columns`, in publish order (`[]` when nothing is selected or no `publish.select` target is configured). It follows every change: `selectRows`, `setSelectedValues`, persisted hydration, an external clear, an adopted `publish.select.into` spec value (hydration or another writer), and the destroy-time clear. The store is patched only when the value changes, so a `selected` selector never re-fires on an equal re-publish. Feed it back through `setSelectedValues` to replay it; see [the TanStack Table `rowSelection` recipe](../tanstack-table/integration.md#mirroring-the-row-selection-into-rowselection).
+
 `destroy()` removes any published clauses before disconnecting.
 
 Two extras cover grouped/remounting widgets:

@@ -306,6 +306,16 @@ export interface RowsClientOptions<TRow> extends DataClientOptions<RowsInputs> {
 export interface RowsClientState<TRow> extends DataClientState<RowsInputs> {
   rows: Array<TRow>;
   totalRows: number | undefined;
+  /**
+   * The currently published row selection: tuples (value arrays aligned to
+   * `publish.select.columns`), in publish order. `[]` when nothing is selected
+   * or no `publish.select` target is configured. Tracks every change —
+   * `selectRows`, `setSelectedValues`, persisted/FilterSet hydration, an
+   * external clear (chip bar, `selection.reset()`, `set.remove()`), an
+   * adopted `publish.select.into` spec value, and the destroy-time clear.
+   * Replay it with `setSelectedValues`.
+   */
+  selected: ReadonlyArray<ReadonlyArray<unknown>>;
 }
 
 export interface RowsClient<TRow> extends DataClient<RowsInputs, RowsClientState<TRow>> {
@@ -315,9 +325,10 @@ export interface RowsClient<TRow> extends DataClient<RowsInputs, RowsClientState
    * Publish the given tuples (value arrays aligned to `publish.select.columns`)
    * as a point clause; `[]` clears. The tuple-level equivalent of
    * `selectRows` — use it to replay stored intent, where the original row
-   * objects no longer exist (e.g. after a reload).
+   * objects no longer exist (e.g. after a reload). Accepts readonly tuples,
+   * so `state.selected` replays directly; the tuples are copied, never held.
    */
-  setSelectedValues: (tuples: Array<Array<unknown>>) => void;
+  setSelectedValues: (tuples: ReadonlyArray<ReadonlyArray<unknown>>) => void;
   /** Publish a transient hover clause; `null` clears it. */
   hoverRow: (row: TRow | null) => void;
   /** Swap the coerce mapper (latest-ref semantics; never re-queries). */

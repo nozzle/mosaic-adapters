@@ -7,5 +7,6 @@ export type {
   FilterBridge,
   FilterBridgeColumn,
   FilterBridgeColumns,
+  FilterBridgeDestroyOptions,
   FilterBridgeOptions,
 } from './types';
