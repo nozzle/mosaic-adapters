@@ -14,6 +14,21 @@
 import { clauseNone } from '@uwdata/mosaic-core';
 import type { Selection } from '@uwdata/mosaic-core';
 
+/**
+ * Options for the `destroy()` of a composition handle
+ * (`ComposedSelectionHandle`, `CascadingContextsHandle`).
+ */
+export interface CompositionDestroyOptions {
+  /**
+   * When `true`, only detach the relay links: the context keeps its last
+   * clauses and emits no `value` event, so clients still connected to it do not
+   * re-query. Use it when the context dies with its owner (e.g. every reader is
+   * unmounting too). Defaults to `false`: the seeded clauses are cleared, which
+   * publishes one `value` update per cleared clause.
+   */
+  silent?: boolean;
+}
+
 /** Register `derived` to receive relayed clauses from `source`. */
 export function attachIncludedSelection(source: Selection, derived: Selection): void {
   source._relay.add(derived);

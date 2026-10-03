@@ -25,6 +25,10 @@
  * - **Persistence** is whole-set-as-one-entry via {@link PersisterLifecycle}.
  *   Hydration writes zero persister writes and runs synchronously before
  *   `createFilterSet` returns; `destroy()` never writes.
+ *
+ * - **Teardown** clears every published clause by default (the targets may
+ *   outlive the set). `destroy({ silent: true })` skips the clears — used by
+ *   `createTopology`, whose targets die with the set.
  */
 import { Store } from '@tanstack/store';
 import type { ClauseSource, MosaicClient, Selection, SelectionClause } from '@uwdata/mosaic-core';
@@ -47,6 +51,7 @@ import type {
   FilterKindArgs,
   FilterSet,
   FilterSetChip,
+  FilterSetDestroyOptions,
   FilterSetOptions,
   FilterSetSetOptions,
   FilterSetState,
@@ -301,11 +306,23 @@ class FilterSetImpl implements FilterSet {
     this.remove(chip.id);
   }
 
-  destroy(): void {
+  destroy(options: FilterSetDestroyOptions = {}): void {
     if (this.#destroyed) {
       return;
     }
     this.#destroyed = true;
+    // Detach first so no listener (external-clear, context rebuild) observes
+    // the teardown.
+    for (const detach of this.#detachers) {
+      detach();
+    }
+    this.#detachers.length = 0;
+    if (options.silent === true) {
+      // Silent teardown: the targets die with the set (topology-owned), so
+      // publishing clears would only make every still-connected client run one
+      // unfiltered query on its way out.
+      return;
+    }
     // Clear published clauses without ever writing to the persister — a
     // StrictMode unmount must not wipe the consumer's storage.
     this.#publishing = true;
@@ -316,10 +333,6 @@ class FilterSetImpl implements FilterSet {
     } finally {
       this.#publishing = false;
     }
-    for (const detach of this.#detachers) {
-      detach();
-    }
-    this.#detachers.length = 0;
   }
 
   /** Reconstructs the {@link FilterSetSetOptions} carrying a spec's clients. */

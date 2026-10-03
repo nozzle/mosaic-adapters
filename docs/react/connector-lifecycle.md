@@ -9,8 +9,9 @@ This recipe is the shape that policy takes: an app-owned `ConnectorProvider` tha
 Construct the coordinator explicitly — `new Coordinator(connector)`, never the global singleton — so every client hook resolves _this_ instance through context. Track a `connectionId` that changes whenever the connector is rebuilt; that id is the connection's identity, and it is what downstream state keys on.
 
 ```tsx
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Coordinator, wasmConnector } from '@uwdata/mosaic-core';
+import type { DuckDBWASMConnector } from '@uwdata/mosaic-core';
 import type { ReactNode } from 'react';
 
 export interface ConnectorState {
@@ -24,28 +25,75 @@ export interface ConnectorState {
 
 const ConnectorContext = createContext<ConnectorState | null>(null);
 
+/** One live connection: the coordinator plus the connector it owns. */
+interface Connection {
+  id: number;
+  coordinator: Coordinator;
+  connector: DuckDBWASMConnector;
+}
+
 /** Build a fresh coordinator wired to an in-browser DuckDB (WASM). */
-function createConnection(): Coordinator {
-  return new Coordinator(wasmConnector());
+function createConnection(id: number): Connection {
+  // `wasmConnector()` is lazy: no Web Worker starts until the first query.
+  const connector = wasmConnector();
+  return { id, coordinator: new Coordinator(connector), connector };
+}
+
+/** Clear the coordinator, then terminate DuckDB — only if it started. */
+function disposeConnection(connection: Connection): void {
+  connection.coordinator.clear();
+
+  const { connector } = connection;
+  const loading = connector._loadPromise; // set on the first query
+  if (loading === undefined) {
+    return;
+  }
+  void loading
+    .catch(() => undefined)
+    .then(() => connector._db?.terminate())
+    .catch((error: unknown) => {
+      console.warn('Failed to terminate DuckDB-WASM.', error);
+    });
 }
 
 /** Owns the app's coordinator instance and its connection identity. */
 export function ConnectorProvider(props: { children: ReactNode }) {
-  const [connectionId, setConnectionId] = useState(0);
+  const [generation, setGeneration] = useState(0);
+  const [connection, setConnection] = useState<Connection | null>(null);
 
-  // One coordinator per connectionId. Recreating it (a bumped id) yields a new
-  // instance, so consumers keyed on connectionId remount against fresh state.
-  const coordinator = useMemo(() => createConnection(), [connectionId]);
+  // One connection per generation, created and disposed by the same effect.
+  // Disposal is deferred to a microtask so it runs after every other cleanup in
+  // the same commit: the subtree using the connection always goes first.
+  useEffect(() => {
+    const next = createConnection(generation);
+    // Deliberate: the connection must be created here so it has a matching
+    // cleanup below (a `useMemo` connection would have none).
+    // oxlint-disable-next-line react/set-state-in-effect
+    setConnection(next);
+    return () => {
+      queueMicrotask(() => disposeConnection(next));
+    };
+  }, [generation]);
 
   const recreate = useCallback(() => {
-    setConnectionId((id) => id + 1);
+    setGeneration((id) => id + 1);
   }, []);
 
-  const value = useMemo<ConnectorState>(
-    () => ({ coordinator, connectionId, recreate }),
-    [coordinator, connectionId, recreate],
+  // Render nothing against a connection that is about to be disposed, so its
+  // subtree unmounts before the coordinator clears.
+  const current = connection !== null && connection.id === generation ? connection : null;
+
+  const value = useMemo<ConnectorState | null>(
+    () =>
+      current === null
+        ? null
+        : { coordinator: current.coordinator, connectionId: current.id, recreate },
+    [current, recreate],
   );
 
+  if (value === null) {
+    return null;
+  }
   return <ConnectorContext.Provider value={value}>{props.children}</ConnectorContext.Provider>;
 }
 
@@ -59,22 +107,55 @@ export function useConnector(): ConnectorState {
 }
 ```
 
-`recreate()` bumps `connectionId`, the `useMemo` mints a new `Coordinator`, and every consumer keyed on the id remounts. That is the whole reconnect mechanism — no imperative teardown wiring, because remounting _is_ the teardown.
+`recreate()` bumps the generation. The provider stops rendering the old connection, so every consumer keyed on `connectionId` unmounts; the effect cleanup then disposes the old connection and the effect body builds a fresh one, which the remounted subtree picks up. That is the whole reconnect mechanism — remounting _is_ the teardown, and the effect cleanup releases what the remount cannot (the coordinator's queue and the DuckDB worker).
+
+### Create the coordinator in an effect, not `useMemo`
+
+A `Coordinator` over `wasmConnector()` owns a DuckDB-WASM **Web Worker** once it runs its first query. `useMemo` has no cleanup, so a memoized coordinator leaks that worker on every reconnect — and StrictMode's throwaway mount mints a second one in dev. Create the connection in an effect (or a ref managed by one) whose cleanup disposes it:
+
+- **Clear the coordinator** with `coordinator.clear()`: rejects queued queries, disconnects any straggling client, and drops the cache.
+- **Terminate DuckDB only if it started.** `wasmConnector()` is lazy: it starts nothing until its first query, at which point it sets the public `_loadPromise` field. No `_loadPromise` means no worker, so there is nothing to terminate (the StrictMode throwaway connection is the usual case). Otherwise wait for `_loadPromise` to settle — it may still be starting, or have failed part-way — and call `_db?.terminate()`.
+
+One limitation: upstream assigns `_db` only after DuckDB-WASM instantiation succeeds. A start that fails later (opening the database or connecting) still leaves `_db` set, so its worker is reclaimed; a start that fails _during_ instantiation leaves the worker unreachable from the connector, and `_db?.terminate()` cannot reclaim it. If that case matters to you, construct the `AsyncDuckDB` yourself and pass it in with `wasmConnector({ duckdb })`, so you hold the instance to terminate.
+
+Until the effect has run there is no connection, so the provider renders nothing for that first pass; downstream code still sees a non-null coordinator from `useConnector()`.
 
 ### Where a remote connector slots in
 
-`createConnection` is the one place connector choice lives. Swapping DuckDB-WASM for a remote backend is a one-line change to that function — the provider contract (a `Coordinator` plus a `connectionId`) is unchanged:
+`createConnection` / `disposeConnection` are the one place connector choice lives. Swapping DuckDB-WASM for a remote backend changes only those two functions — the provider contract (a `Coordinator` plus a `connectionId`) is unchanged. A remote connector has no worker to terminate, so disposal is just `coordinator.clear()`:
 
 ```ts
 import { Coordinator, socketConnector } from '@uwdata/mosaic-core';
 
-function createConnection(): Coordinator {
+interface Connection {
+  id: number;
+  coordinator: Coordinator;
+}
+
+function createConnection(id: number): Connection {
   // A remote DuckDB / data server over a socket instead of in-browser WASM.
-  return new Coordinator(socketConnector('wss://data.example.com/socket'));
+  return { id, coordinator: new Coordinator(socketConnector('wss://data.example.com/socket')) };
+}
+
+function disposeConnection(connection: Connection): void {
+  connection.coordinator.clear();
 }
 ```
 
 Retry and reconnect are app policy layered on top: a `socketConnector` that drops its connection is exactly the case `recreate()` exists for. Wire a socket `onclose`/`onerror` (or a health-check ping) to call `recreate()`, and the connection-identity keying below does the rest — the whole page rebuilds against a fresh coordinator. The library takes no stance on _when_ to retry (immediate, backoff, user-triggered "Reconnect" button); that decision is yours.
+
+## Teardown order
+
+Tear a connection down in this order:
+
+1. **Clients** — disconnect every Mosaic client (unmount the hooks).
+2. **Topology** — destroy the page topology (and any standalone FilterSets / compositions).
+3. **`coordinator.clear()`** — cancel what is still queued and drop the cache.
+4. **Terminate the worker** — `_db.terminate()`, only if DuckDB started.
+
+Steps 3–4 come last because a coordinator cleared while clients are still connected rejects their queries, and each rejection is logged as an error. The provider above enforces that by unmounting the subtree before disposing, and by deferring disposal to a microtask so it runs after every cleanup in the commit — including when the provider itself unmounts, where React runs cleanups parent-first.
+
+Steps 1 and 2 run in the opposite order inside React: effect cleanups run **parent-first**, so a `useTopology` parent is destroyed while its children's clients are still connected, and an app cannot reorder that. It is safe because [topology teardown is silent](../core/selection-topology.md#teardown-is-silent) — owned contexts and FilterSets detach without publishing a clear, so the still-connected children issue no query on their way out.
 
 ## Gating and connection-identity keying
 

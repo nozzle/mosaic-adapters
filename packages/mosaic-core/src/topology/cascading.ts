@@ -8,6 +8,7 @@
  */
 import { Selection } from '@uwdata/mosaic-core';
 
+import type { CompositionDestroyOptions } from './wiring';
 import {
   attachIncludedSelection,
   clearSeededClauses,
@@ -19,8 +20,12 @@ import {
 export interface CascadingContextsHandle {
   /** Per-key context Selections, one per key of `inputs`. */
   readonly contexts: Record<string, Selection>;
-  /** Detach every relay link and clear seeded clauses. Idempotent. */
-  destroy: () => void;
+  /**
+   * Detach every relay link and clear seeded clauses. Idempotent. Pass
+   * `{ silent: true }` to detach without clearing (see
+   * {@link CompositionDestroyOptions}).
+   */
+  destroy: (options?: CompositionDestroyOptions) => void;
   /** True once {@link CascadingContextsHandle.destroy} has run. */
   readonly destroyed: boolean;
 }
@@ -74,7 +79,7 @@ export function createCascadingContexts(
 
   let destroyed = false;
 
-  function destroy(): void {
+  function destroy(destroyOptions: CompositionDestroyOptions = {}): void {
     if (destroyed) {
       return;
     }
@@ -96,6 +101,10 @@ export function createCascadingContexts(
       for (const external of externals) {
         detachIncludedSelection(external, context);
       }
+    }
+
+    if (destroyOptions.silent === true) {
+      return;
     }
 
     for (const key of keys) {

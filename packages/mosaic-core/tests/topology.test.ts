@@ -435,23 +435,78 @@ describe('createTopology — destroy()', () => {
     expect(resolvedColumns(brush)).toEqual(['brushed']);
   });
 
-  test('destroy tears down compositions and FilterSets it created', () => {
+  test('destroy tears down compositions and FilterSets it created, silently', async () => {
     const topology = createTopology({
       a: { type: 'crossfilter' },
       combined: { type: 'compose', include: ['a'] },
+      cascade: { type: 'cascading', keys: ['a', 'b'] },
+      b: { type: 'crossfilter' },
       filters: { type: 'filter-set', targets: { where: 'crossfilter' } },
     });
     const filterSet = topology.getFilterSet('filters');
+    filterSet?.set({ id: 'p', column: 'sport', kind: 'point', value: 'swim' });
     publishForeign(topology.resolve('a'), 'sport', 'swim');
     const combined = topology.resolve('combined');
+    const cascadeB = topology.resolve('cascade.b');
+    const where = topology.resolve('filters.where');
     expect(resolvedColumns(combined)).toEqual(['sport']);
+    expect(resolvedColumns(cascadeB)).toEqual(['sport']);
+    expect(where._resolved).toHaveLength(1);
+    const listener = vi.fn();
+    for (const selection of [combined, cascadeB, where]) {
+      selection.addEventListener('value', listener);
+    }
+
+    // Let construction/publish dispatches drain so only teardown is observed.
+    await settle();
+    listener.mockClear();
 
     topology.destroy();
+    await settle();
 
     expect(topology.destroyed).toBe(true);
     expect(filterSet?.destroyed).toBe(true);
-    // The composed context was torn down (seeded clause cleared, relay detached).
+    // No clear was published into any owned context or FilterSet target: they
+    // die with the topology, so connected clients see no update.
+    expect(listener).not.toHaveBeenCalled();
+    expect(resolvedColumns(combined)).toEqual(['sport']);
+    expect(resolvedColumns(cascadeB)).toEqual(['sport']);
+    expect(where._resolved).toHaveLength(1);
+    // The relays were detached: later publishes no longer reach the contexts.
+    publishForeign(topology.resolve('a'), 'name', 'Ada');
+    expect(resolvedColumns(combined)).toEqual(['sport']);
+    expect(resolvedColumns(cascadeB)).toEqual(['sport']);
+  });
+
+  test('clearOnDestroy: destroy clears seeded clauses and FilterSet clauses', () => {
+    const topology = createTopology(
+      {
+        a: { type: 'crossfilter' },
+        combined: { type: 'compose', include: ['a'] },
+        cascade: { type: 'cascading', keys: ['a', 'b'] },
+        b: { type: 'crossfilter' },
+        filters: { type: 'filter-set', targets: { where: 'crossfilter' } },
+      },
+      { clearOnDestroy: true },
+    );
+    topology.getFilterSet('filters')?.set({
+      id: 'p',
+      column: 'sport',
+      kind: 'point',
+      value: 'swim',
+    });
+    publishForeign(topology.resolve('a'), 'sport', 'swim');
+    const combined = topology.resolve('combined');
+    const cascadeB = topology.resolve('cascade.b');
+    const where = topology.resolve('filters.where');
+
+    topology.destroy();
+
+    // The composed contexts were torn down (seeded clause cleared, relay
+    // detached) and the FilterSet cleared its published clause.
     expect(combined._resolved).toHaveLength(0);
+    expect(cascadeB._resolved).toHaveLength(0);
+    expect(resolvedColumns(where)).toEqual([]);
     publishForeign(topology.resolve('a'), 'name', 'Ada');
     expect(combined._resolved).toHaveLength(0);
   });
@@ -642,7 +697,7 @@ describe('createTopology — resolved-clause seeding and reset', () => {
    * (the last *emitted* list) lags behind `_resolved`, so seeding must read
    * `_resolved` for every hydrated clause to reach derived contexts.
    */
-  function hydratedTopology(specs: Array<FilterSpec>) {
+  function hydratedTopology(specs: Array<FilterSpec>, extra: { clearOnDestroy?: boolean } = {}) {
     const persist: Persister<Array<FilterSpec>> = {
       read: () => specs,
       write: () => {},
@@ -655,7 +710,7 @@ describe('createTopology — resolved-clause seeding and reset', () => {
         b: { type: 'crossfilter' },
         cascade: { type: 'cascading', keys: ['a', 'b'], externals: ['filters.where'] },
       },
-      { filterSets: { filters: { persist } } },
+      { filterSets: { filters: { persist } }, ...extra },
     );
   }
 
@@ -696,18 +751,47 @@ describe('createTopology — resolved-clause seeding and reset', () => {
     topology.destroy();
   });
 
-  test('destroy clears every hydrated clause from compose and cascading contexts', () => {
-    const topology = hydratedTopology([
-      { id: 'p1', column: 'sport', kind: 'point', value: 'swim' },
-      { id: 'p2', column: 'name', kind: 'point', value: 'Ada' },
-      { id: 'p3', column: 'country', kind: 'point', value: 'NZ' },
-    ]);
+  test('clearOnDestroy: destroy clears every hydrated clause from compose and cascading contexts', () => {
+    const topology = hydratedTopology(
+      [
+        { id: 'p1', column: 'sport', kind: 'point', value: 'swim' },
+        { id: 'p2', column: 'name', kind: 'point', value: 'Ada' },
+        { id: 'p3', column: 'country', kind: 'point', value: 'NZ' },
+      ],
+      { clearOnDestroy: true },
+    );
     const contexts = ['page', 'cascade.a', 'cascade.b'].map((ref) => topology.resolve(ref));
 
     topology.destroy();
 
     for (const context of contexts) {
       expect(context._resolved).toHaveLength(0);
+    }
+  });
+
+  test('default destroy leaves hydrated contexts untouched and emits nothing', async () => {
+    const topology = hydratedTopology([
+      { id: 'p1', column: 'sport', kind: 'point', value: 'swim' },
+      { id: 'p2', column: 'name', kind: 'point', value: 'Ada' },
+      { id: 'p3', column: 'country', kind: 'point', value: 'NZ' },
+    ]);
+    const refs = ['filters.where', 'page', 'cascade.a', 'cascade.b'];
+    const selections = refs.map((ref) => topology.resolve(ref));
+    const listener = vi.fn();
+    for (const selection of selections) {
+      selection.addEventListener('value', listener);
+    }
+    // Let hydration dispatches drain so only teardown is observed.
+    await settle();
+    listener.mockClear();
+
+    topology.destroy();
+    // Dispatch can be queued behind a pending emit; let it drain first.
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+    for (const selection of selections) {
+      expect(selection._resolved).toHaveLength(3);
     }
   });
 

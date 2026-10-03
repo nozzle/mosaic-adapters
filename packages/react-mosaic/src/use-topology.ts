@@ -57,6 +57,13 @@ function getObjectId(value: object): number {
  * `useMemo`, or a ref) so the topology stays stable across re-renders — the same
  * contract the Phase 1 composition hooks document.
  *
+ * Teardown is silent: React runs effect cleanups parent-first, so descendant
+ * clients are still connected when this hook destroys the topology, and the
+ * topology's owned contexts and FilterSets detach without publishing a clear
+ * (no descendant re-queries on its way out). The core `clearOnDestroy` option
+ * restores the clearing teardown; like `initialize`, it is read at construction
+ * and is not a recreation key.
+ *
  * @param config - The declarative topology config (a stable object reference).
  * @param options - The options bag: the code-only core fields (`selections`,
  *   `filterSets`, `params`, `paramOptions` — external instances, FilterSet

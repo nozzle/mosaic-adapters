@@ -6,9 +6,10 @@
  * `destroy()` must detach every relay and clear the seeded clauses so no residue
  * or propagation survives teardown.
  */
+import { settle } from '@nozzleio/test-support/duckdb';
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import type { MosaicClient } from '@uwdata/mosaic-core';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 import { createComposedSelection } from '../src/index';
 
@@ -150,6 +151,28 @@ describe('createComposedSelection', () => {
     // A later publish to a formerly-included selection does not reach the context.
     publish($b, 'name', 'Ada');
     expect(handle.selection._resolved).toHaveLength(0);
+  });
+
+  test('destroy({ silent: true }) detaches relays without clearing or emitting', async () => {
+    const $a = Selection.crossfilter();
+    const $b = Selection.crossfilter();
+    const handle = createComposedSelection([$a, $b]);
+    publish($a, 'sport', 'swim');
+    const listener = vi.fn();
+    handle.selection.addEventListener('value', listener);
+    await settle();
+    listener.mockClear();
+
+    handle.destroy({ silent: true });
+    await settle();
+
+    expect(handle.destroyed).toBe(true);
+    // No clear was published: the context keeps its clause and emits nothing.
+    expect(listener).not.toHaveBeenCalled();
+    expect(resolvedColumns(handle.selection)).toEqual(['sport']);
+    // The relays are gone all the same.
+    publish($b, 'name', 'Ada');
+    expect(resolvedColumns(handle.selection)).toEqual(['sport']);
   });
 
   test('destroy is idempotent', () => {

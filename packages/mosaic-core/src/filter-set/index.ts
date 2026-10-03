@@ -16,6 +16,7 @@ export type {
   FilterKindEmission,
   FilterSet,
   FilterSetChip,
+  FilterSetDestroyOptions,
   FilterSetOptions,
   FilterSetSetOptions,
   FilterSetState,

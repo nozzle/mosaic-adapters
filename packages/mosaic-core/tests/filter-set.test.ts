@@ -353,6 +353,58 @@ describe('replace / remove / clear / reset', () => {
   });
 });
 
+describe('destroy', () => {
+  test('default destroy clears every published clause and never writes', () => {
+    const $where = Selection.crossfilter();
+    const write = vi.fn();
+    const set = createFilterSet({
+      targets: { where: $where },
+      persist: { read: () => null, write },
+    });
+    set.set({ id: 'a', column: 'sport', kind: 'point', value: 'swim' });
+    set.set({ id: 'b', column: 'name', kind: 'match', value: 'a' });
+    write.mockClear();
+
+    set.destroy();
+
+    expect(set.destroyed).toBe(true);
+    expect($where._resolved).toHaveLength(0);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  test('destroy({ silent: true }) leaves clauses in place, emits nothing, and detaches', async () => {
+    const $where = Selection.crossfilter();
+    const write = vi.fn();
+    const set = createFilterSet({
+      targets: { where: $where },
+      persist: { read: () => null, write },
+    });
+    set.set({ id: 'a', column: 'sport', kind: 'point', value: 'swim' });
+    set.set({ id: 'b', column: 'name', kind: 'match', value: 'a' });
+    const listener = vi.fn();
+    $where.addEventListener('value', listener);
+    await settle();
+    listener.mockClear();
+    write.mockClear();
+
+    set.destroy({ silent: true });
+    await settle();
+
+    expect(set.destroyed).toBe(true);
+    expect(listener).not.toHaveBeenCalled();
+    expect($where._resolved).toHaveLength(2);
+    expect(write).not.toHaveBeenCalled();
+
+    // Listeners were detached: an external drop no longer mirrors into the set.
+    $where.reset();
+    expect(set.store.state.specs.map((spec) => spec.id)).toEqual(['a', 'b']);
+    expect(write).not.toHaveBeenCalled();
+    // Further mutations are no-ops after destroy.
+    set.set({ id: 'c', column: 'sport', kind: 'point', value: 'run' });
+    expect($where._resolved).toHaveLength(0);
+  });
+});
+
 describe('chip routing target', () => {
   test('a spec with no target produces chips targeting "where"', () => {
     const $where = Selection.crossfilter();

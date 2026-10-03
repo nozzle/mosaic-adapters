@@ -6,8 +6,9 @@
  * later-published clauses. `destroy()` must unwire every relay and clear seeded
  * clauses.
  */
+import { settle } from '@nozzleio/test-support/duckdb';
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 import { createCascadingContexts } from '../src/index';
 
@@ -122,6 +123,31 @@ describe('createCascadingContexts', () => {
     publish($ext, 'other', 'w');
     expect(handle.contexts.a!._resolved).toHaveLength(0);
     expect(handle.contexts.b!._resolved).toHaveLength(0);
+  });
+
+  test('destroy({ silent: true }) detaches relays without clearing or emitting', async () => {
+    const $a = Selection.crossfilter();
+    const $b = Selection.crossfilter();
+    const $ext = Selection.crossfilter();
+    const handle = createCascadingContexts({ a: $a, b: $b }, [$ext]);
+    publish($a, 'colA', 'x');
+    publish($ext, 'tableFilter', 'v');
+    const listener = vi.fn();
+    handle.contexts.a!.addEventListener('value', listener);
+    handle.contexts.b!.addEventListener('value', listener);
+    await settle();
+    listener.mockClear();
+
+    handle.destroy({ silent: true });
+    await settle();
+
+    expect(handle.destroyed).toBe(true);
+    expect(listener).not.toHaveBeenCalled();
+    expect(resolvedColumns(handle.contexts.a!)).toEqual(['tableFilter']);
+    expect(resolvedColumns(handle.contexts.b!).sort()).toEqual(['colA', 'tableFilter']);
+    // Relays are detached all the same.
+    publish($b, 'colB', 'y');
+    expect(resolvedColumns(handle.contexts.a!)).toEqual(['tableFilter']);
   });
 
   test('destroy is idempotent', () => {

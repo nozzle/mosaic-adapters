@@ -3,6 +3,7 @@ export type { ComposedSelectionHandle, ComposedSelectionOptions } from './compos
 
 export { createCascadingContexts } from './cascading';
 export type { CascadingContextsHandle } from './cascading';
+export type { CompositionDestroyOptions } from './wiring';
 
 export { createTopology } from './topology';
 export type {

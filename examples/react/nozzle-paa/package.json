@@ -10,6 +10,7 @@
     "build": "pnpm run typecheck && vite build",
     "preview": "vite preview",
     "test:lint": "pnpm run lint",
+    "test:lib": "vitest tests/*.unit.test.tsx",
     "test:e2e": "playwright test",
     "test:types": "pnpm run typecheck"
   },
@@ -25,6 +26,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@nozzleio/test-support": "workspace:*",
     "@playwright/test": "catalog:",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "catalog:",
@@ -33,6 +35,16 @@
     "@vitejs/plugin-react": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "nx": {
+    "targets": {
+      "test:lib": {
+        "dependsOn": [
+          "^build"
+        ]
+      }
+    }
   }
 }
