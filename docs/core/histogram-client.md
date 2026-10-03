@@ -24,6 +24,10 @@ Binning rides on mosaic-sql's `binHistogram` over a **fixed extent**, so filters
 - `inputs.step` sets an exact bin width (in transformed space for log scales); `inputs.bins` is a step-count hint (default 25). Linear boundaries snap to nice numbers; log boundaries stay pinned to the positive extent.
 - `bins` on the store is contiguous across the whole extent — empty bins carry `count: 0`, so bar charts render gaps correctly.
 
+## Struct columns
+
+`column` accepts a struct path: `column: 'stats.score'` bins `"stats"."score"`, and extent discovery, the bin query, and the published interval clause all share that one expression. Names without a dot render exactly as before. For a column whose name itself contains a dot, pass `columnPaths: 'literal'` to read it as one identifier (`"stats.score"`) everywhere, including the published clause. Under `publish.into` the mode travels on the `interval` spec (`columnPaths: 'literal'`), so the [FilterSet](./filter-set.md) resolves the same identifier.
+
 ## Publishing
 
 `setRange([lo, hi])` publishes a native `clauseInterval` (BETWEEN, `meta: {type: 'interval'}`) with the client in the clause `clients` set: under a crossfilter Selection, the brush filters everything else on the page while this histogram's own bins stay put. `setRange(null)` clears; `range` on the store mirrors the published clause, including external removals; `destroy()` clears.

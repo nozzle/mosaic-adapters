@@ -1,7 +1,19 @@
-import { PivotQuery, asc, avg, column, count, desc, max, min, sum } from '@uwdata/mosaic-sql';
-import type { ExprNode, ExprValue } from '@uwdata/mosaic-sql';
+import {
+  PivotQuery,
+  Query,
+  asc,
+  avg,
+  column,
+  count,
+  desc,
+  max,
+  min,
+  sum,
+} from '@uwdata/mosaic-sql';
+import type { ExprNode, ExprValue, SelectQuery } from '@uwdata/mosaic-sql';
 
 import { BaseDataClient } from './base-client';
+import { columnAccess } from './sql-access';
 import type {
   CoerceOption,
   OrderByItem,
@@ -57,7 +69,7 @@ class PivotDataClient<TRow>
   }
 
   protected buildQuery(ctx: QueryContext<RowsInputs>): PivotQuery {
-    const query = new PivotQuery(this.resolveBase(ctx))
+    const query = new PivotQuery(projectStructPaths(this.resolveBase(ctx), this.#structPaths()))
       .on(column(this.#options.on))
       .using(this.#options.using.map((aggregate) => usingEntry(aggregate)))
       .groupby(...this.#options.groupBy);
@@ -81,6 +93,25 @@ class PivotDataClient<TRow>
     return query;
   }
 
+  /**
+   * Dotted (struct-path) names among `on`, `groupBy`, and the `using`
+   * aggregate columns, deduplicated in first-seen order. Empty under
+   * `columnPaths: 'literal'`, where every name is one identifier.
+   */
+  #structPaths(): Array<string> {
+    if (this.#options.columnPaths === 'literal') {
+      return [];
+    }
+    const names = [
+      this.#options.on,
+      ...this.#options.groupBy,
+      ...this.#options.using.flatMap((aggregate) =>
+        aggregate.column === undefined ? [] : [aggregate.column],
+      ),
+    ];
+    return [...new Set(names.filter((name) => name.includes('.')))];
+  }
+
   protected onResult(data: unknown): Partial<PivotClientState<TRow>> {
     const raw = toResultRows(data);
     const names = resultColumnNames(data, raw);
@@ -91,6 +122,26 @@ class PivotDataClient<TRow>
       pivotColumns: names.filter((name) => !groupColumns.has(name)),
     };
   }
+}
+
+/**
+ * DuckDB rejects qualified column references anywhere inside a PIVOT
+ * (`ON`, `USING`, `GROUP BY`), so struct paths are projected onto the source
+ * relation under their own dotted name first: `meta.country` becomes
+ * `SELECT *, "meta"."country" AS "meta.country" FROM (...)`, and the PIVOT
+ * then references the single identifier `"meta.country"`. A `groupBy` path
+ * therefore keeps its option name as the output column. Without dotted names
+ * the base query is returned untouched, so the SQL is unchanged.
+ */
+function projectStructPaths(base: SelectQuery, paths: Array<string>): SelectQuery {
+  if (paths.length === 0) {
+    return base;
+  }
+  const projections: Record<string, ExprNode> = {};
+  for (const path of paths) {
+    projections[path] = columnAccess(path);
+  }
+  return Query.from(base).select('*', projections);
 }
 
 /**

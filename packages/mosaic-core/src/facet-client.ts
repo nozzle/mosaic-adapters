@@ -12,13 +12,13 @@ import {
   sql,
   unnest,
 } from '@uwdata/mosaic-sql';
-import type { ExprValue, SelectQuery } from '@uwdata/mosaic-sql';
+import type { ExprNode, ExprValue, SelectQuery } from '@uwdata/mosaic-sql';
 
 import { BaseDataClient } from './base-client';
 import { createClearClause, createValueClause } from './clause-factory';
 import type { FilterSpec } from './filter-set/types';
 import { PersisterLifecycle } from './persistence';
-import { escapeSqlLikePattern } from './sql-access';
+import { columnAccess, escapeSqlLikePattern } from './sql-access';
 import { isFilterSetPublishTarget } from './types';
 import type {
   FacetClient,
@@ -45,6 +45,12 @@ export function createFacetClient(options: FacetClientOptions): FacetClient {
 
 class FacetDataClient extends BaseDataClient<FacetInputs, FacetClientState> implements FacetClient {
   readonly #options: FacetClientOptions;
+  /**
+   * Access expression for `column` (struct-path aware). One node serves the
+   * options query and the published clause `fields`, so pre-aggregation
+   * matches the predicate's field by identity.
+   */
+  readonly #field: ExprNode;
   readonly #source: ClauseSource = {};
   #selected: Array<unknown> = [];
   #persist: PersisterLifecycle<Array<unknown>> | null = null;
@@ -64,6 +70,7 @@ class FacetDataClient extends BaseDataClient<FacetInputs, FacetClientState> impl
       { prepare: () => this.#prepare() },
     );
     this.#options = options;
+    this.#field = columnAccess(options.column, options.columnPaths);
     this.#persist = this.#resolvePersist();
     this.#wireExternalClear();
     this.#wireSetMirror();
@@ -138,9 +145,7 @@ class FacetDataClient extends BaseDataClient<FacetInputs, FacetClientState> impl
     const sort = counts ? (this.#options.sort ?? 'count') : 'alpha';
 
     const values = Query.from(this.resolveBase(ctx)).select({
-      value: this.#options.arrayColumn
-        ? unnest(column(this.#options.column))
-        : column(this.#options.column),
+      value: this.#options.arrayColumn ? unnest(this.#field) : this.#field,
     });
 
     const query = Query.from(values)
@@ -230,13 +235,18 @@ class FacetDataClient extends BaseDataClient<FacetInputs, FacetClientState> impl
    * `list_has_any` (which routes to the array collection path regardless of
    * columnType), multi-select uses `points`, single-select `point`.
    * `publish.kind` overrides the kind name while keeping the same value shape.
+   * `columnPaths: 'literal'` is carried on the spec so the set resolves the
+   * column as the same single identifier the options query reads.
    */
   #buildSetSpec(target: FilterSetPublishTarget): FilterSpec {
-    const base = {
+    const base: Pick<FilterSpec, 'id' | 'column' | 'columnPaths' | 'label'> = {
       id: target.id,
       column: this.#options.column,
       label: target.label,
     };
+    if (this.#options.columnPaths === 'literal') {
+      base.columnPaths = 'literal';
+    }
     if (this.#options.arrayColumn) {
       return {
         ...base,
@@ -256,7 +266,7 @@ class FacetDataClient extends BaseDataClient<FacetInputs, FacetClientState> impl
   }
 
   #buildClause() {
-    const field = column(this.#options.column);
+    const field = this.#field;
     const clients = new Set<MosaicClient>([this.mosaicClient]);
     const selected = this.#selected;
 

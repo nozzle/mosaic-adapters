@@ -1,4 +1,5 @@
-import type { DataClient, DataClientStatus } from '@nozzleio/mosaic-core';
+import { isSameQuerySource } from '@nozzleio/mosaic-core';
+import type { DataClient, DataClientStatus, QuerySource } from '@nozzleio/mosaic-core';
 import type { Param } from '@uwdata/mosaic-core';
 import { useEffect, useReducer, useRef } from 'react';
 
@@ -92,6 +93,28 @@ export function deriveStatus(status: DataClientStatus, enabled: boolean): DataCl
     return 'pending';
   }
   return status;
+}
+
+/**
+ * The query source to hand to `setQuery`, compared by value rather than
+ * identity where identity is noise: a `TableRefNode` built inline on every
+ * render (`from: new TableRefNode(['main', 'events'])`) is compared by its
+ * SQL string form, so the hook keeps the instance it already holds instead of
+ * treating each render's node as a new source. Strings compare by value;
+ * factories stay latest-ref (a new closure always replaces the old one).
+ * The query source is never structural, so no comparison outcome recreates
+ * the client.
+ */
+export function useStableQuerySource<TInputs extends object>(
+  source: QuerySource<TInputs>,
+): QuerySource<TInputs> {
+  const sourceRef = useRef(source);
+  // Render-phase ref write (latest-ref posture, as in `useBoundClient`): it is
+  // idempotent by value, so a discarded or repeated render cannot diverge.
+  if (!isSameQuerySource(sourceRef.current, source)) {
+    sourceRef.current = source;
+  }
+  return sourceRef.current;
 }
 
 /** Structural-key entries for the `params` option (order-insensitive). */

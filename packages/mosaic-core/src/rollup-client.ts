@@ -25,10 +25,10 @@ const GROUPING_COLUMN = '__rollup_grouping__';
  * data operation; `rollupRowsToTree` derives a nested view when needed.
  */
 export function createRollupClient<TRow>(options: RollupClientOptions<TRow>): RollupClient<TRow> {
-  if (typeof options.query === 'string') {
+  if (typeof options.query !== 'function') {
     throw new Error(
       'Rollup clients require a query factory producing an aggregate select ' +
-        '(a bare table name would ROLLUP over un-aggregated columns).',
+        '(a bare table name or table reference would ROLLUP over un-aggregated columns).',
     );
   }
   if (options.groupBy.length === 0) {

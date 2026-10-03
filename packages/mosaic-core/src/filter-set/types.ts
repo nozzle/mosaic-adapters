@@ -14,6 +14,7 @@ import type { ClauseMetadata, ClauseSource, MosaicClient, Selection } from '@uwd
 import type { ExprNode } from '@uwdata/mosaic-sql';
 
 import type { Persister } from '../persistence';
+import type { ColumnPathMode } from '../types';
 
 /**
  * Plain JSON-serializable dashboard-filter intent. THE serializable state.
@@ -27,6 +28,14 @@ export interface FilterSpec {
   id: string;
   /** Column name or struct path (e.g. `related_phrase.phrase`). */
   column: string;
+  /**
+   * How a dotted `column` is read (see {@link ColumnPathMode}). Omitted or
+   * `'struct'`: a struct path (`meta.country` → `"meta"."country"`).
+   * `'literal'`: one identifier (`"meta.country"`), for a column whose name
+   * itself contains a dot. Also applies to the columns of a multi-column
+   * `points` envelope and to the outer column of a `subqueryFilterKind`.
+   */
+  columnPaths?: ColumnPathMode;
   /** Registry key: 'point' | 'points' | 'interval' | 'match' | 'condition' | custom. */
   kind: string;
   /** Kind-specific operator (condition/match). */
@@ -48,8 +57,9 @@ export interface FilterKindArgs {
   /** The spec being resolved. Treat as immutable. */
   spec: FilterSpec;
   /**
-   * Struct-path-resolved column expression:
-   * `createStructAccess(SqlIdentifier.from(spec.column))`.
+   * The resolved column expression: a struct path
+   * (`createStructAccess(SqlIdentifier.from(spec.column))`), or one quoted
+   * identifier when `spec.columnPaths` is `'literal'`.
    */
   column: ExprNode;
   /**

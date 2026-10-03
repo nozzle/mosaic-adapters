@@ -6,7 +6,7 @@ import type {
   Param,
   Selection,
 } from '@uwdata/mosaic-core';
-import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
+import type { FilterExpr, SelectQuery, TableRefNode } from '@uwdata/mosaic-sql';
 
 import type { FilterSet } from './filter-set/types';
 import type { Persister } from './persistence';
@@ -44,15 +44,28 @@ export function isFilterSetPublishTarget(
 }
 
 /**
- * Where a client's data comes from: a table name, or a query factory that
- * receives resolved filter predicates plus the current inputs.
+ * Where a client's data comes from: a table name, a table reference, or a
+ * query factory that receives resolved filter predicates plus the current
+ * inputs.
  *
- * The factory is held by latest-ref: swapping it (via `setQuery`) never
+ * - A `string` is a single table identifier: `'main.events'` renders as
+ *   `FROM "main.events"` (one quoted name, never split on dots).
+ * - A `TableRefNode` (`new TableRefNode(['main', 'events'])` from
+ *   `@uwdata/mosaic-sql`) renders a schema/database-qualified name:
+ *   `FROM "main"."events"`.
+ *
+ * String and table-reference sources become `SELECT * FROM <table>` with the
+ * client applying WHERE/HAVING. A `string[]` is deliberately not accepted:
+ * mosaic-sql's `Query.from(['main', 'events'])` renders a cross join of two
+ * tables, not a qualified name.
+ *
+ * The source is held by latest-ref: swapping it (via `setQuery`) never
  * triggers a re-query on its own; the next query — whatever triggers it —
- * is built from the latest factory.
+ * is built from the latest source.
  */
 export type QuerySource<TInputs extends object> =
   | string
+  | TableRefNode
   | ((ctx: QueryContext<TInputs>) => SelectQuery);
 
 export interface QueryContext<TInputs extends object> {
@@ -308,6 +321,32 @@ export interface RowsClient<TRow> extends DataClient<RowsInputs, RowsClientState
   prefetch: (inputs: Partial<RowsInputs>) => void;
 }
 
+// ── Column paths ─────────────────────────────────────────────────────────────
+
+/**
+ * How a dotted column option is read:
+ *
+ * - `'struct'` (default) — a struct path, as in the rows client and
+ *   FilterSet: `meta.country` renders `"meta"."country"`.
+ * - `'literal'` — one column identifier, mosaic-sql's `column()` behaviour:
+ *   `meta.country` renders `"meta.country"`. Use it for a column whose name
+ *   itself contains a dot.
+ *
+ * Names without a dot render identically in both modes.
+ */
+export type ColumnPathMode = 'struct' | 'literal';
+
+/** Shared by the facet, histogram, sparkline, and pivot clients. */
+export interface ColumnPathOptions {
+  /**
+   * How dotted column options are read (see {@link ColumnPathMode}). Applies
+   * to every column option of the client, and to the fields of any clause it
+   * publishes: a `publish.as` clause directly, and a `publish.into` spec via
+   * `FilterSpec.columnPaths`. Defaults to `'struct'`.
+   */
+  columnPaths?: ColumnPathMode;
+}
+
 // ── Facet client ─────────────────────────────────────────────────────────────
 
 export interface FacetInputs {
@@ -320,10 +359,14 @@ export interface FacetInputs {
 /** How options are ordered: by descending count, or alphabetically. */
 export type FacetSortMode = 'count' | 'alpha';
 
-export interface FacetClientOptions extends DataClientOptions<FacetInputs> {
+export interface FacetClientOptions extends DataClientOptions<FacetInputs>, ColumnPathOptions {
   /** Base relation the options are read from (typically shared with a rows client). */
   from: QuerySource<FacetInputs>;
-  /** Column whose distinct values become the options. */
+  /**
+   * Column whose distinct values become the options. A dotted name is a
+   * struct path (`meta.country` → `"meta"."country"`), as in the rows client
+   * and FilterSet, unless `columnPaths: 'literal'`.
+   */
   column: string;
   /**
    * The column is a DuckDB list/array (e.g. `VARCHAR[]`): options explode
@@ -392,10 +435,14 @@ export interface HistogramInputs {
   bins?: number;
 }
 
-export interface HistogramClientOptions extends DataClientOptions<HistogramInputs> {
+export interface HistogramClientOptions
+  extends DataClientOptions<HistogramInputs>, ColumnPathOptions {
   /** Base relation the bins are computed over. */
   from: QuerySource<HistogramInputs>;
-  /** Numeric column to bin. */
+  /**
+   * Numeric column to bin. A dotted name is a struct path
+   * (`stats.score` → `"stats"."score"`), unless `columnPaths: 'literal'`.
+   */
   column: string;
   /**
    * Scale transform used to space bin boundaries. `log` bins uniformly in log
@@ -458,6 +505,7 @@ export interface SparklineInputs {
 
 /** X dimension — declarative: raw column, numeric bin, or date bin. */
 export interface SparklineX {
+  /** A dotted name is a struct path (`meta.day` → `"meta"."day"`). */
   column: string;
   /** Numeric bin width: x collapses to `floor(x / step) * step`. */
   step?: number;
@@ -468,13 +516,17 @@ export interface SparklineX {
 /** Y measure — declarative aggregate (serializability constraint). */
 export interface SparklineY {
   agg: 'count' | 'sum' | 'avg' | 'min' | 'max';
-  /** Aggregated column; required for every agg except 'count'. */
+  /**
+   * Aggregated column; required for every agg except 'count'. A dotted name
+   * is a struct path.
+   */
   column?: string;
 }
 
-export interface SparklineClientOptions extends DataClientOptions<SparklineInputs> {
+export interface SparklineClientOptions
+  extends DataClientOptions<SparklineInputs>, ColumnPathOptions {
   from: QuerySource<SparklineInputs>;
-  /** Column whose values key each series. */
+  /** Column whose values key each series. A dotted name is a struct path. */
   key: string;
   x: SparklineX;
   y: SparklineY;
@@ -538,20 +590,33 @@ export interface RollupTreeNode<TRow> {
 /** Declarative aggregate populating pivot cells (serializability constraint). */
 export interface PivotAggregate {
   agg: 'count' | 'sum' | 'avg' | 'min' | 'max';
-  /** Aggregated column; required for every agg except 'count'. */
+  /**
+   * Aggregated column; required for every agg except 'count'. A dotted name
+   * is a struct path.
+   */
   column?: string;
   /** Output alias — with multiple aggregates, DuckDB suffixes pivot columns with it. */
   as?: string;
 }
 
-export interface PivotClientOptions<TRow> extends DataClientOptions<RowsInputs> {
+export interface PivotClientOptions<TRow> extends DataClientOptions<RowsInputs>, ColumnPathOptions {
   /** Base relation to pivot (filtered via the query context). */
   from: QuerySource<RowsInputs>;
-  /** Column whose distinct values become the pivot output columns. */
+  /**
+   * Column whose distinct values become the pivot output columns. A dotted
+   * name is a struct path (`on`, `using[].column`, and `groupBy` alike):
+   * DuckDB rejects qualified references inside PIVOT, so the client projects
+   * each path onto the source under its dotted name first. With
+   * `columnPaths: 'literal'` every name is one identifier and nothing is
+   * projected.
+   */
   on: string;
   /** Aggregates populating the cells. */
   using: Array<PivotAggregate>;
-  /** Row-group columns. */
+  /**
+   * Row-group columns. A struct path (`meta.country`) keeps its dotted name
+   * as the output column.
+   */
   groupBy: Array<string>;
   /**
    * Fixed pivot values (`PIVOT ... IN (...)`). When omitted, DuckDB

@@ -9,7 +9,13 @@ import { useSelector } from '@tanstack/react-store';
 import type { Coordinator } from '@uwdata/mosaic-core';
 
 import { useMosaicCoordinator } from './context';
-import { deriveStatus, paramsKey, skipSourcesKey, useBoundClient } from './use-data-client';
+import {
+  deriveStatus,
+  paramsKey,
+  skipSourcesKey,
+  useBoundClient,
+  useStableQuerySource,
+} from './use-data-client';
 
 export type UseMosaicPivotOptions<TRow> = Omit<PivotClientOptions<TRow>, 'coordinator'> & {
   /**
@@ -34,6 +40,7 @@ export function useMosaicPivot<TRow>(
 ): UseMosaicPivotResult<TRow> {
   const coordinator = useMosaicCoordinator(options.coordinator);
   const enabled = options.enabled ?? true;
+  const from = useStableQuerySource(options.from);
 
   const client = useBoundClient<RowsInputs, PivotClient<TRow>>({
     create: () => createPivotClient<TRow>({ ...options, coordinator, enabled: false }),
@@ -45,6 +52,7 @@ export function useMosaicPivot<TRow>(
       options.inputMode,
       options.filterStable,
       options.on,
+      options.columnPaths,
       JSON.stringify(options.using),
       options.groupBy.join('\u0000'),
       JSON.stringify(options.in ?? null),
@@ -53,7 +61,7 @@ export function useMosaicPivot<TRow>(
     inputs: options.inputs,
     enabled,
     sync: (c) => {
-      c.setQuery(options.from);
+      c.setQuery(from);
       c.setCoerce(options.coerce);
     },
   });

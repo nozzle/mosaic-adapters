@@ -39,7 +39,7 @@ import {
 } from '../clause-factory';
 import { PersisterLifecycle } from '../persistence';
 import type { PersisterWriteReason } from '../persistence';
-import { SqlIdentifier, createStructAccess } from '../sql-access';
+import { SqlIdentifier, identifierAccess, isColumnPathMode } from '../sql-access';
 import { formatFilterValue } from './format';
 import { builtinFilterKinds } from './kinds';
 import type {
@@ -181,6 +181,12 @@ class FilterSetImpl implements FilterSet {
       throw new Error(
         `[mosaic-core] FilterSet.set received an unknown kind '${spec.kind}'. ` +
           `Registered kinds: ${registered}.`,
+      );
+    }
+    if (spec.columnPaths !== undefined && !isColumnPathMode(spec.columnPaths)) {
+      throw new Error(
+        `[mosaic-core] FilterSet.set received an unknown columnPaths ` +
+          `'${String(spec.columnPaths)}' for spec '${spec.id}'. Expected 'struct' or 'literal'.`,
       );
     }
 
@@ -349,7 +355,7 @@ class FilterSetImpl implements FilterSet {
       return;
     }
 
-    const columnExpr = createStructAccess(SqlIdentifier.from(spec.column));
+    const columnExpr = identifierAccess(SqlIdentifier.from(spec.column), spec.columnPaths);
     // Tracked through a cell so the getter's mutation is opaque to the type
     // narrower (the linter would otherwise treat the flag as never reassigned).
     const contextRead = { value: false };

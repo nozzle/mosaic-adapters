@@ -1,6 +1,8 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import type { ExprNode } from '@uwdata/mosaic-sql';
 
+import type { ColumnPathMode } from './types';
+
 /**
  * Value Object for SQL Identifiers.
  * Ensures that any string used as a column or table name in generated SQL
@@ -89,6 +91,42 @@ export function createStructAccess(column: SqlIdentifier): ExprNode {
     (acc, part) => mSql.sql`${acc}.${mSql.column(part)}`,
     mSql.column(first),
   );
+}
+
+/**
+ * Resolves a client's column option to its SQL access expression.
+ *
+ * In `'struct'` mode (the default) a dotted name has the same struct-path
+ * semantics as the rows client and FilterSet: `meta.country` becomes
+ * `"meta"."country"` (via {@link createStructAccess}, which trims and
+ * validates the path). In `'literal'` mode, and for any name without a dot,
+ * the name goes straight to mosaic-sql's `column()` — one quoted identifier,
+ * untrimmed and unvalidated, exactly the SQL from before struct access.
+ */
+export function columnAccess(name: string, mode: ColumnPathMode = 'struct'): ExprNode {
+  if (mode === 'literal' || !name.includes('.')) {
+    return mSql.column(name);
+  }
+  return createStructAccess(SqlIdentifier.from(name));
+}
+
+/**
+ * Resolves a validated identifier under a {@link ColumnPathMode}: a struct
+ * path in `'struct'` mode (the default, {@link createStructAccess}), one
+ * quoted identifier in `'literal'` mode. Unlike {@link columnAccess}, the name
+ * is always validated, because the FilterSet resolves specs that may come from
+ * untrusted persisted state.
+ */
+export function identifierAccess(column: SqlIdentifier, mode: ColumnPathMode = 'struct'): ExprNode {
+  if (mode === 'literal') {
+    return mSql.column(column.toString());
+  }
+  return createStructAccess(column);
+}
+
+/** True for the two {@link ColumnPathMode} values (untrusted-input guard). */
+export function isColumnPathMode(value: unknown): value is ColumnPathMode {
+  return value === 'struct' || value === 'literal';
 }
 
 /**

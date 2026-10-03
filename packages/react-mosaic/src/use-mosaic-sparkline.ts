@@ -9,7 +9,13 @@ import { useSelector } from '@tanstack/react-store';
 import type { Coordinator } from '@uwdata/mosaic-core';
 
 import { useMosaicCoordinator } from './context';
-import { deriveStatus, paramsKey, skipSourcesKey, useBoundClient } from './use-data-client';
+import {
+  deriveStatus,
+  paramsKey,
+  skipSourcesKey,
+  useBoundClient,
+  useStableQuerySource,
+} from './use-data-client';
 
 export type UseMosaicSparklineOptions = Omit<SparklineClientOptions, 'coordinator'> & {
   /**
@@ -33,6 +39,7 @@ export type UseMosaicSparklineResult = SparklineClientState & {
 export function useMosaicSparkline(options: UseMosaicSparklineOptions): UseMosaicSparklineResult {
   const coordinator = useMosaicCoordinator(options.coordinator);
   const enabled = options.enabled ?? true;
+  const from = useStableQuerySource(options.from);
 
   const client = useBoundClient<SparklineInputs, SparklineClient>({
     create: () => createSparklineClient({ ...options, coordinator, enabled: false }),
@@ -44,6 +51,7 @@ export function useMosaicSparkline(options: UseMosaicSparklineOptions): UseMosai
       options.inputMode,
       options.filterStable,
       options.key,
+      options.columnPaths,
       options.x.column,
       options.x.step,
       options.x.interval,
@@ -54,7 +62,7 @@ export function useMosaicSparkline(options: UseMosaicSparklineOptions): UseMosai
     inputs: options.inputs,
     enabled,
     sync: (c) => {
-      c.setQuery(options.from);
+      c.setQuery(from);
     },
   });
 

@@ -15,7 +15,8 @@
 import * as mSql from '@uwdata/mosaic-sql';
 import type { ExprNode, Query } from '@uwdata/mosaic-sql';
 
-import { SqlIdentifier, createStructAccess } from './sql-access';
+import { SqlIdentifier, identifierAccess } from './sql-access';
+import type { ColumnPathMode } from './types';
 
 /**
  * What a subquery factory may return:
@@ -28,6 +29,11 @@ export type SubqueryFilterQuery = Query | { query: Query; negate?: boolean } | n
 export interface BuildSubqueryPredicateOptions {
   /** The outer column (or struct path "a.b") tested for membership. */
   column: string | SqlIdentifier;
+  /**
+   * How a dotted `column` is read: a struct path (`'struct'`, the default) or
+   * one identifier (`'literal'`, for a column whose name contains a dot).
+   */
+  columnPaths?: ColumnPathMode;
   /** The membership subquery. Should select a single column. */
   query: Query;
   /** When true, generates `NOT (column IN (...))`. */
@@ -44,9 +50,9 @@ export function buildSubqueryClauseParts(options: BuildSubqueryPredicateOptions)
   predicate: ExprNode;
   field: ExprNode;
 } {
-  const { column, query, negate = false } = options;
+  const { column, columnPaths, query, negate = false } = options;
   const columnAccessor = typeof column === 'string' ? SqlIdentifier.from(column) : column;
-  const columnExpr = createStructAccess(columnAccessor);
+  const columnExpr = identifierAccess(columnAccessor, columnPaths);
 
   const inPredicate = new mSql.InOpNode(columnExpr, new mSql.ScalarSubqueryNode(query));
 
