@@ -5,6 +5,7 @@ import { Query } from '@uwdata/mosaic-sql';
 import type { FilterExpr, Query as MosaicQuery, SelectQuery } from '@uwdata/mosaic-sql';
 
 import { freezeQuerySql } from './freeze-query';
+import { isQueryCancellation } from './query-error';
 import {
   assertQuerySource,
   dottedTableNameWarning,
@@ -179,6 +180,13 @@ export abstract class BaseDataClient<
         // failed request by its SQL; fall back to FIFO when nothing matches.
         const request = this.#takeInflight(error.sql);
         if (!this.#settle(request)) {
+          return;
+        }
+        // `coordinator.cancel()`/`clear()` reject the current request with
+        // 'Canceled'/'Cleared'. Nothing failed, so the store keeps its
+        // `'pending'` status (and `error`) until the next trigger rather than
+        // advertising an error (see `isQueryCancellation`).
+        if (isQueryCancellation(error)) {
           return;
         }
         // Widened to Error first: `as Partial<TState>` on a QueryError-typed

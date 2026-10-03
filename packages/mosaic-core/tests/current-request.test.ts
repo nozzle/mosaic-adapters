@@ -480,3 +480,125 @@ describe('current-request guarantee', () => {
     client.destroy();
   });
 });
+
+describe('cancellation of the current request', () => {
+  function totalsClient(db: ControlledDb): ValuesClient<Totals> {
+    return createValuesClient<Totals>({
+      coordinator: db.coordinator,
+      query: () => Query.from('t').select({ total: literal(1) }),
+    });
+  }
+
+  test('coordinator.cancel() keeps the store pending without an error; the next trigger settles it', async () => {
+    const db = createControlledDb();
+    const client = totalsClient(db);
+    const log = recordTransitions(client);
+    await settle(0);
+    expect(db.requests).toHaveLength(1);
+    expect(client.store.state.status).toBe('pending');
+
+    const [current] = db.coordinator.manager.pendingResults;
+    expect(current).toBeDefined();
+    db.coordinator.cancel([current!]);
+    await settle(0);
+    expect(client.store.state.status).toBe('pending');
+    expect(client.store.state.error).toBeNull();
+
+    // `coordinator.query()` defaults the per-request `cache` flag to true, so
+    // even with the coordinator's result cache off the query manager joins
+    // the refetch's identical SQL to the still-open connector request
+    // (its `inflight` map) instead of issuing a second one.
+    const refetch = client.refetch();
+    await settle(0);
+    expect(db.requests).toHaveLength(1);
+    db.requests[0]!.resolve([{ total: 1 }]);
+    await refetch;
+    expect(client.store.state.status).toBe('success');
+    expect(client.store.state.values).toEqual({ total: 1 });
+    expect(log.some((s) => s.status === 'error')).toBe(false);
+
+    client.destroy();
+  });
+
+  test('coordinator.clear({ clients: false }) keeps the store pending without an error', async () => {
+    const db = createControlledDb();
+    const client = totalsClient(db);
+    const log = recordTransitions(client);
+    await settle(0);
+    expect(db.requests).toHaveLength(1);
+
+    db.coordinator.clear({ clients: false });
+    await settle(0);
+    expect(client.store.state.status).toBe('pending');
+    expect(client.store.state.error).toBeNull();
+
+    // Still connected: the next trigger re-queries and settles the store.
+    // `coordinator.query()` defaults the per-request `cache` flag to true, so
+    // even with the coordinator's result cache off the query manager joins
+    // the refetch's identical SQL to the still-open connector request
+    // (its `inflight` map) instead of issuing a second one.
+    expect(db.coordinator.clients.has(client.mosaicClient)).toBe(true);
+    const refetch = client.refetch();
+    await settle(0);
+    expect(db.requests).toHaveLength(1);
+    db.requests[0]!.resolve([{ total: 1 }]);
+    await refetch;
+    expect(client.store.state.status).toBe('success');
+    expect(log.some((s) => s.status === 'error')).toBe(false);
+
+    client.destroy();
+  });
+
+  test('coordinator.clear({ clients: true }) keeps the store pending without an error', async () => {
+    const db = createControlledDb();
+    const client = totalsClient(db);
+    const log = recordTransitions(client);
+    await settle(0);
+    expect(db.requests).toHaveLength(1);
+
+    db.coordinator.clear({ clients: true });
+    await settle(0);
+    expect(client.store.state.status).toBe('pending');
+    expect(client.store.state.error).toBeNull();
+    expect(log.some((s) => s.status === 'error')).toBe(false);
+    // The client is disconnected, so no later trigger reaches it: it stays
+    // pending until destroyed.
+    expect(db.coordinator.clients.has(client.mosaicClient)).toBe(false);
+
+    client.destroy();
+  });
+
+  test('a cancellation leaves a prior error in place rather than clearing or replacing it', async () => {
+    const db = createControlledDb();
+    const client = totalsClient(db);
+    await settle(0);
+    db.requests[0]!.reject(new Error('boom'));
+    await settle(0);
+    expect(client.store.state.status).toBe('error');
+    const failure = client.store.state.error;
+    expect(failure).toBeInstanceOf(QueryError);
+
+    void client.refetch();
+    await settle(0);
+    expect(client.store.state.status).toBe('pending');
+
+    db.coordinator.clear({ clients: false });
+    await settle(0);
+    expect(client.store.state.status).toBe('pending');
+    expect(client.store.state.error).toBe(failure);
+
+    client.destroy();
+  });
+
+  test('a genuine failure of the current request still surfaces as an error', async () => {
+    const db = createControlledDb();
+    const client = totalsClient(db);
+    await settle(0);
+    db.requests[0]!.reject(new Error('Canceled by the database'));
+    await settle(0);
+    expect(client.store.state.status).toBe('error');
+    expect(client.store.state.error).toBeInstanceOf(QueryError);
+
+    client.destroy();
+  });
+});

@@ -71,6 +71,9 @@ export type { SkipProjectedSelectionHandle } from './skip-projection';
 
 export { isFilterSetPublishTarget } from './types';
 
+export { describeQueryError, isQueryCancellation } from './query-error';
+export type { QueryErrorDescription } from './query-error';
+
 export { deepEqual, firstResultRow, resolveCoerce, resultRowCount, toResultRows } from './utils';
 
 export type { Persister, PersisterWriteContext, PersisterWriteReason } from './persistence';

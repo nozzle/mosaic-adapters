@@ -91,7 +91,12 @@ export interface DataClientState<TInputs extends object> {
    * underlying error in `.cause`; consumers can narrow with
    * `instanceof QueryError` imported from `@uwdata/mosaic-core`. Other paths,
    * including schema-client field-info queries, may still produce plain
-   * `Error` instances.
+   * `Error` instances. Use `describeQueryError` to split it into a display
+   * message and the SQL.
+   *
+   * A cancelled main query (`coordinator.cancel()`/`clear()`) is not a
+   * failure and never lands here: the store keeps `status: 'pending'` (and
+   * its previous `error`) until the next trigger re-queries.
    */
   error: Error | null;
   /** Echo of what the last executed query was built from — never a source of truth. */
