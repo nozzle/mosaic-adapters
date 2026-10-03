@@ -267,6 +267,8 @@ const facet = createFacetClient({
 });
 ```
 
+A chart the packages do not model (a custom-drawn time series, a third-party chart library) publishes the managed way by hand: `set()` an `interval` spec and pass the chart's own client as `set(spec, { clients: new Set([client.mosaicClient]) })`. That is the same self-exclusion association `publish.into` attaches. `clients` is session state: it is never persisted, and `remove(id)`/`reset()` drop it with the spec. See the [custom-chart brush recipe](../react/topology-recipes.md#custom-chart-brush) for the read-back, ISO-string temporal bounds, and re-keying the spec to a remounted client.
+
 ## Chips
 
 `store.state.chips` derives from the specs — label from `label`/`column`, value formatted per kind (ranges join as `lo - hi`, arrays explode into one chip per value for multi-value kinds). `removeChip(chip)` narrows an exploded value or removes the spec; `reset()` clears the bar. Foreign clauses published directly onto the Selections are chip-invisible by design; the chip list derives from an iterable so a future adapter can contribute entries additively.
