@@ -71,6 +71,9 @@ export type { SkipProjectedSelectionHandle } from './skip-projection';
 
 export { isFilterSetPublishTarget } from './types';
 
+export { MOSAIC_CLIENT_META, getClientMeta } from './client-meta';
+export type { DataClientMeta } from './client-meta';
+
 export { describeQueryError, isQueryCancellation } from './query-error';
 export type { QueryErrorDescription } from './query-error';
 
@@ -107,6 +110,8 @@ export type {
   PivotClientOptions,
   PivotClientState,
   QueryContext,
+  QueryPreview,
+  QueryPreviewOptions,
   QuerySource,
   RollupClient,
   RollupClientOptions,

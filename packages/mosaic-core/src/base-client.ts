@@ -4,6 +4,9 @@ import type { MosaicClient, QueryError, Selection, SelectionClause } from '@uwda
 import { Query } from '@uwdata/mosaic-sql';
 import type { FilterExpr, Query as MosaicQuery, SelectQuery } from '@uwdata/mosaic-sql';
 
+import { mirrorClientMeta } from './client-meta';
+import type { DataClientMeta } from './client-meta';
+import { isDevelopment as isExplicitDevelopment } from './dev';
 import { freezeQuerySql } from './freeze-query';
 import { isQueryCancellation } from './query-error';
 import {
@@ -19,6 +22,8 @@ import type {
   DataClientSettled,
   DataClientState,
   QueryContext,
+  QueryPreview,
+  QueryPreviewOptions,
   QuerySource,
 } from './types';
 import { deepEqual } from './utils';
@@ -53,6 +58,18 @@ interface InflightRequest<TInputs extends object> {
   inputs: TInputs;
   /** Whether the coordinator answers it from a pre-aggregated materialized view. */
   preaggregated: boolean;
+}
+
+/**
+ * Which predicates a user query factory received while one main query was
+ * built, and which of them it read (the development-only ignored-filter
+ * warning; see `#warnIgnoredPredicates`).
+ */
+interface PredicateUse {
+  whereActive: boolean;
+  whereRead: boolean;
+  havingActive: boolean;
+  havingRead: boolean;
 }
 
 /**
@@ -144,6 +161,18 @@ export abstract class BaseDataClient<
    */
   #preaggFallback = false;
 
+  /** Consumer-owned debugging metadata, held by latest-ref (`setMeta`). */
+  #meta: DataClientMeta | undefined;
+  /**
+   * Predicate reads of the user query factory during the main-query build in
+   * progress; `null` outside a build, in production, and once the
+   * ignored-filter warning has fired (see `#warnIgnoredPredicates`).
+   */
+  #predicateUse: PredicateUse | null = null;
+  #warnedIgnoredPredicates = false;
+  /** True while `previewQuery` builds (see `previewing`). */
+  #previewing = false;
+
   protected constructor(
     options: DataClientOptions<TInputs>,
     query: QuerySource<TInputs>,
@@ -161,6 +190,7 @@ export abstract class BaseDataClient<
     assertQuerySource(query);
     this.#querySource = query;
     this.#warnOnDottedSource(query);
+    this.#meta = options.meta;
     this.inputs = options.inputs ?? ({} as TInputs);
 
     this.store = new Store({
@@ -285,6 +315,10 @@ export abstract class BaseDataClient<
       },
     });
 
+    // Coordinator-level observers only see the MosaicClient; the getter
+    // always reads the latest `meta`, so `setMeta` needs no re-mirroring.
+    mirrorClientMeta(this.#client, () => this.#meta);
+
     if (this.#coalesceFilterBy) {
       // Withheld from the coordinator above, but still reported as the
       // client's filter Selection to `mosaicClient` interop. Assigned after
@@ -311,6 +345,44 @@ export abstract class BaseDataClient<
 
   get destroyed(): boolean {
     return this.#destroyed;
+  }
+
+  get meta(): DataClientMeta | undefined {
+    return this.#meta;
+  }
+
+  setMeta(meta: DataClientMeta | undefined): void {
+    this.#meta = meta;
+  }
+
+  /**
+   * Build the main query (and any side-channel COUNT query) for the current
+   * filters and inputs, or the given overrides, without issuing anything.
+   *
+   * Pure with respect to the client: no store patch, no request bookkeeping,
+   * no `afterQueryBuilt` (so no COUNT query is issued), and no
+   * ignored-filter warning. Specializations gate any build-time state on
+   * `previewing`. WHERE/HAVING default to what a client-initiated query
+   * (`refetch()`) would resolve right now.
+   */
+  previewQuery(options?: QueryPreviewOptions<TInputs>): QueryPreview {
+    const current = this.currentContext();
+    const ctx: QueryContext<TInputs> = {
+      where: options?.where ?? current.where,
+      having: options?.having ?? current.having,
+      inputs: { ...this.inputs, ...options?.inputs },
+    };
+    this.#previewing = true;
+    try {
+      const main = this.buildQuery(ctx);
+      const count = this.buildCountQuery(ctx);
+      return {
+        main: main === null ? null : String(main),
+        count: count === null ? null : String(count),
+      };
+    } finally {
+      this.#previewing = false;
+    }
   }
 
   setQuery(query: QuerySource<TInputs>): void {
@@ -552,6 +624,25 @@ export abstract class BaseDataClient<
   protected afterQueryBuilt(_ctx: QueryContext<TInputs>): void {}
 
   /**
+   * The side-channel COUNT query for the given context, if this client issues
+   * one (rows clients with `rowCount: 'query'`); `null` by default. Used by
+   * `previewQuery`; specializations that issue it reuse it from
+   * `afterQueryBuilt`.
+   */
+  protected buildCountQuery(_ctx: QueryContext<TInputs>): MosaicQuery | null {
+    return null;
+  }
+
+  /**
+   * True while `previewQuery` is building. `buildQuery` must not record
+   * build-time state its result handling depends on (the histogram's bin
+   * spec) or emit one-time diagnostics while previewing.
+   */
+  protected get previewing(): boolean {
+    return this.#previewing;
+  }
+
+  /**
    * Hook invoked at the start of `refetch()`, before the forced re-query.
    * Lets a specialization invalidate any query-derived memo so an explicit
    * refetch re-runs work it would otherwise skip when the predicate is
@@ -647,7 +738,11 @@ export abstract class BaseDataClient<
   protected resolveBase(ctx: QueryContext<TInputs>): SelectQuery {
     const source = this.#querySource;
     if (typeof source === 'function') {
-      return source(ctx);
+      const use = this.#predicateUse;
+      if (use === null) {
+        return source(ctx);
+      }
+      return source(trackPredicateReads(ctx, use));
     }
     const query = Query.from(source).select('*');
     query.where(ctx.where);
@@ -730,7 +825,7 @@ export abstract class BaseDataClient<
 
   #materialize(where: FilterExpr): MosaicQuery | string | null {
     const ctx = this.createContext(where);
-    const query = this.buildQuery(ctx);
+    const query = this.#buildTracked(ctx);
     if (query === null) {
       // No query issued this round: `lastQuery` is explicitly `null` rather
       // than left as whatever the prior query was, since a stale SQL string
@@ -766,6 +861,71 @@ export abstract class BaseDataClient<
     // even if a live Param the query interpolates changes meanwhile (see
     // `freezeQuerySql`).
     return freezeQuerySql(query, sql);
+  }
+
+  /**
+   * `buildQuery` for a main query the coordinator asked for, recording — in
+   * development, until the warning has fired once — whether the user query
+   * factory read the predicates it was handed (see `#warnIgnoredPredicates`).
+   *
+   * Tracking wraps only the context handed to the user factory (in
+   * `resolveBase`), not the one handed to `buildQuery`: specializations
+   * spread and re-derive the context, which would count as reads and hide a
+   * factory that drops them. A table-name or table-reference source never
+   * warns — the client applies both predicates itself.
+   */
+  #buildTracked(ctx: QueryContext<TInputs>): MosaicQuery | string | null {
+    if (this.#warnedIgnoredPredicates || !isExplicitDevelopment()) {
+      return this.buildQuery(ctx);
+    }
+    const use: PredicateUse = {
+      whereActive: false,
+      whereRead: false,
+      havingActive: false,
+      havingRead: false,
+    };
+    this.#predicateUse = use;
+    let query: MosaicQuery | string | null;
+    try {
+      query = this.buildQuery(ctx);
+    } finally {
+      this.#predicateUse = null;
+    }
+    this.#warnIgnoredPredicates(use);
+    return query;
+  }
+
+  /**
+   * Development-only, once per client: warn when the user query factory was
+   * handed an active WHERE or HAVING predicate and never read it, so the
+   * query it built silently drops a filter. Reads are recorded by property
+   * access, so destructuring or spreading the context counts as a read
+   * (never a false positive, at the cost of missing a factory that
+   * destructures and then drops a predicate). Empty predicates (`[]`, the
+   * unfiltered and self-excluded cases) never warn.
+   */
+  #warnIgnoredPredicates(use: PredicateUse): void {
+    const ignored: Array<string> = [];
+    if (use.whereActive && !use.whereRead) {
+      ignored.push('`ctx.where` (filterBy)');
+    }
+    if (use.havingActive && !use.havingRead) {
+      ignored.push('`ctx.having` (havingBy)');
+    }
+    if (ignored.length === 0) {
+      return;
+    }
+    this.#warnedIgnoredPredicates = true;
+    const message =
+      `[mosaic-core] A data client's query factory never read ${ignored.join(' or ')} ` +
+      'while it carried an active predicate, so the query ignores that filter. ' +
+      'Pass it to `.where(...)` / `.having(...)` — or read it (`void ctx.where`) ' +
+      'if dropping it is intentional. Development-only; warned once per client.';
+    if (this.#meta === undefined) {
+      console.warn(message);
+      return;
+    }
+    console.warn(message, { meta: this.#meta });
   }
 
   /**
@@ -1007,6 +1167,52 @@ function resolvedPredicate(
   // active clause the same way (typed as always present); the resolver
   // null-guards it.
   return selection.resolver.predicate(clauses, active!, client);
+}
+
+/**
+ * A copy of `ctx` whose `where`/`having` getters record reads into `use`,
+ * after recording which of the two carry an active predicate.
+ */
+function trackPredicateReads<TInputs extends object>(
+  ctx: QueryContext<TInputs>,
+  use: PredicateUse,
+): QueryContext<TInputs> {
+  const { where, having, inputs } = ctx;
+  if (isActivePredicate(where)) {
+    use.whereActive = true;
+  }
+  if (isActivePredicate(having)) {
+    use.havingActive = true;
+  }
+  return {
+    get where() {
+      use.whereRead = true;
+      return where;
+    },
+    get having() {
+      use.havingRead = true;
+      return having;
+    },
+    inputs,
+  };
+}
+
+/**
+ * Whether a resolved predicate filters anything: an empty list, a nullish
+ * entry, a literal `true` and blank SQL do not. A literal `false` does (an
+ * `empty: true` Selection with no clauses resolves to `[FALSE]`).
+ */
+function isActivePredicate(expr: unknown): boolean {
+  if (expr === null || expr === undefined || expr === true) {
+    return false;
+  }
+  if (Array.isArray(expr)) {
+    return expr.some(isActivePredicate);
+  }
+  if (expr === false) {
+    return true;
+  }
+  return String(expr).trim() !== '';
 }
 
 /**

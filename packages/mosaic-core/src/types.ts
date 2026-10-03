@@ -8,6 +8,7 @@ import type {
 } from '@uwdata/mosaic-core';
 import type { FilterExpr, SelectQuery, TableRefNode } from '@uwdata/mosaic-sql';
 
+import type { DataClientMeta } from './client-meta';
 import type { FilterSet } from './filter-set/types';
 import type { Persister } from './persistence';
 
@@ -72,9 +73,17 @@ export interface QueryContext<TInputs extends object> {
   /**
    * `filterBy.predicate(client)` — self-excluded; `[]` when unfiltered, so
    * factories can pass it to `.where(...)` unconditionally.
+   *
+   * In development, a factory that never reads `where` while it carries an
+   * active predicate gets a one-time console warning (the query would ignore
+   * the filter). Reading it — even `void ctx.where` — marks a deliberate
+   * omission.
    */
   where: FilterExpr;
-  /** `havingBy.predicate(client)` — the WHERE/HAVING routing extension; `[]` when empty. */
+  /**
+   * `havingBy.predicate(client)` — the WHERE/HAVING routing extension; `[]`
+   * when empty. Subject to the same development-only warning as `where`.
+   */
   having: FilterExpr;
   /** Current serializable inputs. Only consume these with `inputMode: 'manual'`. */
   inputs: TInputs;
@@ -219,6 +228,40 @@ export interface DataClientOptions<TInputs extends object> {
    */
   coalesceFilterBy?: boolean;
   enabled?: boolean;
+  /**
+   * Consumer-owned metadata for debugging (a label, a widget id): exposed as
+   * `client.meta` and mirrored onto `client.mosaicClient` under
+   * `MOSAIC_CLIENT_META` (read it with `getClientMeta`) so coordinator-level
+   * observers can attribute queries. Never read by the library and never part
+   * of the query: held by latest-ref (`setMeta`), so changing it never
+   * re-queries, and the React hooks never recreate a client for it.
+   */
+  meta?: DataClientMeta;
+}
+
+/** Overrides for `DataClient.previewQuery`; every field defaults to the client's current state. */
+export interface QueryPreviewOptions<TInputs extends object> {
+  /** WHERE predicate to build with, replacing the current `filterBy` predicate. */
+  where?: FilterExpr;
+  /** HAVING predicate to build with, replacing the current `havingBy` predicate. */
+  having?: FilterExpr;
+  /** Merge-patch over the current inputs (like `setInputs`, without applying it). */
+  inputs?: Partial<TInputs>;
+}
+
+/**
+ * SQL a data client would issue (`DataClient.previewQuery`). A debugging and
+ * testing aid: the SQL text is whatever `@uwdata/mosaic-sql` renders and is
+ * not a stable format.
+ */
+export interface QueryPreview {
+  /** The main query; `null` when the client would issue none (an empty round). */
+  main: string | null;
+  /**
+   * The side-channel COUNT query (rows client with `rowCount: 'query'`);
+   * `null` for every other client and row-count mode.
+   */
+  count: string | null;
 }
 
 export interface DataClient<TInputs extends object, TState extends DataClientState<TInputs>> {
@@ -255,6 +298,23 @@ export interface DataClient<TInputs extends object, TState extends DataClientSta
    * for coordinator/vgplot interop.
    */
   readonly mosaicClient: MosaicClient;
+  /** The latest `meta` (`DataClientOptions.meta`, or the last `setMeta`). */
+  readonly meta: DataClientMeta | undefined;
+  /**
+   * Replace `meta` (latest-ref semantics; never re-queries). The mirror on
+   * `mosaicClient` follows automatically.
+   */
+  setMeta: (meta: DataClientMeta | undefined) => void;
+  /**
+   * Build the SQL this client would issue for its current filters and inputs
+   * (or the given overrides) without issuing anything or touching the store.
+   * A debugging and testing aid; the SQL format is not stable.
+   *
+   * Throws when the client cannot build a query yet (a histogram before its
+   * extent is discovered). A user query factory runs as it would for a real
+   * query, so any side effects of its own still happen.
+   */
+  previewQuery: (options?: QueryPreviewOptions<TInputs>) => QueryPreview;
 }
 
 // ── Coercion ─────────────────────────────────────────────────────────────────

@@ -34,7 +34,7 @@ export type UseMosaicValuesResult<TValues extends Record<string, unknown>> =
 /**
  * Controlled binding over `createValuesClient`. Same identity rules as
  * `useMosaicRows`: everything without a core setter is structural, `query`
- * is latest-ref, `enabled` is value-diffed.
+ * and `meta` are latest-ref, `enabled` is value-diffed.
  */
 export function useMosaicValues<TValues extends Record<string, unknown>>(
   options: UseMosaicValuesOptions,
@@ -58,6 +58,7 @@ export function useMosaicValues<TValues extends Record<string, unknown>>(
     inputs: options.inputs,
     enabled,
     queryKey: options.queryKey,
+    meta: options.meta,
     sync: (c) => {
       c.setQuery(query);
     },

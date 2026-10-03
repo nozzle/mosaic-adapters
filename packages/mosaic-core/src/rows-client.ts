@@ -1,7 +1,7 @@
 import { clausePoints } from '@uwdata/mosaic-core';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
 import { Query, asc, count, desc, sql } from '@uwdata/mosaic-sql';
-import type { SelectQuery } from '@uwdata/mosaic-sql';
+import type { Query as MosaicQuery, SelectQuery } from '@uwdata/mosaic-sql';
 
 import { BaseDataClient } from './base-client';
 import { createClearClause } from './clause-factory';
@@ -227,9 +227,10 @@ class RowsDataClient<TRow>
     return query;
   }
 
-  protected afterQueryBuilt(ctx: QueryContext<RowsInputs>): void {
+  /** The `rowCount: 'query'` COUNT query sharing the main query's WHERE/HAVING. */
+  protected buildCountQuery(ctx: QueryContext<RowsInputs>): MosaicQuery | null {
     if (this.#rowCount !== 'query') {
-      return;
+      return null;
     }
     // Re-resolve the base with the sort/window inputs stripped so 'manual'
     // factories omit them; 'append' factories ignore inputs anyway.
@@ -242,9 +243,16 @@ class RowsDataClient<TRow>
         offset: undefined,
       },
     });
-    const countQuery = Query.from(base).select({
+    return Query.from(base).select({
       [ROW_COUNT_COLUMN]: count(),
     });
+  }
+
+  protected afterQueryBuilt(ctx: QueryContext<RowsInputs>): void {
+    const countQuery = this.buildCountQuery(ctx);
+    if (countQuery === null) {
+      return;
+    }
 
     // Skip the round trip when the predicate (and thus the count SQL) is
     // unchanged: page turns and sort changes cannot alter the count, so
@@ -451,7 +459,7 @@ class RowsDataClient<TRow>
    * subquery or set operation). Re-checked on each build until it fires once.
    */
   #warnFilterUnstable(query: SelectQuery): void {
-    if (this.#warnedFilterUnstable) {
+    if (this.#warnedFilterUnstable || this.previewing) {
       return;
     }
     if (this.#options.filterStable !== undefined) {

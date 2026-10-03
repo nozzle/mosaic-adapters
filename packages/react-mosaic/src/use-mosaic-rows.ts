@@ -39,6 +39,8 @@ export type UseMosaicRowsResult<TRow> = RowsClientState<TRow> & {
  * - `query` and `coerce` are held by latest-ref — new function identities
  *   never recreate and never re-query. List what a compiled `query` depends
  *   on in `queryKey` to re-query when it changes (`client.invalidate()`).
+ * - `meta` (debugging metadata) is held by latest-ref via `setMeta` — never
+ *   structural, never re-queries.
  * - `inputs` is value-diffed into `setInputs`; `enabled` into `setEnabled`.
  * - `persist` is structural (no core setter): a new persister identity is a
  *   new storage location, so the client is recreated and re-hydrated. Keep
@@ -89,6 +91,7 @@ export function useMosaicRows<TRow>(
     inputs: options.inputs,
     enabled,
     queryKey: options.queryKey,
+    meta: options.meta,
     sync: (c) => {
       c.setQuery(query);
       c.setCoerce(options.coerce);

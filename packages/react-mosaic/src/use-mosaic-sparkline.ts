@@ -33,7 +33,7 @@ export type UseMosaicSparklineResult = SparklineClientState & {
 /**
  * Controlled binding over `createSparklineClient`. The declarative `x`/`y`
  * shapes are structural (they define the query, like `column` elsewhere);
- * `from` is latest-ref; `inputs.keys` — typically derived from a rows
+ * `from` and `meta` are latest-ref; `inputs.keys` — typically derived from a rows
  * client's visible page — is value-diffed, so a re-render with the same keys
  * never re-queries and a keys change re-queries exactly once.
  */
@@ -64,6 +64,7 @@ export function useMosaicSparkline(options: UseMosaicSparklineOptions): UseMosai
     inputs: options.inputs,
     enabled,
     queryKey: options.queryKey,
+    meta: options.meta,
     sync: (c) => {
       c.setQuery(from);
     },
