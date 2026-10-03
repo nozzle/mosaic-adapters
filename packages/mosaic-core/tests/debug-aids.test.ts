@@ -435,8 +435,11 @@ describe('ignored-filter warning (development only)', () => {
     client.destroy();
   });
 
-  test('never runs in production', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
+  test.each([
+    ['production', 'production'],
+    ['unset', undefined],
+  ])('never runs outside development (NODE_ENV %s)', async (_label, env) => {
+    vi.stubEnv('NODE_ENV', env);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const db = createControlledDb();
     const client = createValuesClient({

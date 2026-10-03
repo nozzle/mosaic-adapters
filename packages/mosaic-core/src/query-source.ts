@@ -1,25 +1,6 @@
 import type { QuerySource } from './types';
 
 /**
- * Bundlers replace the `process.env.NODE_ENV` expression textually; the
- * declaration only types it for this module and never reaches the output.
- */
-declare const process: { env: { NODE_ENV?: string } };
-
-/**
- * True outside production builds. Reads `process.env.NODE_ENV` in the form
- * bundlers statically replace; when nothing replaced it and no `process`
- * global exists (unbundled browser ESM), it is treated as development.
- */
-export function isDevelopment(): boolean {
-  try {
-    return process.env.NODE_ENV !== 'production';
-  } catch {
-    return true;
-  }
-}
-
-/**
  * Reject query sources the type system already excludes but a JavaScript
  * caller could still pass. A `string[]` is the dangerous one: mosaic-sql's
  * `Query.from(['main', 'events'])` renders a cross join of two tables rather

@@ -242,8 +242,11 @@ describe('TableRefNode query sources', () => {
     dottedRef.destroy();
   });
 
-  test('the warning is development-only', () => {
-    vi.stubEnv('NODE_ENV', 'production');
+  test.each([
+    ['production', 'production'],
+    ['unset', undefined],
+  ])('the warning is development-only (NODE_ENV %s)', (_label, env) => {
+    vi.stubEnv('NODE_ENV', env);
     try {
       const rows = createRowsClient({
         coordinator: db.coordinator,
