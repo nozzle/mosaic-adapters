@@ -4,7 +4,7 @@
 
 ## Provider setup
 
-Hooks resolve their coordinator in order: explicit `coordinator` option → nearest `MosaicProvider` → upstream Mosaic's global default coordinator (the one bare vgplot calls use).
+Hooks resolve their coordinator in order: explicit `coordinator` option → nearest `MosaicProvider` → upstream Mosaic's global default coordinator (the one bare vgplot calls use). The global fallback applies only when there is **no** `MosaicProvider` above the hook at all.
 
 ```tsx
 import { Coordinator } from '@uwdata/mosaic-core';
@@ -16,6 +16,25 @@ const coordinator = new Coordinator(connector);
   <App />
 </MosaicProvider>;
 ```
+
+### `coordinator={null}`: an explicit boundary
+
+A subtree that is not ready yet — a nested dashboard whose connection is still loading, a preview pane — can pass `coordinator={null}` to stop the lookup. Without it, hooks below would silently resolve a parent provider's coordinator, or the global one:
+
+```tsx
+function NestedDashboard() {
+  const { coordinator } = useNestedConnection(); // Coordinator | null while loading
+  return (
+    <MosaicProvider coordinator={coordinator}>
+      {coordinator === null ? <Spinner /> : <Dashboard />}
+    </MosaicProvider>
+  );
+}
+```
+
+Any hook that resolves its coordinator below a `null` provider throws a clear `[react-mosaic]` error. Gate the data hooks on readiness (as above), or give a hook an explicit `coordinator` option, which always wins over the boundary. A nested `MosaicProvider` holding a coordinator re-opens resolution for its own subtree.
+
+Gate on readiness by not rendering the hook — `enabled: false` is not enough. A hook with `enabled: false` still creates (and connects) its client during render; `enabled` only defers querying. So an `enabled: false` hook below a `null` provider throws too.
 
 The library ships `MosaicProvider` and stops there — connector choice, retry, reconnect, and keying page state to the connection are app policy. For that app-owned lifecycle (a `ConnectorProvider`, connection-identity keying on reconnect, and the vgplot `createAPIContext` gotcha), see the [connector lifecycle recipe](./connector-lifecycle.md); for loading tables into the coordinator, the [data loading recipe](./data-loading.md).
 
@@ -80,7 +99,7 @@ When widgets need to reference selections **by name** (spec-driven pages, hand-e
 ## Selection read-back and chips
 
 - `useMosaicSelectionValue<T>(selection, { source? })` — reactively read a Selection's clause value: the read-back half of clause publishing. Scope by `source` (e.g. a rows client's stable `publish.select.source`) on multi-publisher Selections; returns `null` when no matching clause is active. This is how a widget renders its own published selection (in-widget chips, checkmarks) from the same Selection its siblings consume.
-- `useFilterSetState(filterSet)` / `useFilterSetChips(filterSet)` — subscribe to a [filter set](../core/filter-set.md)'s specs/chips. The set itself is a long-lived page-scope object created next to the Selections; components only subscribe and call its setters (`set`, `remove`, `removeChip`, `reset`).
+- `useFilterSetState(filterSet)` / `useFilterSetChips(filterSet)` — subscribe to a [filter set](../core/filter-set.md)'s specs/chips. The set itself is a long-lived page-scope object created next to the Selections; components only subscribe and call its setters (`set`, `remove`, `removeChip`, `reset`). Both accept `null` / `undefined` while the set is not available yet and then return the empty state (`{ specs: [], chips: [] }` / `[]`, stable and frozen) without subscribing.
 
 ## Param read-back
 

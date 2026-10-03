@@ -65,9 +65,11 @@ function Page() {
 }
 ```
 
+`topology` also accepts `null`, an explicit boundary for a subtree whose topology is not ready yet. It shadows any outer provider, so the provider-consuming hooks below it throw the same error as with no provider at all, instead of resolving a parent page's topology. Gate those hooks on readiness.
+
 ### `useMosaicTopology`
 
-Return the topology from the nearest provider. Throws a clear error outside a provider (a topology is a required page-scope object, so there is no sensible default).
+Return the topology from the nearest provider. Throws a clear error outside a provider, or below one given `topology={null}` (a topology is a required page-scope object, so there is no sensible default).
 
 ```tsx
 import { useMosaicTopology } from '@nozzleio/react-mosaic';
@@ -136,7 +138,7 @@ To render the param's live value (a display, or a controlled input), read it wit
 
 Two thin store-subscription hooks over [`topology.activeClauses`](../core/selection-topology.md#active-clauses). Each returns the annotated foreign clauses (`Array<ActiveClause>`) and rerenders when they change. Annotation passthrough only — no chip model, grouping, or label-map logic lives here; those are app concerns (see the [recipes](./topology-recipes.md)).
 
-- **`useTopologyActiveClauses(topology)`** — subscribe to a topology you already hold.
+- **`useTopologyActiveClauses(topology)`** — subscribe to a topology you already hold. Accepts `null` / `undefined` while the topology is not available yet and then returns a stable, frozen empty array without subscribing.
 - **`useMosaicActiveClauses()`** — the provider-consuming variant; resolves the topology from the nearest provider, then delegates.
 
 ```tsx
