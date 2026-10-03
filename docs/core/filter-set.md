@@ -117,13 +117,13 @@ A clause cleared elsewhere (chip bar, `selection.reset()`) removes the owning sp
 
 ## Built-in kinds
 
-| kind        | value                                                        | clause                                                                  |
-| ----------- | ------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `point`     | scalar (`null` matches SQL NULL)                             | point equality                                                          |
-| `points`    | scalar array, or `{ columns, tuples }` for multi-column keys | membership (IN / tuple OR), exploded chips                              |
-| `interval`  | `[lo, hi]`, or `value`/`valueTo` bounds                      | BETWEEN; half-open ranges emit `>=`/`<=` without interval metadata      |
-| `match`     | string; `operator`: `contains` (default) or `prefix`         | case-insensitive text match                                             |
-| `condition` | operator-driven scalar/range predicates                      | `eq neq gt gte lt lte between in not_in contains starts_with is_null …` |
+| kind        | value                                                        | clause                                                              |
+| ----------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `point`     | scalar (`null` matches SQL NULL)                             | point equality                                                      |
+| `points`    | scalar array, or `{ columns, tuples }` for multi-column keys | membership (IN / tuple OR), exploded chips                          |
+| `interval`  | `[lo, hi]`, or `value`/`valueTo` bounds                      | BETWEEN; half-open ranges emit `>=`/`<=` without interval metadata  |
+| `match`     | string; `operator`: `contains` (default) or `prefix`         | case-insensitive text match                                         |
+| `condition` | operator-driven scalar/range predicates                      | `eq neq gt gte lt lte between in not_in contains matches is_null …` |
 
 `condition` accepts operator aliases (`is`, `is_any_of`, `before`, `on_or_after`, …) and coerces column types per value (`TRY_CAST` for numbers/dates). For array columns or explicit typing, register a tuned variant:
 
@@ -135,6 +135,26 @@ const filters = createFilterSet({
   },
 });
 ```
+
+### Text and regex operators
+
+`contains` / `starts_with` / `ends_with` (and their `not_*` forms) are case-insensitive `ILIKE` tests; `%`, `_` and `\` in the value match literally. `matches` / `not_matches` use DuckDB's `regexp_matches(column, pattern)`: the value is an RE2 pattern, case-sensitive unless it starts with `(?i)`. A pattern DuckDB cannot compile fails the query, so validate free-text patterns before writing them to a spec. An empty or non-string value leaves the spec inactive. A NULL column value is dropped by both a test and its `not_*` form, as with `ILIKE` / `NOT ILIKE`.
+
+With `columnType: 'array'`, the same operator ids test the list's elements: the positive form keeps rows where **any element** matches (`len(list_filter(col, x -> <test>)) > 0`), and the `not_*` form keeps rows where **no element** matches.
+
+```ts
+filters.set({ id: 'tag', column: 'tags', kind: 'tags', operator: 'contains', value: 'beta' });
+// (len(list_filter("tags", x -> x ILIKE '%beta%' ESCAPE '\')) > 0)
+```
+
+| list value         | `contains 'beta'` | `not_contains 'beta'` |
+| ------------------ | ----------------- | --------------------- |
+| `['alpha','Beta']` | kept              | dropped               |
+| `['alpha']`        | dropped           | kept                  |
+| `[]`               | dropped           | kept                  |
+| `NULL`             | dropped           | dropped               |
+
+NULL elements never match. Earlier versions rendered these operators as a scalar `ILIKE` on the list, which DuckDB rejects, so no filter that used to work changes meaning.
 
 ## Operators
 
@@ -193,6 +213,8 @@ This is descriptive metadata only — `FilterSet.set()` performs no runtime enfo
 | `not_starts_with` | does not start with   | `unary` |
 | `ends_with`       | ends with             | `unary` |
 | `not_ends_with`   | does not end with     | `unary` |
+| `matches`         | matches regex         | `unary` |
+| `not_matches`     | does not match regex  | `unary` |
 | `is_null`         | is null               | `none`  |
 | `not_null`        | is not null           | `none`  |
 | `is_empty`        | is empty              | `none`  |
@@ -257,7 +279,9 @@ filters.set({
 });
 ```
 
-Multi-target kinds return several emissions — e.g. a metric threshold emitting a HAVING clause to its own card and a membership subquery to everyone else:
+For a composite key, pass `columns`: `subqueryFilterKind(build, { columns: ['domain', 'phrase'] })` emits `("domain", "phrase") IN (SELECT …)` with one `fields` entry per column, and `build` must select the columns in the same order. See [membership subqueries](./subquery-predicates.md#composite-keys) for how NULLs behave in a tuple.
+
+Multi-target kinds return several emissions — e.g. a metric threshold emitting a HAVING clause to its own card and a membership subquery to everyone else (the library ships this one as [`aggregateThresholdFilterKind`](#aggregate-threshold-kind)):
 
 ```ts
 const kind: FilterKind = {
@@ -270,6 +294,48 @@ const kind: FilterKind = {
 ```
 
 An emission's `clause.fields` (Mosaic 0.29+) lists the input expressions its predicate filters over; it defaults to the resolved `column` node, so a kind that tests that single column directly can omit it (as the `where` emission above does). Set it explicitly when the predicate references different or no columns, using the exact node instances the predicate holds. Subquery predicates never carry clause metadata (Mosaic's pre-aggregator only understands point/interval shapes).
+
+## Aggregate threshold kind
+
+`aggregateThresholdFilterKind({ from, aggregate, targets: { having, members }, operators? })` builds the "groups whose aggregate passes a threshold" kind: keep the `phrase` groups whose `max(search_volume)` is over 1000, on the widget that groups by `phrase` and on every widget around it. The group key is the spec's own `column`. Each active spec emits two clauses:
+
+- `targets.having`: `<aggregate> <op> <value>`, with `fields: []` (an aggregate has no input column). Consume this target with `havingBy` on the widget that runs the grouped query.
+- `targets.members`: `<column> IN (SELECT <column> FROM <from> WHERE <contextPredicate> GROUP BY <column> HAVING <aggregate> <op> <value>)`, with `fields` set to the outer column. Consume it with `filterBy` everywhere else. The `WHERE` is left out when there is no context. Because the kind reads `contextPredicate`, the set rebuilds the subquery when the context Selection changes.
+
+```ts
+import { aggregateThresholdFilterKind, createFilterSet } from '@nozzleio/mosaic-core';
+import { max } from '@uwdata/mosaic-sql';
+
+const filters = createFilterSet({
+  targets: { where: $where, having: $having, members: $members },
+  context: $page,
+  kinds: {
+    'volume-threshold': aggregateThresholdFilterKind({
+      from: 'questions',
+      aggregate: () => max('search_volume'),
+      targets: { having: 'having', members: 'members' },
+      operators: ['gt', 'lt'], // optional; defaults to every THRESHOLD_OPERATORS entry
+    }),
+  },
+});
+
+filters.set({
+  id: 'volume',
+  column: 'phrase', // the group key
+  kind: 'volume-threshold',
+  operator: 'gt',
+  value: 1000,
+});
+// having:  (max("search_volume") > 1000)
+// members: ("phrase" IN (SELECT "phrase" FROM "questions" WHERE <context>
+//            GROUP BY "phrase" HAVING (max("search_volume") > 1000)))
+```
+
+- `from` is a table name (quoted as one identifier) or a mosaic-sql `TableRefNode` for a schema-qualified table.
+- `aggregate` is a mosaic-sql node or a function returning one. Each emission gets its own node (a function is called once per emission, a node is deep-cloned), so the two clauses never share AST instances.
+- `operators` are ids from the exported `THRESHOLD_OPERATORS` (`gt`, `gte`, `lt`, `lte`, typed as `ThresholdOperator`). The kind advertises them, in the order given, as its `operators` for pickers. A spec without an `operator` uses `gte`. A spec with an operator outside the list, or a `value` that is not a finite number, is inactive.
+- Chips format as `> 1000`, `≥ 5`, and so on. `chip.target` is the `having` target, the first emission.
+- `createFilterSet` does not check the target names. The factory throws if `having` and `members` are equal or empty, or if `operators` is empty or holds an unknown id.
 
 ## Computing a spec's clause without publishing it
 

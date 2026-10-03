@@ -124,7 +124,7 @@ topology: # → useTopology (Selections + the filter set)
 filter_kinds: # generic behavior factories instantiated with config
   metric_threshold:
     behavior: aggregate-threshold
-    config: { table: questions_enriched, group_by: phrase, aggregate: 'max(search_volume)', … }
+    config: { table: questions_enriched, aggregate: 'max(search_volume)', … }
 
 filters: # the filter-builder field catalog (the only filter UI)
   fields:
@@ -284,12 +284,14 @@ inspects the string.
 A `filter_kinds:` entry names a generic `behavior` (a factory shipped in
 `src/spec/kinds.ts`) and its `config`. The kind registry is the library
 built-ins merged with these instantiated kinds. The one shipped behavior,
-`aggregate-threshold`, generalizes a per-group aggregate compared against a
-threshold: it emits a `HAVING <aggregate> >/< N` clause on `having_target` (the
-widget's own grouped query) **and** a membership subquery
-(`<group_by> IN (SELECT … GROUP BY … HAVING …)`) on `members_target` (narrowing
-every sibling). Nothing about the table, group key, aggregate, or targets is
-hardcoded — they all arrive from the spec.
+`aggregate-threshold`, instantiates the library's
+[`aggregateThresholdFilterKind`](../../../docs/core/filter-set.md#aggregate-threshold-kind):
+a per-group aggregate compared against a threshold. It emits a
+`HAVING <aggregate> >/< N` clause on `having_target` (the widget's own grouped
+query) **and** a membership subquery
+(`<column> IN (SELECT … GROUP BY … HAVING …)`) on `members_target` (narrowing
+every sibling). The group key is the filter spec's own `column`. Nothing about
+the table, aggregate, or targets is hardcoded — they all arrive from the spec.
 
 ## The derived table + the connector seam
 

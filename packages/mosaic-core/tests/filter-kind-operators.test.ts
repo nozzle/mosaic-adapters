@@ -1,3 +1,5 @@
+import { createTestDb } from '@nozzleio/test-support/duckdb';
+import { Query } from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
 import {
@@ -123,6 +125,8 @@ describe('FilterKind operator vocabulary', () => {
     expect(byId.get('in')?.arity).toBe('set');
     expect(byId.get('not_in')?.arity).toBe('set');
     expect(byId.get('excludes_all')?.arity).toBe('set');
+    expect(byId.get('matches')?.arity).toBe('unary');
+    expect(byId.get('not_matches')?.arity).toBe('unary');
 
     const matchById = new Map((matchFilterKind.operators ?? []).map((op) => [op.id, op]));
     expect(matchById.get('contains')?.arity).toBe('unary');
@@ -182,9 +186,155 @@ describe('FilterKind operator vocabulary', () => {
       'in',
       'is_empty',
       'excludes_all',
+      'matches',
+      'not_matches',
     ];
     const matchIds: ReadonlyArray<MatchOperator> = ['contains', 'prefix', 'suffix', 'regexp'];
-    expect(conditionIds).toHaveLength(5);
+    expect(conditionIds).toHaveLength(7);
     expect(matchIds).toHaveLength(4);
+  });
+});
+
+/** A condition spec on `column` with a unary string value. */
+function textSpec(column: string, operator: string, value: unknown = 'a%b'): FilterSpec {
+  return { id: 't', column, kind: 'condition', operator, value };
+}
+
+describe('condition regex operators', () => {
+  test('matches / not_matches use regexp_matches on scalar columns', () => {
+    const kind = conditionFilterKind();
+    expect(emitSql(kind, textSpec('name', 'matches', '^A.*'))).toBe(
+      'regexp_matches("name", \'^A.*\')',
+    );
+    expect(emitSql(kind, textSpec('name', 'not_matches', '^A.*'))).toBe(
+      '(NOT regexp_matches("name", \'^A.*\'))',
+    );
+  });
+
+  test('an empty or non-string pattern is inactive', () => {
+    const kind = conditionFilterKind();
+    expect(emitSql(kind, textSpec('name', 'matches', ''))).toBeUndefined();
+    expect(emitSql(kind, textSpec('name', 'not_matches', 3))).toBeUndefined();
+    expect(
+      emitSql(kind, { id: 't', column: 'name', kind: 'condition', operator: 'matches' }),
+    ).toBeUndefined();
+  });
+});
+
+describe('condition text operators on scalar columns', () => {
+  test('keep their ILIKE SQL unchanged', () => {
+    const kind = conditionFilterKind();
+    expect(emitSql(kind, textSpec('name', 'contains'))).toBe(
+      "\"name\" ILIKE '%a\\%b%' ESCAPE '\\'",
+    );
+    expect(emitSql(kind, textSpec('name', 'not_contains'))).toBe(
+      "\"name\" NOT ILIKE '%a\\%b%' ESCAPE '\\'",
+    );
+    expect(emitSql(kind, textSpec('name', 'starts_with'))).toBe(
+      "\"name\" ILIKE 'a\\%b%' ESCAPE '\\'",
+    );
+    expect(emitSql(kind, textSpec('name', 'not_starts_with'))).toBe(
+      "\"name\" NOT ILIKE 'a\\%b%' ESCAPE '\\'",
+    );
+    expect(emitSql(kind, textSpec('name', 'ends_with'))).toBe(
+      "\"name\" ILIKE '%a\\%b' ESCAPE '\\'",
+    );
+    expect(emitSql(kind, textSpec('name', 'not_ends_with'))).toBe(
+      "\"name\" NOT ILIKE '%a\\%b' ESCAPE '\\'",
+    );
+  });
+});
+
+describe('condition text operators on array columns', () => {
+  const arrayKind = conditionFilterKind({ columnType: 'array' });
+
+  test('mean "any element matches", reusing the LIKE escape path', () => {
+    expect(emitSql(arrayKind, textSpec('tags', 'contains'))).toBe(
+      "(len(list_filter(\"tags\", x -> x ILIKE '%a\\%b%' ESCAPE '\\')) > 0)",
+    );
+    expect(emitSql(arrayKind, textSpec('tags', 'starts_with'))).toBe(
+      "(len(list_filter(\"tags\", x -> x ILIKE 'a\\%b%' ESCAPE '\\')) > 0)",
+    );
+    expect(emitSql(arrayKind, textSpec('tags', 'ends_with'))).toBe(
+      "(len(list_filter(\"tags\", x -> x ILIKE '%a\\%b' ESCAPE '\\')) > 0)",
+    );
+    expect(emitSql(arrayKind, textSpec('tags', 'matches', '^a'))).toBe(
+      '(len(list_filter("tags", x -> regexp_matches(x, \'^a\'))) > 0)',
+    );
+  });
+
+  test('not_* forms negate the whole any-element test', () => {
+    expect(emitSql(arrayKind, textSpec('tags', 'not_contains'))).toBe(
+      "(NOT (len(list_filter(\"tags\", x -> x ILIKE '%a\\%b%' ESCAPE '\\')) > 0))",
+    );
+    expect(emitSql(arrayKind, textSpec('tags', 'not_matches', '^a'))).toBe(
+      '(NOT (len(list_filter("tags", x -> regexp_matches(x, \'^a\'))) > 0))',
+    );
+  });
+
+  test('struct-path array columns resolve outside the lambda', () => {
+    expect(emitSql(arrayKind, textSpec('page.tags', 'contains', 'x'))).toBe(
+      '(len(list_filter("page"."tags", x -> x ILIKE \'%x%\' ESCAPE \'\\\')) > 0)',
+    );
+  });
+
+  test('the predicate references the resolved column node (default fields)', () => {
+    const column = createStructAccess(SqlIdentifier.from('tags'));
+    const [emission] = arrayKind.emit({
+      spec: textSpec('tags', 'contains'),
+      column,
+      contextPredicate: null,
+    });
+    expect(emission?.clause.fields).toBeUndefined();
+    expect(String(emission?.clause.predicate)).toContain('"tags"');
+  });
+
+  test('an empty value is inactive', () => {
+    expect(emitSql(arrayKind, textSpec('tags', 'contains', ''))).toBeUndefined();
+    expect(emitSql(arrayKind, textSpec('tags', 'not_matches', ''))).toBeUndefined();
+  });
+
+  test('evaluate per element on DuckDB, including NULL lists and NULL elements', async () => {
+    const db = await createTestDb();
+    await db.exec(`
+      CREATE TABLE docs(id INTEGER, tags VARCHAR[]);
+      INSERT INTO docs VALUES
+        (1, ['Alpha', 'beta']),
+        (2, ['gamma']),
+        (3, []),
+        (4, NULL),
+        (5, ['50% off', NULL]),
+        (6, ['x', 'ALPINE']);
+    `);
+    const ids = async (operator: string, value: string): Promise<Array<number>> => {
+      const column = createStructAccess(SqlIdentifier.from('tags'));
+      const [emission] = arrayKind.emit({
+        spec: textSpec('tags', operator, value),
+        column,
+        contextPredicate: null,
+      });
+      const predicate = emission?.clause.predicate;
+      if (predicate === null || predicate === undefined) {
+        throw new Error(`no predicate for ${operator}`);
+      }
+      const result = await db.coordinator.query(
+        Query.from('docs').select('id').where(predicate).orderby('id'),
+      );
+      return result.toArray().map((row) => row.id as number);
+    };
+
+    // Case-insensitive ILIKE on any element.
+    expect(await ids('contains', 'alp')).toEqual([1, 6]);
+    expect(await ids('starts_with', 'GAM')).toEqual([2]);
+    expect(await ids('ends_with', 'ta')).toEqual([1]);
+    // `%` is escaped: it matches literally, not as a wildcard.
+    expect(await ids('contains', '%')).toEqual([5]);
+    // The `not_*` form keeps lists with no matching element, empty lists
+    // included; a NULL list (id 4) is dropped by both forms.
+    expect(await ids('not_contains', 'alp')).toEqual([2, 3, 5]);
+    // Regex (RE2, case-sensitive by default).
+    expect(await ids('matches', '^[A-Z]')).toEqual([1, 6]);
+    expect(await ids('matches', '(?i)^alp')).toEqual([1, 6]);
+    expect(await ids('not_matches', '^[A-Z]')).toEqual([2, 3, 5]);
   });
 });

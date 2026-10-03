@@ -290,15 +290,16 @@ export const topologySchema = z.record(z.string(), topologyDeclarationSchema);
 export const thresholdOperatorSchema = z.enum(['gt', 'lt', 'gte', 'lte']);
 
 /**
- * Config for the `aggregate-threshold` behavior: a per-group aggregate compared
- * against a threshold, emitting a HAVING clause on `having_target` and a
- * membership subquery on `members_target`. `aggregate` is a raw SQL fragment
- * (e.g. `max(<col>)`); `group_by` is a column / struct path.
+ * Config for the `aggregate-threshold` behavior (the library's
+ * `aggregateThresholdFilterKind`): a per-group aggregate compared against a
+ * threshold, emitting a HAVING clause on `having_target` and a membership
+ * subquery on `members_target`. `aggregate` is a raw SQL fragment (e.g.
+ * `max(<col>)`). The group key is not configured here: it is each spec's own
+ * `column`.
  */
 export const aggregateThresholdConfigSchema = z
   .object({
     table: z.string().min(1),
-    group_by: z.string().min(1),
     aggregate: z.string().min(1),
     having_target: z.string().min(1),
     members_target: z.string().min(1),

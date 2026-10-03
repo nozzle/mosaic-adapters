@@ -170,14 +170,13 @@ topology:
 # Generic behavior factories instantiated with config. The `aggregate-threshold`
 # behavior emits a HAVING clause on `having_target` (the widget's own grouped
 # query) and a membership subquery on `members_target` (narrowing every sibling).
-# Nothing about this is hardcoded in code — the table, group key, aggregate, and
-# targets all arrive here.
+# Nothing about this is hardcoded in code — the table, aggregate, and targets
+# all arrive here; the group key is the filter spec's own column.
 filter_kinds:
   metric_threshold:
     behavior: aggregate-threshold
     config:
       table: questions_enriched
-      group_by: phrase
       aggregate: 'max(search_volume)'
       having_target: 'having:phrase'
       members_target: 'members:phrase'
@@ -186,7 +185,6 @@ filter_kinds:
     behavior: aggregate-threshold
     config:
       table: questions_enriched
-      group_by: domain
       aggregate: 'count(*)'
       having_target: 'having:domain'
       members_target: 'members:domain'
