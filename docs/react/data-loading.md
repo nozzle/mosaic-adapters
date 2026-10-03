@@ -62,26 +62,18 @@ DuckDB-WASM's HTTP filesystem only fetches **fully-qualified** URLs. A relative 
 
 Run the compiled statements one at a time — **not** in parallel — because later entries may depend on earlier tables existing. Report each table's status as it transitions so the UI can gate on it.
 
-The one race worth handling: if the connector is [recreated](./connector-lifecycle.md) mid-load, Mosaic's `QueryManager` clears its in-flight queue and rejects pending queries with `'Cleared'` (either a bare string or an `Error` carrying that message). By the time that rejection surfaces the reset has settled, so a single retry succeeds:
+The one race worth handling: if the connector is [recreated](./connector-lifecycle.md) mid-load, Mosaic's `QueryManager` clears its in-flight queue and rejects pending queries with `'Cleared'` (either a bare string or an `Error` carrying that message). Detect it with `isQueryCancellation` rather than string-matching Mosaic internals — it recognizes every shape a cancelled or cleared query takes (see [Query errors and cancellation](../core/concepts.md#query-errors-and-cancellation)). By the time that rejection surfaces the reset has settled, so a single retry succeeds:
 
 ```ts
+import { isQueryCancellation } from '@nozzleio/react-mosaic';
+
 export type TableLoadStatus = 'pending' | 'loading' | 'ready' | 'error';
 
 /**
- * `'Cleared'` is how Mosaic's QueryManager rejects in-flight queries when the
- * coordinator is cleared mid-load (a connector reset). It surfaces as either a
- * bare string reject or an Error carrying that message.
- */
-function isClearedError(reason: unknown): boolean {
-  if (reason === 'Cleared') {
-    return true;
-  }
-  return reason instanceof Error && reason.message === 'Cleared';
-}
-
-/**
  * Run the compiled statements sequentially against `coordinator`, one retry on
- * a `'Cleared'` rejection (a connector reset racing the load).
+ * a cancellation (`isQueryCancellation`) — Mosaic's QueryManager rejects
+ * in-flight queries with `'Cleared'` when a connector reset clears the
+ * coordinator mid-load.
  */
 export async function runDataLoad(
   coordinator: Coordinator,
@@ -98,7 +90,7 @@ export async function runDataLoad(
     try {
       await coordinator.exec([statement]);
     } catch (reason) {
-      if (isClearedError(reason)) {
+      if (isQueryCancellation(reason)) {
         // One retry: the reset that cleared the queue has settled by now.
         await coordinator.exec([statement]);
       } else {

@@ -57,6 +57,8 @@ Specializations add their payload (`rows`/`totalRows`, `values`). Read `store.st
 
 When you call `coordinator.query()` yourself, read its result (an Arrow table, or an array from a JSON connector) with the same helpers the clients use: `toResultRows(result)` returns row objects, `firstResultRow(result)` returns the first row (read with `.get(0)`, without materializing the rest) or `undefined`, and `resultRowCount(result)` returns `numRows` or the array length.
 
+### Query errors and cancellation
+
 With Mosaic 0.30+, a main-query failure sets `error` to the upstream
 `QueryError` class. Narrow it with `instanceof QueryError` (imported from
 `@uwdata/mosaic-core`) to inspect `.sql`, the SQL the coordinator actually
@@ -64,6 +66,45 @@ issued, and `.cause`, the underlying database error. `Error | null` remains the
 public state type because non-client paths are not all wrapped; notably,
 [`createSchemaClient`](./schema-client.md) runs `queryFieldInfo` through
 `coordinator.query()` directly and can surface a plain `Error`.
+
+`QueryError.message` embeds the whole SQL query (`"<cause>\n\nSQL Query: …"`),
+so don't render it directly. `describeQueryError(error)` splits any error value
+into display-ready parts — `{ message, sql?, cause? }`, where for a `QueryError`
+`message` is the underlying cause's message and `sql` the issued query — and
+returns `null` for `null`/`undefined`, so it accepts a store's `error` as-is:
+
+```ts
+import { describeQueryError } from '@nozzleio/mosaic-core';
+
+const failure = describeQueryError(client.store.state.error);
+if (failure) {
+  showError(failure.message, failure.sql); // sql is undefined for non-QueryErrors
+}
+```
+
+**Cancellation is not an error.** `coordinator.cancel(requests)` and
+`coordinator.clear()` (with or without `clients`) reject in-flight requests with
+Mosaic's bare `'Canceled'`/`'Cleared'` reasons. When that hits a client's
+current main query, the store does **not** move to `'error'`: `status` stays
+`'pending'` and `error` keeps its previous value until the next
+[trigger](#re-query-triggers) re-queries the client. A client disconnected by
+`clear({ clients: true })` is never triggered again, so it stays `'pending'`
+until it is destroyed (in React, keying the tree on the
+[connection identity](../react/connector-lifecycle.md#why-key-by-connection-identity)
+remounts it against a fresh coordinator). [`createSchemaClient`](./schema-client.md) is not a data
+client and still reports a cancelled field-info query as its `error`. A cancelled request
+that was already superseded is dropped like any other stale response (see
+[the current-request guarantee](#the-current-request-guarantee)). The
+coordinator's logger still receives the wrapped `QueryError`, as upstream does.
+
+For the promise-returning paths you call yourself (`coordinator.query()`,
+`coordinator.exec()`), use `isQueryCancellation(error)` instead of
+string-matching those reasons. It is `true` for the bare `'Canceled'` or
+`'Cleared'` string, an `Error` with that message, and a `QueryError` whose
+`cause` is either — for example to retry a load that a
+[connector reset](../react/data-loading.md#sequential-exec-with-a-cleared-retry)
+cleared. Both helpers are exported from `@nozzleio/mosaic-core` and re-exported
+by `@nozzleio/react-mosaic`.
 
 ## Selection topology
 

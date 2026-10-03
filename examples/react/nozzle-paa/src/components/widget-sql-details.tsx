@@ -1,4 +1,4 @@
-import { QueryError } from '@uwdata/mosaic-core';
+import { describeQueryError, isQueryCancellation } from '@nozzleio/react-mosaic';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 
 import { usePopoverDismiss } from './use-popover-dismiss';
@@ -43,9 +43,11 @@ export function WidgetSqlPopover(props: { store: SqlStore; label: string }) {
     () => store.state.error,
     () => store.state.error,
   );
-  const queryError = error instanceof QueryError ? error : null;
-  const causeMessage =
-    queryError?.cause instanceof Error ? queryError.cause.message : String(queryError?.cause ?? '');
+  // A cancellation is not a failure (the client store never reports one, but
+  // guard anyway). `describeQueryError` splits a `QueryError` into the
+  // underlying message and the SQL, instead of rendering `error.message` (which
+  // embeds the whole query).
+  const failure = isQueryCancellation(error) ? null : describeQueryError(error);
 
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -54,7 +56,7 @@ export function WidgetSqlPopover(props: { store: SqlStore; label: string }) {
   }, []);
   usePopoverDismiss(rootRef, open, close);
 
-  if (!sql && queryError === null) {
+  if (!sql && failure === null) {
     return null;
   }
 
@@ -94,14 +96,18 @@ export function WidgetSqlPopover(props: { store: SqlStore; label: string }) {
             </pre>
           </>
         ) : null}
-        {queryError ? (
+        {failure ? (
           <div data-testid="widget-sql-error" className={sql ? 'mt-3' : ''}>
-            <div className="mb-1.5 text-[11px] font-semibold tracking-wide text-red-600 uppercase">
-              Failed SQL
-            </div>
-            <pre className="max-h-[360px] overflow-auto rounded border border-red-200 bg-red-50 p-2 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap text-red-700">
-              {queryError.sql}
-            </pre>
+            {failure.sql !== undefined ? (
+              <>
+                <div className="mb-1.5 text-[11px] font-semibold tracking-wide text-red-600 uppercase">
+                  Failed SQL
+                </div>
+                <pre className="max-h-[360px] overflow-auto rounded border border-red-200 bg-red-50 p-2 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap text-red-700">
+                  {failure.sql}
+                </pre>
+              </>
+            ) : null}
             <div className="mt-2 mb-1.5 text-[11px] font-semibold tracking-wide text-red-600 uppercase">
               Cause
             </div>
@@ -109,7 +115,7 @@ export function WidgetSqlPopover(props: { store: SqlStore; label: string }) {
               data-testid="widget-sql-error-cause"
               className="rounded border border-red-200 bg-red-50 p-2 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap text-red-700"
             >
-              {causeMessage}
+              {failure.message}
             </div>
           </div>
         ) : null}

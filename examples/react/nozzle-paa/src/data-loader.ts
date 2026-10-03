@@ -1,3 +1,4 @@
+import { isQueryCancellation } from '@nozzleio/react-mosaic';
 import type { Coordinator } from '@uwdata/mosaic-core';
 /**
  * Recipe 2 — declarative, serializable data loading.
@@ -63,20 +64,10 @@ export interface DataLoadState {
 }
 
 /**
- * `'Cleared'` is how Mosaic's QueryManager rejects in-flight queries when the
- * coordinator is cleared mid-load (a connector reset). It surfaces as either a
- * bare string reject or an Error carrying that message.
- */
-function isClearedError(reason: unknown): boolean {
-  if (reason === 'Cleared') {
-    return true;
-  }
-  return reason instanceof Error && reason.message === 'Cleared';
-}
-
-/**
  * Run the compiled statements sequentially against `coordinator`, one retry on
- * a `'Cleared'` rejection (a connector reset racing the load).
+ * a cancellation (`isQueryCancellation`) — Mosaic's QueryManager rejects
+ * in-flight queries with `'Cleared'` when a connector reset clears the
+ * coordinator mid-load.
  */
 export async function runDataLoad(
   coordinator: Coordinator,
@@ -93,7 +84,7 @@ export async function runDataLoad(
     try {
       await coordinator.exec([statement]);
     } catch (reason) {
-      if (isClearedError(reason)) {
+      if (isQueryCancellation(reason)) {
         // One retry: the reset that cleared the queue has settled by now.
         await coordinator.exec([statement]);
       } else {
