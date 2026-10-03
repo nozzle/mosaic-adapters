@@ -208,7 +208,7 @@ for (const widget of dashboardSpec.widgets) {
 
 `topology.reset()` is a **type-aware** page reset, driven by the declaration types — which already encode ownership:
 
-- `standalone` and `external` entries have their clauses cleared (each clause is cleared by publishing a null-predicate clause from its own source).
+- `standalone` and `external` entries are cleared with upstream `selection.reset()`: every clause is removed in a single update, the removal relays to derived Selections (`compose` / `cascading` contexts), and each clause source's `reset()` is invoked, so interactors that implement it (e.g. vgplot interval / region brushes) clear their own value and overlay too.
 - `filter-set` entries delegate to `filterSet.reset()`, so specs and chips stay consistent.
 - `compose` and `cascading` are **skipped** — they are derived; resetting their inputs is both sufficient and the only correct semantics.
 - `param` entries are restored to their declared `default`; `external-param` entries are **skipped** (the topology holds no baseline for a caller-owned instance). See [Params](#params).

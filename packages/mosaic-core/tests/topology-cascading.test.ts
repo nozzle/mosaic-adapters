@@ -69,6 +69,23 @@ describe('createCascadingContexts', () => {
     handle.destroy();
   });
 
+  test('seeds and clears every pre-existing clause even when `.clauses` lags behind', () => {
+    const $a = Selection.crossfilter();
+    const $b = Selection.crossfilter();
+    // A `value` listener keeps the first dispatch pending, so the second
+    // same-tick update is queued and `.clauses` still shows only the first.
+    $a.addEventListener('value', () => {});
+    publish($a, 'colA', 'x');
+    publish($a, 'colA2', 'y');
+    expect($a.clauses).toHaveLength(1);
+
+    const handle = createCascadingContexts({ a: $a, b: $b });
+
+    expect(resolvedColumns(handle.contexts.b!).sort()).toEqual(['colA', 'colA2']);
+    handle.destroy();
+    expect(handle.contexts.b!._resolved).toHaveLength(0);
+  });
+
   test('mints one context per key', () => {
     const handle = createCascadingContexts({
       a: Selection.crossfilter(),
