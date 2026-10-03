@@ -1,4 +1,5 @@
 import {
+  clampPagination,
   paginationToWindow,
   sortingToOrderBy,
   useTanStackTableFilterBridge,
@@ -131,20 +132,16 @@ export function AthletesTable() {
 
   // A non-TanStack Table $page change (vgplot brush, facet, histogram) can shrink
   // totalRows below the current offset with no state handler involved; clamp
-  // back to the last populated page so the table never strands on an empty
-  // one.
+  // the pagination state itself back to the last populated page so the table
+  // never strands on an empty one. In an effect, writing the state (not a
+  // derived copy) — see docs/tanstack-table/integration.md#clamping-a-stale-page.
+  const { totalRows } = athletes;
   useEffect(() => {
-    if (athletes.totalRows === undefined) {
+    if (totalRows === undefined) {
       return;
     }
-    const pageCount = Math.ceil(athletes.totalRows / pagination.pageSize);
-    if (pagination.pageIndex > 0 && pagination.pageIndex >= pageCount) {
-      setPagination((prev) => ({
-        ...prev,
-        pageIndex: Math.max(0, pageCount - 1),
-      }));
-    }
-  }, [athletes.totalRows, pagination.pageIndex, pagination.pageSize]);
+    setPagination((prev) => clampPagination(prev, totalRows));
+  }, [totalRows]);
 
   const onSortingChange: OnChangeFn<SortingState> = (updater) => {
     setSorting(updater);
