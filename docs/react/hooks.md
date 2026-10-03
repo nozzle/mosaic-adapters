@@ -54,8 +54,9 @@ const athletes = useMosaicRows<AthleteRow>({
   publish: { select: { as: $picked, columns: ['id'] } },
 });
 
-// athletes.rows, athletes.totalRows, athletes.status, athletes.error,
-// athletes.lastQuery, athletes.client (imperative: selectRows, hoverRow,
+// athletes.rows, athletes.totalRows, athletes.selected (published select
+// tuples), athletes.status, athletes.error, athletes.lastQuery,
+// athletes.client (imperative: selectRows, setSelectedValues, hoverRow,
 // prefetch, refetch)
 
 const kpis = useMosaicValues<{ athletes: number; medals: number }>({

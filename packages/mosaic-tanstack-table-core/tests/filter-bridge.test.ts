@@ -385,6 +385,85 @@ describe('spec lifecycle', () => {
   });
 });
 
+describe('destroy({ retainSpecs })', () => {
+  const columns: FilterBridgeColumns = {
+    name: { clause: 'ilike' },
+    sport: { clause: 'equals' },
+  };
+
+  test('retainSpecs leaves every managed spec applied and disables the bridge', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    const bridge = createTanStackTableFilterBridge({ set, columns });
+    bridge.setFilters([
+      { id: 'name', value: 'ada' },
+      { id: 'sport', value: 'swim' },
+    ]);
+
+    bridge.destroy({ retainSpecs: true });
+    expect(bridge.destroyed).toBe(true);
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['name', 'sport']);
+    expect(resolved(selection)).toHaveLength(2);
+
+    // Destroyed: further state neither publishes nor removes anything.
+    bridge.setFilters([]);
+    expect(set.store.state.specs).toHaveLength(2);
+  });
+
+  test('retainSpecs: false (and omitting it) keeps the default removal', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    const bridge = createTanStackTableFilterBridge({ set, columns });
+    bridge.setFilters([{ id: 'name', value: 'ada' }]);
+
+    bridge.destroy({ retainSpecs: false });
+    expect(set.store.state.specs).toHaveLength(0);
+    expect(resolved(selection)).toHaveLength(0);
+  });
+
+  test('a later bridge with onExternalChange re-adopts the retained specs', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    const first = createTanStackTableFilterBridge({ set, columns });
+    first.setFilters([{ id: 'sport', value: 'swim' }]);
+    first.destroy({ retainSpecs: true });
+
+    const reported: Array<ColumnFiltersState> = [];
+    const second = createTanStackTableFilterBridge({
+      set,
+      columns,
+      onExternalChange: (filters) => {
+        reported.push(filters);
+      },
+    });
+    expect(reported.at(-1)).toEqual([{ id: 'sport', value: 'swim' }]);
+
+    // Confirm, then clear: the re-adopted spec is removable again.
+    second.setFilters([{ id: 'sport', value: 'swim' }]);
+    second.setFilters([]);
+    expect(set.store.state.specs).toHaveLength(0);
+    expect(resolved(selection)).toHaveLength(0);
+  });
+
+  test('without onExternalChange a later bridge cannot clear retained specs', () => {
+    const selection = Selection.intersect();
+    const set = makeSet(selection);
+    const first = createTanStackTableFilterBridge({ set, columns });
+    first.setFilters([{ id: 'sport', value: 'swim' }]);
+    first.destroy({ retainSpecs: true });
+
+    // The consumer owns the cleanup: a callback-less bridge never adopts, so
+    // its (stale, empty) state leaves the retained spec untouched.
+    const second = createTanStackTableFilterBridge({ set, columns });
+    second.setFilters([]);
+    second.destroy();
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['sport']);
+
+    set.remove('sport');
+    expect(resolved(selection)).toHaveLength(0);
+  });
+});
+
 describe('external changes via the set store', () => {
   const columns: FilterBridgeColumns = {
     name: { clause: 'ilike' },

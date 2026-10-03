@@ -137,6 +137,78 @@ Why an effect that writes `pagination`, rather than a clamp during render:
 
 The effect avoids all three: it runs once per committed `totalRows` change, after render, writes through the state owner's own setter, and works wherever the pagination state lives. It costs one extra commit. TanStack Table v9 syncs controlled `state` into its store after commit, so the clamped value reaches the table on the next render.
 
+### Mirroring the row selection into `rowSelection`
+
+A rows client with `publish.select` exposes what it published as `selected` — tuples aligned to `publish.select.columns` (see [the rows client](../core/rows-client.md#publishing)). Derive TanStack Table's `rowSelection` from it rather than storing a second copy, and route `onRowSelectionChange` back through `setSelectedValues`. The only glue you supply is `toId`, which turns a selected tuple into the same id your `getRowId` returns:
+
+```tsx
+import { useMemo } from 'react';
+import {
+  functionalUpdate,
+  rowSelectionFeature,
+  type OnChangeFn,
+  type RowSelectionState,
+} from '@tanstack/react-table';
+
+const $picked = Selection.crossfilter();
+
+// Consumer-supplied: a tuple aligned to `publish.select.columns` → row id.
+// It must agree with `getRowId` below.
+const toId = (tuple: ReadonlyArray<unknown>) => String(tuple[0]);
+const toTuple = (row: AthleteRow) => [row.id];
+
+const athletes = useMosaicRows<AthleteRow>({
+  // …query, filterBy, inputs as above…
+  publish: { select: { as: $picked, columns: ['id'] } },
+});
+const { selected, rows, client } = athletes;
+
+// Derived, never stored: the published selection is the one source of truth,
+// so persisted hydration, a chip bar's X or `$picked.reset()` show up here too.
+const rowSelection = useMemo<RowSelectionState>(
+  () => Object.fromEntries(selected.map((tuple) => [toId(tuple), true])),
+  [selected],
+);
+
+const onRowSelectionChange: OnChangeFn<RowSelectionState> = (updater) => {
+  const next = functionalUpdate(updater, rowSelection);
+  // Every tuple we can name: the current selection (which may include rows
+  // on other pages) plus the visible page.
+  const byId = new Map<string, ReadonlyArray<unknown>>();
+  for (const tuple of selected) {
+    byId.set(toId(tuple), tuple);
+  }
+  for (const row of rows) {
+    const tuple = toTuple(row);
+    byId.set(toId(tuple), tuple);
+  }
+  const tuples = Object.keys(next).flatMap((id) => {
+    const tuple = byId.get(id);
+    if (tuple === undefined) {
+      return [];
+    }
+    return [tuple];
+  });
+  client.setSelectedValues(tuples); // [] clears the clause
+};
+
+const table = useTable({
+  // Register `rowSelectionFeature` alongside the others in `tableFeatures`.
+  features,
+  data: rows,
+  columns,
+  state: { sorting, pagination, columnFilters, rowSelection },
+  onRowSelectionChange,
+  getRowId: (row) => toId(toTuple(row)),
+  // …manual flags as above…
+});
+```
+
+- **Only selected ids are listed.** TanStack Table v9's `RowSelectionState` is `Record<string, true>` — a deselected row's key is removed, never set to `false` — so the handler maps the remaining keys back to tuples.
+- **Off-page rows survive paging.** `selected` keeps tuples for rows that are no longer on the current page, and the `byId` index re-emits them, so a selection spans pages the way the published clause does.
+- **Replay is the same call.** `client.setSelectedValues(selected)` (or tuples restored from the URL) republishes a selection, and `rowSelection` follows from `selected` — there is no TanStack Table state to re-seed.
+- **Equal re-publishes are free.** `selected` is patched only when its value changes, so the `useMemo` above recomputes only on a real selection change.
+
 ## The filter bridge
 
 `useTanStackTableFilterBridge({ filters, set, columns })` is a thin translator: it maps TanStack Table `columnFilters` state onto [`FilterSpec`](../core/filter-set.md)s written into a [FilterSet](../core/filter-set.md). The set owns everything downstream — resolving each spec into Selection clauses, routing them to named targets, self-exclusion, external-clear detection, chip derivation, and persistence. `column.setFilterValue()` and ecosystem filter components work unmodified; the data layer only ever sees a Selection.
@@ -165,7 +237,7 @@ The managed spec id is `` `${idPrefix}${columnId}` `` (`idPrefix` defaults to `'
 The bridge diffs precisely, because every set write can re-query every consumer:
 
 - **Stable identity** — the spec id is stable per column id: a changed filter value _replaces_ the spec (and, through the set, its clause), never accumulates.
-- **Removal** — clearing a column filter removes exactly its spec; unmount (or a `set` identity change) removes every spec the bridge manages.
+- **Removal** — clearing a column filter removes exactly its spec; unmount (or a `set` identity change) removes every spec the bridge manages, unless you opt into [`retainSpecsOnUnmount`](#conditional-bridges-and-retaining-specs).
 - **Echo suppression** — writes are value-diffed against the bridge's last-pushed spec. Re-renders with equal filter state (fresh array/object identities included) write nothing; the set adds its own SQL-level suppression on top, so store-update → re-render → bridge cycles cannot feed back into Selection activations.
 - **No self-exclusion** — the bridge's specs carry no `clients` set, so the table _is_ filtered by its own column filters, even inside a `Selection.crossfilter()`. That is the point: column filters describe the table's contents.
 - **Labels and targets** — `label`/`target` on the column config flow onto the spec, so a chip bar reading the set (`useFilterSetChips`) labels the filter and the set routes its clauses to the named target.
@@ -189,7 +261,29 @@ useTanStackTableFilterBridge({
 
 Held by latest-ref — a new `onExternalChange` identity never recreates the bridge.
 
-Framework-agnostic consumers can use the core directly: `createTanStackTableFilterBridge({ set, columns, idPrefix?, onExternalChange? })` with `setFilters` / `setColumns` / `destroy`.
+Framework-agnostic consumers can use the core directly: `createTanStackTableFilterBridge({ set, columns, idPrefix?, onExternalChange? })` with `setFilters` / `setColumns` / `destroy`. `destroy({ retainSpecs: true })` is the core form of `retainSpecsOnUnmount` below.
+
+### Conditional bridges and retaining specs
+
+Two options cover tables whose filters should not simply live and die with the component:
+
+- **`set: undefined` makes the bridge inert.** No bridge exists, nothing is published or adopted, and `onExternalChange` never fires — so a bridge that only applies sometimes (no set yet, or a mode without column filtering) needs no wrapper component. Going from a set to `undefined` tears the bridge down exactly like an unmount; going back creates a fresh one that adopts whatever is in the set.
+- **`retainSpecsOnUnmount: true` keeps the filters applied.** Teardown (unmount, a `set` or `idPrefix` change, or `set` becoming `undefined`) leaves every managed spec in the set instead of removing it. The default, `false`, keeps the behaviour described in [Spec lifecycle](#spec-lifecycle). The flag is read at teardown time, so flipping it in the same render that disables the bridge applies, and changing it never recreates the bridge.
+
+```tsx
+useTanStackTableFilterBridge({
+  filters: columnFilters,
+  set: filteringEnabled ? pageSet : undefined,
+  columns: bridgeColumns,
+  onExternalChange: setColumnFilters, // required to re-adopt retained specs
+  retainSpecsOnUnmount: true,
+});
+```
+
+Retained specs belong to nobody until a bridge adopts them, so two things are yours to handle:
+
+- **Re-adoption needs `onExternalChange`.** A later bridge over the same set and managed ids adopts the retained specs and reports them through the callback, so the table's filter inputs show them and clearing them works. Without the callback the new bridge leaves pre-existing specs alone, and its own (possibly empty) filter state cannot clear them.
+- **You own the eventual cleanup.** If no bridge comes back, remove the specs yourself — `set.remove(id)`, `set.reset()`, or a chip bar's X — or they keep filtering every consumer of the set.
 
 ### Atom-controlled filter state
 

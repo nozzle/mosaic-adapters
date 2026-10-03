@@ -21,7 +21,7 @@ import type {
   RowsInputs,
   RowsPublishTarget,
 } from './types';
-import { resolveCoerce, toResultRows, trailingThrottle } from './utils';
+import { deepEqual, resolveCoerce, toResultRows, trailingThrottle } from './utils';
 import type { TrailingThrottle } from './utils';
 
 /** Alias for the injected window/count expression; stripped from row data. */
@@ -53,8 +53,9 @@ class RowsDataClient<TRow>
   #hasHoverClause = false;
   /**
    * The currently selected tuples (value arrays aligned to
-   * `publish.select.columns`). Tracked here — not on the public state — for
-   * persistence writes and external-clear detection.
+   * `publish.select.columns`), used for persistence writes and external-clear
+   * detection. Mirrored onto the public `state.selected` by
+   * `#trackSelected`, the only writer.
    */
   #selectedTuples: Array<Array<unknown>> = [];
   #publishHover: TrailingThrottle<[TRow | null]> | null = null;
@@ -93,6 +94,7 @@ class RowsDataClient<TRow>
       {
         rows: [],
         totalRows: undefined,
+        selected: [],
       },
       { prepare: () => this.#hydrate() },
     );
@@ -148,7 +150,7 @@ class RowsDataClient<TRow>
     this.#publishSelectTuples(tuples);
   }
 
-  setSelectedValues(tuples: Array<Array<unknown>>): void {
+  setSelectedValues(tuples: ReadonlyArray<ReadonlyArray<unknown>>): void {
     if (this.destroyed) {
       return;
     }
@@ -341,8 +343,7 @@ class RowsDataClient<TRow>
       const select = this.#selectionTarget();
       if (select && !select.source && this.#hasSelectClause) {
         this.#publishPoints(select, this.#selectSource, []);
-        this.#hasSelectClause = false;
-        this.#selectedTuples = [];
+        this.#trackSelected([]);
       }
       if (hover && !hover.source && this.#hasHoverClause) {
         this.#publishPoints(hover, this.#hoverSource, []);
@@ -358,8 +359,7 @@ class RowsDataClient<TRow>
    * its own persistence).
    */
   #publishSelectTuples(tuples: Array<Array<unknown>>): void {
-    this.#selectedTuples = tuples;
-    this.#hasSelectClause = tuples.length > 0;
+    this.#trackSelected(tuples);
 
     const setTarget = this.#setTarget();
     if (setTarget !== null) {
@@ -551,8 +551,7 @@ class RowsDataClient<TRow>
       }
       const present = target.as.clauses.some((clause) => clause.source === this.#selectSource);
       if (!present) {
-        this.#selectedTuples = [];
-        this.#hasSelectClause = false;
+        this.#trackSelected([]);
         this.#persist?.write(null, 'external');
       }
     };
@@ -578,8 +577,7 @@ class RowsDataClient<TRow>
       const spec = target.into.store.state.specs.find((candidate) => candidate.id === target.id);
       if (spec === undefined) {
         if (this.#selectedTuples.length > 0) {
-          this.#selectedTuples = [];
-          this.#hasSelectClause = false;
+          this.#trackSelected([]);
         }
         return;
       }
@@ -594,8 +592,23 @@ class RowsDataClient<TRow>
    * `{ columns, tuples }` envelope (multi-field) shapes the publish path emits.
    */
   #adoptSpecValue(spec: FilterSpec): void {
-    this.#selectedTuples = tuplesFromPointsValue(spec.value);
-    this.#hasSelectClause = this.#selectedTuples.length > 0;
+    this.#trackSelected(tuplesFromPointsValue(spec.value));
+  }
+
+  /**
+   * The single writer of the tracked selection: updates the private tuples
+   * and mirrors them onto the public `state.selected` (a defensive copy, so
+   * consumers can never alias the tracked arrays). The store is patched only
+   * when the value actually changed — the set mirror re-adopts on every
+   * FilterSet change, which must not notify `selected` subscribers.
+   */
+  #trackSelected(tuples: Array<Array<unknown>>): void {
+    this.#selectedTuples = tuples;
+    this.#hasSelectClause = tuples.length > 0;
+    if (deepEqual(this.store.state.selected, tuples)) {
+      return;
+    }
+    this.patchState({ selected: tuples.map((tuple) => [...tuple]) });
   }
 
   /**
@@ -674,7 +687,7 @@ function assertPublishFields(
   }
 }
 
-function assertTupleArity(tuples: Array<Array<unknown>>, arity: number): void {
+function assertTupleArity(tuples: ReadonlyArray<ReadonlyArray<unknown>>, arity: number): void {
   for (const tuple of tuples) {
     if (tuple.length !== arity) {
       throw new Error(

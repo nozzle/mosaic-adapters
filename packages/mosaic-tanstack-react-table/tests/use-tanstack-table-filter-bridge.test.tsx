@@ -333,3 +333,162 @@ describe('hydration adoption', () => {
     expect(set.store.state.specs).toHaveLength(0);
   });
 });
+
+describe('optional set (inert bridge)', () => {
+  test('set: undefined publishes nothing; defining it activates, clearing it tears down', async () => {
+    const $page = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $page } });
+    set.set({ id: 'name', column: 'name', kind: 'match', operator: 'contains', value: 'ada' });
+    const reported: Array<ColumnFiltersState> = [];
+    const filters: ColumnFiltersState = [{ id: 'sport', value: 'swim' }];
+
+    const hook = await renderHook(
+      (props: { set: FilterSet | undefined }) => {
+        useTanStackTableFilterBridge({
+          filters,
+          set: props.set,
+          columns: bridgeColumns,
+          onExternalChange: (next) => {
+            reported.push(next);
+          },
+        });
+      },
+      { initialProps: { set: undefined as FilterSet | undefined } },
+    );
+
+    await settle();
+    // Inert: no spec written, nothing adopted or reported.
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['name']);
+    expect(reported).toHaveLength(0);
+
+    await hook.rerender({ set });
+    await settle();
+    expect(set.store.state.specs.map((s) => s.id).sort()).toEqual(['name', 'sport']);
+    expect(reported.at(-1)).toEqual([{ id: 'name', value: 'ada' }]);
+
+    // Back to undefined: torn down like an unmount — the spec it wrote is
+    // removed; the adopted, never-confirmed one is left alone.
+    await hook.rerender({ set: undefined });
+    await settle();
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['name']);
+
+    await hook.unmount();
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['name']);
+  });
+});
+
+describe('retainSpecsOnUnmount', () => {
+  test('defaults to removing the managed specs on unmount', async () => {
+    const $page = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $page } });
+
+    const hook = await renderHook(
+      () => {
+        useTanStackTableFilterBridge({
+          filters: [{ id: 'sport', value: 'swim' }],
+          set,
+          columns: bridgeColumns,
+          retainSpecsOnUnmount: false,
+        });
+      },
+      { initialProps: {} },
+    );
+    await settle();
+    expect(set.store.state.specs).toHaveLength(1);
+
+    await hook.unmount();
+    expect(set.store.state.specs).toHaveLength(0);
+  });
+
+  test('keeps the specs applied after unmount; a remount re-adopts them', async () => {
+    const $page = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $page } });
+
+    function useBridgedFilters(initial: ColumnFiltersState) {
+      const [filters, setFilters] = useState<ColumnFiltersState>(initial);
+      useTanStackTableFilterBridge({
+        filters,
+        set,
+        columns: bridgeColumns,
+        onExternalChange: setFilters,
+        retainSpecsOnUnmount: true,
+      });
+      return { filters, setFilters };
+    }
+
+    const first = await renderHook(() => useBridgedFilters([{ id: 'sport', value: 'swim' }]), {
+      initialProps: {},
+    });
+    await settle();
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['sport']);
+
+    await first.unmount();
+    // Still filtering: the spec and its clause outlive the bridge.
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['sport']);
+    expect($page._resolved).toHaveLength(1);
+
+    // A fresh mount with empty local state adopts the retained spec.
+    const second = await renderHook(() => useBridgedFilters([]), { initialProps: {} });
+    await waitFor(() => {
+      expect(second.result.current.filters).toEqual([{ id: 'sport', value: 'swim' }]);
+    });
+
+    // Clearing through the re-adopted state removes it normally.
+    await interact(() => second.result.current.setFilters([]));
+    await settle();
+    expect(set.store.state.specs).toHaveLength(0);
+    expect($page._resolved).toHaveLength(0);
+
+    await second.unmount();
+  });
+
+  test('is read at teardown: flipping it in the render that disables the bridge applies', async () => {
+    const $page = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $page } });
+
+    const hook = await renderHook(
+      (props: { enabled: boolean }) => {
+        useTanStackTableFilterBridge({
+          filters: [{ id: 'sport', value: 'swim' }],
+          set: props.enabled ? set : undefined,
+          columns: bridgeColumns,
+          retainSpecsOnUnmount: !props.enabled,
+        });
+      },
+      { initialProps: { enabled: true } },
+    );
+    await settle();
+    expect(set.store.state.specs).toHaveLength(1);
+
+    await hook.rerender({ enabled: false });
+    await settle();
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['sport']);
+
+    await hook.unmount();
+    set.remove('sport');
+  });
+
+  test('StrictMode double-mount settles on one spec and retains it on unmount', async () => {
+    const $page = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $page } });
+
+    const hook = await renderHook(
+      () => {
+        useTanStackTableFilterBridge({
+          filters: [{ id: 'sport', value: 'swim' }],
+          set,
+          columns: bridgeColumns,
+          retainSpecsOnUnmount: true,
+        });
+      },
+      { initialProps: {}, reactStrictMode: true },
+    );
+    await settle();
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['sport']);
+    expect($page._resolved).toHaveLength(1);
+
+    await hook.unmount();
+    expect(set.store.state.specs.map((s) => s.id)).toEqual(['sport']);
+    expect($page._resolved).toHaveLength(1);
+  });
+});

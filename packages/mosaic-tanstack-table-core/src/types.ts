@@ -66,6 +66,22 @@ export interface FilterBridgeOptions {
   onExternalChange?: (filters: ColumnFiltersState) => void;
 }
 
+export interface FilterBridgeDestroyOptions {
+  /**
+   * Leave every spec this bridge manages in the set instead of removing it,
+   * so the filters stay applied after the bridge is gone. Defaults to
+   * `false` (destroy removes the specs it wrote).
+   *
+   * Retained specs are no longer tracked by anyone: a later bridge over the
+   * same set and managed ids re-adopts them only when it is given
+   * `onExternalChange` (without it, pre-existing specs are left untouched and
+   * a stale filter state cannot clear them). Removing them eventually —
+   * `set.remove(id)`, `set.reset()`, or a re-adopting bridge — is the
+   * consumer's responsibility.
+   */
+  retainSpecs?: boolean;
+}
+
 /**
  * Framework-agnostic core of the TanStack Table column-filter bridge: a thin
  * `columnFilters` → {@link FilterSpec} translator over a {@link FilterSet}.
@@ -86,9 +102,11 @@ export interface FilterBridge {
   /**
    * Remove the specs this bridge wrote and stop translating. Adopted specs
    * the consumer's filter state never confirmed are left in the set — the
-   * bridge never deletes state it did not publish.
+   * bridge never deletes state it did not publish. Pass
+   * `{ retainSpecs: true }` to leave every managed spec in the set instead
+   * (see {@link FilterBridgeDestroyOptions}).
    */
-  destroy: () => void;
+  destroy: (options?: FilterBridgeDestroyOptions) => void;
   /** True once `destroy()` has run; destroyed bridges never publish again. */
   readonly destroyed: boolean;
 }
