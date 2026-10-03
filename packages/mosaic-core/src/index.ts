@@ -40,6 +40,9 @@ export {
   escapeSqlLikePattern,
 } from './sql-access';
 
+export { andOrTrue, selectStarExclude, sqlFromParts, tableRef, withRecursive } from './sql-helpers';
+export type { SqlTemplateValue, WithRecursiveOptions } from './sql-helpers';
+
 export { isSameQuerySource } from './query-source';
 
 export {

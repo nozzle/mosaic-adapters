@@ -276,6 +276,8 @@ Its Playwright suite asserts each of those flows end-to-end.
   [recipes](react/topology-recipes.md) (page-wide reset, active-filter chips).
 - [Membership subqueries](core/subquery-predicates.md) — `IN (SELECT …)`
   predicates, context embedding, and change-suppressed republishing.
+- [mosaic-sql helpers](core/sql-helpers.md) — temporary typed helpers for
+  mosaic-sql gaps (`WITH RECURSIVE`, `* EXCLUDE`, `tableRef`, …).
 - [React hooks](react/hooks.md) — controlled-binding rules (what recreates a client, what never re-queries).
 - [TanStack Table integration](tanstack-table/integration.md) — translators, clause kinds, bridge lifecycle, and when _not_ to use the bridge.
 - The [`nozzle-paa` example](../examples/react/nozzle-paa) — a bigger page
