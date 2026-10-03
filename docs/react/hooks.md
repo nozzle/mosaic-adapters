@@ -98,12 +98,12 @@ When widgets need to reference selections **by name** (spec-driven pages, hand-e
 
 ## Selection read-back and chips
 
-- `useMosaicSelectionValue<T>(selection, { source? })` — reactively read a Selection's clause value: the read-back half of clause publishing. Scope by `source` (e.g. a rows client's stable `publish.select.source`) on multi-publisher Selections; returns `null` when no matching clause is active. This is how a widget renders its own published selection (in-widget chips, checkmarks) from the same Selection its siblings consume.
+- `useMosaicSelectionValue<T>(selection, { source? })` — reactively read a Selection's clause value: the read-back half of clause publishing. Scope by `source` (e.g. a rows client's stable `publish.select.source`) on multi-publisher Selections; returns `null` when no matching clause is active. The subscription is keyed on the Selection instance; a changed `source` (or a fresh options object) is applied at read time without re-subscribing. This is how a widget renders its own published selection (in-widget chips, checkmarks) from the same Selection its siblings consume.
 - `useFilterSetState(filterSet)` / `useFilterSetChips(filterSet)` — subscribe to a [filter set](../core/filter-set.md)'s specs/chips. The set itself is a long-lived page-scope object created next to the Selections; components only subscribe and call its setters (`set`, `remove`, `removeChip`, `reset`). Both accept `null` / `undefined` while the set is not available yet and then return the empty state (`{ specs: [], chips: [] }` / `[]`, stable and frozen) without subscribing.
 
 ## Param read-back
 
-- `useMosaicParamValue<T>(param)` — reactively read a [`Param`](../core/selection-topology.md#params)'s current value: the read-back half of param publishing, mirroring `useMosaicSelectionValue`. A control that drives a topology-owned Param (a threshold slider, a mode toggle) renders its own live value from the same Param its siblings consume, so an external change (another control, a page reset) is reflected without extra wiring. Returns `undefined` when the param has never been given a value; re-subscribes when a different Param instance is passed.
+- `useMosaicParamValue<T>(param)` — reactively read a [`Param`](../core/selection-topology.md#params)'s current value: the read-back half of param publishing, mirroring `useMosaicSelectionValue`. A control that drives a topology-owned Param (a threshold slider, a mode toggle) renders its own live value from the same Param its siblings consume, so an external change (another control, a page reset) is reflected without extra wiring. Returns `undefined` when the param has never been given a value; the subscription is keyed on the instance, so it re-subscribes only when a different Param instance is passed (not on every render).
 
 Like `useMosaicSelectionValue`, it takes an **instance**, not a ref — so it serves a hand-built `Param.value(...)` outside any topology as readily as one resolved from a topology. Inside a topology, resolve the Param first with [`useMosaicParamRef`](./topology.md#usemosaicparamref):
 
@@ -122,3 +122,23 @@ function MetricToggle() {
   );
 }
 ```
+
+- `useMosaicParamValues(params)` — the record form: read several Params in one subscription. Pass a `Record<string, Param>` and get back `{ [key]: value | undefined }`, each entry typed from its Param (`ParamValueOf<Param<T>>` is `T`). Entries are each Param's `value` as upstream reports it: `undefined` when never set, and an explicit `null` stays `null` (the singular `useMosaicParamValue` keeps its existing `null` → `undefined` normalization). The returned snapshot is frozen and keeps its identity while every value is `Object.is`-equal, so it is safe as a hook dependency. `params` **must be memoized** (module scope, `useMemo`, or `topology.params` itself) — the same contract as a client's `params` / `inputs`; the subscription is keyed on the record's identity, so an inline literal re-subscribes every render.
+
+```tsx
+import { useMemo } from 'react';
+import { useMosaicParamValues, useMosaicTopology } from '@nozzleio/react-mosaic';
+
+function KnobSummary() {
+  const { params } = useMosaicTopology();
+  const knobs = useMemo(() => ({ metric: params.metric!, threshold: params.threshold! }), [params]);
+  const { metric, threshold } = useMosaicParamValues(knobs);
+  return (
+    <span>
+      {metric} ≥ {threshold}
+    </span>
+  );
+}
+```
+
+`topology.params` is typed `Record<string, Param<any>>`, so the `!` above is only safe for params the topology declares. To fail loudly on a mistyped name instead, resolve each entry with [`useMosaicParamRef`](./topology.md#usemosaicparamref), which throws on an unknown ref.

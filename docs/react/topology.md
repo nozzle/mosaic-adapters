@@ -132,7 +132,9 @@ function MedalKpi() {
 }
 ```
 
-To render the param's live value (a display, or a controlled input), read it with [`useMosaicParamValue`](./hooks.md#param-read-back).
+To render the param's live value (a display, or a controlled input), read it with [`useMosaicParamValue`](./hooks.md#param-read-back) — or several at once with [`useMosaicParamValues`](./hooks.md#param-read-back).
+
+`useMosaicParamRef` (like `useMosaicSelectionRef`) throws on a bad ref. To check a ref without throwing — a spec-driven widget whose param is optional — test `topology.validNames.has(ref)` or look it up in `topology.params[ref]` (via `useMosaicTopology()`) first.
 
 ## Active-clause hooks
 
