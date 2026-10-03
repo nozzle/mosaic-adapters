@@ -6,7 +6,7 @@ The mental model is "React Query for Mosaic": serializable intent flows in (sort
 
 ## The query factory
 
-Every client is fed by a `QuerySource`: a table name, a table reference, or a factory receiving a `QueryContext`. A plain string is always one table identifier: `'main.events'` renders `FROM "main.events"` and logs a development-only warning. For a schema-qualified table, pass `new TableRefNode(['main', 'events'])` from `@uwdata/mosaic-sql`, which renders `FROM "main"."events"`. `tableRef('main', 'events')` from this package builds the same node (see [mosaic-sql helpers](./sql-helpers.md)). A `string[]` is rejected, because mosaic-sql renders it as a cross join. The React hooks compare sources with `isSameQuerySource(a, b)`: table references compare by SQL form, strings and factories by identity. Factories cover everything else:
+Every client is fed by a `QuerySource`: a table name, a table reference, or a factory receiving a `QueryContext`. A plain string is always one table identifier: `'main.events'` renders `FROM "main.events"` and logs a [development-only](#when-development-warnings-fire) warning, once per client. For a schema-qualified table, pass `new TableRefNode(['main', 'events'])` from `@uwdata/mosaic-sql`, which renders `FROM "main"."events"`. `tableRef('main', 'events')` from this package builds the same node (see [mosaic-sql helpers](./sql-helpers.md)). A `string[]` is rejected, because mosaic-sql renders it as a cross join. The React hooks compare sources with `isSameQuerySource(a, b)`: table references compare by SQL form, strings and factories by identity. Factories cover everything else:
 
 ```ts
 const client = createRowsClient({
@@ -280,7 +280,7 @@ It is a **debugging and testing aid**: the SQL text is whatever `@uwdata/mosaic-
 
 ### Ignored-filter warning
 
-In development, a client warns once (`console.warn`, with its `meta` attached when set) if its query factory was handed an active `where` or `having` predicate and **never read it** — the query it built silently ignores that filter:
+In [development](#when-development-warnings-fire), a client warns once (`console.warn`, with its `meta` attached when set) if its query factory was handed an active `where` or `having` predicate and **never read it** — the query it built silently ignores that filter:
 
 ```ts
 // Warns: `where` is never read, so the page filter is ignored.
@@ -289,7 +289,18 @@ query: () => Query.from('events').select({ total: count() }),
 
 It only fires when there is something to ignore: an unfiltered client, a predicate that is empty because of cross-filter self-exclusion, and a table-name `query` (the client applies both predicates itself) never warn. Reads are detected by property access, so destructuring or spreading the context counts as reading both predicates. If dropping a predicate is deliberate, read it to acknowledge (`void ctx.where`) — or, to render a widget fully unfiltered, omit `filterBy`. `previewQuery()` never warns.
 
-"Development" means `process.env.NODE_ENV` is set and not `'production'`. Bundlers replace that expression, so the check is stripped from production builds; where nothing sets it (an unbundled browser, a plain Node script) the warning stays off.
+### When development warnings fire
+
+Every development-only warning in this package — the dotted table-name hint (see [the query factory](#the-query-factory)) and the [ignored-filter warning](#ignored-filter-warning) — shares one check: "development" means `process.env.NODE_ENV` is set and is not `'production'`.
+
+| Environment                                                                   | `NODE_ENV`                   | Warnings |
+| ----------------------------------------------------------------------------- | ---------------------------- | -------- |
+| Bundler dev server or test runner (Vite, webpack, Next.js, Vitest)            | `'development'`, `'test'`, … | on       |
+| Production build                                                              | `'production'`               | off      |
+| Plain Node script without `NODE_ENV`, or a `process` shim with an empty `env` | unset                        | off      |
+| Unbundled browser ESM (no `process` global)                                   | —                            | off      |
+
+The library reads `process.env.NODE_ENV` literally, so bundlers replace it statically and in a production build the check is the constant `false` (a minifier can drop it). An unset `NODE_ENV` counts as production on purpose: it cannot be told apart from a production deployment nobody configured, and a warning must never fire there. To see the warnings in a plain Node script, run it with `NODE_ENV=development`.
 
 ## Lifecycle
 

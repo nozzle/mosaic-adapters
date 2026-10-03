@@ -6,15 +6,10 @@ import type { FilterExpr, Query as MosaicQuery, SelectQuery } from '@uwdata/mosa
 
 import { mirrorClientMeta } from './client-meta';
 import type { DataClientMeta } from './client-meta';
-import { isDevelopment as isExplicitDevelopment } from './dev';
+import { isDevelopment } from './dev';
 import { freezeQuerySql } from './freeze-query';
 import { isQueryCancellation } from './query-error';
-import {
-  assertQuerySource,
-  dottedTableNameWarning,
-  isDevelopment,
-  isDottedTableName,
-} from './query-source';
+import { assertQuerySource, dottedTableNameWarning, isDottedTableName } from './query-source';
 import { createSkipProjectedSelection } from './skip-projection';
 import type {
   DataClient,
@@ -875,7 +870,7 @@ export abstract class BaseDataClient<
    * warns — the client applies both predicates itself.
    */
   #buildTracked(ctx: QueryContext<TInputs>): MosaicQuery | string | null {
-    if (this.#warnedIgnoredPredicates || !isExplicitDevelopment()) {
+    if (this.#warnedIgnoredPredicates || !isDevelopment()) {
       return this.buildQuery(ctx);
     }
     const use: PredicateUse = {

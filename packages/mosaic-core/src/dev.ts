@@ -6,17 +6,22 @@
 declare const process: { env: { NODE_ENV?: string } };
 
 /**
- * Whether development-only diagnostics should run.
+ * Whether development-only diagnostics should run. The single gate for every
+ * development-only `console.warn` in this package (the dotted table-name hint
+ * and the ignored-filter warning); do not add a second helper with another
+ * policy.
  *
  * Reads `process.env.NODE_ENV` literally so bundlers (Vite, webpack, esbuild,
- * Next.js) statically replace it and strip the diagnostics from production
- * builds. Conservative on purpose — a diagnostic must never fire where it was
- * not asked for:
+ * Next.js) statically replace it and a production build sees a constant
+ * `false`. Opt-in on purpose — a diagnostic must never fire where development
+ * was not asked for, and an unset `NODE_ENV` cannot be told apart from an
+ * unconfigured production deployment:
  *
  * - `NODE_ENV === 'production'` → false;
  * - `NODE_ENV` unset (a plain Node script, or a browser `process` shim with an
  *   empty `env`) → false;
- * - no `process` at all (unbundled browser ESM) → false;
+ * - no `process` at all, or a `process` without `env` (unbundled browser ESM)
+ *   → false;
  * - anything else (`'development'`, `'test'`) → true.
  */
 export function isDevelopment(): boolean {
