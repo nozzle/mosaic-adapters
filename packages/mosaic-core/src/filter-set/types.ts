@@ -333,6 +333,16 @@ export interface FilterSpecEmission {
 }
 
 /**
+ * The writer a {@link FilterSet.batch} callback receives: the set's mutators.
+ * Every write through it is part of the batch. Use it as the handle inside
+ * the callback; it is not guaranteed to be the FilterSet object itself.
+ */
+export type FilterSetBatchWriter = Pick<
+  FilterSet,
+  'set' | 'remove' | 'clear' | 'reset' | 'removeChip'
+>;
+
+/**
  * A page-level filter set. Framework bindings subscribe to `store`; the
  * mutators publish/clear clauses on the target Selections and persist intent.
  */
@@ -362,6 +372,38 @@ export interface FilterSet {
   reset: (options?: FilterSetResetOptions) => void;
   /** Remove one chip: exploded → narrow the value; otherwise `remove(id)`. */
   removeChip: (chip: FilterSetChip) => void;
+  /**
+   * Opt-in: apply several writes as one update. Every write made through `tx`
+   * (or through this set's own mutators) inside `fn` lands on the resolved
+   * clauses as it happens; when `fn` returns, each touched Selection — target,
+   * and every compose / cascading context or skip projection derived from it —
+   * emits once, then the store syncs once and the persister is written once.
+   *
+   * The combined emission bypasses Mosaic's pre-aggregation for that one
+   * update (a pre-aggregated view could hold stale values of the other
+   * clauses), so the coordinator issues standard queries. Not a transaction:
+   * if `fn` throws, the writes made before the throw still apply (and emit)
+   * before `fn`'s error propagates. Writes made directly on a Selection or
+   * Param are not deferred, and a custom Selection subclass overriding
+   * `update` / `reset` emits immediately. `fn` must be synchronous: writes
+   * after an `await` are not batched. `store` is not updated until the batch
+   * ends. On a destroyed set `fn` still runs, and its writes are no-ops as
+   * usual.
+   *
+   * Only one batch can be open at a time. A nested `batch()` on this set — or
+   * this set's `batch()` inside its owning topology's `topology.batch()` —
+   * joins the open batch. Any other nesting (a `batch()` on a different
+   * FilterSet, or a `topology.batch()`, inside `fn`; this set's `batch()`
+   * inside another set's batch) throws before the inner callback runs; batch
+   * several sets with a `topology.batch()` that owns them all. A batch stays
+   * open until it has emitted, so a `batch()` from a filter kind rebuilt
+   * while it settles, or from a `value` listener fired by its flush, throws
+   * too.
+   *
+   * @throws when another batch that does not cover this set is open (message
+   *   `NESTED_BATCH_ERROR_MESSAGE`).
+   */
+  batch: (fn: (tx: FilterSetBatchWriter) => void) => void;
   /**
    * Clear published clauses (skipped with `{ silent: true }`), detach
    * listeners; never writes to the persister. Idempotent.

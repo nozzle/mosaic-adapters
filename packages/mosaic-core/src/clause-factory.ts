@@ -130,6 +130,20 @@ export function createClearClause(
  * @returns true when the update was applied, false when suppressed.
  */
 export function updateClauseIfChanged(selection: Selection, clause: SelectionClause): boolean {
+  if (!isClauseUpdateNeeded(selection, clause)) {
+    return false;
+  }
+  selection.update(clause);
+  return true;
+}
+
+/**
+ * The suppression test behind {@link updateClauseIfChanged}: false when the
+ * source's resolved clause already carries an equal predicate (by SQL), or
+ * when the clause clears a source with no active clause. Internal — shared
+ * with FilterSet's batched publish path.
+ */
+export function isClauseUpdateNeeded(selection: Selection, clause: SelectionClause): boolean {
   const current = selection._resolved.find((existing) => existing.source === clause.source);
 
   if (current === undefined && clause.predicate == null) {
@@ -142,7 +156,5 @@ export function updateClauseIfChanged(selection: Selection, clause: SelectionCla
   ) {
     return false;
   }
-
-  selection.update(clause);
   return true;
 }

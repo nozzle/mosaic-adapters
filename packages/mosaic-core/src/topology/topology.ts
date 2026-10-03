@@ -11,15 +11,18 @@
  * The composition factories in this module (`createComposedSelection`,
  * `createCascadingContexts`) and `createFilterSet` do the actual wiring; this
  * factory sequences their construction over the dependency graph and owns
- * teardown, page reset, and foreign-clause enumeration.
+ * teardown, page reset, foreign-clause enumeration, and the opt-in `batch()`
+ * that shares one deferred-emit batch across every owned FilterSet.
  */
 import { Store } from '@tanstack/store';
 import { Param, Selection } from '@uwdata/mosaic-core';
 
-import { createFilterSet } from '../filter-set/filter-set';
+import { createFilterSet, joinFilterSetBatch } from '../filter-set/filter-set';
 import type { FilterSet } from '../filter-set/types';
 import { PersisterLifecycle } from '../persistence';
 import type { Persister } from '../persistence';
+import { openSelectionBatch, runInBatch } from '../selection-batch';
+import type { BatchFlushResult, SelectionBatch } from '../selection-batch';
 import { createCascadingContexts } from './cascading';
 import type { CascadingContextsHandle } from './cascading';
 import type {
@@ -807,8 +810,51 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
     return clauses;
   }
 
+  // The open topology batch, if any. While set, active-clause refreshes are
+  // collected and run once when the batch closes.
+  let openBatch: SelectionBatch | null = null;
+  let refreshDeferred = false;
+  let refreshPending = false;
+  // Batched emissions Mosaic queued behind a still-dispatching emission, keyed
+  // by Selection. The batch commit already refreshed with the final state, so
+  // every delivery up to and including the batched one is redundant while the
+  // Selection's resolved clauses are still the batched array — a crossfilter
+  // queue can also hold earlier ordinary updates from other clause sources
+  // ahead of it. See `isSupersededDelivery`. An entry whose batched emission a
+  // later non-distinct update cancelled out of the queue lingers until the
+  // Selection's next `value` delivery, which finds `_resolved` changed and
+  // drops it; at most one entry per subscribed Selection, cleared on destroy.
+  const queuedBatchEmissions = new Map<Selection, Selection['clauses']>();
+
+  /**
+   * True when a `value` delivery on `selection` only replays state the batch
+   * commit already refreshed with: a batched emission for it is still queued
+   * and no write has changed its resolved clauses since. Stops tracking once
+   * the batched array is delivered, or once a later write has changed the
+   * resolved clauses (that write's own delivery must refresh; an intersect /
+   * union / single queue may even have dropped the batched emission for it).
+   */
+  function isSupersededDelivery(selection: Selection): boolean {
+    const batched = queuedBatchEmissions.get(selection);
+    if (batched === undefined) {
+      return false;
+    }
+    if (selection._resolved !== batched) {
+      queuedBatchEmissions.delete(selection);
+      return false;
+    }
+    if (selection.clauses === batched) {
+      queuedBatchEmissions.delete(selection);
+    }
+    return true;
+  }
+
   function refreshActiveClauses(): void {
     if (destroyed) {
+      return;
+    }
+    if (refreshDeferred) {
+      refreshPending = true;
       return;
     }
     activeClauses.setState(() => ({ clauses: collectActiveClauses() }));
@@ -824,6 +870,9 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
     subscribed.add(target.selection);
     const selection = target.selection;
     const listener = (): void => {
+      if (isSupersededDelivery(selection)) {
+        return;
+      }
       refreshActiveClauses();
     };
     selection.addEventListener('value', listener);
@@ -849,7 +898,10 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
         case 'crossfilter':
         case 'external': {
           const selection = node.bareSelection;
-          if (selection !== undefined) {
+          if (selection !== undefined && openBatch !== null) {
+            // Inside batch(): the same reset, emitted once at the end.
+            openBatch.reset(selection);
+          } else if (selection !== undefined) {
             // Upstream `Selection.reset()` removes the resolved clauses by
             // identity in a single emit, relays the removal to every derived
             // Selection (compose and cascading contexts), and invokes
@@ -892,6 +944,50 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
     }
   }
 
+  // --- batch(): one deferred-emit batch shared by every owned FilterSet. ---
+  function commitBatch(result: BatchFlushResult): void {
+    refreshDeferred = false;
+    let expectsQueued = false;
+    for (const [selection, emitted] of result.queued) {
+      if (!subscribed.has(selection)) {
+        continue;
+      }
+      queuedBatchEmissions.set(selection, emitted);
+      expectsQueued = true;
+    }
+    if (!refreshPending && !expectsQueued) {
+      return;
+    }
+    refreshPending = false;
+    refreshActiveClauses();
+  }
+
+  function batch(fn: () => void): void {
+    if (destroyed || openBatch !== null) {
+      // Destroyed: writes are no-ops. Nested in this topology's own batch:
+      // writes join it.
+      fn();
+      return;
+    }
+    // Throws while any other batch is open — including an owned set's
+    // `filterSet.batch()` this call is nested in. Adopting that batch would
+    // let members settle out of dependency order and flush in two places.
+    const shared = openSelectionBatch();
+    for (const filterSet of Object.values(filterSets)) {
+      joinFilterSetBatch(filterSet, shared);
+    }
+    openBatch = shared;
+    refreshDeferred = true;
+    shared.join({
+      settle: () => {},
+      detach: () => {
+        openBatch = null;
+      },
+      commit: commitBatch,
+    });
+    runInBatch(shared, fn);
+  }
+
   // --- destroy(): tear down owned compositions/FilterSets, unsubscribe all. ---
   //
   // Owned compose/cascading contexts and FilterSets die with the topology, so
@@ -910,6 +1006,7 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
       detach();
     }
     clauseDetachers.length = 0;
+    queuedBatchEmissions.clear();
     // Stop owned-param write-through. Marking `destroyed` above also finalizes
     // each param's PersisterLifecycle: a still-pending async hydration is
     // dropped by its isDestroyed guard, exactly as filter-set teardown relies
@@ -939,6 +1036,7 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
     getFilterSet: (entry) => filterSets[entry],
     filterSets,
     reset,
+    batch,
     activeClauses,
     destroy,
     get destroyed() {

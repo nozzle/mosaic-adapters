@@ -228,6 +228,37 @@ topology.reset();
 
 See the [page-wide reset recipe](../react/topology-recipes.md#page-wide-reset).
 
+## `batch()`
+
+`topology.batch(fn)` is the topology-wide version of [`filterSet.batch()`](./filter-set.md#several-writes-as-one-update-batch-opt-in). It is opt-in; nothing changes unless you call it. While `fn` runs:
+
+- writes to **every FilterSet the topology owns** are deferred, and so are the Selection resets of `topology.reset()`. Each change updates the resolved clauses right away; when `fn` returns, every touched Selection emits once. That includes filter-set targets, standalone entries, and the `compose` / `cascading` contexts and skip projections derived from them. Each FilterSet then updates its store and writes its persister once, and `activeClauses` refreshes once with the final state. That holds even when Mosaic queues one of the batched emissions behind an earlier, still-dispatching update.
+- **Params are never deferred.** A Param update inside `fn` goes through Mosaic's usual dispatch. An idle Param emits right away, before the batched Selections, so clients whose query reads it see the new value when the Selection update re-queries them. A Param still dispatching an earlier update (a listener's Promise has not settled yet) queues the new value, and `param.value` keeps the old one until Mosaic delivers it, possibly after the batched Selections have emitted. That matches what happens without a batch: the Selection re-query reads the old value, and the Param's own delivery re-queries the clients that read it. If a Selection re-query must read the new value, update the Param before the batch and `await param.pending('value')` first.
+- **Direct Selection writes are not intercepted.** A `selection.update(...)` inside `fn`, for example from an interactor, emits immediately as usual. Only owned-FilterSet writes and `reset()` are batched.
+- `fn` must be synchronous. With an `async` callback, writes after the first `await` run after the batch has closed and are not batched.
+
+```ts
+// Replay a saved view as one update.
+topology.batch(() => {
+  const filters = topology.getFilterSet('filters')!;
+  filters.reset();
+  for (const spec of saved.specs) {
+    filters.set(spec);
+  }
+  topology.resolveParam('metric').update(saved.metric); // not deferred (see the Params note above)
+});
+```
+
+The query savings are the same as for `filterSet.batch()`: crossfilter targets go from one round per write to one round, while intersect / union / single targets already collapse to about two rounds. The combined emissions skip Mosaic's pre-aggregation for that one update, for the same stale-view reason. It is not a transaction: if `fn` throws, earlier writes still apply and emit, and `fn`'s error propagates. On a destroyed topology `fn` still runs.
+
+Only one batch can be open at a time. Inside `fn`:
+
+- A `filterSet.batch()` on a set this topology owns, or another `topology.batch()` on this topology, joins this batch. Nothing emits until the outer callback returns.
+- A `filterSet.batch()` on a set this topology does not own, or a `batch()` on another topology, throws before its callback runs. Two separate batches would each flush on their own, so a Selection or context they share could emit twice, the first time without the other batch's writes.
+- When an owned FilterSet's context is another owned set's target (A's context is B's target, B's is C's), context-dependent specs are rebuilt until nothing changes, so each set in the chain emits once with the final state. A cyclic context graph (A reads B and B reads A) is not guaranteed to settle inside the batch; it may emit again from the usual rebuild after the batch.
+
+For the same reason, `topology.batch()` called inside an owned set's `filterSet.batch()` throws. Open the topology batch on the outside instead. The batch counts as open until it has emitted, so a `batch()` called by a filter kind while the batch settles, or by a `value` listener while it flushes, throws too (with `NESTED_BATCH_ERROR_MESSAGE`).
+
 ## Active clauses
 
 `topology.activeClauses` is a subscribable [`@tanstack/store`](https://tanstack.com/store) `Store` of the **foreign** active clauses across the topology's Selections, each annotated with its owning entry. It is the observation half of the topology object (`reset()` is the action half). Read `state.clauses`, subscribe via `subscribe`, or in React use [`useTopologyActiveClauses` / `useMosaicActiveClauses`](../react/topology.md#active-clause-hooks). [Params](#params) never appear here — a param carries a value, not clauses, so there is nothing to annotate.

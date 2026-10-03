@@ -265,6 +265,49 @@ export interface Topology {
    */
   reset: () => void;
   /**
+   * Opt-in: apply several writes as one update. While `fn` runs, writes to
+   * every FilterSet this topology built — and the Selection resets of
+   * {@link Topology.reset} — land on the resolved clauses as they happen but
+   * do not emit. When `fn` returns, each touched Selection (FilterSet
+   * targets, standalone entries, and the compose / cascading contexts and skip
+   * projections derived from them) emits once, each FilterSet syncs its store
+   * and writes its persister once, and `activeClauses` refreshes once.
+   *
+   * Param writes are never deferred; they go through Mosaic's usual dispatch.
+   * An idle Param emits immediately, before the batched Selections. A Param
+   * still dispatching an earlier update queues the value (`param.value` stays
+   * old until delivery), so it may reach listeners after the batched
+   * Selections, exactly as without a batch; to have a Selection re-query read
+   * the new value, update the Param before the batch and
+   * `await param.pending('value')`. Writes made directly on a Selection
+   * (`selection.update`, an interactor) are not deferred either — only
+   * topology-owned FilterSets and `reset()` are, and a custom Selection
+   * subclass overriding `update` / `reset` emits immediately. `fn` must be
+   * synchronous: writes after an `await` are not batched. The
+   * combined emissions bypass Mosaic's pre-aggregation for that one update,
+   * because a pre-aggregated view could hold stale values of the other
+   * clauses. Not a transaction: if `fn` throws, earlier writes still apply and
+   * emit before `fn`'s error propagates.
+   *
+   * Only one batch can be open at a time. A nested `topology.batch` on this
+   * topology, or a `filterSet.batch` on a set it owns, joins this batch.
+   * A `filterSet.batch` on a set it does not own, or a `batch` on another
+   * topology, throws before its callback runs; so does this `batch` when
+   * called inside any open batch other than its own (including an owned
+   * set's `filterSet.batch` — open the topology batch on the outside).
+   * Owned FilterSets whose contexts read each other's targets are rebuilt
+   * until they converge, so each emits once with the final state (a cyclic
+   * context graph is not guaranteed to converge inside the batch and may
+   * emit again from its usual post-emit rebuild). A batch
+   * stays open until it has emitted, so a `batch` from a filter kind rebuilt
+   * while it settles, or from a `value` listener fired by its flush, throws
+   * too.
+   *
+   * @throws when another batch is open (message
+   *   `NESTED_BATCH_ERROR_MESSAGE`).
+   */
+  batch: (fn: () => void) => void;
+  /**
    * Subscribable store of foreign active clauses across the topology's
    * selections, annotated by owning entry. Read `state`, subscribe via
    * `subscribe`.

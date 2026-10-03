@@ -24,6 +24,7 @@ export type {
   FilterKindArgs,
   FilterKindEmission,
   FilterSet,
+  FilterSetBatchWriter,
   FilterSetChip,
   FilterSetDestroyOptions,
   FilterSetOptions,

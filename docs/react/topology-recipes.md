@@ -56,6 +56,15 @@ function ClearAllButton() {
 
 Kept specs are never cleared and re-added, so no query round runs without them, and the set's persister still gets exactly one write.
 
+To publish the whole "Clear all" as one update, wrap both calls in [`topology.batch()`](../core/selection-topology.md#batch). It is opt-in. Without it, a `compose` context over several of these Selections gets one update per cleared Selection, and on crossfilter contexts each update is its own query round:
+
+```ts
+topology.batch(() => {
+  topology.reset();
+  topology.getFilterSet('filters')?.reset({ keep: (spec) => spec.id.startsWith('pinned:') });
+});
+```
+
 This replaces the pre-rewrite "selection registry for reset-all" — there is no standalone React-context registry, only a method on the topology object.
 
 ## Active filters / chips

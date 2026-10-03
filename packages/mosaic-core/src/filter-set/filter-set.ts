@@ -34,6 +34,12 @@
  *   {@link resolveFilterSpecEmissions}, the same core behind the public
  *   `emitFilterSpec`, so a spec's computed clause and its published clause
  *   cannot drift. Target-existence checks and warnings stay here.
+ *
+ * - **Batches are opt-in.** Every Selection write goes through `#update`, which
+ *   defers the emit into a {@link SelectionBatch} only while `batch()` (or a
+ *   topology batch) is open; store syncs and persist writes are likewise
+ *   collected and run once when the batch closes. Outside a batch every path
+ *   behaves exactly as before.
  */
 import { Store } from '@tanstack/store';
 import type { ClauseSource, MosaicClient, Selection, SelectionClause } from '@uwdata/mosaic-core';
@@ -44,10 +50,12 @@ import {
   createClearClause,
   createSubqueryClause,
   createValueClause,
-  updateClauseIfChanged,
+  isClauseUpdateNeeded,
 } from '../clause-factory';
 import { PersisterLifecycle } from '../persistence';
 import type { PersisterWriteReason } from '../persistence';
+import { openSelectionBatch, runInBatch } from '../selection-batch';
+import type { SelectionBatch } from '../selection-batch';
 import { isColumnPathMode } from '../sql-access';
 import { DEFAULT_FILTER_TARGET, resolveFilterSpecEmissions } from './emit';
 import { formatFilterValue } from './format';
@@ -55,6 +63,7 @@ import { builtinFilterKinds } from './kinds';
 import type {
   FilterKind,
   FilterSet,
+  FilterSetBatchWriter,
   FilterSetChip,
   FilterSetDestroyOptions,
   FilterSetOptions,
@@ -110,6 +119,19 @@ export function createFilterSet(options: FilterSetOptions): FilterSet {
   return new FilterSetImpl(options);
 }
 
+/**
+ * Routes a FilterSet's writes into `batch` (joining it as a member) until the
+ * batch closes. A no-op for a set that is destroyed, already batching, or not
+ * created by {@link createFilterSet}. Internal: lets `createTopology` share
+ * one batch across the sets it owns.
+ */
+export function joinFilterSetBatch(filterSet: FilterSet, batch: SelectionBatch): void {
+  if (!(filterSet instanceof FilterSetImpl)) {
+    return;
+  }
+  filterSet.joinBatch(batch);
+}
+
 class FilterSetImpl implements FilterSet {
   readonly store: Store<FilterSetState>;
   readonly kinds: Readonly<Record<string, FilterKind>>;
@@ -149,6 +171,13 @@ class FilterSetImpl implements FilterSet {
   #contextVersion = 0;
   #warnedHaving = false;
   #destroyed = false;
+
+  /** The open batch writes are deferred into; `null` outside a batch. */
+  #batch: SelectionBatch | null = null;
+  /** A store sync was requested while the batch was open. */
+  #pendingSync = false;
+  /** The combined persist reason requested while the batch was open. */
+  #pendingPersist: PersisterWriteReason | null = null;
 
   /** Detachers for every Selection listener wired at construction. */
   readonly #detachers: Array<() => void> = [];
@@ -369,6 +398,100 @@ class FilterSetImpl implements FilterSet {
     this.remove(chip.id);
   }
 
+  batch(fn: (tx: FilterSetBatchWriter) => void): void {
+    if (this.#destroyed || this.#batch !== null) {
+      // Destroyed: writes are no-ops, so there is nothing to defer and no
+      // need to check for (or reject) another open batch; `fn` runs inline
+      // even inside an unrelated batch. Already writing into an open batch (a
+      // nested call on this set, or the owning topology's batch): that batch
+      // covers every write here, and flushes when its owner closes it.
+      fn(this);
+      return;
+    }
+    // Throws while any other batch is open: an unrelated outer batch would
+    // flush separately and emit shared Selections twice.
+    const batch = openSelectionBatch();
+    this.joinBatch(batch);
+    runInBatch(batch, () => {
+      fn(this);
+    });
+  }
+
+  /**
+   * Routes this set's writes into `batch` and joins it as a member. A no-op
+   * when destroyed or already batching. Internal (see
+   * {@link joinFilterSetBatch}).
+   */
+  joinBatch(batch: SelectionBatch): void {
+    if (this.#destroyed || this.#batch !== null) {
+      return;
+    }
+    this.#batch = batch;
+    batch.join({
+      settle: () => {
+        this.#settleBatch();
+      },
+      detach: () => {
+        this.#batch = null;
+      },
+      commit: () => {
+        this.#commitBatch();
+      },
+    });
+  }
+
+  /**
+   * Re-publishes context-dependent specs inside the batch, so a spec written
+   * before its siblings does not ship a predicate built on the old context.
+   * Convergent (`#publishSpec` suppresses unchanged predicates).
+   */
+  #settleBatch(): void {
+    if (this.#destroyed) {
+      return;
+    }
+    this.#rebuildContextDependent();
+  }
+
+  /** Runs the store sync and persist write the batch collected, once each. */
+  #commitBatch(): void {
+    const sync = this.#pendingSync;
+    const persist = this.#pendingPersist;
+    this.#pendingSync = false;
+    this.#pendingPersist = null;
+    if (this.#destroyed) {
+      return;
+    }
+    if (sync) {
+      this.#syncStore();
+    }
+    if (persist === null) {
+      return;
+    }
+    if (this.#specs.size === 0) {
+      this.#persistWrite('clear');
+      return;
+    }
+    this.#persistWrite(persist === 'external' ? 'external' : 'update');
+  }
+
+  /** `selection.update`, deferred into the open batch if there is one. */
+  #update(selection: Selection, clause: SelectionClause): void {
+    const batch = this.#batch;
+    if (batch === null) {
+      selection.update(clause);
+      return;
+    }
+    batch.update(selection, clause);
+  }
+
+  /** `updateClauseIfChanged` semantics on top of `#update`. */
+  #updateIfChanged(selection: Selection, clause: SelectionClause): void {
+    if (!isClauseUpdateNeeded(selection, clause)) {
+      return;
+    }
+    this.#update(selection, clause);
+  }
+
   destroy(options: FilterSetDestroyOptions = {}): void {
     if (this.#destroyed) {
       return;
@@ -485,7 +608,7 @@ class FilterSetImpl implements FilterSet {
         if (resolved.predicate === null) {
           if (active.has(target)) {
             active.delete(target);
-            updateClauseIfChanged(targetSel, createClearClause(source, clients));
+            this.#updateIfChanged(targetSel, createClearClause(source, clients));
           }
           continue;
         }
@@ -514,9 +637,9 @@ class FilterSetImpl implements FilterSet {
         if (clientsChanged) {
           // Suppression compares predicates only; bypass it so a new clients
           // set actually lands on the Selection.
-          targetSel.update(clause);
+          this.#update(targetSel, clause);
         } else {
-          updateClauseIfChanged(targetSel, clause);
+          this.#updateIfChanged(targetSel, clause);
         }
       }
 
@@ -532,7 +655,7 @@ class FilterSetImpl implements FilterSet {
         }
         const source = this.#sourceFor(spec.id, spec.column, target);
         active.delete(target);
-        updateClauseIfChanged(targetSel, createClearClause(source, clients));
+        this.#updateIfChanged(targetSel, createClearClause(source, clients));
       }
     } finally {
       this.#publishing = false;
@@ -567,7 +690,7 @@ class FilterSetImpl implements FilterSet {
           continue;
         }
         active.delete(target);
-        updateClauseIfChanged(targetSel, createClearClause(source, clients));
+        this.#updateIfChanged(targetSel, createClearClause(source, clients));
       }
     } finally {
       this.#publishing = wasPublishing;
@@ -769,6 +892,15 @@ class FilterSetImpl implements FilterSet {
     if (this.#persist === null) {
       return;
     }
+    if (this.#batch !== null) {
+      // One write when the batch closes. 'external' survives only when every
+      // write in the batch was external.
+      this.#pendingPersist =
+        this.#pendingPersist === null || this.#pendingPersist === 'external'
+          ? reason
+          : this.#pendingPersist;
+      return;
+    }
     // 'clear' always writes null; other reasons write null once the set is
     // empty (mirrors facet's empty→clear convention), else the spec array.
     if (reason === 'clear' || this.#specs.size === 0) {
@@ -780,6 +912,10 @@ class FilterSetImpl implements FilterSet {
 
   /** Derives the specs + chips arrays and pushes them onto the store. */
   #syncStore(): void {
+    if (this.#batch !== null) {
+      this.#pendingSync = true;
+      return;
+    }
     const specs = [...this.#specs.values()];
     const chips: Array<FilterSetChip> = [];
     for (const spec of specs) {

@@ -364,6 +364,40 @@ describe('skipSources projection', () => {
       handle.destroy();
     });
 
+    test('superseded queued snapshots are skipped; the latest is followed once', async () => {
+      const parent = new SnapshotSelection(Selection.crossfilter().resolver);
+      const handle = createSkipProjectedSelection(parent, new Set(['device']));
+      // Hold the parent's first delivery, so later snapshots queue behind it.
+      let release: (() => void) | undefined;
+      parent.addEventListener('value', () => {
+        if (release !== undefined) {
+          return undefined;
+        }
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      });
+      const states: Array<Array<unknown>> = [];
+      handle.selection.addEventListener('value', () => {
+        states.push(handle.selection.clauses.map((clause) => clause.value));
+      });
+
+      parent.replace([sport('swim')], sport('swim'));
+      // Different active sources, so the crossfilter queue keeps both.
+      parent.replace([sport('run'), device('desktop')], sport('run'));
+      parent.replace([sport('bike'), device('mobile')], device('mobile'));
+      expect(states).toEqual([['swim']]);
+
+      release?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await parent.pending('value');
+      await handle.selection.pending('value');
+
+      expect(handle.selection.clauses.map((clause) => clause.value)).toEqual(['bike']);
+      expect(states).toEqual([['swim'], ['bike']]);
+      handle.destroy();
+    });
+
     test('destroy() stops following the parent', () => {
       const parent = new SnapshotSelection(Selection.intersect().resolver);
       const handle = createSkipProjectedSelection(parent, new Set(['device']));
