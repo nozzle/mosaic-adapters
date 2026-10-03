@@ -1,3 +1,5 @@
+import { runInNewContext } from 'node:vm';
+
 import { createTestDb, waitFor } from '@nozzleio/test-support/duckdb';
 import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection } from '@uwdata/mosaic-core';
@@ -17,6 +19,7 @@ import {
   subqueryFilterKind,
 } from '../src/index';
 import type { FilterSpec, Persister, QuerySource, RowsInputs } from '../src/index';
+import { dottedTableNameWarning } from '../src/query-source';
 
 let db: TestDb;
 let warn: ReturnType<typeof vi.spyOn>;
@@ -175,6 +178,45 @@ describe('TableRefNode query sources', () => {
 
     rows.destroy();
     other.destroy();
+  });
+
+  test('the warning snippet escapes backslashes, quotes and line breaks in the table name', () => {
+    // Plain names are quoted verbatim.
+    const plain = dottedTableNameWarning('main.events');
+    expect(plain).toContain("`new TableRefNode(['main', 'events'])`");
+    expect(plain).toContain("`new TableRefNode('main.events')`");
+
+    // Backslashes are escaped before quotes, so `\'` becomes `\\\'` rather
+    // than `\\'` (which would close the literal early).
+    const tricky = dottedTableNameWarning(String.raw`o'brien\db.tab\'le`);
+    expect(tricky).toContain(String.raw`new TableRefNode(['o\'brien\\db', 'tab\\\'le'])`);
+    expect(tricky).toContain(String.raw`new TableRefNode('o\'brien\\db.tab\\\'le')`);
+
+    // Raw LF / CR would be a syntax error inside a string literal.
+    const lineBreaks = dottedTableNameWarning('line\nfeed.carriage\rreturn');
+    expect(lineBreaks).toContain(String.raw`new TableRefNode(['line\nfeed', 'carriage\rreturn'])`);
+    expect(lineBreaks).toContain(String.raw`new TableRefNode('line\nfeed.carriage\rreturn')`);
+  });
+
+  test('every warning snippet evaluates back to the original table name', () => {
+    const names = [
+      'main.events',
+      String.raw`o'brien\db.tab\'le`,
+      'line\nfeed.carriage\rreturn',
+      String.raw`a\\.b\n'\r`,
+      "mixed\\'\r\n.done",
+    ];
+    // Evaluate each snippet as a JavaScript expression in a fresh context.
+    const evaluate = (code: string): unknown => runInNewContext(`(${code})`);
+    for (const name of names) {
+      const snippets = [
+        ...dottedTableNameWarning(name).matchAll(/`new TableRefNode\((.*?)\)`/gs),
+      ].map((match) => match[1]);
+      expect(snippets).toHaveLength(2);
+      const [partsSnippet, wholeSnippet] = snippets as [string, string];
+      expect(evaluate(partsSnippet)).toEqual(name.split('.'));
+      expect(evaluate(wholeSnippet)).toBe(name);
+    }
   });
 
   test('undotted strings, table references and factories never warn', () => {

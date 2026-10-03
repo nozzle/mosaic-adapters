@@ -68,17 +68,33 @@ export function isDottedTableName(source: unknown): source is string {
 }
 
 /**
+ * Render text as a single-quoted JavaScript string literal for the copy-paste
+ * snippet in {@link dottedTableNameWarning}. Backslashes are escaped before
+ * quotes; otherwise a name containing `\'` would yield `\\'`, which ends the
+ * literal early and makes the suggested code wrong. LF and CR are escaped
+ * because a raw line terminator is a syntax error inside a string literal
+ * (U+2028/U+2029 are allowed since ES2019, so they are left as-is).
+ */
+function toSingleQuotedLiteral(text: string): string {
+  const escaped = text
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
+  return `'${escaped}'`;
+}
+
+/**
  * Warning text for a dotted plain-string query source.
  */
 export function dottedTableNameWarning(source: string): string {
-  const quote = (text: string): string => `'${text.replace(/'/g, "\\'")}'`;
-  const parts = source.split('.').map(quote);
+  const parts = source.split('.').map(toSingleQuotedLiteral);
   return (
     `[mosaic-core] The query source "${source}" contains a dot but is a plain ` +
     `string, so it is quoted as ONE table name ("${source}"), not split into ` +
     'schema and table. For a schema-qualified table, pass ' +
     `\`new TableRefNode([${parts.join(', ')}])\` from @uwdata/mosaic-sql. If ` +
-    `the table name really contains a dot, pass \`new TableRefNode(${quote(source)})\` ` +
+    `the table name really contains a dot, pass \`new TableRefNode(${toSingleQuotedLiteral(source)})\` ` +
     'to silence this warning.'
   );
 }
