@@ -35,6 +35,13 @@
  *   `emitFilterSpec`, so a spec's computed clause and its published clause
  *   cannot drift. Target-existence checks and warnings stay here.
  *
+ * - **Context rebuilds settle.** A context-dependent spec's `contextPredicate`
+ *   excludes its own clauses and, while its clauses feed the context, every
+ *   other context-dependent spec's: two specs whose clauses feed the context
+ *   would otherwise embed each other one level deeper per rebuild and never
+ *   settle. A rebuild chain that keeps coming back to the same set (a context
+ *   cycle across sets) is cut off at {@link MAX_CONTEXT_REBUILDS_PER_CHAIN}.
+ *
  * - **Batches are opt-in.** Every Selection write goes through `#update`, which
  *   defers the emit into a {@link SelectionBatch} only while `batch()` (or a
  *   topology batch) is open; store syncs and persist writes are likewise
@@ -52,6 +59,7 @@ import {
   createValueClause,
   isClauseUpdateNeeded,
 } from '../clause-factory';
+import { isDevelopment } from '../dev';
 import { PersisterLifecycle } from '../persistence';
 import type { PersisterWriteReason } from '../persistence';
 import { openSelectionBatch, runInBatch } from '../selection-batch';
@@ -112,6 +120,44 @@ function isValidSpec(value: unknown): value is FilterSpec {
 }
 
 /**
+ * The most times one FilterSet rebuilds its context-dependent specs within a
+ * single chain of context rebuilds (each rebuild triggered only by clauses
+ * that earlier rebuilds published, in this set or another). Only a set that
+ * the chain comes back to counts against it, so a chain of sets of any length
+ * whose contexts read each other's targets (A reads B, B reads C, ...) is
+ * never cut off: each set rebuilds once per chain (twice when its own
+ * clauses feed its context). Only a context cycle across sets that never
+ * settles (set A reads B's targets and B reads A's, each with a
+ * context-dependent spec) reaches it.
+ *
+ * @internal Exported for tests; not part of the public API.
+ */
+export const MAX_CONTEXT_REBUILDS_PER_CHAIN = 16;
+
+/**
+ * A chain of context rebuilds: how many times each FilterSet rebuilt along
+ * the way. Keyed by the set instance, so a chain is followed across sets.
+ */
+type RebuildChain = ReadonlyMap<object, number>;
+
+/**
+ * Clause → the rebuild chain that published it (including the rebuild that
+ * published it). A clause from any other write (a `set`, a brush, a batch) is
+ * not in the map, and a rebuild it triggers starts a new chain.
+ */
+const rebuildChains = new WeakMap<SelectionClause, RebuildChain>();
+
+/** The context predicate a spec reads, plus whether sibling exclusion mattered. */
+interface ContextPredicateResult {
+  predicate: ExprNode | null;
+  /**
+   * A clause of another context-dependent spec was in the context, so the
+   * predicate depends on whether siblings were excluded.
+   */
+  siblingPresent: boolean;
+}
+
+/**
  * Creates a page-level filter set. Hydrates any persisted specs synchronously
  * before returning (a synchronous persister read applies immediately).
  */
@@ -169,6 +215,14 @@ class FilterSetImpl implements FilterSet {
   #publishing = false;
   /** Version counter for the microtask-debounced context rebuild. */
   #contextVersion = 0;
+  /**
+   * The context's clauses (by source) when the last context rebuild ran;
+   * diffed against the current ones to find what triggered the next.
+   */
+  #contextSeen = new Map<ClauseSource, SelectionClause>();
+  /** Rebuild chain tagged onto clauses published by the running rebuild. */
+  #rebuildChain: RebuildChain | null = null;
+  #warnedRebuildCap = false;
   #warnedHaving = false;
   #destroyed = false;
 
@@ -580,18 +634,56 @@ class FilterSetImpl implements FilterSet {
 
   /**
    * Resolves a spec's emissions and publishes/clears its per-target clauses.
-   * Recomputes the spec's context-dependent flag from whether this emit read
-   * `contextPredicate`.
+   *
+   * Whether the spec's clauses feed the context decides whether its
+   * `contextPredicate` excludes the other context-dependent specs (see
+   * `#computeContextPredicate`). A spec with an active
+   * clause feeds it when one of those clauses is in the context. A spec with
+   * none yet (a new or inactive spec) is assumed to feed it, which is the
+   * common shape and avoids a publish built on a context about to change. If
+   * the spec then publishes clauses none of which reach the context, and a
+   * sibling was excluded on that assumption, it is published once more
+   * without the exclusion, as it was before sibling exclusion existed.
    */
   #publishSpec(spec: FilterSpec): void {
     const kind = this.kinds[spec.kind];
     if (kind === undefined) {
       return;
     }
+    const assumed = !this.#active.has(spec.id);
+    const feeds = assumed || this.#feedsContext(spec.id);
+    const siblingPresent = this.#publishResolved(spec, kind, feeds);
+    // Only an assumption that excluded a sibling can have built the wrong
+    // predicate, and only a spec that published something can be checked.
+    const exclusionAssumed = assumed && siblingPresent;
+    const nowActive = this.#active.has(spec.id);
+    if (!exclusionAssumed || !nowActive) {
+      return;
+    }
+    if (this.#feedsContext(spec.id)) {
+      return;
+    }
+    this.#publishResolved(spec, kind, false);
+  }
 
+  /**
+   * Publishes a spec's emissions, building its `contextPredicate` with or
+   * without the other context-dependent specs (`excludeSiblings`). Recomputes
+   * the spec's context-dependent flag from whether this emit read
+   * `contextPredicate`.
+   *
+   * @returns whether the emit read a context holding another context-dependent
+   *   spec's clause (so `excludeSiblings` changed the predicate).
+   */
+  #publishResolved(spec: FilterSpec, kind: FilterKind, excludeSiblings: boolean): boolean {
+    let siblingPresent = false;
     const { emissions, contextRead } = resolveFilterSpecEmissions(spec, kind, {
       defaultTarget: this.defaultTarget,
-      contextPredicate: () => this.#computeContextPredicate(spec.id),
+      contextPredicate: () => {
+        const result = this.#computeContextPredicate(spec.id, excludeSiblings);
+        siblingPresent = result.siblingPresent;
+        return result.predicate;
+      },
     });
 
     if (contextRead) {
@@ -670,6 +762,13 @@ class FilterSetImpl implements FilterSet {
                 fields: resolved.fields,
               });
 
+        // Tag even a clause the `clientsChanged` path below publishes with an
+        // unchanged predicate: it still changes the context, so it is part of
+        // the chain (and a chain that keeps coming back here is still capped).
+        if (this.#rebuildChain !== null) {
+          rebuildChains.set(clause, this.#rebuildChain);
+        }
+
         // Mark active BEFORE the update so the external-clear listener never
         // reads this as an external drop.
         active.add(target);
@@ -706,6 +805,7 @@ class FilterSetImpl implements FilterSet {
       this.#active.delete(spec.id);
     }
     this.#publishedClients.set(spec.id, clients);
+    return siblingPresent;
   }
 
   /** Publishes clear clauses for every currently-active target of a spec. */
@@ -738,32 +838,80 @@ class FilterSetImpl implements FilterSet {
   }
 
   /**
-   * AND of the context Selection's resolved clause predicates, excluding any
-   * clause sourced by this spec's own sources. `null` when no context / no
-   * active sibling clauses (single clause → the predicate itself).
+   * AND of the context Selection's resolved clause predicates, excluding the
+   * clauses of spec `id` itself and, when `excludeSiblings` is set, the
+   * clauses of every other context-dependent spec of this set. `null` when
+   * there is no context or nothing is left (one clause → its predicate).
+   *
+   * Sibling exclusion is what lets context rebuilds settle: two
+   * context-dependent specs whose clauses both feed the context would
+   * otherwise each embed the other's latest predicate, one level deeper on
+   * every rebuild. Each membership subquery evaluates against the context
+   * without them instead (they still apply to every query that reads the
+   * context, and to each other's consumers through their own targets).
    */
-  #computeContextPredicate(id: string): ExprNode | null {
-    if (this.#context === undefined) {
-      return null;
+  #computeContextPredicate(id: string, excludeSiblings: boolean): ContextPredicateResult {
+    const context = this.#context;
+    if (context === undefined) {
+      return { predicate: null, siblingPresent: false };
     }
+    // Ownership is by source identity: `source.id` alone would also match
+    // another FilterSet's spec with the same id.
     const ownSources = new Set<ClauseSource>();
-    for (const [key, source] of this.#sources) {
-      if (key.startsWith(`${id} `)) {
+    const siblingSources = new Set<ClauseSource>();
+    for (const source of this.#sources.values()) {
+      if (source.id === id) {
         ownSources.add(source);
+        continue;
+      }
+      if (this.#contextDependent.has(source.id)) {
+        siblingSources.add(source);
       }
     }
-    const predicates = this.#context._resolved
-      .filter((clause) => !ownSources.has(clause.source))
-      .map((clause) => clause.predicate)
-      .filter((predicate): predicate is ExprNode => predicate != null);
+
+    let siblingPresent = false;
+    const predicates: Array<ExprNode> = [];
+    for (const clause of context._resolved) {
+      const predicate = clause.predicate;
+      if (predicate == null || ownSources.has(clause.source)) {
+        continue;
+      }
+      if (siblingSources.has(clause.source)) {
+        siblingPresent = true;
+        if (excludeSiblings) {
+          continue;
+        }
+      }
+      predicates.push(predicate);
+    }
 
     if (predicates.length === 0) {
-      return null;
+      return { predicate: null, siblingPresent };
     }
     if (predicates.length === 1) {
-      return predicates[0] ?? null;
+      return { predicate: predicates[0] ?? null, siblingPresent };
     }
-    return and(...predicates);
+    return { predicate: and(...predicates), siblingPresent };
+  }
+
+  /** Whether one of spec `id`'s clauses is currently in the context. */
+  #feedsContext(id: string): boolean {
+    const context = this.#context;
+    if (context === undefined) {
+      return false;
+    }
+    const active = this.#active.get(id);
+    if (active === undefined) {
+      return false;
+    }
+    const present = new Set<ClauseSource>(context._resolved.map((clause) => clause.source));
+    for (const target of active) {
+      const source = this.#sources.get(`${id} ${target}`);
+      if (source !== undefined && present.has(source)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   #warnUnknownTarget(target: string): void {
@@ -851,9 +999,14 @@ class FilterSetImpl implements FilterSet {
 
   /**
    * Rebuilds context-dependent specs when the context Selection changes,
-   * using the microtask-debounce + version-counter pattern. Convergence is
-   * provided by `updateClauseIfChanged` (an unchanged predicate publishes
-   * nothing), so this cannot loop.
+   * using the microtask-debounce + version-counter pattern. Rebuilds converge:
+   * an unchanged predicate publishes nothing (`updateClauseIfChanged`), and a
+   * spec's context leaves out the set's other context-dependent specs while
+   * its clauses feed the context (see `#computeContextPredicate`), so the
+   * set's own rebuilds cannot keep re-triggering each other. A rebuild chain
+   * that keeps coming back to this set (a context cycle across sets that
+   * never settles) is cut off at {@link MAX_CONTEXT_REBUILDS_PER_CHAIN} (see
+   * `#rebuildContextDependent`).
    */
   #wireContextRebuild(): void {
     const context = this.#context;
@@ -873,19 +1026,113 @@ class FilterSetImpl implements FilterSet {
     this.#detachers.push(() => context.removeEventListener('value', listener));
   }
 
+  /**
+   * Re-publishes every context-dependent spec against the current context.
+   *
+   * Defence in depth against a context cycle that never settles (two sets
+   * reading each other's targets, each with a context-dependent spec): the
+   * clauses a rebuild publishes are tagged with the chain of rebuilds that led
+   * to them, counting how many times each set rebuilt along it. When every
+   * context change since this set's last rebuild is such a clause, this
+   * rebuild extends their chains; once the chain has come back to this set
+   * {@link MAX_CONTEXT_REBUILDS_PER_CHAIN} times, it is skipped (with a
+   * one-time development warning) and the chain ends. A chain that passes
+   * through any number of other sets without coming back is never cut off.
+   * Any other change (a spec written, a brush, a clause removed) starts a new
+   * chain.
+   */
   #rebuildContextDependent(): void {
     if (this.#contextDependent.size === 0) {
       return;
     }
+    const trigger = this.#contextTriggerChain();
+    const visits = (trigger.get(this) ?? 0) + 1;
+    // Snapshot before publishing: the clauses this rebuild publishes are part
+    // of what triggers the next one (that is how a rebuild chain continues).
+    this.#rememberContext();
+    if (visits > MAX_CONTEXT_REBUILDS_PER_CHAIN) {
+      this.#warnRebuildCap();
+      return;
+    }
+    const chain = new Map(trigger);
+    chain.set(this, visits);
     // Re-publish each context-dependent spec. No store sync (specs unchanged),
     // no persist write. `#publishSpec` fences its own updates with
     // `#publishing`, so the external-clear listener is not tripped.
-    for (const id of [...this.#contextDependent]) {
-      const spec = this.#specs.get(id);
-      if (spec !== undefined) {
-        this.#publishSpec(spec);
+    const previousChain = this.#rebuildChain;
+    this.#rebuildChain = chain;
+    try {
+      for (const id of [...this.#contextDependent]) {
+        const spec = this.#specs.get(id);
+        if (spec !== undefined) {
+          this.#publishSpec(spec);
+        }
+      }
+    } finally {
+      this.#rebuildChain = previousChain;
+    }
+  }
+
+  /**
+   * The rebuild chain behind the context changes since this set's last
+   * rebuild started (its own publishes included): empty (a new chain) when
+   * any of them is not a rebuild-published clause or a clause was removed,
+   * else their chains merged, keeping each set's highest rebuild count.
+   */
+  #contextTriggerChain(): RebuildChain {
+    const fresh: RebuildChain = new Map();
+    const context = this.#context;
+    if (context === undefined) {
+      return fresh;
+    }
+    const seen = this.#contextSeen;
+    const merged = new Map<object, number>();
+    let kept = 0;
+    for (const clause of context._resolved) {
+      const previous = seen.get(clause.source);
+      if (previous !== undefined) {
+        kept += 1;
+      }
+      if (previous === clause) {
+        continue;
+      }
+      const chained = rebuildChains.get(clause);
+      if (chained === undefined) {
+        return fresh;
+      }
+      for (const [set, count] of chained) {
+        merged.set(set, Math.max(merged.get(set) ?? 0, count));
       }
     }
+    if (kept < seen.size) {
+      return fresh;
+    }
+    return merged;
+  }
+
+  /** Records the context's current clauses for `#contextTriggerChain`. */
+  #rememberContext(): void {
+    const context = this.#context;
+    if (context === undefined) {
+      return;
+    }
+    this.#contextSeen = new Map(context._resolved.map((clause) => [clause.source, clause]));
+  }
+
+  #warnRebuildCap(): void {
+    if (this.#warnedRebuildCap || !isDevelopment()) {
+      return;
+    }
+    this.#warnedRebuildCap = true;
+    console.warn(
+      `[mosaic-core] FilterSet stopped rebuilding its context-dependent specs ` +
+        `after ${MAX_CONTEXT_REBUILDS_PER_CHAIN} rebuilds in one chain of ` +
+        `rebuilds that kept coming back to it. Its context likely forms a ` +
+        `cycle with another FilterSet's (each reads the other's targets, and ` +
+        `both have context-dependent specs), so their predicates never ` +
+        `settle. Their clauses keep their last predicates until the context ` +
+        `changes again.`,
+    );
   }
 
   /** Reads persisted specs and replays each valid one through `set`. */

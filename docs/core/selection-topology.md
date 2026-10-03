@@ -478,6 +478,8 @@ A `filter-set` entry whose `context` ref (transitively) includes the set's own t
 
 So the previously-required escape hatch is gone: declare the context as an ordinary `compose` entry that includes the FilterSet's targets. To make that context self-exclude its publishers, add `as: 'crossfilter'` (see below).
 
+Several context-dependent specs feeding that context (for example one aggregate threshold per card, each with its `members` target in the context) settle too: each one's `contextPredicate` leaves out the others, while the context itself still applies all of them. See [several context-dependent specs](./filter-set.md#several-context-dependent-specs).
+
 ## Standalone composition factories
 
 The two composition primitives the topology builds on are exported directly, for graphs assembled outside a topology (or inside a React lifecycle via the [hooks](../react/hooks.md#topology-helpers)). Both return a handle with a `destroy()` — they wire relay listeners that must be torn down.

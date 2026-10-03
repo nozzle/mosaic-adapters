@@ -70,6 +70,11 @@ export interface FilterKindArgs {
    * or `null` when there is no context or no active sibling clauses. Reading
    * this getter marks the spec as context-dependent, so it is republished on
    * the context Selection's `value` events.
+   *
+   * While this spec's own clauses feed the context, the clauses of the set's
+   * other context-dependent specs are excluded too: two such specs would
+   * otherwise embed each other's predicate one level deeper on every rebuild
+   * and never settle.
    */
   readonly contextPredicate: ExprNode | null;
 }
