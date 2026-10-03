@@ -23,6 +23,25 @@ import type {
 import { deepEqual } from './utils';
 
 /**
+ * Whether a coalesced re-query can ride upstream's animation-frame throttle.
+ *
+ * False outside browsers (no `requestAnimationFrame`) and while the document
+ * is hidden: browsers pause animation frames in hidden tabs and occluded
+ * windows, so a frame-throttled re-query would stall until the tab is shown
+ * again. A `requestAnimationFrame` without a `document` (dedicated workers)
+ * keeps the frame path.
+ */
+function canUseAnimationFrame(): boolean {
+  if (typeof requestAnimationFrame !== 'function') {
+    return false;
+  }
+  if (typeof document === 'undefined') {
+    return true;
+  }
+  return document.visibilityState !== 'hidden';
+}
+
+/**
  * Framework-agnostic base for every data client: wraps upstream
  * `makeClient`, projects the query lifecycle onto a reactive store, wires
  * Params and the HAVING-routed Selection to re-queries, and holds the query
@@ -33,11 +52,12 @@ import { deepEqual } from './utils';
  *
  * Input-driven triggers (`setInputs`, Param `'value'`, `havingBy` `'value'`)
  * are coalesced — a burst of synchronous changes in one tick collapses into a
- * single query build instead of one full query per event. In browsers this
- * rides upstream `MosaicClient.requestUpdate()` (animation-frame throttle);
- * elsewhere a core-owned macrotask fallback coalesces (see
- * `#requestCoalescedUpdate`). `refetch()` (and any user-explicit re-query)
- * stays immediate via `requestQuery()`.
+ * single query build instead of one full query per event. In a visible
+ * browser tab this rides upstream `MosaicClient.requestUpdate()`
+ * (animation-frame throttle); in hidden tabs and outside browsers a
+ * core-owned macrotask fallback coalesces (see `#requestCoalescedUpdate`).
+ * `refetch()` (and any user-explicit re-query) stays immediate via
+ * `requestQuery()`.
  *
  * Every trigger supersedes the in-flight main query: only the response to
  * the most recent request reaches the store (see `#settle`).
@@ -65,7 +85,7 @@ export abstract class BaseDataClient<
   /** The dotted-table-name warning fires at most once per client. */
   #warnedDottedSource = false;
   #teardown: Array<() => void> = [];
-  /** Pending macrotask flush for the non-browser coalescing fallback. */
+  /** Pending macrotask flush for the hidden-tab / non-browser coalescing fallback. */
   #coalesceHandle: ReturnType<typeof setTimeout> | null = null;
 
   /**
@@ -281,18 +301,32 @@ export abstract class BaseDataClient<
    * client is disabled: upstream defers the request until re-enable and never
    * marks it pending, so the store must not strand itself in `'pending'`.
    *
-   * In browsers this delegates to upstream `MosaicClient.requestUpdate()`,
-   * whose throttle debounces on `requestAnimationFrame`. Upstream's throttle
-   * calls `requestAnimationFrame` unconditionally with no fallback (it is a
-   * browser view-layer entry point), so in non-browser environments this
-   * class owns a macrotask fallback instead: one `setTimeout` flush per tick,
-   * with the flush reading the latest state (last inputs win). The fallback
-   * handle is cancelled by `refetch()` (an explicit refetch already queries
-   * with the latest state, so the pending flush would only duplicate it) and
-   * by `destroy()`. In the browser path an interleaved `refetch()` plus a
-   * pending throttle flush can still produce one redundant query — upstream's
-   * throttle exposes no cancel — which is accepted as low severity: results
-   * stay correct, one extra query at most.
+   * In a visible browser tab this delegates to upstream
+   * `MosaicClient.requestUpdate()`, whose throttle debounces on
+   * `requestAnimationFrame` — Mosaic's default, kept unchanged. Upstream's
+   * throttle calls `requestAnimationFrame` unconditionally with no fallback
+   * (it is a browser view-layer entry point), so this class owns a macrotask
+   * fallback for the two cases where no frame will arrive in time:
+   *
+   * - environments without `requestAnimationFrame` (Node);
+   * - hidden tabs (`document.visibilityState === 'hidden'`), where browsers
+   *   pause animation frames, so a frame-throttled re-query would stay
+   *   `'pending'` until the tab is shown again.
+   *
+   * The fallback is one `setTimeout` flush per tick, with the flush reading
+   * the latest state (last inputs win). Its handle is cancelled by
+   * `refetch()` (an explicit refetch already queries with the latest state,
+   * so the pending flush would only duplicate it) and by `destroy()`.
+   *
+   * Known edges, accepted as low severity (results stay correct, one extra
+   * query at most): upstream's throttle exposes no cancel, so in the frame
+   * path an interleaved `refetch()` plus a pending throttle flush can produce
+   * one redundant query; a frame already scheduled just before the tab hides
+   * still waits until the tab is visible; and a hidden-tab timer flush plus
+   * that late frame can produce one duplicate query on return to the tab.
+   * The reverse order is covered: while a fallback flush is pending, later
+   * triggers join it rather than also requesting a frame, even if the tab
+   * has become visible in between.
    */
   #requestCoalescedUpdate(): void {
     if (this.#client.enabled) {
@@ -302,11 +336,14 @@ export abstract class BaseDataClient<
       this.#nextRequestId();
       this.patchState({ status: 'pending' } as Partial<TState>);
     }
-    if (typeof requestAnimationFrame === 'function') {
-      this.#client.requestUpdate();
+    if (this.#coalesceHandle !== null) {
+      // A fallback flush is already pending and reads the latest state when
+      // it fires, so it covers this trigger too — even if the tab became
+      // visible meanwhile (avoids a second, frame-throttled query).
       return;
     }
-    if (this.#coalesceHandle !== null) {
+    if (canUseAnimationFrame()) {
+      this.#client.requestUpdate();
       return;
     }
     this.#coalesceHandle = setTimeout(() => {
@@ -318,7 +355,7 @@ export abstract class BaseDataClient<
     });
   }
 
-  /** Cancel a pending non-browser coalescing flush, if any. */
+  /** Cancel a pending fallback (hidden-tab / non-browser) coalescing flush, if any. */
   #cancelCoalescedUpdate(): void {
     if (this.#coalesceHandle === null) {
       return;
