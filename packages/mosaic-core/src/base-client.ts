@@ -4,6 +4,7 @@ import type { MosaicClient, QueryError, Selection } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import type { FilterExpr, Query as MosaicQuery, SelectQuery } from '@uwdata/mosaic-sql';
 
+import { freezeQuerySql } from './freeze-query';
 import {
   assertQuerySource,
   dottedTableNameWarning,
@@ -547,7 +548,15 @@ export abstract class BaseDataClient<
       lastQuery: sql,
     } as Partial<TState>);
     this.afterQueryBuilt(ctx);
-    return query;
+    if (typeof query === 'string') {
+      return query;
+    }
+    // Hand the coordinator a query frozen at `sql`, so the request it sends
+    // (alone or consolidated), the result it caches and the `QueryError.sql`
+    // it reports all match the in-flight entry recorded at `queryPending`
+    // even if a live Param the query interpolates changes meanwhile (see
+    // `freezeQuerySql`).
+    return freezeQuerySql(query, sql);
   }
 
   /**

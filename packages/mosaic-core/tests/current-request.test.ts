@@ -6,7 +6,7 @@ import { rowsToIPC, settle } from '@nozzleio/test-support/duckdb';
  */
 import { Coordinator, Param, QueryError, Selection, clausePoint } from '@uwdata/mosaic-core';
 import type { ArrowQueryRequest, Connector, ExecQueryRequest } from '@uwdata/mosaic-core';
-import { Query, eq, literal } from '@uwdata/mosaic-sql';
+import { Query, eq, literal, sql } from '@uwdata/mosaic-sql';
 import type { FilterExpr } from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
@@ -245,6 +245,142 @@ describe('current-request guarantee', () => {
     expect(client.store.state.values).toEqual({ total: 2 });
 
     client.destroy();
+  });
+
+  describe('queries interpolating a live Param', () => {
+    // `sql` interpolation embeds the Param itself (a ParamNode), so the built
+    // query object re-renders with the Param's *current* value whenever it is
+    // stringified — unlike `literal(param.value)`, which snapshots the value.
+    function paramClient(db: ControlledDb, limit: Param<number>) {
+      return createValuesClient<Totals>({
+        coordinator: db.coordinator,
+        params: { limit },
+        query: () =>
+          Query.from('t')
+            .select({ total: literal(1) })
+            .where(sql`n = ${limit}`),
+      });
+    }
+
+    test('an older request failing after the Param changed is matched to its own SQL, not the newer one', async () => {
+      const db = createControlledDb();
+      const limit = new Param(1);
+      const client = paramClient(db, limit);
+      const log = recordTransitions(client);
+      await settle(0);
+      expect(db.requests).toHaveLength(1);
+
+      limit.update(2);
+      await settle(0);
+      expect(db.requests).toHaveLength(2);
+      expect(db.requests[0]!.sql).toContain('n = 1');
+      expect(db.requests[1]!.sql).toContain('n = 2');
+
+      // The older request fails while the newer is still open. Upstream wraps
+      // the failure from the query object it sent; its SQL must still read as
+      // the build-time `n = 1`, so the failure is attributed to the
+      // superseded request and dropped.
+      db.requests[0]!.reject(new Error('boom'));
+      await settle(0);
+      expect(client.store.state.status).toBe('pending');
+      expect(client.store.state.error).toBeNull();
+
+      db.requests[1]!.resolve([{ total: 2 }]);
+      await settle(0);
+      expect(client.store.state.status).toBe('success');
+      expect(client.store.state.values).toEqual({ total: 2 });
+      expect(client.store.state.lastQuery).toContain('n = 2');
+      expect(log.some((s) => s.status === 'error')).toBe(false);
+
+      client.destroy();
+    });
+
+    test('an older request cancelled after the Param changed is matched to its own SQL, not the newer one', async () => {
+      const db = createControlledDb();
+      const limit = new Param(1);
+      const client = paramClient(db, limit);
+      const log = recordTransitions(client);
+      await settle(0);
+      expect(db.requests).toHaveLength(1);
+
+      limit.update(2);
+      await settle(0);
+      expect(db.requests).toHaveLength(2);
+
+      // Cancel the older request at the query manager (oldest pending first).
+      const [older] = db.coordinator.manager.pendingResults;
+      expect(older).toBeDefined();
+      db.coordinator.cancel([older!]);
+      await settle(0);
+      expect(client.store.state.status).toBe('pending');
+      expect(client.store.state.error).toBeNull();
+
+      db.requests[1]!.resolve([{ total: 2 }]);
+      await settle(0);
+      expect(client.store.state.status).toBe('success');
+      expect(client.store.state.values).toEqual({ total: 2 });
+      expect(log.some((s) => s.status === 'error')).toBe(false);
+
+      client.destroy();
+    });
+
+    test('the newer request failing still surfaces, and its error carries the newer SQL', async () => {
+      const db = createControlledDb();
+      const limit = new Param(1);
+      const client = paramClient(db, limit);
+      await settle(0);
+
+      limit.update(2);
+      await settle(0);
+      expect(db.requests).toHaveLength(2);
+
+      db.requests[1]!.reject(new Error('boom'));
+      await settle(0);
+      expect(client.store.state.status).toBe('error');
+      const error = client.store.state.error;
+      expect(error).toBeInstanceOf(QueryError);
+      expect((error as QueryError).sql).toContain('n = 2');
+
+      db.requests[0]!.resolve([{ total: 1 }]);
+      await settle(0);
+      expect(client.store.state.status).toBe('error');
+      expect(client.store.state.values).toBeUndefined();
+
+      client.destroy();
+    });
+
+    test('a request queued behind other work is sent with its build-time SQL', async () => {
+      const db = createControlledDb();
+      // An open exec blocks the query manager's queue, so the client's
+      // requests are only stringified for sending after the Param changed.
+      void db.coordinator.exec('SELECT 1');
+      expect(db.requests).toHaveLength(1);
+      const limit = new Param(1);
+      const client = paramClient(db, limit);
+      await settle(0);
+
+      limit.update(2);
+      await settle(0);
+      expect(db.requests).toHaveLength(1);
+
+      db.requests[0]!.resolve([]);
+      await settle(0);
+      expect(db.requests).toHaveLength(2);
+      expect(db.requests[1]!.sql).toContain('n = 1');
+
+      db.requests[1]!.resolve([{ total: 1 }]);
+      await settle(0);
+      expect(db.requests).toHaveLength(3);
+      expect(db.requests[2]!.sql).toContain('n = 2');
+      expect(client.store.state.status).toBe('pending');
+
+      db.requests[2]!.resolve([{ total: 2 }]);
+      await settle(0);
+      expect(client.store.state.status).toBe('success');
+      expect(client.store.state.values).toEqual({ total: 2 });
+
+      client.destroy();
+    });
   });
 
   test('refetch() supersedes the in-flight request', async () => {
