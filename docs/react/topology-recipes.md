@@ -1,8 +1,8 @@
 # Topology recipes
 
-Consumer-side patterns over a [`Topology`](../core/selection-topology.md): a page-wide **reset**, an **active-filters / chips** bar, a **custom-chart brush**, and a **param → selection bridge**. Each is a few lines of app code over the topology object's consumer surfaces — the `reset()` action, the `activeClauses` observation, the resolvers, and the [FilterSet](../core/filter-set.md) setters. None ships in any package: the chip model, its grouping, the union, the brush UI, and the clause-minting below are exactly where apps differ, so they live here and in the example apps.
+Consumer-side patterns over a [`Topology`](../core/selection-topology.md): a page-wide **reset**, an **active-filters / chips** bar, a **custom-chart brush**, a **param → selection bridge**, and its reverse, a **filter → param** bridge. Each is a few lines of app code over the topology object's consumer surfaces — the `reset()` action, the `activeClauses` observation, the resolvers, and the [FilterSet](../core/filter-set.md) setters. None ships in any package: the chip model, its grouping, the union, the brush UI, and the clause-minting below are exactly where apps differ, so they live here and in the example apps.
 
-The reference implementation for the reset and the chip bar is [`examples/react/nozzle-paa/src/topology.ts`](../../examples/react/nozzle-paa/src/topology.ts).
+The reset and active-filters recipes are implemented in the `nozzle-paa` example app: the topology glue in [`examples/react/nozzle-paa/src/topology.ts`](../../examples/react/nozzle-paa/src/topology.ts) and the chips bar in [`examples/react/nozzle-paa/src/components/active-filter-bar.tsx`](../../examples/react/nozzle-paa/src/components/active-filter-bar.tsx).
 
 ## Page-wide reset
 
@@ -313,6 +313,62 @@ Two things this makes explicit:
 
 - **The param stays the source of truth.** The input writes the scalar; the bridge derives a clause from it. A KPI that aggregates under this threshold reads the same `minMedals` param through its client's `params` — the knob and the filter never drift.
 - **The published clause is an ordinary foreign clause.** Because it lands on `where` under its own source, it surfaces in [`activeClauses`](../core/selection-topology.md#active-clauses) and clears with the [null-predicate publish](#active-filters--chips) like any other foreign clause — the bridge did not create a new removal path.
+
+## Filter → Param
+
+The reverse bridge: one control publishes a filter **and** drives Params that other queries interpolate — a date-range picker that filters rows by `day` and also sets `$from`/`$to` for a period-over-period comparison query. Do both in the control's own handler, in one tick, **Params first**:
+
+```tsx
+import { useEffect } from 'react';
+import { useMosaicParamRef, useMosaicTopology } from '@nozzleio/react-mosaic';
+
+// Config declares the Params and the FilterSet the spec lands in:
+//   filters: { type: 'filter-set', targets: { where: 'crossfilter' } },
+//   from: { type: 'param', default: '2024-01-01' },
+//   to: { type: 'param', default: '2024-12-31' },
+
+const DATE_SPEC_ID = 'date-range';
+const DEFAULT_RANGE = { from: '2024-01-01', to: '2024-12-31' };
+
+function DateRangeFilter() {
+  const topology = useMosaicTopology();
+  const $from = useMosaicParamRef<string>('from');
+  const $to = useMosaicParamRef<string>('to');
+  const filterSet = topology.getFilterSet('filters');
+
+  // The bridge: one user action writes the Params, then the spec.
+  const apply = (from: string, to: string) => {
+    $from.update(from);
+    $to.update(to);
+    filterSet?.set({ id: DATE_SPEC_ID, column: 'day', kind: 'interval', value: from, valueTo: to });
+  };
+
+  // Fallback only: follow spec changes that bypass `apply` — a chip removal,
+  // or `topology.reset()`.
+  useEffect(() => {
+    if (filterSet === undefined) {
+      return undefined;
+    }
+    const subscription = filterSet.store.subscribe(() => {
+      const spec = filterSet.store.state.specs.find((candidate) => candidate.id === DATE_SPEC_ID);
+      // Param.update is a no-op for an unchanged value, so the echo of
+      // `apply`'s own write does nothing here.
+      $from.update(typeof spec?.value === 'string' ? spec.value : DEFAULT_RANGE.from);
+      $to.update(typeof spec?.valueTo === 'string' ? spec.valueTo : DEFAULT_RANGE.to);
+    });
+    return () => subscription.unsubscribe();
+  }, [filterSet, $from, $to]);
+
+  // `RangePicker` stands in for your app's range input.
+  return <RangePicker onChange={(range) => apply(range.from, range.to)} />;
+}
+```
+
+Why the order and the fallback status matter:
+
+- **Params first, then the clause.** Clients that can pre-aggregate (`filterStable` left on, no `skipSources`) re-query a Selection change immediately and a Param change one batch later. Writing the Params first means the clause's immediate query already reads them; when that is the client's ordinary query, the Param's batched re-query repeats the same SQL, which the coordinator's query cache answers. The opposite order sends two different queries. The cache only merges identical SQL, so when Mosaic's optimizer answers the clause from a pre-aggregated table, the Param's re-query (against the base table) still runs in either order — see [one query per action](../core/concepts.md#one-query-per-action). Clients that cannot pre-aggregate [coalesce both](../core/concepts.md#one-query-per-action) into one query in either order.
+- **The store subscription is a fallback, not the bridge.** It runs _after_ the spec already changed its clause, so on pre-aggregating clients a change that only reaches the Params through it costs a second query. Keep user-driven writes in `apply`, and let the subscription cover only the paths you do not control.
+- **Seed restored ranges in `initialize`.** A range restored at page load should be written (in the same order) in [`useTopology`'s `initialize`](./topology.md#seed-bootstrap-state-in-initialize), before clients mount, rather than through `apply` from an effect.
 
 ## See also
 

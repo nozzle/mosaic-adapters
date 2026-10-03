@@ -34,8 +34,8 @@ export type UseMosaicRowsResult<TRow> = RowsClientState<TRow> & {
  * Controlled binding over `createRowsClient`. Identity rules:
  *
  * - `coordinator`, `filterBy`, `havingBy`, `skipSources`, `params`, `publish`,
- *   `inputMode`, `filterStable`, `rowCount` are structural — changing any of
- *   them destroys and recreates the client.
+ *   `inputMode`, `filterStable`, `coalesceFilterBy`, `rowCount` are
+ *   structural — changing any of them destroys and recreates the client.
  * - `query` and `coerce` are held by latest-ref — new function identities
  *   never recreate and never re-query. List what a compiled `query` depends
  *   on in `queryKey` to re-query when it changes (`client.invalidate()`).
@@ -73,6 +73,7 @@ export function useMosaicRows<TRow>(
       skipSourcesKey(options.skipSources),
       options.inputMode,
       options.filterStable,
+      options.coalesceFilterBy,
       options.rowCount,
       ...selectKey,
       columnsKey(options.publish?.select?.columns),

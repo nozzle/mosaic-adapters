@@ -52,6 +52,7 @@ export function useMosaicValues<TValues extends Record<string, unknown>>(
       skipSourcesKey(options.skipSources),
       options.inputMode,
       options.filterStable,
+      options.coalesceFilterBy,
       ...paramsKey(options.params),
     ],
     inputs: options.inputs,

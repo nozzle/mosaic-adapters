@@ -34,4 +34,4 @@ Points come back sorted by key then x; date x values surface as `Date`.
 
 ## Pre-aggregation
 
-Filtering changes which `(key, x)` groups exist, so `filterStable` defaults to `false` for this client (overridable).
+Filtering changes which `(key, x)` groups exist, so `filterStable` defaults to `false` for this client (overridable). That also puts its `filterBy` re-queries on the client's coalesced batch (opt out with `coalesceFilterBy: false`; see [one query per action](./concepts.md#one-query-per-action)).

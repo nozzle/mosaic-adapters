@@ -1,5 +1,6 @@
 import { createAthletesDb, renderHook, waitFor } from '@nozzleio/test-support/react';
 import type { TestDb } from '@nozzleio/test-support/react';
+import { Selection } from '@uwdata/mosaic-core';
 import { Query, count, sum } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test } from 'vitest';
 
@@ -47,5 +48,43 @@ describe('useMosaicRollup', () => {
 
     await hook.unmount();
     expect(db.coordinator.clients.size).toBe(0);
+  });
+
+  test('coalesceFilterBy is structural: flipping it recreates the client', async () => {
+    const $page = Selection.crossfilter();
+    const hook = await renderHook(
+      (props: { coalesce: boolean }) =>
+        useMosaicRollup<WeightRollup>({
+          coordinator: db.coordinator,
+          query: ({ where }) =>
+            Query.from('athletes')
+              .select({ athletes: count(), totalWeight: sum('weight') })
+              .where(where),
+          groupBy: ['sport'],
+          filterBy: $page,
+          coalesceFilterBy: props.coalesce,
+        }),
+      { initialProps: { coalesce: true } },
+    );
+
+    await waitFor(() => {
+      expect(hook.result.current.rows).toHaveLength(3);
+    });
+    const coalesced = hook.result.current.client;
+    // Forced `filterStable: false`, so the default path is the coalesced one.
+    expect(db.coordinator.filterGroups.get($page)?.clients.has(coalesced.mosaicClient)).not.toBe(
+      true,
+    );
+
+    await hook.rerender({ coalesce: false });
+    await waitFor(() => {
+      expect(hook.result.current.client).not.toBe(coalesced);
+      expect(hook.result.current.rows).toHaveLength(3);
+    });
+    expect(coalesced.destroyed).toBe(true);
+    const upstream = hook.result.current.client;
+    expect(db.coordinator.filterGroups.get($page)?.clients.has(upstream.mosaicClient)).toBe(true);
+
+    await hook.unmount();
   });
 });

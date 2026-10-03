@@ -48,6 +48,46 @@ An inline `useTopology({ … }, { selections: { … } })` literal mints a new `c
 
 The [`params`](../core/selection-topology.md#params) and `paramOptions` fields participate in the recreation key exactly like `selections` / `filterSets`: a mid-life identity change tears the previous topology down and builds a fresh one (resolving the newly-supplied external param instances). Supply them from a stable reference — hoist or memoize alongside `config` — so the topology stays stable across re-renders, and only swap the identity when you intend to rebuild.
 
+### Seed bootstrap state in `initialize`
+
+State the page restores at load — Param values and filter specs read from the URL, a saved view, or a server-provided default — belongs in `initialize`, not in a child's `useEffect`. `initialize` runs before the hook returns the topology, so before any querying child mounts: every client's first query is built from the seeded state and nothing re-queries.
+
+```tsx
+import { useTopology } from '@nozzleio/react-mosaic';
+import type { Topology } from '@nozzleio/react-mosaic';
+
+const config = {
+  filters: { type: 'filter-set', targets: { where: 'crossfilter' } },
+  from: { type: 'param', default: '2024-01-01' },
+  to: { type: 'param', default: '2024-12-31' },
+} as const;
+
+function Page({ saved }: { saved: { from: string; to: string } | null }) {
+  const topology = useTopology(config, {
+    initialize: (created: Topology) => {
+      if (saved === null) {
+        return;
+      }
+      // Params first, then the clause (see "One query per action").
+      created.resolveParam('from').update(saved.from);
+      created.resolveParam('to').update(saved.to);
+      created.getFilterSet('filters')?.set({
+        id: 'date',
+        column: 'day',
+        kind: 'interval',
+        value: saved.from,
+        valueTo: saved.to,
+      });
+    },
+  });
+  // …
+}
+```
+
+Seeding after children mount lands as a change on clients that are already initializing. Upstream `Coordinator.updateSelection` waits for such a client's initial query and then issues a second one — usually with the same predicate, since the initial query was built after the seed — and each seeded Param re-queries the client again a batch later. The result is correct but the database runs each query twice or more. (Clients whose `filterBy` is [coalesced](../core/concepts.md#one-query-per-action) skip the selection-driven repeat, but Params seeded late still re-query.)
+
+`initialize` runs once per created topology, so it re-seeds after a recreation (a new `config` identity, StrictMode's simulated remount). Persisted state that already has a home — a FilterSet's or Param's own `persist` — hydrates itself at construction and needs no `initialize` step.
+
 ## Provider and consumer hooks
 
 `MosaicTopologyProvider` distributes **one** topology instance to descendants. It is deliberately dumb — it holds a single instance and has no registry semantics of its own; construction, validation, and teardown all live on the topology object.

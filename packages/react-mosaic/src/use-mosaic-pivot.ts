@@ -53,6 +53,7 @@ export function useMosaicPivot<TRow>(
       skipSourcesKey(options.skipSources),
       options.inputMode,
       options.filterStable,
+      options.coalesceFilterBy,
       options.on,
       options.columnPaths,
       JSON.stringify(options.using),

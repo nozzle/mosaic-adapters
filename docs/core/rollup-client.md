@@ -31,4 +31,4 @@ Rows arrive pre-ordered (each subtotal immediately precedes its children — rea
 
 ## Pre-aggregation
 
-Which subtotal rows exist changes under filtering, so this client always runs with `filterStable: false`.
+Which subtotal rows exist changes under filtering, so this client always runs with `filterStable: false`. That also puts its `filterBy` re-queries on the client's coalesced batch (opt out with `coalesceFilterBy: false`; see [one query per action](./concepts.md#one-query-per-action)).

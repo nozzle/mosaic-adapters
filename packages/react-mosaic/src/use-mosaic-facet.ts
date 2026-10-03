@@ -64,6 +64,7 @@ export function useMosaicFacet(options: UseMosaicFacetOptions): UseMosaicFacetRe
       skipSourcesKey(options.skipSources),
       options.inputMode,
       options.filterStable,
+      options.coalesceFilterBy,
       options.column,
       options.columnPaths,
       options.arrayColumn,

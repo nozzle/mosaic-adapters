@@ -1,5 +1,5 @@
 import { Store } from '@tanstack/store';
-import { makeClient } from '@uwdata/mosaic-core';
+import { makeClient, throttle } from '@uwdata/mosaic-core';
 import type { MosaicClient, QueryError, Selection, SelectionClause } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import type { FilterExpr, Query as MosaicQuery, SelectQuery } from '@uwdata/mosaic-sql';
@@ -64,10 +64,11 @@ interface InflightRequest<TInputs extends object> {
  * Re-query triggers are exactly: inputs change, Selection activation,
  * Param change, `refetch()`, `invalidate()`.
  *
- * Input-driven triggers (`setInputs`, Param `'value'`, `havingBy` `'value'`)
- * and `invalidate()` are coalesced — a burst of synchronous changes in one
- * tick collapses into a single query build instead of one full query per
- * event. In a visible
+ * Input-driven triggers (`setInputs`, Param `'value'`, `havingBy` `'value'`,
+ * and `filterBy` `'value'` on a client that cannot pre-aggregate — see
+ * `#wireFilterBy`) and `invalidate()` are coalesced — a burst of synchronous
+ * changes in one tick collapses into a single query build instead of one
+ * full query per event. In a visible
  * browser tab this rides upstream `MosaicClient.requestUpdate()`
  * (animation-frame throttle); in hidden tabs and outside browsers a
  * core-owned macrotask fallback coalesces (see `#requestCoalescedUpdate`).
@@ -96,10 +97,25 @@ export abstract class BaseDataClient<
    */
   readonly #filterBy: Selection | undefined;
   readonly #havingBy: Selection | undefined;
+  /**
+   * True when `filterBy` re-queries through this client's coalesced batch
+   * (`#wireFilterBy`) rather than upstream `Coordinator.updateSelection`:
+   * a `filterBy` Selection, pre-aggregation off, and `coalesceFilterBy` not
+   * set to `false`.
+   */
+  readonly #coalesceFilterBy: boolean;
   #destroyed = false;
   /** The dotted-table-name warning fires at most once per client. */
   #warnedDottedSource = false;
   #teardown: Array<() => void> = [];
+  /**
+   * Whether the pending coalesced batch holds a trigger other than a
+   * coalesced `filterBy` change (inputs, a Param, `havingBy`,
+   * `invalidate()`). Read and reset by `#flushCoalesced`: a batch of
+   * `filterBy` changes alone is issued without clearing the coordinator's
+   * pre-aggregation state, any other batch through upstream `requestQuery`.
+   */
+  #batchHasNonSelectionTrigger = false;
   /** Pending macrotask flush for the hidden-tab / non-browser coalescing fallback. */
   #coalesceHandle: ReturnType<typeof setTimeout> | null = null;
 
@@ -160,16 +176,23 @@ export abstract class BaseDataClient<
     this.#havingBy =
       options.havingBy === options.filterBy ? this.#filterBy : this.#project(options.havingBy);
 
+    // A non-empty `skipSources` forces pre-aggregation off: the optimizer
+    // re-applies the active clause independent of the `query` callback
+    // (upstream `PreAggregator`), so a skipped active clause would otherwise
+    // leak back into the materialized-view query.
+    const filterStable = this.#skipping() ? false : (options.filterStable ?? true);
+    this.#coalesceFilterBy =
+      this.#filterBy !== undefined && !filterStable && options.coalesceFilterBy !== false;
+
     const prepare = hooks?.prepare;
     this.#client = makeClient({
       coordinator: options.coordinator,
-      selection: this.#filterBy,
+      // A coalesced `filterBy` is withheld from the coordinator so it never
+      // joins a filter group (no `updateSelection` re-query); `#wireFilterBy`
+      // re-queries instead.
+      selection: this.#coalesceFilterBy ? undefined : this.#filterBy,
       enabled: options.enabled ?? true,
-      // A non-empty `skipSources` forces pre-aggregation off: the optimizer
-      // re-applies the active clause independent of the `query` callback
-      // (upstream `PreAggregator`), so a skipped active clause would otherwise
-      // leak back into the materialized-view query.
-      filterStable: this.#skipping() ? false : (options.filterStable ?? true),
+      filterStable,
       // makeClient connects (and may initialize) synchronously inside this
       // constructor; defer the hook one microtask so it runs against a fully
       // constructed subclass. The coordinator awaits the returned promise
@@ -191,7 +214,7 @@ export abstract class BaseDataClient<
       // passes undefined when the active clause cross-filters this client.
       // On selection-driven updates the coordinator computes the predicate
       // from `#filterBy` — already skip-projected — so it is used as-is.
-      query: (filter: FilterExpr | undefined) => this.#materialize(filter ?? this.#currentWhere()),
+      query: (filter: FilterExpr | null | undefined) => this.#materialize(this.#whereFor(filter)),
       queryPending: () => {
         if (this.#destroyed) {
           return;
@@ -262,7 +285,23 @@ export abstract class BaseDataClient<
       },
     });
 
+    if (this.#coalesceFilterBy) {
+      // Withheld from the coordinator above, but still reported as the
+      // client's filter Selection to `mosaicClient` interop. Assigned after
+      // `makeClient` connected, so no filter group is created for it; the
+      // first query runs after `prepare`, by which time this is set. This
+      // relies on upstream `Coordinator.connect` reading `client.filterBy`
+      // synchronously (re-verify on upstream bumps).
+      this.#client._filterBy = this.#filterBy;
+      // Upstream's frame throttle flushes through `requestQuery`, which
+      // clears the coordinator-wide pre-aggregation state; a batch of
+      // `filterBy` changes alone must not (see `#flushCoalesced`). Same
+      // throttle, same debounce, different flush.
+      this.#client._requestUpdate = throttle(() => this.#flushCoalesced(), true);
+    }
+
     this.#wireParams();
+    this.#wireFilterBy();
     this.#wireHavingBy();
   }
 
@@ -382,7 +421,10 @@ export abstract class BaseDataClient<
    * triggers join it rather than also requesting a frame, even if the tab
    * has become visible in between.
    */
-  #requestCoalescedUpdate(): void {
+  #requestCoalescedUpdate(trigger: 'selection' | 'other' = 'other'): void {
+    if (trigger === 'other') {
+      this.#batchHasNonSelectionTrigger = true;
+    }
     if (this.#client.enabled) {
       // The coalesced request is now the one the store waits on; a result
       // from an older in-flight request landing before the flush fires must
@@ -402,11 +444,48 @@ export abstract class BaseDataClient<
     }
     this.#coalesceHandle = setTimeout(() => {
       this.#coalesceHandle = null;
-      if (this.#destroyed) {
-        return;
-      }
-      void this.#client.requestQuery();
+      void this.#flushCoalesced();
     });
+  }
+
+  /**
+   * Issue the coalesced query (the frame throttle and the macrotask fallback
+   * both land here). Reads the latest state.
+   *
+   * A batch holding only coalesced `filterBy` changes is issued the way
+   * upstream `Coordinator.updateSelection` issues a standard selection
+   * update — `coordinator.updateClient(client, query)` — rather than through
+   * `MosaicClient.requestQuery` → `Coordinator.requestQuery`, which clears
+   * the coordinator-wide pre-aggregation state. Clearing would wipe every
+   * eligible sibling's materialized table on each brush move and rebuild it
+   * on the next; this client never holds an entry of its own (pre-aggregation
+   * is off for it, and it is in no filter group), so it has nothing to clear.
+   *
+   * Every other batch (inputs, Params, `havingBy`, `invalidate()`, alone or
+   * mixed with a `filterBy` change), a client on the upstream `filterBy`
+   * path, and a disabled client (upstream records the request and runs it on
+   * re-enable, as `updateSelection` does) go through upstream `requestQuery`,
+   * as before.
+   */
+  #flushCoalesced(): Promise<unknown> | null {
+    const nonSelection = this.#batchHasNonSelectionTrigger;
+    this.#batchHasNonSelectionTrigger = false;
+    if (this.#destroyed) {
+      return null;
+    }
+    if (nonSelection || !this.#coalesceFilterBy || !this.#client.enabled) {
+      return this.#client.requestQuery();
+    }
+    const coordinator = this.#client.coordinator;
+    if (!coordinator) {
+      // Mirrors `requestQuery`: a concurrent teardown disconnected it.
+      return null;
+    }
+    const query = this.#client.query();
+    if (!query) {
+      return Promise.resolve(this.#client.update());
+    }
+    return coordinator.updateClient(this.#client, query);
   }
 
   /** Cancel a pending fallback (hidden-tab / non-browser) coalescing flush, if any. */
@@ -416,6 +495,7 @@ export abstract class BaseDataClient<
     }
     clearTimeout(this.#coalesceHandle);
     this.#coalesceHandle = null;
+    this.#batchHasNonSelectionTrigger = false;
   }
 
   destroy(): void {
@@ -440,9 +520,11 @@ export abstract class BaseDataClient<
    *
    * CONTRACT: returning `null` is only safe for clients WITHOUT a `filterBy`
    * Selection. Every trigger this base class owns (initialize, `setInputs`,
-   * `refetch`, Params, `havingBy`) flows through upstream
-   * `MosaicClient.requestQuery()`, which null-guards the query — but
-   * upstream `Coordinator.updateSelection` (the `filterBy` 'value' listener)
+   * `refetch`, Params, `havingBy`, a coalesced `filterBy`) flows through
+   * upstream `MosaicClient.requestQuery()` or `#flushCoalesced`, both of
+   * which null-guard the query — but
+   * upstream `Coordinator.updateSelection` (the `filterBy` 'value' listener
+   * for clients that can pre-aggregate or set `coalesceFilterBy: false`)
    * calls `client.query(filter)` and submits the result to the connector
    * with NO null guard, so a `null` query would reach the database as the
    * SQL string "null" and fail to parse. Cross-filtered clients must always
@@ -607,16 +689,43 @@ export abstract class BaseDataClient<
   }
 
   /**
+   * The WHERE predicate for a query the coordinator asked this client to
+   * build. Upstream passes the predicate it resolved (`undefined` when the
+   * active clause cross-filters this client); a coalesced `filterBy` ignores
+   * it and resolves the latest clause list itself (see `#currentWhere`).
+   * Upstream's `MosaicClient.query` also admits `null`; it is treated like
+   * `undefined`.
+   */
+  #whereFor(filter: FilterExpr | null | undefined): FilterExpr {
+    if (this.#coalesceFilterBy || filter === undefined || filter === null) {
+      return this.#currentWhere();
+    }
+    return filter;
+  }
+
+  /**
    * Resolve the WHERE predicate for a client-initiated query. `noSkip`
    * bypasses the active-clause short-circuit (which exists to elide
    * redundant selection updates) while still excluding this client's own
    * clauses in cross-filtering contexts.
+   *
+   * A coalesced `filterBy` resolves the Selection's resolved clause list
+   * (`_resolved`) instead of `.clauses`: the coalesced flush runs a beat
+   * after the change, and `.clauses` is the last *dispatched* value, which
+   * lags while a newer update is queued behind a still-pending dispatch
+   * (another client's in-flight `updateSelection`). The upstream path keeps
+   * upstream's `.clauses` reading. A `havingBy` that is this same Selection
+   * reads `_resolved` too (see `#resolveHaving`).
    */
   #currentWhere(): FilterExpr {
-    if (!this.#filterBy) {
+    const filterBy = this.#filterBy;
+    if (!filterBy) {
       return [];
     }
-    return this.#filterBy.predicate(this.#client, true) ?? [];
+    if (!this.#coalesceFilterBy) {
+      return filterBy.predicate(this.#client, true) ?? [];
+    }
+    return resolvedPredicate(filterBy, this.#client, true) ?? [];
   }
 
   #materialize(where: FilterExpr): MosaicQuery | string | null {
@@ -673,7 +782,9 @@ export abstract class BaseDataClient<
    * selection update carries an active clause with a source to answer from
    * it; every client-initiated request goes through
    * `Coordinator.requestQuery`, which clears those entries before
-   * submitting. Two standard queries are issued while a view is still held:
+   * submitting (a coalesced `filterBy` flush skips the clear — see
+   * `#flushCoalesced` — but such a client is in no filter group, so it never
+   * holds an entry). Two standard queries are issued while a view is still held:
    * upstream's retry after a failed pre-aggregated update, recognized by
    * `#preaggFallback` plus a fresh build; and an update without an active
    * clause (a `Selection.reset()` removes it but leaves the cached entry), for
@@ -753,11 +864,25 @@ export abstract class BaseDataClient<
     return request.id === this.#latestRequest;
   }
 
+  /**
+   * The HAVING predicate, read like upstream `selection.predicate(client)`
+   * (active-clause short-circuit and cross-filter self-exclusion kept).
+   *
+   * When `havingBy` is the coalesced `filterBy` Selection itself, it reads
+   * the same resolved clause list (`_resolved`) as `#currentWhere`, so one
+   * query never pairs a WHERE from a queued update with a HAVING from the
+   * last dispatched one. A distinct `havingBy` keeps reading `.clauses`: it
+   * re-queries from its own `'value'` dispatch, so `.clauses` is current.
+   */
   #resolveHaving(): FilterExpr {
-    if (!this.#havingBy) {
+    const havingBy = this.#havingBy;
+    if (!havingBy) {
       return [];
     }
-    return this.#havingBy.predicate(this.#client) ?? [];
+    if (this.#coalesceFilterBy && havingBy === this.#filterBy) {
+      return resolvedPredicate(havingBy, this.#client, false) ?? [];
+    }
+    return havingBy.predicate(this.#client) ?? [];
   }
 
   #wireParams(): void {
@@ -778,14 +903,72 @@ export abstract class BaseDataClient<
   }
 
   /**
+   * Re-query a coalesced `filterBy` (see `#coalesceFilterBy`) through the
+   * same batch as Params, `havingBy` and `setInputs`, so a clause change and
+   * a Param change made in the same tick — in either order — build one query
+   * with both, where upstream `Coordinator.updateSelection` would query at
+   * once for the clause and again a beat later for the Param.
+   *
+   * Only wired for clients whose pre-aggregation is off, so leaving the
+   * upstream path forgoes no optimization; a client that can pre-aggregate
+   * keeps `updateSelection`, which is what feeds the optimizer. A batch of
+   * these changes alone is issued like `updateSelection` issues a standard
+   * update (`#flushCoalesced`), leaving eligible siblings' pre-aggregated
+   * tables in place.
+   *
+   * - cross-mode self-skip: no re-query when the clause that changed is this
+   *   client's own (`predicate(client)` is `undefined`). This mirrors
+   *   `#wireHavingBy` and upstream's pre-aggregation path (the `Skip`
+   *   branch of `PreAggregator.request`), not what upstream does for this
+   *   client class: with pre-aggregation off, `updateSelection` re-queries
+   *   on an own-clause change too. Skipping is safe because an own clause
+   *   never participates in this client's own predicate, and clause
+   *   re-keying only happens in `prepare`, which the initialization skip
+   *   below and the first query cover;
+   * - a disabled client records the request and runs it once re-enabled
+   *   (via `#requestCoalescedUpdate` → upstream `requestQuery`), as
+   *   `updateSelection` does.
+   *
+   * One deliberate difference: while the client is still initializing
+   * (`prepare` pending), the change is not re-queried. Upstream waits for the
+   * initial query and then queries again; here the initial query has not
+   * been built yet and reads the latest clause list when it is, so the
+   * second query would repeat it.
+   */
+  #wireFilterBy(): void {
+    const filterBy = this.#filterBy;
+    if (!filterBy || !this.#coalesceFilterBy) {
+      return;
+    }
+    const listener = () => {
+      if (this.#destroyed) {
+        return;
+      }
+      if (filterBy.predicate(this.#client) === undefined) {
+        return;
+      }
+      // A disabled client deliberately falls through even when uninitialized:
+      // upstream `requestQuery` records the deferred request (`_request`) and
+      // runs it once the client is enabled.
+      if (this.#client.enabled && !this.#client.initialized) {
+        return;
+      }
+      this.#requestCoalescedUpdate('selection');
+    };
+    filterBy.addEventListener('value', listener);
+    this.onDestroy(() => filterBy.removeEventListener('value', listener));
+  }
+
+  /**
    * Upstream coordinators only react to the `filterBy` selection; the
    * HAVING-routed selection is our extension, so its re-query wiring lives
    * here. Cross-mode self-skip mirrors `Coordinator.updateSelection`.
    *
    * When the same Selection is passed as both `filterBy` and `havingBy`,
-   * the coordinator's native wiring already re-queries on its activation and
-   * `#materialize` resolves the HAVING predicate fresh on every query, so
-   * wiring a second listener would double-query. Skip it.
+   * the `filterBy` wiring (the coordinator's, or `#wireFilterBy`) already
+   * re-queries on its activation and `#materialize` resolves the HAVING
+   * predicate fresh on every query, so wiring a second listener would
+   * double-query. Skip it.
    */
   #wireHavingBy(): void {
     const havingBy = this.#havingBy;
@@ -804,6 +987,26 @@ export abstract class BaseDataClient<
     havingBy.addEventListener('value', listener);
     this.onDestroy(() => havingBy.removeEventListener('value', listener));
   }
+}
+
+/**
+ * `selection.predicate(client, noSkip)` evaluated over the Selection's
+ * resolved clause list (and its active clause) rather than its last
+ * dispatched one. Delegates to the Selection's own resolver, so union /
+ * intersect / `empty` / `cross` semantics, the active-clause short-circuit
+ * (unless `noSkip`) and cross-filter self-exclusion are unchanged.
+ */
+function resolvedPredicate(
+  selection: Selection,
+  client: MosaicClient,
+  noSkip: boolean,
+): ReturnType<Selection['predicate']> {
+  const clauses = selection._resolved;
+  const active = noSkip ? null : clauses.active;
+  // Upstream's `predicate` passes a null (`noSkip`) or possibly missing
+  // active clause the same way (typed as always present); the resolver
+  // null-guards it.
+  return selection.resolver.predicate(clauses, active!, client);
 }
 
 /**
