@@ -12,7 +12,10 @@ import { useMosaicCoordinator } from './context';
 import { deriveStatus, paramsKey, skipSourcesKey, useBoundClient } from './use-data-client';
 
 export type UseMosaicHistogramOptions = Omit<HistogramClientOptions, 'coordinator'> & {
-  /** Defaults to the nearest `MosaicProvider`, then the global coordinator. */
+  /**
+   * Defaults to the nearest `MosaicProvider`, then the global coordinator (the
+   * global only when there is no provider; a `coordinator={null}` provider throws).
+   */
   coordinator?: Coordinator;
 };
 

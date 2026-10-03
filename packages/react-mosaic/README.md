@@ -32,7 +32,7 @@ function AthletesTable() {
 }
 ```
 
-Wrap your app in `<MosaicProvider coordinator={...}>` (or pass `coordinator` per hook; the upstream global coordinator is the final fallback).
+Wrap your app in `<MosaicProvider coordinator={...}>` (or pass `coordinator` per hook; with no provider at all, the upstream global coordinator is the final fallback). `coordinator={null}` marks an explicit boundary: hooks below it throw instead of falling back.
 
 ## What lives here
 

@@ -6,8 +6,13 @@ import type { ReactNode } from 'react';
 const MosaicTopologyContext = createContext<Topology | null>(null);
 
 export interface MosaicTopologyProviderProps {
-  /** The single topology instance to distribute (typically from `useTopology`). */
-  topology: Topology;
+  /**
+   * The single topology instance to distribute (typically from `useTopology`).
+   * `null` marks an explicit boundary (e.g. a subtree whose topology is still
+   * loading): it shadows any outer provider, so topology hooks below it throw
+   * the same "no provider" error instead of resolving a parent's topology.
+   */
+  topology: Topology | null;
   children?: ReactNode;
 }
 
@@ -28,16 +33,18 @@ export function MosaicTopologyProvider(props: MosaicTopologyProviderProps) {
 /**
  * Return the {@link Topology} provided by the nearest
  * {@link MosaicTopologyProvider}. Throws a clear error when used outside a
- * provider — a topology is a required page-scope object, so there is no sensible
- * default to fall back to.
+ * provider, or below one given `topology={null}` — a topology is a required
+ * page-scope object, so there is no sensible default to fall back to.
  */
 export function useMosaicTopology(): Topology {
   const topology = useContext(MosaicTopologyContext);
   if (topology === null) {
     throw new Error(
       '[react-mosaic] useMosaicTopology must be used within a ' +
-        '<MosaicTopologyProvider>. Wrap the subtree in a provider and pass it ' +
-        'a topology from useTopology(config, options).',
+        '<MosaicTopologyProvider> that holds a topology. Wrap the subtree in a ' +
+        'provider and pass it a topology from useTopology(config, options); ' +
+        'below a provider given topology={null} (an explicit boundary), gate ' +
+        'the topology hooks on readiness.',
     );
   }
   return topology;
