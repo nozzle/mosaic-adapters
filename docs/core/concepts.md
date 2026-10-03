@@ -38,6 +38,8 @@ The input-driven triggers (`setInputs`, Param and `havingBy` `'value'` events) a
 
 Every trigger supersedes whatever main query was still in flight. Only the response to the **most recent** request writes `status`/data to the store; a response for an older request — whether it succeeds or fails, and whichever order the responses arrive in — is dropped. So while filter A's query is still running and filter B's query is issued, the store stays `'pending'` until B answers, rather than briefly reporting `'success'` with A's rows against B's `inputs`. A build that yields no query (`buildQuery` returns `null`) counts as the current request too: its empty payload is final and any late result is discarded. Nothing is cancelled at the connector — the older query still runs to completion in the database — the guarantee is about what the store advertises.
 
+The guarantee also holds for a query that interpolates a live Param (``sql`… ${param}` `` anywhere in the query, or `column(param)`), which would otherwise re-render with the Param's newest value each time it is stringified. The client freezes each request at the Param values it was built with: the SQL sent to the database (on its own or merged by query consolidation), the SQL its result is cached under, `lastQuery`, and a failed request's `QueryError.sql` all keep the build-time text. A Param change can therefore never make an older request's failure or cancellation count as the newer request's. Your own query object is not modified and keeps rendering live.
+
 ## The store
 
 Every client exposes a `@tanstack/store` `Store`. The base shape:
