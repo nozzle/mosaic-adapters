@@ -1,5 +1,22 @@
 # @nozzleio/mosaic-tanstack-table-core
 
+## 0.14.0
+
+### Minor Changes
+
+- [#288](https://github.com/nozzle/mosaic-adapters/pull/288) [`95ba3e1`](https://github.com/nozzle/mosaic-adapters/commit/95ba3e1ae10725051e5a34fe681ed46217d04529) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Expose the rows client's row selection as state, and let the TanStack Table filter bridge be conditional or keep its filters applied after teardown.
+
+  - `RowsClientState` gains `selected`: the currently published row-selection tuples (aligned to `publish.select.columns`), `[]` when nothing is selected. It follows every change, including `selectRows`, `setSelectedValues`, persisted/FilterSet hydration, external clears and the destroy-time clear. It only notifies subscribers when the value actually changes.
+  - `setSelectedValues` now accepts readonly tuples, so `state.selected` can be replayed directly. The tuples are copied, not held.
+  - `FilterBridge.destroy()` accepts an optional `{ retainSpecs: true }` (new `FilterBridgeDestroyOptions` type) to leave every managed spec in the set instead of removing it. The default is unchanged: destroy removes the specs the bridge wrote.
+  - `useTanStackTableFilterBridge` accepts `set: undefined`, which makes the bridge inert (no bridge, no publishing, no `onExternalChange`). Switching a set to `undefined` tears the bridge down like an unmount. The new `retainSpecsOnUnmount` option (default `false`) keeps the managed specs in the set on teardown.
+
+### Patch Changes
+
+- [#274](https://github.com/nozzle/mosaic-adapters/pull/274) [`4810a46`](https://github.com/nozzle/mosaic-adapters/commit/4810a46e410c6885b63d53395a1c3990e642b115) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Facet client `search` now matches `%`, `_` and `\` literally, like upstream's `clauseMatch` 'contains' mode. The search text is escaped and the `ILIKE` uses `ESCAPE '\'`, so searching `0%` no longer matches `1000`. The `clampPagination` JSDoc now shows applying it to the pagination state in an effect after the total settles, not during render.
+- Updated dependencies [[`e1c1f3d`](https://github.com/nozzle/mosaic-adapters/commit/e1c1f3df9537098d92b0901e016d8423d6b898cb), [`a357023`](https://github.com/nozzle/mosaic-adapters/commit/a3570237be6e5c00b49beedfae40226217650f8f), [`3c35f1e`](https://github.com/nozzle/mosaic-adapters/commit/3c35f1e9dcc67aeb5eab41ddb93d9c49d4bc1756), [`c71dc46`](https://github.com/nozzle/mosaic-adapters/commit/c71dc463512416c18ad9b70eda1da1959e27cf74), [`7ad8964`](https://github.com/nozzle/mosaic-adapters/commit/7ad89646d7f771b11c3e9d0e0e00d6581e50b32e), [`4810a46`](https://github.com/nozzle/mosaic-adapters/commit/4810a46e410c6885b63d53395a1c3990e642b115), [`4ad2f5d`](https://github.com/nozzle/mosaic-adapters/commit/4ad2f5df1674bf1709523ce46dc957519ef23714), [`ec34218`](https://github.com/nozzle/mosaic-adapters/commit/ec34218a96fb713777979df61225a61586d00b9c), [`27fe544`](https://github.com/nozzle/mosaic-adapters/commit/27fe544138b29c4a7323eddc3f2b0410fe02ae3f), [`9799aaa`](https://github.com/nozzle/mosaic-adapters/commit/9799aaa3e3df1557e6256acb7fcebae76a2d5f2a), [`4df81ea`](https://github.com/nozzle/mosaic-adapters/commit/4df81eaef7b43cd10b9d55671836f401d38c4a0a), [`6608afc`](https://github.com/nozzle/mosaic-adapters/commit/6608afc216a75604ab15cfd341a860f395e9ca87), [`974f5d7`](https://github.com/nozzle/mosaic-adapters/commit/974f5d79baed078d5afbfb0f5573f5c3bee6f8d6), [`e1277e1`](https://github.com/nozzle/mosaic-adapters/commit/e1277e1ec168fb5ea0bb7059efe6ec255725b9de), [`95ba3e1`](https://github.com/nozzle/mosaic-adapters/commit/95ba3e1ae10725051e5a34fe681ed46217d04529), [`9c5a5ee`](https://github.com/nozzle/mosaic-adapters/commit/9c5a5eea7fce13b4e0f125e93645deea24283e72), [`9c5a5ee`](https://github.com/nozzle/mosaic-adapters/commit/9c5a5eea7fce13b4e0f125e93645deea24283e72), [`5f066c8`](https://github.com/nozzle/mosaic-adapters/commit/5f066c8eddc855d1ffec27cd427f8e58237545f1), [`15f1cd3`](https://github.com/nozzle/mosaic-adapters/commit/15f1cd3e0a3f632c66cce24e903882f32d950586), [`5067e8a`](https://github.com/nozzle/mosaic-adapters/commit/5067e8af5a9b82698a90bfd6a2938fd2370e1138)]:
+  - @nozzleio/mosaic-core@0.10.0
+
 ## 0.13.1
 
 ### Patch Changes
