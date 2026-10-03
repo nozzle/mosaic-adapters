@@ -53,6 +53,8 @@ Every client exposes a `@tanstack/store` `Store`. The base shape:
 
 Specializations add their payload (`rows`/`totalRows`, `values`). Read `store.state`, subscribe with `store.subscribe`.
 
+When you call `coordinator.query()` yourself, read its result (an Arrow table, or an array from a JSON connector) with the same helpers the clients use: `toResultRows(result)` returns row objects, `firstResultRow(result)` returns the first row (read with `.get(0)`, without materializing the rest) or `undefined`, and `resultRowCount(result)` returns `numRows` or the array length.
+
 With Mosaic 0.30+, a main-query failure sets `error` to the upstream
 `QueryError` class. Narrow it with `instanceof QueryError` (imported from
 `@uwdata/mosaic-core`) to inspect `.sql`, the SQL the coordinator actually
@@ -86,7 +88,7 @@ Matching is by the stable id a clause's source carries (`clause.source.id`) — 
 
 Skipping composes on top of everything else the Selection's resolver does: crossfilter self-exclusion still applies, and union / intersect / `empty` semantics are preserved — resolution delegates to the Selection's own resolver rather than a hand-rolled one. An absent or empty set is byte-identical to not passing the option.
 
-Skipping happens **in front of the coordinator**, not just while building SQL: the client subscribes to a derived Selection that never carries a skipped clause (`createSkipProjectedSelection`, the same relay mechanism as `include` / composed Selections). A change to a skipped source is therefore not a re-query trigger at all — no request is issued and `status` never leaves `'success'` — while a change to any kept clause, `setInputs`, a Param, or `refetch()` refreshes as usual. The same applies to `havingBy`. The derivation follows both relayed `update()` calls and the parent's emitted `'value'`, so a parent that publishes whole snapshots (a mapped projection Selection, or upstream `clone()`/`remove()`) is honoured too; in that path the effective list is compared by content — source, predicate SQL and `clients` — so fresh clause objects with unchanged meaning do not re-query.
+Skipping happens **in front of the coordinator**, not just while building SQL: the client subscribes to a derived Selection that never carries a skipped clause (`createSkipProjectedSelection`, a [mapped Selection](./selection-topology.md#mapped-selections) using the same relay mechanism as `include` / composed Selections). A change to a skipped source is therefore not a re-query trigger at all — no request is issued and `status` never leaves `'success'` — while a change to any kept clause, `setInputs`, a Param, or `refetch()` refreshes as usual. The same applies to `havingBy`. The derivation follows both relayed `update()` calls and the parent's emitted `'value'`, so a parent that publishes whole snapshots (a mapped projection Selection, or upstream `clone()`/`remove()`) is honoured too; in that path the effective list is compared by content — source, predicate SQL and `clients` — so fresh clause objects with unchanged meaning do not re-query.
 
 A non-empty set forces `filterStable: false` (pre-aggregation off): Mosaic's pre-aggregation optimizer re-applies the active clause _outside_ the client's query callback, which would otherwise leak a skipped clause back in.
 

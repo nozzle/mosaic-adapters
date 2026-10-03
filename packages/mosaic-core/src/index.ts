@@ -2,6 +2,23 @@ export { createRowsClient } from './rows-client';
 export { createValuesClient } from './values-client';
 export { createFacetClient } from './facet-client';
 export { createHistogramClient } from './histogram-client';
+export {
+  histogramBinning,
+  histogramBinsFromRows,
+  histogramExtentQuery,
+  histogramFilter,
+  histogramSelect,
+} from './histogram';
+export type {
+  HistogramBase,
+  HistogramBinOptions,
+  HistogramBinning,
+  HistogramBinningOptions,
+  HistogramBinsResult,
+  HistogramColumn,
+  HistogramExtentQueryOptions,
+  HistogramScale,
+} from './histogram';
 export { createSparklineClient } from './sparkline-client';
 export { createRollupClient, rollupRowsToTree } from './rollup-client';
 export { createPivotClient } from './pivot-client';
@@ -39,12 +56,19 @@ export * from './filter-set/index';
 
 export * from './topology/index';
 
+export { createMappedSelection } from './mapped-selection';
+export type {
+  MappedSelectionHandle,
+  MappedSelectionOptions,
+  SelectionClauseMap,
+} from './mapped-selection';
+
 export { createSkipProjectedSelection } from './skip-projection';
 export type { SkipProjectedSelectionHandle } from './skip-projection';
 
 export { isFilterSetPublishTarget } from './types';
 
-export { deepEqual, resolveCoerce } from './utils';
+export { deepEqual, firstResultRow, resolveCoerce, resultRowCount, toResultRows } from './utils';
 
 export type { Persister, PersisterWriteContext, PersisterWriteReason } from './persistence';
 

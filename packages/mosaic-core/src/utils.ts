@@ -65,6 +65,56 @@ export function toResultRows(data: unknown): Array<Record<string, unknown>> {
 }
 
 /**
+ * The first row of a coordinator query result, or `undefined` when it has
+ * none. Arrow tables are read with `.get(0)`, so a large result is never
+ * materialized just to read its first row; arrays return `[0]`.
+ */
+export function firstResultRow(data: unknown): Record<string, unknown> | undefined {
+  if (Array.isArray(data)) {
+    return toRowObject(data[0]);
+  }
+  if (data === null || typeof data !== 'object') {
+    return undefined;
+  }
+  if ('get' in data && typeof data.get === 'function') {
+    if (resultRowCount(data) < 1) {
+      return undefined;
+    }
+    return toRowObject((data as { get: (index: number) => unknown }).get(0));
+  }
+  return toResultRows(data)[0];
+}
+
+/**
+ * The number of rows in a coordinator query result: an Arrow table's
+ * `numRows`, an array's `length`, else 0. Reads the count without
+ * materializing rows when `numRows`/`length` is available; a result that only
+ * exposes `toArray()` is materialized to count it.
+ */
+export function resultRowCount(data: unknown): number {
+  if (Array.isArray(data)) {
+    return data.length;
+  }
+  if (data === null || typeof data !== 'object') {
+    return 0;
+  }
+  if ('numRows' in data && typeof data.numRows === 'number') {
+    return data.numRows;
+  }
+  if ('length' in data && typeof data.length === 'number') {
+    return data.length;
+  }
+  return toResultRows(data).length;
+}
+
+function toRowObject(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== 'object') {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+/**
  * Resolve the `coerce` option to a row mapper: closures pass through
  * (latest-ref semantics preserved by the caller), descriptor maps compile to
  * a mapper applying per-column coercions. Null/undefined values stay null.
