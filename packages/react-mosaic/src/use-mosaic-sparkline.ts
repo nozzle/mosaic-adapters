@@ -16,6 +16,7 @@ import {
   useBoundClient,
   useStableQuerySource,
 } from './use-data-client';
+import type { QueryKeyOptions } from './use-data-client';
 
 export type UseMosaicSparklineOptions = Omit<SparklineClientOptions, 'coordinator'> & {
   /**
@@ -23,7 +24,7 @@ export type UseMosaicSparklineOptions = Omit<SparklineClientOptions, 'coordinato
    * global only when there is no provider; a `coordinator={null}` provider throws).
    */
   coordinator?: Coordinator;
-};
+} & QueryKeyOptions;
 
 export type UseMosaicSparklineResult = SparklineClientState & {
   client: SparklineClient;
@@ -61,6 +62,7 @@ export function useMosaicSparkline(options: UseMosaicSparklineOptions): UseMosai
     ],
     inputs: options.inputs,
     enabled,
+    queryKey: options.queryKey,
     sync: (c) => {
       c.setQuery(from);
     },

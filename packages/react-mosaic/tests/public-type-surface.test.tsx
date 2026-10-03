@@ -11,11 +11,13 @@ import { describe, expect, test } from 'vitest';
 
 import type {
   DataClientOptions,
+  DataClientSettled,
   DataClientStatus,
   FilterSet,
   FilterSpec,
   ParamValue,
   Persister,
+  QueryKeyOptions,
   Topology,
   TopologyConfig,
   TopologyOptions,
@@ -39,7 +41,10 @@ describe('public type surface', () => {
       Reexported<FilterSet>,
       Reexported<FilterSpec>,
       Reexported<DataClientOptions<Record<string, unknown>>>,
+      Reexported<DataClientSettled<Record<string, unknown>>>,
       Reexported<Persister<unknown>>,
+      // The hooks' shared `queryKey` option, exported for hook wrappers.
+      Reexported<QueryKeyOptions>,
     ];
     const pinned: _Pins | undefined = undefined;
     expect(pinned).toBeUndefined();

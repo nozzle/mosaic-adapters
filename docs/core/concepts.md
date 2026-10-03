@@ -21,18 +21,19 @@ const client = createRowsClient({
 - `having` is the same for `havingBy`. Predicate validity in HAVING position (aggregate references) is the caller's responsibility.
 - `inputs` is the current inputs object; only consume it with `inputMode: 'manual'`.
 
-The factory is held by **latest-ref** (React-Query `queryFn` style): a new function identity never re-queries. Swap it with `client.setQuery(fn)`; the next trigger uses the latest factory. This structurally eliminates function-identity re-query bugs.
+The factory is held by **latest-ref** (React-Query `queryFn` style): a new function identity never re-queries. Swap it with `client.setQuery(fn)`; the next trigger uses the latest factory. This structurally eliminates function-identity re-query bugs. When the swapped factory is a genuinely new query (recompiled pivot columns, a rule set, picked columns), say so with `client.invalidate()` — see [re-query triggers](#re-query-triggers).
 
 ## Re-query triggers
 
-Exactly four things trigger a query:
+Exactly five things trigger a query:
 
 1. **Inputs change** — `setInputs(patch)` merge-patches and value-diffs; a value-equal patch is a no-op, a changed patch issues exactly one query.
 2. **Selection updates** — `filterBy` via the native coordinator wiring; `havingBy` via the client's own wiring. Passing the same Selection as both routes its predicate into both WHERE and HAVING on a single re-query per activation (rarely what you want; prefer a separate Selection for aggregate predicates).
 3. **Param change** — every Param in `params` re-queries the client on its `'value'` event (upstream never does this automatically).
-4. **`refetch()`** — force a query with current state.
+4. **`refetch()`** — force a query with current state. It queries immediately and also resets query-derived memos (the rows client re-issues its `rowCount: 'query'` COUNT), because the underlying data may have changed. Use it after replacing the data.
+5. **`invalidate()`** — the query itself changed: re-query with the current factory, inputs and filters. Call it after `setQuery(...)` with a recompiled factory. Unlike `refetch()`, it is coalesced like an inputs change (an `invalidate()` in the same tick as a `setInputs` issues one query) and keeps query-derived memos, which already key on the SQL they derive from (a recompiled query whose COUNT SQL changed re-counts on its own). While the client is disabled, the re-query runs once it is enabled. In React, the hooks' [`queryKey`](../react/hooks.md#re-querying-a-compiled-query-querykey) option calls it for you.
 
-The input-driven triggers (`setInputs`, Param and `havingBy` `'value'` events) are **coalesced**: a burst of synchronous changes in one tick collapses into a single query build (the last state wins) instead of one query per event. In a visible browser tab this rides upstream `requestUpdate()`, which throttles on an animation frame. Browsers pause animation frames in hidden tabs, so while `document.visibilityState === 'hidden'` (and in environments without `requestAnimationFrame`, such as Node) the client falls back to a macrotask flush with the same one-build-per-tick semantics, and re-queries triggered in a background tab still complete. `status` still flips to `'pending'` synchronously so loading stays responsive. `refetch()` bypasses coalescing and queries immediately.
+The input-driven triggers (`setInputs`, Param and `havingBy` `'value'` events) and `invalidate()` are **coalesced**: a burst of synchronous changes in one tick collapses into a single query build (the last state wins) instead of one query per event. In a visible browser tab this rides upstream `requestUpdate()`, which throttles on an animation frame. Browsers pause animation frames in hidden tabs, so while `document.visibilityState === 'hidden'` (and in environments without `requestAnimationFrame`, such as Node) the client falls back to a macrotask flush with the same one-build-per-tick semantics, and re-queries triggered in a background tab still complete. `status` still flips to `'pending'` synchronously so loading stays responsive. `refetch()` bypasses coalescing and queries immediately.
 
 ### The current-request guarantee
 
@@ -48,14 +49,38 @@ Every client exposes a `@tanstack/store` `Store`. The base shape:
 {
   status: 'idle' | 'pending' | 'success' | 'error',
   error: Error | null,
-  inputs: TInputs,         // echo of what the last query was built from — never a source of truth
-  lastQuery: string | null // SQL of the last main query (observability)
+  inputs: TInputs,          // inputs the last *built* main query was built from — never a source of truth
+  lastQuery: string | null, // SQL of the last *built* main query (observability)
+  settled: { inputs: TInputs; query: string | null } | null, // what the payload on screen answers
 }
 ```
 
 Specializations add their payload (`rows`/`totalRows`, `values`). Read `store.state`, subscribe with `store.subscribe`.
 
 When you call `coordinator.query()` yourself, read its result (an Arrow table, or an array from a JSON connector) with the same helpers the clients use: `toResultRows(result)` returns row objects, `firstResultRow(result)` returns the first row (read with `.get(0)`, without materializing the rest) or `undefined`, and `resultRowCount(result)` returns `numRows` or the array length.
+
+### Built vs settled
+
+`inputs` and `lastQuery` are written when a query is **built**, so while a re-query is pending they already describe the new request — but the payload in the store is still the previous response (the store keeps the old rows until the new ones arrive). `settled` is the provenance of that payload: the `inputs` and SQL of the request whose response (or empty round) produced it.
+
+- `settled` is `null` until the first successful response or empty round.
+- It moves only when the current request succeeds. A failed, cancelled or superseded request leaves it — and the payload — untouched.
+- An empty round (`buildQuery` returns `null`) settles with `query: null`, matching `lastQuery: null`.
+
+Two derivations follow:
+
+```ts
+const { status, settled, lastQuery } = client.store.state;
+
+// Never loaded yet (vs. loaded but empty, which has `settled !== null`).
+const isInitialLoading = status === 'pending' && settled === null;
+
+// The payload answers an older query than the last one built
+// (a re-query is pending, or it failed and the old rows are still shown).
+const isStale = settled !== null && settled.query !== lastQuery;
+```
+
+**Pre-aggregation caveat.** A response the client did not build the SQL for has `settled.query === null` — notably selection updates answered by the coordinator's pre-aggregation path, which queries a materialized view instead of the client's query (the first such update, which creates the view, included; if a pre-aggregated query fails and upstream retries with the client's own query, that response carries its SQL again, as does an update with no active clause, such as after `Selection.reset()`, which upstream answers with the client's own query). The optimizer also builds the client's query to analyze it, which moves `lastQuery` without issuing it. When pre-aggregation can apply (a `filterBy` Selection, `filterStable` left on, and the coordinator's pre-aggregation enabled), guard the stale check with `settled.query !== null`, or compare `settled.inputs` instead when only inputs matter.
 
 ### Query errors and cancellation
 

@@ -3,6 +3,24 @@ import type { DataClient, DataClientStatus, QuerySource } from '@nozzleio/mosaic
 import type { Param } from '@uwdata/mosaic-core';
 import { useEffect, useReducer, useRef } from 'react';
 
+/** The `queryKey` option shared by every data-client hook. */
+export interface QueryKeyOptions {
+  /**
+   * Re-query when the query itself changes. `query` (and `from`) are held by
+   * latest-ref, so a recompiled factory is only picked up by the next
+   * trigger; list here the values the factory is compiled from (pivot
+   * columns, a rule set, picked columns) and a change re-queries via
+   * `client.invalidate()` — coalesced with an inputs change in the same
+   * render into one query, and keeping derived memos such as the rows
+   * client's COUNT query (unlike `refetch()`).
+   *
+   * Compared element-wise with `Object.is` against the previous render (the
+   * `useVgPlot` deps contract); the first render never re-queries. Omitted,
+   * a new factory never re-queries on its own.
+   */
+  queryKey?: ReadonlyArray<unknown>;
+}
+
 /**
  * The controlled-binding engine shared by every client hook. Option handling
  * follows the round-3 identity rules:
@@ -16,6 +34,12 @@ import { useEffect, useReducer, useRef } from 'react';
  *   (keys that disappear between renders are explicitly cleared) and deep
  *   value-diffed by the core — a re-query happens iff the value changed;
  *   `enabled` goes through `setEnabled`.
+ * - **Query key** (`queryKey`, opt-in): compared element-wise by `Object.is`
+ *   against the previous committed render; a change calls `invalidate()`
+ *   after the inputs sync, so it coalesces with an inputs change into one
+ *   query. The first render and a freshly recreated client never invalidate
+ *   (their first query is built from the latest factory anyway). Omitted, it
+ *   never re-queries — latest-ref semantics are unchanged.
  *
  * Clients are created lazily during render (the ref-guarded creation runs
  * once per mount, StrictMode included) but always with `enabled: false`; the
@@ -35,10 +59,15 @@ export function useBoundClient<
   structuralKey: ReadonlyArray<unknown>;
   inputs: TInputs | undefined;
   enabled: boolean;
+  /**
+   * The hook's `queryKey` option: a change re-queries via `invalidate()`.
+   * `undefined` (omitted) never re-queries.
+   */
+  queryKey: ReadonlyArray<unknown> | undefined;
   /** Latest-ref swaps (`setQuery`, `setCoerce`); runs before input/enabled sync. */
   sync: (client: TClient) => void;
 }): TClient {
-  const { create, structuralKey, inputs, enabled, sync } = binding;
+  const { create, structuralKey, inputs, enabled, queryKey, sync } = binding;
 
   const clientRef = useRef<TClient | null>(null);
   const keyRef = useRef<ReadonlyArray<unknown> | null>(null);
@@ -66,16 +95,26 @@ export function useBoundClient<
   }, [client]);
 
   const lastInputsRef = useRef<TInputs | undefined>(inputs);
+  // The query key last synced, and the client it was synced to.
+  const lastQueryKeyRef = useRef<{
+    client: TClient;
+    queryKey: ReadonlyArray<unknown> | undefined;
+  } | null>(null);
   useEffect(() => {
     if (client.destroyed) {
       return;
     }
     // Order matters: latest-ref swaps first so a triggered re-query is built
-    // from the latest factory; `enabled` last so the deferred first query
+    // from the latest factory; `invalidate` after `setInputs` so both
+    // coalesce into one query; `enabled` last so the deferred first query
     // sees current inputs.
     sync(client);
     client.setInputs(controlledInputsPatch(lastInputsRef.current, inputs));
     lastInputsRef.current = inputs;
+    if (queryKeyChanged(lastQueryKeyRef.current, client, queryKey)) {
+      client.invalidate();
+    }
+    lastQueryKeyRef.current = { client, queryKey };
     client.setEnabled(enabled);
   });
 
@@ -132,6 +171,27 @@ export function skipSourcesKey(skipSources: ReadonlySet<string> | undefined): st
     return undefined;
   }
   return [...skipSources].sort().join('\u0000');
+}
+
+/**
+ * Whether `queryKey` changed since it was last synced to this same client.
+ * The first sync of a client (initial render, structural recreation,
+ * StrictMode revival) is never a change: that client's first query is built
+ * from the latest factory. Omitted on both sides is no change; a key that
+ * appears or disappears is one.
+ */
+function queryKeyChanged<TClient>(
+  last: { client: TClient; queryKey: ReadonlyArray<unknown> | undefined } | null,
+  client: TClient,
+  queryKey: ReadonlyArray<unknown> | undefined,
+): boolean {
+  if (last === null || last.client !== client) {
+    return false;
+  }
+  if (last.queryKey === undefined || queryKey === undefined) {
+    return last.queryKey !== queryKey;
+  }
+  return !sameKey(last.queryKey, queryKey);
 }
 
 function sameKey(a: ReadonlyArray<unknown> | null, b: ReadonlyArray<unknown>): boolean {

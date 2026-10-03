@@ -86,6 +86,7 @@ export type {
   ColumnPathOptions,
   DataClient,
   DataClientOptions,
+  DataClientSettled,
   DataClientState,
   DataClientStatus,
   FacetClient,

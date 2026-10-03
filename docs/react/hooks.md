@@ -56,8 +56,8 @@ const athletes = useMosaicRows<AthleteRow>({
 
 // athletes.rows, athletes.totalRows, athletes.selected (published select
 // tuples), athletes.status, athletes.error, athletes.lastQuery,
-// athletes.client (imperative: selectRows, setSelectedValues, hoverRow,
-// prefetch, refetch)
+// athletes.settled, athletes.client (imperative: selectRows,
+// setSelectedValues, hoverRow, prefetch, refetch, invalidate)
 
 const kpis = useMosaicValues<{ athletes: number; medals: number }>({
   query: ({ where }) =>
@@ -76,11 +76,41 @@ How a hook reacts to an option change depends on which of three classes the opti
 2. **Latest-ref** — `query`/`from` and `coerce` (React-Query `queryFn` style). New function identities never recreate the client and never re-query; the next query, whatever triggers it, is built from the latest functions. Inline closures are free. A `TableRefNode` source is compared by its SQL string form, so `from: new TableRefNode(['main', 'events'])` built inline on every render is the same source.
 3. **Value-diffed** — `inputs` is compared by value and forwarded through `setInputs`; a value-equal object with fresh identity is a no-op. The option fully owns the inputs: a key present on the previous render and absent now is cleared. `enabled` forwards through `setEnabled` (e.g. `useMosaicFacet({ enabled: open })` queries options only while a dropdown is open).
 
-Re-query triggers are exactly: inputs change, Selection activation, Param change, `refetch()`.
+Re-query triggers are exactly: inputs change, Selection activation, Param change, `refetch()`, and a `queryKey` change (`client.invalidate()`).
+
+## Re-querying a compiled query (`queryKey`)
+
+Latest-ref is right for inline closures, but an app that **compiles** its query — pivot columns, a rule set, a column picker — needs a way to say "this is a new query". Every data-client hook (`useMosaicRows`, `useMosaicValues`, `useMosaicFacet`, `useMosaicHistogram`, `useMosaicSparkline`, `useMosaicRollup`, `useMosaicPivot`) takes an optional `queryKey` deps array. List the values the query is compiled from; when one changes, the hook calls [`client.invalidate()`](../core/concepts.md#re-query-triggers):
+
+```tsx
+const query = useMemo(() => compileQuery(columns, rules), [columns, rules]);
+
+const table = useMosaicRows<Row>({
+  query,
+  filterBy: $page,
+  inputs,
+  queryKey: [columns, rules],
+});
+```
+
+- Compared element-wise with `Object.is` against the previous render — the same contract as [`useVgPlot`](./use-vg-plot.md) deps. A fresh array with the same elements is no change; keep the elements stable (state, `useMemo`) or use primitives.
+- Adding or removing the key counts as a change: going from an array to `undefined` (or back) re-queries, so `queryKey: cond ? [a] : undefined` re-queries on every toggle. Keep it an array and vary its elements instead.
+- The first render never re-queries (the initial query already uses the latest factory), and neither does a render that recreates the client through a structural option.
+- The key is applied after `inputs`, so a key change in the same render as an inputs change is **one** query.
+- Prefer it over calling `refetch()` from an effect: `refetch()` is immediate, so next to an inputs change it issues the main query twice, and it re-runs the rows client's COUNT query even when the count cannot have changed. Keep `refetch()` for "the data changed".
+- Omitted, nothing changes: a new `query` never re-queries on its own.
+- Wrapping a hook? The option's type is exported as `QueryKeyOptions`.
 
 ## Status semantics
 
 The hooks report React-Query semantics: while `enabled`, a client that has not completed its first query reports `'pending'` from the very first render; `'idle'` surfaces only while `enabled: false`. (The core store itself stays `'idle'` until the first query actually starts — the hook derives the difference.)
+
+`status` alone does not say whether the data on screen belongs to the current query: during a re-query it is `'pending'` while the previous rows are still shown, and `inputs`/`lastQuery` already describe the new request. Use `settled` (see [built vs settled](../core/concepts.md#built-vs-settled)):
+
+```ts
+const isInitialLoading = table.status === 'pending' && table.settled === null;
+const isStale = table.settled !== null && table.settled.query !== table.lastQuery;
+```
 
 ## Lifecycle
 

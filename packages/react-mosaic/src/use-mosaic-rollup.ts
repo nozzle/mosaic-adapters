@@ -16,6 +16,7 @@ import {
   useBoundClient,
   useStableQuerySource,
 } from './use-data-client';
+import type { QueryKeyOptions } from './use-data-client';
 
 export type UseMosaicRollupOptions<TRow> = Omit<RollupClientOptions<TRow>, 'coordinator'> & {
   /**
@@ -23,7 +24,7 @@ export type UseMosaicRollupOptions<TRow> = Omit<RollupClientOptions<TRow>, 'coor
    * global only when there is no provider; a `coordinator={null}` provider throws).
    */
   coordinator?: Coordinator;
-};
+} & QueryKeyOptions;
 
 export type UseMosaicRollupResult<TRow> = RollupClientState<TRow> & {
   client: RollupClient<TRow>;
@@ -56,6 +57,7 @@ export function useMosaicRollup<TRow>(
     ],
     inputs: options.inputs,
     enabled,
+    queryKey: options.queryKey,
     sync: (c) => {
       c.setQuery(query);
       c.setCoerce(options.coerce);
