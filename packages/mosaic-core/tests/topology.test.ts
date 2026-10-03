@@ -116,6 +116,27 @@ describe('createTopology — happy-path resolution', () => {
     topology.destroy();
   });
 
+  test('filter-set defaultTarget routes target-less specs to the declared target', () => {
+    const topology = createTopology({
+      filters: {
+        type: 'filter-set',
+        targets: { members: 'crossfilter', having: 'intersect' },
+        defaultTarget: 'members',
+      },
+    });
+
+    const filterSet = topology.getFilterSet('filters');
+    expect(filterSet?.defaultTarget).toBe('members');
+    filterSet?.set({ id: 'p', column: 'sport', kind: 'point', value: 'swim' });
+
+    expect(String(topology.resolve('filters.members')._resolved[0]?.predicate)).toContain(
+      '"sport"',
+    );
+    expect(topology.resolve('filters.having')._resolved).toHaveLength(0);
+    expect(filterSet?.store.state.chips[0]?.target).toBe('members');
+    topology.destroy();
+  });
+
   test('filter-set context ref wires the FilterSet subquery context', () => {
     const topology = createTopology({
       ctx: { type: 'crossfilter' },
@@ -184,6 +205,20 @@ describe('createTopology — validation errors', () => {
         combined: { type: 'compose', include: ['missing'] },
       }),
     ).toThrow(/undeclared entry 'missing'/);
+  });
+
+  test('a filter-set defaultTarget that is not a declared target throws', () => {
+    expect(() =>
+      createTopology({
+        filters: {
+          type: 'filter-set',
+          targets: { where: 'crossfilter' },
+          defaultTarget: 'members',
+        },
+      }),
+    ).toThrow(
+      /filter-set entry 'filters' declares defaultTarget 'members', which is not one of its targets \(where\)/,
+    );
   });
 
   test('bare ref to a compound (filter-set) entry throws in a declaration', () => {

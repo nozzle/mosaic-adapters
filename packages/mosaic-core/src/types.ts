@@ -32,6 +32,14 @@ export interface FilterSetPublishTarget {
   kind?: string;
   /** Spec label pass-through (chip label). */
   label?: string;
+  /**
+   * Routing target name written to the published spec's `target`, i.e. which
+   * of the set's target Selections the clause lands on. Omit to fall back to
+   * the set's `defaultTarget` (`'where'` unless configured). Re-adopting a
+   * spec that already lives in the set (remount, set-level persistence)
+   * republishes it unchanged, so its stored `target` is kept.
+   */
+  target?: string;
 }
 
 /**

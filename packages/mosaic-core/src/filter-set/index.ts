@@ -1,4 +1,5 @@
 export { createFilterSet } from './filter-set';
+export { emitFilterSpec, filterSpecPredicate } from './emit';
 export {
   builtinFilterKinds,
   conditionFilterKind,
@@ -11,6 +12,7 @@ export {
 export type { ConditionKindOptions, ConditionOperator, MatchOperator } from './kinds';
 export { formatFilterValue, formatRange } from './format';
 export type {
+  EmitFilterSpecOptions,
   FilterKind,
   FilterKindArgs,
   FilterKindEmission,
@@ -18,9 +20,12 @@ export type {
   FilterSetChip,
   FilterSetDestroyOptions,
   FilterSetOptions,
+  FilterSetResetOptions,
   FilterSetSetOptions,
   FilterSetState,
   FilterSpec,
+  FilterSpecEmission,
+  FilterSpecPredicateOptions,
   OperatorArity,
   OperatorDescriptor,
 } from './types';

@@ -245,6 +245,14 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
           'used as a filter-set context',
         );
       }
+      const defaultTarget = declaration.defaultTarget;
+      if (defaultTarget !== undefined && !Object.hasOwn(declaration.targets, defaultTarget)) {
+        throw new Error(
+          `[mosaic-core] createTopology: filter-set entry '${name}' declares ` +
+            `defaultTarget '${defaultTarget}', which is not one of its targets ` +
+            `(${Object.keys(declaration.targets).join(', ')}).`,
+        );
+      }
     }
   }
 
@@ -576,6 +584,7 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
     const filterSet = createFilterSet({
       targets,
       context,
+      defaultTarget: declaration.defaultTarget,
       kinds: entryOptions?.kinds,
       persist: entryOptions?.persist,
     });

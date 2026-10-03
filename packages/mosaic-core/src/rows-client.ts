@@ -410,6 +410,7 @@ class RowsDataClient<TRow>
           kind: 'points',
           value,
           label: target.label,
+          target: target.target,
         },
         { clients: new Set<MosaicClient>([this.mosaicClient]) },
       );

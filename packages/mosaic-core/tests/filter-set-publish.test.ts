@@ -484,6 +484,194 @@ describe('rows publish.into — remount / adopt self-exclusion', () => {
   });
 });
 
+describe('publish.into target', () => {
+  test('facet: target routes the spec onto that Selection of a multi-target set', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const $where = Selection.crossfilter();
+    const $members = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $where, members: $members } });
+    const facet = createFacetClient({
+      coordinator: db.coordinator,
+      from: 'athletes',
+      column: 'sport',
+      publish: { into: set, id: 'sport', target: 'members' },
+    });
+
+    await waitFor(() => {
+      expect(facet.store.state.status).toBe('success');
+    });
+    facet.setSelected(['swim']);
+
+    expect(set.store.state.specs[0]).toMatchObject({ id: 'sport', target: 'members' });
+    expect($members._resolved).toHaveLength(1);
+    expect($where._resolved).toHaveLength(0);
+    expect(set.store.state.chips[0]?.target).toBe('members');
+    expect(warn).not.toHaveBeenCalled();
+
+    // External removal on the configured target still mirrors back.
+    $members.reset();
+    await waitFor(() => {
+      expect(facet.store.state.selected).toEqual([]);
+    });
+
+    warn.mockRestore();
+    facet.destroy();
+    set.destroy();
+  });
+
+  test('histogram: target routes the interval spec', async () => {
+    const $where = Selection.crossfilter();
+    const $members = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $where, members: $members } });
+    const hist = createHistogramClient({
+      coordinator: db.coordinator,
+      from: 'athletes',
+      column: 'weight',
+      extent: [50, 100],
+      publish: { into: set, id: 'weight', target: 'members' },
+    });
+
+    await waitFor(() => {
+      expect(hist.store.state.status).toBe('success');
+    });
+    hist.setRange([60, 80]);
+
+    expect(set.store.state.specs[0]).toMatchObject({ kind: 'interval', target: 'members' });
+    expect($members._resolved[0]?.meta).toEqual({ type: 'interval' });
+    expect($where._resolved).toHaveLength(0);
+
+    hist.destroy();
+    set.destroy();
+  });
+
+  test('rows: target routes the points spec', async () => {
+    const $where = Selection.crossfilter();
+    const $members = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $where, members: $members } });
+    const rows = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: 'athletes',
+      inputs: { orderBy: [{ column: 'id' }] },
+      publish: { select: { into: set, id: 'picked', columns: ['id'], target: 'members' } },
+    });
+
+    await waitFor(() => {
+      expect(rows.store.state.rows).toHaveLength(6);
+    });
+    rows.selectRows([rows.store.state.rows[0]!]);
+
+    expect(set.store.state.specs[0]).toMatchObject({ kind: 'points', target: 'members' });
+    expect($members._resolved).toHaveLength(1);
+    expect($where._resolved).toHaveLength(0);
+
+    rows.destroy();
+    set.destroy();
+  });
+
+  test("without a target the spec follows the set's defaultTarget", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const $members = Selection.crossfilter();
+    const $having = Selection.intersect();
+    const set = createFilterSet({
+      targets: { members: $members, having: $having },
+      defaultTarget: 'members',
+    });
+    const facet = createFacetClient({
+      coordinator: db.coordinator,
+      from: 'athletes',
+      column: 'sport',
+      publish: { into: set, id: 'sport' },
+    });
+
+    await waitFor(() => {
+      expect(facet.store.state.status).toBe('success');
+    });
+    facet.setSelected(['run']);
+
+    expect(set.store.state.specs[0]?.target).toBeUndefined();
+    expect($members._resolved).toHaveLength(1);
+    expect($having._resolved).toHaveLength(0);
+    // Pre-`defaultTarget`, this clause was warned about and dropped.
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
+    facet.destroy();
+    set.destroy();
+  });
+
+  test('re-adopting a spec from the set keeps its target', async () => {
+    const $where = Selection.crossfilter();
+    const $members = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $where, members: $members } });
+
+    // First mount publishes into `members`, then unmounts; the set keeps the spec.
+    const first = createFacetClient({
+      coordinator: db.coordinator,
+      from: 'athletes',
+      column: 'sport',
+      filterBy: $members,
+      publish: { into: set, id: 'sport', target: 'members' },
+    });
+    await waitFor(() => {
+      expect(first.store.state.status).toBe('success');
+    });
+    first.setSelected(['swim']);
+    first.destroy();
+    expect($members._resolved).toHaveLength(1);
+
+    // Remount adopts the surviving spec and re-keys it to itself. It omits
+    // `target` (the set's default is `where`), so only the stored spec's
+    // target can keep the clause on `members`.
+    const second = createFacetClient({
+      coordinator: db.coordinator,
+      from: 'athletes',
+      column: 'sport',
+      filterBy: $members,
+      publish: { into: set, id: 'sport' },
+    });
+    await waitFor(() => {
+      expect(second.store.state.selected).toEqual(['swim']);
+      expect($members._resolved[0]?.clients?.has(second.mosaicClient)).toBe(true);
+    });
+    expect(set.store.state.specs).toEqual([expect.objectContaining({ target: 'members' })]);
+    expect($members._resolved).toHaveLength(1);
+    expect($where._resolved).toHaveLength(0);
+
+    second.destroy();
+    set.destroy();
+  });
+
+  test('re-adopting a persisted spec keeps its stored target', async () => {
+    const stored: Array<FilterSpec> = [
+      { id: 'picked', column: 'id', kind: 'points', value: [1], target: 'members' },
+    ];
+    const $where = Selection.crossfilter();
+    const $members = Selection.crossfilter();
+    const set = createFilterSet({
+      targets: { where: $where, members: $members },
+      persist: { read: () => stored, write: () => {} },
+    });
+    expect($members._resolved).toHaveLength(1);
+
+    const rows = createRowsClient<AthleteRow>({
+      coordinator: db.coordinator,
+      query: 'athletes',
+      filterBy: $members,
+      inputs: { orderBy: [{ column: 'id' }] },
+      // No `target`: only the persisted spec's target can keep it on `members`.
+      publish: { select: { into: set, id: 'picked', columns: ['id'] } },
+    });
+    await waitFor(() => {
+      expect($members._resolved[0]?.clients?.has(rows.mosaicClient)).toBe(true);
+    });
+    expect(set.store.state.specs[0]?.target).toBe('members');
+    expect($where._resolved).toHaveLength(0);
+
+    rows.destroy();
+    set.destroy();
+  });
+});
+
 describe('filter-set hydration resilience', () => {
   test('one unknown-kind persisted spec is skipped; a valid sibling still applies', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

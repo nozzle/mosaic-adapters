@@ -123,6 +123,7 @@ A [FilterSet](./filter-set.md) whose declared `targets` each become an addressab
 
 - Each `targets` entry (name → resolution strategy) becomes a Selection resolvable as `filters.where`, `filters.having`, `filters.<yourTarget>`. The namespace is exactly the declared target keys — no synthetic names.
 - `context` (optional) is a ref to a declared selection used as the FilterSet's subquery context (for context-dependent membership kinds).
+- `defaultTarget` (optional) is the FilterSet's [`defaultTarget`](./filter-set.md#targets-and-wherehaving-routing): the target a spec goes to when neither its kind nor the spec names one. It must be one of the declared `targets` keys (otherwise construction throws) and defaults to `'where'`. Declare it on sets with no `where` target, e.g. `{ "targets": { "members": "crossfilter", "having": "intersect" }, "defaultTarget": "members" }`.
 - The **code-only** parts of `FilterSetOptions` — `kinds` (functions) and `persist` (a Persister) — are supplied via `options.filterSets[entry]`, keyed by entry name. Specs referencing custom kinds _by name_ still round-trip; only the kind _implementations_ are code.
 
 Compound entry: bare ref is a parse error. Retrieve the constructed FilterSet with `topology.getFilterSet('filters')` (or `topology.filterSets.filters`) to call `set()` / `remove()` / subscribe to its store.
@@ -209,7 +210,7 @@ for (const widget of dashboardSpec.widgets) {
 `topology.reset()` is a **type-aware** page reset, driven by the declaration types — which already encode ownership:
 
 - `standalone` and `external` entries are cleared with upstream `selection.reset()`: every clause is removed in a single update, the removal relays to derived Selections (`compose` / `cascading` contexts), and each clause source's `reset()` is invoked, so interactors that implement it (e.g. vgplot interval / region brushes) clear their own value and overlay too.
-- `filter-set` entries delegate to `filterSet.reset()`, so specs and chips stay consistent.
+- `filter-set` entries delegate to `filterSet.reset()`, so specs and chips stay consistent. To keep some specs through a page-wide reset, declare the entry `reset: false` and call `filterSet.reset({ keep })` yourself (see the [recipe](../react/topology-recipes.md#keeping-some-filter-set-specs)).
 - `compose` and `cascading` are **skipped** — they are derived; resetting their inputs is both sufficient and the only correct semantics.
 - `param` entries are restored to their declared `default`; `external-param` entries are **skipped** (the topology holds no baseline for a caller-owned instance). See [Params](#params).
 

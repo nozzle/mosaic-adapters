@@ -52,7 +52,7 @@ export function useMosaicHistogram(options: UseMosaicHistogramOptions): UseMosai
   // change in target recreates the client (same rationale as `persist`).
   const publish = options.publish;
   const publishKey = isFilterSetPublishTarget(publish)
-    ? [publish.into, publish.id, publish.kind, publish.label]
+    ? [publish.into, publish.id, publish.kind, publish.label, publish.target]
     : [publish?.as];
 
   const client = useBoundClient<HistogramInputs, HistogramClient>({

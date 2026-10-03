@@ -353,6 +353,268 @@ describe('replace / remove / clear / reset', () => {
   });
 });
 
+describe('reset({ keep })', () => {
+  function recordingPersister(): {
+    persister: Persister<Array<FilterSpec>>;
+    writes: Array<{ state: Array<FilterSpec> | null; reason: string }>;
+  } {
+    const writes: Array<{ state: Array<FilterSpec> | null; reason: string }> = [];
+    return {
+      writes,
+      persister: {
+        read: () => null,
+        write: (state, ctx) => writes.push({ state, reason: ctx.reason }),
+      },
+    };
+  }
+
+  test('keeps accepted specs untouched and removes the rest with one store sync + one write', () => {
+    const $where = Selection.crossfilter();
+    const $members = Selection.crossfilter();
+    const { persister, writes } = recordingPersister();
+    const set = createFilterSet({
+      targets: { where: $where, members: $members },
+      persist: persister,
+    });
+
+    set.set({ id: 'pinned', column: 'sport', kind: 'point', value: 'swim', target: 'members' });
+    set.set({ id: 'a', column: 'name', kind: 'match', value: 'a' });
+    set.set({ id: 'b', column: 'weight', kind: 'condition', operator: 'gt', value: 60 });
+    const pinnedClause = $members._resolved[0];
+    expect(pinnedClause).toBeDefined();
+    writes.length = 0;
+
+    let storeSyncs = 0;
+    const subscription = set.store.subscribe(() => {
+      storeSyncs += 1;
+    });
+    let membersUpdates = 0;
+    const onMembers = (): void => {
+      membersUpdates += 1;
+    };
+    $members.addEventListener('value', onMembers);
+
+    set.reset({ keep: (spec) => spec.id === 'pinned' });
+
+    // Removed specs' clauses are cleared; the kept one is never re-published.
+    expect($where._resolved).toHaveLength(0);
+    expect($members._resolved).toHaveLength(1);
+    expect($members._resolved[0]).toBe(pinnedClause);
+    expect(membersUpdates).toBe(0);
+    expect(set.store.state.specs.map((spec) => spec.id)).toEqual(['pinned']);
+    expect(set.store.state.chips.map((chip) => chip.id)).toEqual(['pinned']);
+    expect(storeSyncs).toBe(1);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.reason).toBe('update');
+    expect(writes[0]?.state?.map((spec) => spec.id)).toEqual(['pinned']);
+
+    // The kept spec is still fully managed afterwards.
+    set.remove('pinned');
+    expect($members._resolved).toHaveLength(0);
+
+    $members.removeEventListener('value', onMembers);
+    subscription.unsubscribe();
+    set.destroy();
+  });
+
+  test('a keep that accepts nothing behaves like reset(): one (null, clear) write', () => {
+    const $where = Selection.crossfilter();
+    const { persister, writes } = recordingPersister();
+    const set = createFilterSet({ targets: { where: $where }, persist: persister });
+
+    set.set({ id: 'a', column: 'sport', kind: 'point', value: 'swim' });
+    set.set({ id: 'b', column: 'name', kind: 'match', value: 'a' });
+    writes.length = 0;
+
+    set.reset({ keep: () => false });
+
+    expect($where._resolved).toHaveLength(0);
+    expect(set.store.state.specs).toHaveLength(0);
+    expect(writes).toEqual([{ state: null, reason: 'clear' }]);
+    set.destroy();
+  });
+
+  test('a keep that accepts every spec is a no-op (no store sync, no write)', () => {
+    const $where = Selection.crossfilter();
+    const { persister, writes } = recordingPersister();
+    const set = createFilterSet({ targets: { where: $where }, persist: persister });
+
+    set.set({ id: 'a', column: 'sport', kind: 'point', value: 'swim' });
+    writes.length = 0;
+    let storeSyncs = 0;
+    const subscription = set.store.subscribe(() => {
+      storeSyncs += 1;
+    });
+
+    set.reset({ keep: () => true });
+
+    expect($where._resolved).toHaveLength(1);
+    expect(set.store.state.specs.map((spec) => spec.id)).toEqual(['a']);
+    expect(storeSyncs).toBe(0);
+    expect(writes).toHaveLength(0);
+    subscription.unsubscribe();
+    set.destroy();
+  });
+
+  test('keep sees every spec before anything is removed', () => {
+    const $where = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $where } });
+    set.set({ id: 'a', column: 'sport', kind: 'point', value: 'swim' });
+    set.set({ id: 'b', column: 'name', kind: 'match', value: 'a' });
+
+    const seen: Array<{ id: string; specCount: number }> = [];
+    set.reset({
+      keep: (spec) => {
+        seen.push({ id: spec.id, specCount: set.store.state.specs.length });
+        return false;
+      },
+    });
+
+    expect(seen).toEqual([
+      { id: 'a', specCount: 2 },
+      { id: 'b', specCount: 2 },
+    ]);
+    set.destroy();
+  });
+
+  test('removing specs shared on one target does not trip external-clear on the kept spec', async () => {
+    const $where = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $where } });
+    set.set({ id: 'keep', column: 'sport', kind: 'point', value: 'swim' });
+    set.set({ id: 'drop', column: 'name', kind: 'match', value: 'a' });
+
+    set.reset({ keep: (spec) => spec.id === 'keep' });
+    await settle();
+
+    expect(set.store.state.specs.map((spec) => spec.id)).toEqual(['keep']);
+    expect($where._resolved).toHaveLength(1);
+    expect(predicateSql($where)).toBe('("sport" IN (\'swim\'))');
+    set.destroy();
+  });
+
+  test('a destroyed set ignores reset({ keep })', () => {
+    const $where = Selection.crossfilter();
+    const keep = vi.fn(() => false);
+    const set = createFilterSet({ targets: { where: $where } });
+    set.set({ id: 'a', column: 'sport', kind: 'point', value: 'swim' });
+    set.destroy({ silent: true });
+
+    set.reset({ keep });
+
+    expect(keep).not.toHaveBeenCalled();
+    expect($where._resolved).toHaveLength(1);
+  });
+});
+
+describe('defaultTarget', () => {
+  test("defaults to 'where'", () => {
+    const set = createFilterSet({ targets: { where: Selection.crossfilter() } });
+    expect(set.defaultTarget).toBe('where');
+    set.destroy();
+  });
+
+  test('routes target-less specs to the default target without warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const $members = Selection.crossfilter();
+    const $having = Selection.intersect();
+    const set = createFilterSet({
+      targets: { members: $members, having: $having },
+      defaultTarget: 'members',
+    });
+
+    set.set({ id: 'p', column: 'sport', kind: 'point', value: 'swim' });
+
+    expect(set.defaultTarget).toBe('members');
+    expect(predicateSql($members)).toBe('("sport" IN (\'swim\'))');
+    expect($having._resolved).toHaveLength(0);
+    expect(set.store.state.chips[0]?.target).toBe('members');
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+    set.destroy();
+  });
+
+  test('an explicit defaultTarget that names no target throws', () => {
+    expect(() =>
+      createFilterSet({
+        targets: { members: Selection.crossfilter() },
+        defaultTarget: 'member',
+      }),
+    ).toThrow(/defaultTarget 'member' is not one of its targets \(members\)/);
+  });
+
+  test("the implicit 'where' default is not validated at construction", () => {
+    const set = createFilterSet({ targets: { members: Selection.crossfilter() } });
+    expect(set.defaultTarget).toBe('where');
+    set.destroy();
+  });
+
+  test('an inactive spec reports the default target on its chip', () => {
+    const set = createFilterSet({
+      targets: { members: Selection.crossfilter() },
+      defaultTarget: 'members',
+    });
+    set.set({ id: 'p', column: 'sport', kind: 'point' });
+    expect(set.store.state.chips[0]?.target).toBe('members');
+    set.destroy();
+  });
+
+  test('spec.target and emission.target still take precedence', () => {
+    const $where = Selection.crossfilter();
+    const $members = Selection.crossfilter();
+    const $having = Selection.intersect();
+    const selfRouting: FilterKind = {
+      emit: (args) => [
+        {
+          target: 'having',
+          clause: { predicate: gt(args.column, { toString: () => '1' } as never) },
+        },
+      ],
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const set = createFilterSet({
+      targets: { where: $where, members: $members, having: $having },
+      defaultTarget: 'members',
+      kinds: { selfRouting },
+    });
+
+    set.set({ id: 'w', column: 'sport', kind: 'point', value: 'swim', target: 'where' });
+    set.set({ id: 'h', column: 'weight', kind: 'selfRouting', value: 1 });
+
+    expect($where._resolved).toHaveLength(1);
+    expect($having._resolved).toHaveLength(1);
+    expect($members._resolved).toHaveLength(0);
+    warn.mockRestore();
+    set.destroy();
+  });
+});
+
+describe('kinds registry', () => {
+  test('exposes the frozen merged registry', () => {
+    const custom: FilterKind = { emit: () => [] };
+    const set = createFilterSet({
+      targets: { where: Selection.crossfilter() },
+      kinds: { custom },
+    });
+
+    expect(set.kinds.custom).toBe(custom);
+    expect(Object.keys(set.kinds)).toEqual(
+      expect.arrayContaining(['point', 'points', 'interval', 'match', 'condition', 'custom']),
+    );
+    expect(Object.isFrozen(set.kinds)).toBe(true);
+    set.destroy();
+  });
+
+  test('an overriding kind replaces the built-in in the registry', () => {
+    const point: FilterKind = { emit: () => [] };
+    const set = createFilterSet({
+      targets: { where: Selection.crossfilter() },
+      kinds: { point },
+    });
+    expect(set.kinds.point).toBe(point);
+    set.destroy();
+  });
+});
+
 describe('destroy', () => {
   test('default destroy clears every published clause and never writes', () => {
     const $where = Selection.crossfilter();

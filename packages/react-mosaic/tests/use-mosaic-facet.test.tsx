@@ -1,3 +1,4 @@
+import { createFilterSet } from '@nozzleio/mosaic-core';
 import {
   createAthletesDb,
   interact,
@@ -108,5 +109,40 @@ describe('useMosaicFacet', () => {
     expect(db.clientQueries.length).toBe(queriesAfterInit + 1);
 
     await hook.unmount();
+  });
+
+  test('a publish.into target change recreates the client onto the new target', async () => {
+    const $where = Selection.crossfilter();
+    const $members = Selection.crossfilter();
+    const set = createFilterSet({ targets: { where: $where, members: $members } });
+
+    const hook = await renderHook(
+      (props: { target: string }) =>
+        useMosaicFacet({
+          coordinator: db.coordinator,
+          from: 'athletes',
+          column: 'sport',
+          publish: { into: set, id: 'sport', target: props.target },
+        }),
+      { initialProps: { target: 'where' } },
+    );
+    await waitFor(() => {
+      expect(hook.result.current.status).toBe('success');
+    });
+    const firstClient = hook.result.current.client;
+
+    await hook.rerender({ target: 'members' });
+    expect(hook.result.current.client).not.toBe(firstClient);
+    await waitFor(() => {
+      expect(hook.result.current.status).toBe('success');
+    });
+
+    await interact(() => hook.result.current.client.toggle('run'));
+    expect(set.store.state.specs[0]?.target).toBe('members');
+    expect($members._resolved).toHaveLength(1);
+    expect($where._resolved).toHaveLength(0);
+
+    await hook.unmount();
+    set.destroy();
   });
 });
