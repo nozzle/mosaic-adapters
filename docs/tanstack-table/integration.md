@@ -6,7 +6,7 @@
 
 The library targets TanStack Table v9 — install `@tanstack/react-table@beta` (v9 is not yet the npm `latest` tag). TanStack Table is a peer dependency of the glue packages, matching what you install: `@nozzleio/mosaic-tanstack-react-table` peers on `@tanstack/react-table`, and the framework-agnostic `@nozzleio/mosaic-tanstack-table-core` peers on `@tanstack/table-core` (satisfied transitively by any TanStack Table framework adapter). The glue's public API is unchanged across the v8→v9 migration; the new v9 surfaces (`table.atoms`, `<table.Subscribe>`, `createTableHook`) are intentionally not used by the glue — you wire `useTable` and its state yourself, exactly as below.
 
-The model is strictly server-side: Mosaic is the server, TanStack Table is a client in fully manual mode. The table renders `data` and `rowCount` verbatim from a [rows client](../core/rows-client.md) and never re-processes rows — the core row model (built in under v9) is the only row model, and a manual-mode table registers no other row-model factories. The glue translates TanStack Table state _into_ the native path (serializable inputs and Selection clauses); `@nozzleio/mosaic-core` never imports TanStack Table, and the bridge never touches a data client.
+The model is strictly server-side: Mosaic is the server, TanStack Table is a client in fully manual mode. The table renders `data` and `rowCount` verbatim from a [rows client](../core/rows-client.md) and never re-processes rows — the core row model (built in under v9) is the only row model, and a manual-mode table registers no other row-model factories. The one exception is [expanding children that arrive with each row](#expanding-client-side-children): that only reshapes the rows already on the page. The glue translates TanStack Table state _into_ the native path (serializable inputs and Selection clauses); `@nozzleio/mosaic-core` never imports TanStack Table, and the bridge never touches a data client.
 
 ## Manual-mode wiring
 
@@ -208,6 +208,126 @@ const table = useTable({
 - **Off-page rows survive paging.** `selected` keeps tuples for rows that are no longer on the current page, and the `byId` index re-emits them, so a selection spans pages the way the published clause does.
 - **Replay is the same call.** `client.setSelectedValues(selected)` (or tuples restored from the URL) republishes a selection, and `rowSelection` follows from `selected` — there is no TanStack Table state to re-seed.
 - **Equal re-publishes are free.** `selected` is patched only when its value changes, so the `useMemo` above recomputes only on a real selection change.
+
+### Expanding (client-side children)
+
+A query can return each parent row's children with it, as a `LIST(STRUCT)` column: `list(...)` in an aggregate query, or a nested column already in the table. In that case expansion is pure TanStack Table UI over the current page and needs no extra query. Register `rowExpandingFeature` **and** its row model, `createExpandedRowModel()`. Without the row model, `toggleExpanded()` updates the state, but no child rows render. Then point `getSubRows` at the list column:
+
+```tsx
+import { useState } from 'react';
+import {
+  createExpandedRowModel,
+  functionalUpdate,
+  rowExpandingFeature,
+  rowPaginationFeature,
+  tableFeatures,
+  useTable,
+  type ExpandedState,
+  type OnChangeFn,
+  type PaginationState,
+} from '@tanstack/react-table';
+// …plus useMosaicRows, Query, paginationToWindow and $page as in the manual-mode example above.
+
+interface MedalRow {
+  event: string;
+  wonOn: Date;
+  rank: number;
+}
+
+interface AthleteRow {
+  id: number;
+  name: string;
+  medals: Array<MedalRow>; // the LIST(STRUCT) column
+}
+
+// Parents and children share one table row type.
+type TableRow = AthleteRow | MedalRow;
+const isAthlete = (row: TableRow): row is AthleteRow => 'medals' in row;
+
+interface RawMedal {
+  event: string;
+  won_on: Date;
+  rank: number | bigint;
+}
+
+// `coerce` maps the parent row; it does not recurse into the list, so the
+// children are mapped here too.
+function toAthlete(raw: Record<string, unknown>): AthleteRow {
+  const medals = (raw.medals ?? []) as Iterable<RawMedal>; // NULL list → no children
+  return {
+    id: Number(raw.id),
+    name: String(raw.name),
+    medals: Array.from(medals, (medal) => ({
+      event: medal.event,
+      wonOn: new Date(medal.won_on),
+      rank: Number(medal.rank),
+    })),
+  };
+}
+
+const features = tableFeatures({
+  rowPaginationFeature,
+  rowExpandingFeature,
+  expandedRowModel: createExpandedRowModel(),
+});
+
+function AthletesTable() {
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
+  const inputs = { orderBy: [{ column: 'id' }], ...paginationToWindow(pagination) };
+
+  const athletes = useMosaicRows<AthleteRow>({
+    query: ({ where }) => Query.from('athletes').select('id', 'name', 'medals').where(where),
+    filterBy: $page,
+    inputs,
+    rowCount: 'window',
+    coerce: toAthlete,
+  });
+
+  // Expansion belongs to the inputs it was made under: new inputs show nothing
+  // expanded, while a re-query under the same inputs keeps it.
+  const inputsKey = JSON.stringify(inputs);
+  const [expansion, setExpansion] = useState<{ key: string; expanded: ExpandedState }>({
+    key: inputsKey,
+    expanded: {},
+  });
+  const expanded = expansion.key === inputsKey ? expansion.expanded : {};
+  const onExpandedChange: OnChangeFn<ExpandedState> = (updater) => {
+    setExpansion({ key: inputsKey, expanded: functionalUpdate(updater, expanded) });
+  };
+
+  const table = useTable({
+    features,
+    data: athletes.rows,
+    rowCount: athletes.totalRows,
+    columns, // Array<ColumnDef<typeof features, TableRow>>
+    state: { pagination, expanded },
+    onPaginationChange: setPagination,
+    onExpandedChange,
+    manualPagination: true,
+    getSubRows: (row) => (isAthlete(row) ? row.medals : undefined),
+    // Parents by primary key; children by position under their parent.
+    getRowId: (row, index, parent) => {
+      if (parent !== undefined) {
+        return `${parent.id}/${index}`;
+      }
+      return isAthlete(row) ? String(row.id) : String(index);
+    },
+    autoResetExpanded: false,
+  });
+
+  // Render table.getRowModel().rows: expanded children follow their parent,
+  // with row.depth > 0. Toggle with row.getToggleExpandedHandler(); an empty
+  // or NULL list gives row.getCanExpand() === false.
+}
+```
+
+- **`getSubRows` reads the list column.** Return the child array, or `undefined` for a row without one. Nothing infers nesting from the data shape. Parents and children are one `TData` to TanStack Table, so type the rows as a union (or map the children into the parent's shape) and branch in accessors.
+- **`getRowId` must be stable under manual pagination.** TanStack Table's default id is the row's index on the current page, so expanding the first row on page 1 would also expand the first row on every other page and after every re-sort. Key parents by a primary key, and derive child ids from `parent.id` so they stay unique.
+- **Set `autoResetExpanded: false` and key the reset on the inputs.** By default the table collapses everything whenever `data` changes identity. Every rows-client result is a new array, including a refetch or a sibling widget's filter change that leaves this page's rows as they were. Turn the auto-reset off, and tie the expanded state to the inputs that really redefine the result instead. The example stores the expansion together with the inputs key it was made under and reads `{}` when the key differs. That needs no effect and costs no extra render. Only one expansion is stored: going back to earlier inputs restores theirs only if nothing was expanded in between. Add anything else that should start the user over to the key, such as a search term or the page's filter state. With stable ids, an expansion survives re-queries under the same inputs.
+- **Expanded children are extra rows.** Under `manualPagination` the expanded row model always inserts children after their parent, whatever `paginateExpandedRows` says. A page therefore renders `pageSize` parents plus their open children. `rowCount`/`totalRows` and `paginationToWindow` still count parents only.
+- **`coerce` does not recurse into the children.** It runs once per result row. The descriptor form (`{ won_on: 'date' }`) maps top-level keys only, and a nested field name in it does not reach the struct values. Children arrive as the coordinator decoded them: plain arrays of plain objects, with DATE/TIMESTAMP fields as `Date` under Mosaic's default IPC options, and snake_case field names as in SQL. Map them in a `coerce` closure, as `toAthlete` does, so the table sees the same types for parents and children.
+
+Children that must be fetched on expand (too many or too large to ship with every parent) need a different design: `getRowCanExpand` plus a detail panel for each expanded row, which mounts its own rows client filtered to that parent. This recipe covers only children that come with their parent's row.
 
 ## The filter bridge
 
