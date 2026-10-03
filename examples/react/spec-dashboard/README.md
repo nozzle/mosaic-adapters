@@ -350,6 +350,34 @@ Every spec KEY is `lower_snake_case` (`filter_by`, `having_by`, `metric_label`,
 ids, topology entries, filter-kind names) are snake_case too. The libraries'
 camelCase types are reached only at the compile boundary — never in the spec.
 
+## Multi-write actions (`topology.batch()`)
+
+Two flows make several FilterSet / Selection writes for one action, and wrap
+them in the library's opt-in
+[`topology.batch()`](../../../docs/core/selection-topology.md#batch) so they
+publish as one update:
+
+- **Clear All** in the active-filter bar (`src/chrome/clear-all.ts`) runs
+  `topology.reset()` inside a batch. Unbatched, every cleared clause (each spec
+  on each target, plus the volume brush) is its own update of the crossfilter
+  `page` context, so every page widget re-queries once per clause and briefly
+  shows combinations nobody asked for. Batched, each Selection emits once and
+  `activeClauses` refreshes once. Variables are Mosaic Params,
+  which a batch never defers; they reset as before.
+- **URL hydration** (`hydrateFilterSet` in
+  `src/spec/url-state/use-persisted-topology.ts`) replays a link's specs inside
+  a batch when there is more than one. URL params arrive in link order, so a metric
+  threshold (its membership subquery reads the `page` context) can be replayed
+  before the filters it should include. In the batch it is rebuilt before
+  anything emits, so a widget that connects next queries the final state once
+  instead of first querying the stale subquery.
+
+Single writes (a builder edit, a facet toggle, a chip removal, a threshold
+Apply) stay unbatched: there is nothing to combine, and a batched update skips
+Mosaic's pre-aggregation for that one emission.
+`tests/batched-writes.unit.test.ts` counts the page client's queries for both
+flows against a real DuckDB, batched and unbatched.
+
 ## E2E
 
 ```sh

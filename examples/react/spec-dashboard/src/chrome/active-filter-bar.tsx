@@ -14,7 +14,8 @@ import { clauseNone } from '@uwdata/mosaic-core';
  *   clause.
  *
  * "Clear All" is `topology.reset()` — clearing both the FilterSet specs AND the
- * non-FilterSet selections in one call.
+ * non-FilterSet selections in one call — wrapped in an opt-in `topology.batch()`
+ * so the whole clear publishes as one update (see {@link clearAllFilters}).
  *
  * `data-testid`s: the bar is `active-filter-bar`; each chip is
  * `filter-chip-<sanitized>` where the sanitized suffix is the chip key with
@@ -24,6 +25,8 @@ import { clauseNone } from '@uwdata/mosaic-core';
  * `filter-chip-range_select`); Clear All is `clear-all-filters`.
  */
 import { useMemo } from 'react';
+
+import { clearAllFilters } from './clear-all';
 
 interface ActiveFilterChip {
   key: string;
@@ -202,7 +205,7 @@ export function ActiveFilterBar(props: ActiveFilterBarProps) {
         type="button"
         data-testid="clear-all-filters"
         className="h-6 rounded-gf px-2 text-[11px] text-muted hover:text-gf-red"
-        onClick={() => topology.reset()}
+        onClick={() => clearAllFilters(topology)}
       >
         Clear All
       </button>

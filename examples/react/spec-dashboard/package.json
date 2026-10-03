@@ -28,6 +28,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@nozzleio/test-support": "workspace:*",
     "@playwright/test": "catalog:",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "catalog:",
