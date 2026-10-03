@@ -99,10 +99,50 @@ export interface DataClientState<TInputs extends object> {
    * its previous `error`) until the next trigger re-queries.
    */
   error: Error | null;
-  /** Echo of what the last executed query was built from — never a source of truth. */
+  /**
+   * Echo of the inputs the last built main query was built from — never a
+   * source of truth. Written when the query is built, so while a re-query is
+   * pending it already describes the new request, not the payload on screen
+   * (see `settled`).
+   */
   inputs: TInputs;
-  /** SQL of the last executed main query (observability). */
+  /**
+   * SQL of the last built main query (observability); `null` after an empty
+   * round. Written when the query is built, so while a re-query is pending it
+   * already describes the new request, not the payload on screen (see
+   * `settled`).
+   */
   lastQuery: string | null;
+  /**
+   * Provenance of the payload currently in the store: the inputs and SQL of
+   * the request whose response (or empty round) produced it.
+   *
+   * - `null` until the first successful response or empty round, so
+   *   `status === 'pending' && settled === null` is the initial load.
+   * - Updated only when the current request settles successfully; a failed,
+   *   cancelled or superseded request leaves it untouched, as it leaves the
+   *   payload untouched.
+   * - `settled.query !== lastQuery` means the payload answers an older query
+   *   than the last one built (a re-query is pending or failed).
+   *
+   * `query` is `null` for an empty round (`lastQuery` is `null` too) and for
+   * a response this client did not build the SQL for — notably updates
+   * answered by the coordinator's pre-aggregation path, which queries a
+   * materialized view instead of the client's query (the first one, which
+   * creates the view, included). When pre-aggregation
+   * can apply (a `filterBy` Selection with `filterStable` left on and the
+   * coordinator's pre-aggregation enabled), guard staleness checks with
+   * `settled.query !== null`.
+   */
+  settled: DataClientSettled<TInputs> | null;
+}
+
+/** Provenance of a data client's settled payload (`DataClientState.settled`). */
+export interface DataClientSettled<TInputs extends object> {
+  /** The inputs the settled request was built from. */
+  inputs: TInputs;
+  /** SQL of the settled request; `null` for an empty round or a pre-aggregated response. */
+  query: string | null;
 }
 
 export interface DataClientOptions<TInputs extends object> {
@@ -168,8 +208,21 @@ export interface DataClient<TInputs extends object, TState extends DataClientSta
   /** Merge-patch; triggers exactly one re-query iff something changed (value-diffed). */
   setInputs: (patch: Partial<TInputs>) => void;
   setEnabled: (enabled: boolean) => void;
-  /** Force a re-query with current inputs/filters. */
+  /**
+   * Force an immediate re-query with current inputs/filters. Also resets
+   * query-derived memos (the rows client's COUNT query is re-issued), since
+   * the underlying data may have changed.
+   */
   refetch: () => Promise<void>;
+  /**
+   * Re-query because the query itself changed (e.g. after `setQuery` with a
+   * recompiled factory). Built from the current factory, inputs and filters,
+   * and coalesced with other triggers in the same tick (an `invalidate()`
+   * next to a `setInputs` issues one query). Unlike `refetch()`, it keeps
+   * query-derived memos, which already key on the SQL they derive from.
+   * While disabled, the re-query runs once the client is enabled.
+   */
+  invalidate: () => void;
   destroy: () => void;
   /** True once `destroy()` has run; destroyed clients never query again. */
   readonly destroyed: boolean;

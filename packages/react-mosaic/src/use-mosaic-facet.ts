@@ -16,6 +16,7 @@ import {
   useBoundClient,
   useStableQuerySource,
 } from './use-data-client';
+import type { QueryKeyOptions } from './use-data-client';
 
 export type UseMosaicFacetOptions = Omit<FacetClientOptions, 'coordinator'> & {
   /**
@@ -23,7 +24,7 @@ export type UseMosaicFacetOptions = Omit<FacetClientOptions, 'coordinator'> & {
    * global only when there is no provider; a `coordinator={null}` provider throws).
    */
   coordinator?: Coordinator;
-};
+} & QueryKeyOptions;
 
 export type UseMosaicFacetResult = FacetClientState & {
   client: FacetClient;
@@ -75,6 +76,7 @@ export function useMosaicFacet(options: UseMosaicFacetOptions): UseMosaicFacetRe
     ],
     inputs: options.inputs,
     enabled,
+    queryKey: options.queryKey,
     sync: (c) => {
       c.setQuery(from);
     },

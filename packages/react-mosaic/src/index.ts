@@ -4,6 +4,8 @@
 // importable from here.
 export * from '@nozzleio/mosaic-core';
 
+export type { QueryKeyOptions } from './use-data-client';
+
 export { MosaicProvider, useMosaicCoordinator } from './context';
 export type { MosaicProviderProps } from './context';
 

@@ -1,6 +1,6 @@
 import { Store } from '@tanstack/store';
 import { makeClient } from '@uwdata/mosaic-core';
-import type { MosaicClient, QueryError, Selection } from '@uwdata/mosaic-core';
+import type { MosaicClient, QueryError, Selection, SelectionClause } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import type { FilterExpr, Query as MosaicQuery, SelectQuery } from '@uwdata/mosaic-sql';
 
@@ -16,6 +16,7 @@ import { createSkipProjectedSelection } from './skip-projection';
 import type {
   DataClient,
   DataClientOptions,
+  DataClientSettled,
   DataClientState,
   QueryContext,
   QuerySource,
@@ -42,17 +43,31 @@ function canUseAnimationFrame(): boolean {
 }
 
 /**
+ * A main-query request the coordinator has marked pending: its identity plus
+ * the provenance (`DataClientState.settled`) its response would carry.
+ */
+interface InflightRequest<TInputs extends object> {
+  id: number;
+  /** Built SQL, or `null` for a query this class did not build (pre-aggregation). */
+  sql: string | null;
+  inputs: TInputs;
+  /** Whether the coordinator answers it from a pre-aggregated materialized view. */
+  preaggregated: boolean;
+}
+
+/**
  * Framework-agnostic base for every data client: wraps upstream
  * `makeClient`, projects the query lifecycle onto a reactive store, wires
  * Params and the HAVING-routed Selection to re-queries, and holds the query
  * factory by latest-ref.
  *
  * Re-query triggers are exactly: inputs change, Selection activation,
- * Param change, `refetch()`.
+ * Param change, `refetch()`, `invalidate()`.
  *
  * Input-driven triggers (`setInputs`, Param `'value'`, `havingBy` `'value'`)
- * are coalesced — a burst of synchronous changes in one tick collapses into a
- * single query build instead of one full query per event. In a visible
+ * and `invalidate()` are coalesced — a burst of synchronous changes in one
+ * tick collapses into a single query build instead of one full query per
+ * event. In a visible
  * browser tab this rides upstream `MosaicClient.requestUpdate()`
  * (animation-frame throttle); in hidden tabs and outside browsers a
  * core-owned macrotask fallback coalesces (see `#requestCoalescedUpdate`).
@@ -97,9 +112,21 @@ export abstract class BaseDataClient<
    */
   #requestSeq = 0;
   #latestRequest = 0;
-  #inflight: Array<{ id: number; sql: string | null }> = [];
-  /** SQL of the most recently built main query, attributed at `queryPending`. */
-  #lastBuiltSql: string | null = null;
+  #inflight: Array<InflightRequest<TInputs>> = [];
+  /**
+   * SQL and inputs of the most recently built main query, attributed to the
+   * next request at `queryPending` (`null` once attributed, or after an empty
+   * round). Not every build is submitted: the coordinator's pre-aggregation
+   * optimizer also builds the query to analyze it (see `#isPreaggregated`).
+   */
+  #lastBuilt: { sql: string; inputs: TInputs } | null = null;
+  /**
+   * Set when a pre-aggregated request fails: upstream then retries the same
+   * selection update with this client's own query (`updateSelection`), which
+   * the next `queryPending` must attribute to its build (see
+   * `#isPreaggregated`).
+   */
+  #preaggFallback = false;
 
   protected constructor(
     options: DataClientOptions<TInputs>,
@@ -125,6 +152,7 @@ export abstract class BaseDataClient<
       error: null,
       inputs: this.inputs,
       lastQuery: null,
+      settled: null,
       ...payload,
     } as TState);
 
@@ -169,8 +197,19 @@ export abstract class BaseDataClient<
           return;
         }
         const id = this.#nextRequestId();
-        this.#inflight.push({ id, sql: this.#lastBuiltSql });
-        this.#lastBuiltSql = null;
+        const built = this.#lastBuilt;
+        const preaggregated = this.#isPreaggregated(built !== null);
+        this.#lastBuilt = null;
+        this.#preaggFallback = false;
+        // A request with nothing attributed — a pre-aggregated update, which
+        // queries a materialized view rather than a query built here (any
+        // build since the last request was the optimizer's analysis) —
+        // answers the current inputs; its SQL is unknown.
+        if (preaggregated || built === null) {
+          this.#inflight.push({ id, sql: null, inputs: this.inputs, preaggregated });
+        } else {
+          this.#inflight.push({ id, sql: built.sql, inputs: built.inputs, preaggregated });
+        }
         this.patchState({ status: 'pending' } as Partial<TState>);
       },
       queryResult: (data) => {
@@ -186,6 +225,7 @@ export abstract class BaseDataClient<
         this.patchState({
           status: 'success',
           error: null,
+          settled: settledFrom(request, this.inputs),
           ...this.onResult(data),
         });
       },
@@ -199,6 +239,9 @@ export abstract class BaseDataClient<
         // Errors reject immediately rather than in request order, so match the
         // failed request by its SQL; fall back to FIFO when nothing matches.
         const request = this.#takeInflight(error.sql);
+        if (request?.preaggregated === true) {
+          this.#preaggFallback = true;
+        }
         if (!this.#settle(request)) {
           return;
         }
@@ -285,6 +328,17 @@ export abstract class BaseDataClient<
     if (request) {
       await request;
     }
+  }
+
+  invalidate(): void {
+    if (this.#destroyed) {
+      return;
+    }
+    // Same coalesced path as `setInputs`, so an `invalidate()` in the same
+    // tick as an inputs change (the hooks' `queryKey`) issues one query. No
+    // `onRefetch()`: query-derived memos key on the SQL they derive from, so
+    // a recompiled query re-runs them by itself and an unchanged one need not.
+    this.#requestCoalescedUpdate();
   }
 
   /**
@@ -575,19 +629,20 @@ export abstract class BaseDataClient<
       // payload is the current state, so any still in-flight request is now
       // superseded and its late result must not replace it.
       this.#nextRequestId();
-      this.#lastBuiltSql = null;
+      this.#lastBuilt = null;
       this.patchState({
         inputs: this.inputs,
         lastQuery: null,
         status: 'success',
         error: null,
+        settled: { inputs: this.inputs, query: null },
         ...this.onEmpty(),
       });
       this.afterQueryBuilt(ctx);
       return null;
     }
     const sql = String(query);
-    this.#lastBuiltSql = sql;
+    this.#lastBuilt = { sql, inputs: this.inputs };
     this.patchState({
       inputs: this.inputs,
       lastQuery: sql,
@@ -602,6 +657,47 @@ export abstract class BaseDataClient<
     // even if a live Param the query interpolates changes meanwhile (see
     // `freezeQuerySql`).
     return freezeQuerySql(query, sql);
+  }
+
+  /**
+   * Whether the request the coordinator is marking pending right now is a
+   * pre-aggregated update, answered from a materialized view rather than a
+   * query built here.
+   *
+   * Upstream's pre-aggregation optimizer (`PreAggregator.request`, run on
+   * Selection activation and on selection updates) calls this client's
+   * `query()` to analyze it and to build the view — without submitting it —
+   * so the last build is not necessarily the submitted query. Upstream
+   * submits a pre-aggregated update exactly when the coordinator holds a
+   * view for this client (`preaggregator.entries` with a `result`) and the
+   * selection update carries an active clause with a source to answer from
+   * it; every client-initiated request goes through
+   * `Coordinator.requestQuery`, which clears those entries before
+   * submitting. Two standard queries are issued while a view is still held:
+   * upstream's retry after a failed pre-aggregated update, recognized by
+   * `#preaggFallback` plus a fresh build; and an update without an active
+   * clause (a `Selection.reset()` removes it but leaves the cached entry), for
+   * which `PreAggregator.request` declines before consulting the cache.
+   */
+  #isPreaggregated(builtSinceLastRequest: boolean): boolean {
+    if (this.#preaggFallback && builtSinceLastRequest) {
+      return false;
+    }
+    const preaggregator = this.#client.coordinator?.preaggregator;
+    if (!preaggregator || !preaggregator.enabled) {
+      return false;
+    }
+    // Upstream types `active` as always present, but it is undefined once
+    // the clause that set it has been removed (`Selection.reset`).
+    const active = this.#client.filterBy?.active as SelectionClause | undefined;
+    if (!active?.source) {
+      return false;
+    }
+    const entry = preaggregator.entries.get(this.#client);
+    if (!entry || !('result' in entry)) {
+      return false;
+    }
+    return entry.result !== null;
   }
 
   /**
@@ -620,7 +716,7 @@ export abstract class BaseDataClient<
    * by the coordinator's pre-aggregation path carries a query this class did
    * not build).
    */
-  #takeInflight(sql: string): { id: number; sql: string | null } | undefined {
+  #takeInflight(sql: string): InflightRequest<TInputs> | undefined {
     const index = this.#inflight.findIndex((request) => request.sql === sql);
     if (index === -1) {
       return this.#inflight.shift();
@@ -631,7 +727,8 @@ export abstract class BaseDataClient<
 
   /**
    * Current-request guarantee: a completed main-query request may only write
-   * `status`/data to the store when it is the request the store is waiting on.
+   * `status`/data (and its provenance, `settled`) to the store when it is the
+   * request the store is waiting on.
    * A response for a request that has since been superseded — by a newer
    * `filterBy`/`havingBy`/Param-driven query, `setInputs`, `refetch()`, or an
    * empty round — is dropped, so the store never advertises `'success'` (or
@@ -707,4 +804,20 @@ export abstract class BaseDataClient<
     havingBy.addEventListener('value', listener);
     this.onDestroy(() => havingBy.removeEventListener('value', listener));
   }
+}
+
+/**
+ * Provenance for a successful response: the settled request's own build
+ * inputs and SQL. A completion with no known in-flight request (surfaced
+ * rather than swallowed, see `#settle`) is attributed to the current inputs
+ * with unknown SQL.
+ */
+function settledFrom<TInputs extends object>(
+  request: InflightRequest<TInputs> | undefined,
+  inputs: TInputs,
+): DataClientSettled<TInputs> {
+  if (!request) {
+    return { inputs, query: null };
+  }
+  return { inputs: request.inputs, query: request.sql };
 }

@@ -16,6 +16,7 @@ import {
   useBoundClient,
   useStableQuerySource,
 } from './use-data-client';
+import type { QueryKeyOptions } from './use-data-client';
 
 export type UseMosaicValuesOptions = Omit<ValuesClientOptions, 'coordinator'> & {
   /**
@@ -23,7 +24,7 @@ export type UseMosaicValuesOptions = Omit<ValuesClientOptions, 'coordinator'> & 
    * global only when there is no provider; a `coordinator={null}` provider throws).
    */
   coordinator?: Coordinator;
-};
+} & QueryKeyOptions;
 
 export type UseMosaicValuesResult<TValues extends Record<string, unknown>> =
   ValuesClientState<TValues> & {
@@ -55,6 +56,7 @@ export function useMosaicValues<TValues extends Record<string, unknown>>(
     ],
     inputs: options.inputs,
     enabled,
+    queryKey: options.queryKey,
     sync: (c) => {
       c.setQuery(query);
     },

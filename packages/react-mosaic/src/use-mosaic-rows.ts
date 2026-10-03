@@ -16,6 +16,7 @@ import {
   useBoundClient,
   useStableQuerySource,
 } from './use-data-client';
+import type { QueryKeyOptions } from './use-data-client';
 
 export type UseMosaicRowsOptions<TRow> = Omit<RowsClientOptions<TRow>, 'coordinator'> & {
   /**
@@ -23,7 +24,7 @@ export type UseMosaicRowsOptions<TRow> = Omit<RowsClientOptions<TRow>, 'coordina
    * global only when there is no provider; a `coordinator={null}` provider throws).
    */
   coordinator?: Coordinator;
-};
+} & QueryKeyOptions;
 
 export type UseMosaicRowsResult<TRow> = RowsClientState<TRow> & {
   client: RowsClient<TRow>;
@@ -36,7 +37,8 @@ export type UseMosaicRowsResult<TRow> = RowsClientState<TRow> & {
  *   `inputMode`, `filterStable`, `rowCount` are structural — changing any of
  *   them destroys and recreates the client.
  * - `query` and `coerce` are held by latest-ref — new function identities
- *   never recreate and never re-query.
+ *   never recreate and never re-query. List what a compiled `query` depends
+ *   on in `queryKey` to re-query when it changes (`client.invalidate()`).
  * - `inputs` is value-diffed into `setInputs`; `enabled` into `setEnabled`.
  * - `persist` is structural (no core setter): a new persister identity is a
  *   new storage location, so the client is recreated and re-hydrated. Keep
@@ -85,6 +87,7 @@ export function useMosaicRows<TRow>(
     ],
     inputs: options.inputs,
     enabled,
+    queryKey: options.queryKey,
     sync: (c) => {
       c.setQuery(query);
       c.setCoerce(options.coerce);
