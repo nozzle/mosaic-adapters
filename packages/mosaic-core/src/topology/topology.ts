@@ -835,7 +835,12 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
         case 'external': {
           const selection = node.bareSelection;
           if (selection !== undefined) {
-            clearSelectionClauses(selection);
+            // Upstream `Selection.reset()` removes the resolved clauses by
+            // identity in a single emit, relays the removal to every derived
+            // Selection (compose and cascading contexts), and invokes
+            // `reset()` on each clause source so interactors (brushes,
+            // toggles) clear their own visual state too.
+            selection.reset();
           }
           break;
         }
@@ -870,15 +875,6 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
       }
       filterSet.reset();
     }
-  }
-
-  /**
-   * Clears every clause currently on `selection` by publishing a null-predicate
-   * clause per source (the pattern behind {@link clearSeededClauses}, applied
-   * to the Selection's own clauses).
-   */
-  function clearSelectionClauses(selection: Selection): void {
-    clearSeededClauses([selection], selection);
   }
 
   // --- destroy(): tear down owned compositions/FilterSets, unsubscribe all. ---

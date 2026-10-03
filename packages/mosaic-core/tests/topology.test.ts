@@ -606,8 +606,10 @@ describe('createTopology — two-phase compose construction', () => {
   test('persistence-hydrated clauses appear in a compose that includes the target', () => {
     // FilterSet hydration publishes onto its targets during phase 1 (a
     // synchronous persister read applies immediately); phase-2 seeding reads
-    // `.clauses` afterwards, so the hydrated clause must land in the compose
-    // that includes the target.
+    // the target's resolved clause list (`_resolved`) afterwards, so the
+    // hydrated clause must land in the compose that includes the target. The
+    // multi-spec case — where `.clauses` would lag behind — is covered in the
+    // 'resolved-clause seeding and reset' suite below.
     const persisted: Array<FilterSpec> = [
       { id: 'p', column: 'sport', kind: 'point', value: 'swim' },
     ];
@@ -629,6 +631,160 @@ describe('createTopology — two-phase compose construction', () => {
 
     // The hydrated point clause on filters.where was seeded into the compose.
     expect(String(topology.resolve('page')._resolved[0]?.predicate)).toContain('"sport"');
+    topology.destroy();
+  });
+});
+
+describe('createTopology — resolved-clause seeding and reset', () => {
+  /**
+   * Hydrating several specs publishes several clauses onto the target in the
+   * same tick. Once the target has a `value` listener, `selection.clauses`
+   * (the last *emitted* list) lags behind `_resolved`, so seeding must read
+   * `_resolved` for every hydrated clause to reach derived contexts.
+   */
+  function hydratedTopology(specs: Array<FilterSpec>) {
+    const persist: Persister<Array<FilterSpec>> = {
+      read: () => specs,
+      write: () => {},
+    };
+    return createTopology(
+      {
+        filters: { type: 'filter-set', targets: { where: 'crossfilter' } },
+        page: { type: 'compose', include: ['filters.where'] },
+        a: { type: 'crossfilter' },
+        b: { type: 'crossfilter' },
+        cascade: { type: 'cascading', keys: ['a', 'b'], externals: ['filters.where'] },
+      },
+      { filterSets: { filters: { persist } } },
+    );
+  }
+
+  /** The SQL of every resolved predicate on `selection`, joined. */
+  function predicateText(selection: Selection): string {
+    return selection._resolved.map((clause) => String(clause.predicate)).join(' AND ');
+  }
+
+  test.each([
+    [
+      'two',
+      [
+        { id: 'p1', column: 'sport', kind: 'point', value: 'swim' },
+        { id: 'p2', column: 'name', kind: 'point', value: 'Ada' },
+      ] satisfies Array<FilterSpec>,
+    ],
+    [
+      'three',
+      [
+        { id: 'p1', column: 'sport', kind: 'point', value: 'swim' },
+        { id: 'p2', column: 'name', kind: 'point', value: 'Ada' },
+        { id: 'p3', column: 'country', kind: 'point', value: 'NZ' },
+      ] satisfies Array<FilterSpec>,
+    ],
+  ])('every one of %s hydrated specs reaches compose and cascading contexts', (_, specs) => {
+    const topology = hydratedTopology(specs);
+    const where = topology.resolve('filters.where');
+    expect(where._resolved).toHaveLength(specs.length);
+
+    for (const ref of ['page', 'cascade.a', 'cascade.b']) {
+      const context = topology.resolve(ref);
+      expect(context._resolved).toHaveLength(specs.length);
+      const text = predicateText(context);
+      for (const spec of specs) {
+        expect(text).toContain(`"${spec.column}"`);
+      }
+    }
+    topology.destroy();
+  });
+
+  test('destroy clears every hydrated clause from compose and cascading contexts', () => {
+    const topology = hydratedTopology([
+      { id: 'p1', column: 'sport', kind: 'point', value: 'swim' },
+      { id: 'p2', column: 'name', kind: 'point', value: 'Ada' },
+      { id: 'p3', column: 'country', kind: 'point', value: 'NZ' },
+    ]);
+    const contexts = ['page', 'cascade.a', 'cascade.b'].map((ref) => topology.resolve(ref));
+
+    topology.destroy();
+
+    for (const context of contexts) {
+      expect(context._resolved).toHaveLength(0);
+    }
+  });
+
+  test('reset() after two same-tick updates leaves no clause behind', () => {
+    const brush = Selection.crossfilter();
+    const topology = createTopology(
+      {
+        a: { type: 'crossfilter' },
+        brush: { type: 'external' },
+        page: { type: 'compose', include: ['a', 'brush'] },
+        other: { type: 'crossfilter' },
+        cascade: { type: 'cascading', keys: ['a', 'other'] },
+      },
+      { selections: { brush } },
+    );
+    const a = topology.resolve('a');
+
+    // Two updates in the same tick: the topology's `value` listener keeps the
+    // first dispatch pending, so `.clauses` still reflects only the first.
+    publishForeign(a, 'sport', 'swim');
+    publishForeign(a, 'name', 'Ada');
+    publishForeign(brush, 'x', '1');
+    publishForeign(brush, 'y', '2');
+    expect(a.clauses.length).toBeLessThan(a._resolved.length);
+
+    topology.reset();
+
+    expect(a._resolved).toHaveLength(0);
+    expect(brush._resolved).toHaveLength(0);
+    // Derived contexts drop the cleared clauses through the relay.
+    expect(topology.resolve('page')._resolved).toHaveLength(0);
+    expect(topology.resolve('cascade.other')._resolved).toHaveLength(0);
+    topology.destroy();
+  });
+
+  test('reset() invokes reset on clause sources so interactors clear their state', () => {
+    const brush = Selection.crossfilter();
+    const topology = createTopology(
+      {
+        a: { type: 'crossfilter' },
+        keep: { type: 'crossfilter', reset: false },
+        brush: { type: 'external' },
+      },
+      { selections: { brush } },
+    );
+    const ownedSource = { column: 'sport', value: 'swim', reset: vi.fn() };
+    const externalSource = { column: 'x', value: '1', reset: vi.fn() };
+    const keptSource = { column: 'kept', value: 'yes', reset: vi.fn() };
+    publishForeign(topology.resolve('a'), 'sport', 'swim', ownedSource);
+    publishForeign(brush, 'x', '1', externalSource);
+    publishForeign(topology.resolve('keep'), 'kept', 'yes', keptSource);
+
+    topology.reset();
+
+    expect(ownedSource.reset).toHaveBeenCalled();
+    expect(externalSource.reset).toHaveBeenCalled();
+    // `reset: false` entries are untouched, interactors included.
+    expect(keptSource.reset).not.toHaveBeenCalled();
+    expect(resolvedColumns(topology.resolve('keep'))).toEqual(['kept']);
+    topology.destroy();
+  });
+
+  test('reset() emits a single value event per cleared selection', async () => {
+    const topology = createTopology({ a: { type: 'crossfilter' } });
+    const a = topology.resolve('a');
+    publishForeign(a, 'sport', 'swim');
+    publishForeign(a, 'name', 'Ada');
+    publishForeign(a, 'country', 'NZ');
+    await settle();
+
+    const listener = vi.fn();
+    a.addEventListener('value', listener);
+    topology.reset();
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(a.clauses).toHaveLength(0);
     topology.destroy();
   });
 });

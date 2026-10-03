@@ -28,10 +28,20 @@ export function detachIncludedSelection(source: Selection, derived: Selection): 
  * Copy the current clauses of each source Selection onto `context`, so a context
  * wired after its sources already carry clauses reflects that existing state
  * (the relay only forwards *future* updates).
+ *
+ * Reads each source's resolved clause list (`_resolved`), not `.clauses`:
+ * upstream keeps `_resolved` current synchronously, while `.clauses` returns the
+ * last *emitted* list, which lags behind when several updates land in the same
+ * tick on a Selection that has `value` listeners (e.g. FilterSet hydration of
+ * multiple specs). Null-predicate clauses are skipped defensively — they carry
+ * no filter, and publishing one would only remove a same-source clause.
  */
 export function seedContext(sources: Array<Selection>, context: Selection): void {
   sources.forEach((selection) => {
-    selection.clauses.forEach((clause) => {
+    selection._resolved.forEach((clause) => {
+      if (clause.predicate == null) {
+        return;
+      }
       context.update(clause);
     });
   });
@@ -40,11 +50,12 @@ export function seedContext(sources: Array<Selection>, context: Selection): void
 /**
  * Undo {@link seedContext}: publish a null-predicate clause for every clause the
  * sources currently hold, dropping the seeded clauses from `context` on
- * teardown without touching the source Selections themselves.
+ * teardown without touching the source Selections themselves. Reads
+ * `_resolved` for the same reason as {@link seedContext}.
  */
 export function clearSeededClauses(sources: Array<Selection>, context: Selection): void {
   sources.forEach((selection) => {
-    selection.clauses.forEach((clause) => {
+    selection._resolved.forEach((clause) => {
       context.update(clauseNone(clause.source));
     });
   });

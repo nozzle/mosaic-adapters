@@ -242,7 +242,9 @@ export interface Topology {
   readonly filterSets: Record<string, FilterSet>;
   /**
    * Type-aware page reset: clear clauses on `standalone` and `external`
-   * entries (respecting `reset: false`), restore owned `param` entries to their
+   * entries via upstream `selection.reset()` (one emit, relayed to derived
+   * contexts, and each clause source's `reset()` invoked so interactors clear
+   * their own state), respecting `reset: false`; restore owned `param` entries to their
    * `default`, delegate `filter-set` entries to `filterSet.reset()`, skip
    * `compose`/`cascading` (derived) and `external-param` (not owned).
    */

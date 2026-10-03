@@ -65,6 +65,22 @@ describe('createComposedSelection', () => {
     handle.destroy();
   });
 
+  test('seeds every pre-existing clause even when `.clauses` lags behind', () => {
+    const $a = Selection.crossfilter();
+    // A `value` listener keeps the first dispatch pending, so the second
+    // same-tick update is queued and `.clauses` still shows only the first.
+    $a.addEventListener('value', () => {});
+    publish($a, 'sport', 'swim');
+    publish($a, 'name', 'Ada');
+    expect($a.clauses).toHaveLength(1);
+
+    const handle = createComposedSelection([$a]);
+
+    expect(resolvedColumns(handle.selection).sort()).toEqual(['name', 'sport']);
+    handle.destroy();
+    expect(handle.selection._resolved).toHaveLength(0);
+  });
+
   test('an empty include list yields a bare intersect selection', () => {
     const handle = createComposedSelection([]);
 

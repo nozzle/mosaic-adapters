@@ -75,4 +75,6 @@ A rebuild constructs fresh interactors, so un-committed visual state (e.g. a bru
 
 ## Interactors don't observe external clears
 
-An interval interactor repaints its brush overlay from its own last-published value, never from the Selection — so a clause cleared from outside (a chip's ✕, a page-wide `topology.reset()`) resets the data but leaves the overlay painted. Sync it yourself: when the observed clause disappears, call the interactor's `reset()` (clears both its value and the overlay). See the volume-brush panel in `examples/react/nozzle-paa` for the pattern.
+An interval interactor repaints its brush overlay from its own last-published value, never from the Selection — so a clause cleared from outside by publishing a null-predicate clause (e.g. a chip's ✕) resets the data but leaves the overlay painted. Sync it yourself: when the observed clause disappears, call the interactor's `reset()` (clears both its value and the overlay). See the volume-brush panel in `examples/react/nozzle-paa` for the pattern.
+
+A page-wide `topology.reset()` (or upstream `selection.reset()`) is the exception: it invokes `reset()` on each cleared clause's source, so brushes on `standalone` / `external` topology entries clear their overlay without extra wiring.
