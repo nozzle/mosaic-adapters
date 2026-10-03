@@ -1,35 +1,30 @@
 import { clauseInterval } from '@uwdata/mosaic-core';
 import type { ClauseSource, MosaicClient } from '@uwdata/mosaic-core';
-import {
-  Query,
-  and,
-  asc,
-  binHistogram,
-  binSpec,
-  count,
-  gt,
-  isNotNull,
-  max,
-  min,
-  scaleTransform,
-} from '@uwdata/mosaic-sql';
-import type { ExprNode, Scale, SelectQuery } from '@uwdata/mosaic-sql';
+import { Query, asc } from '@uwdata/mosaic-sql';
+import type { ExprNode, SelectQuery } from '@uwdata/mosaic-sql';
 
 import { BaseDataClient } from './base-client';
 import type { FilterSpec } from './filter-set/types';
+import {
+  histogramBinning,
+  histogramBinsFromRows,
+  histogramExtentQuery,
+  histogramFilter,
+  histogramSelect,
+} from './histogram';
+import type { HistogramBinning } from './histogram';
 import { PersisterLifecycle } from './persistence';
 import { columnAccess } from './sql-access';
 import { isFilterSetPublishTarget } from './types';
 import type {
   FilterSetPublishTarget,
-  HistogramBin,
   HistogramClient,
   HistogramClientOptions,
   HistogramClientState,
   HistogramInputs,
   QueryContext,
 } from './types';
-import { toResultRows } from './utils';
+import { firstResultRow, toResultRows } from './utils';
 
 /**
  * Binned counts of a numeric column in, interval clauses out.
@@ -57,7 +52,6 @@ class HistogramDataClient
   implements HistogramClient
 {
   readonly #options: HistogramClientOptions;
-  readonly #scale: Scale<number>;
   /**
    * Access expression for `column` (struct-path aware). One node serves
    * extent discovery, the bin query, and the published clause `fields`, so
@@ -66,8 +60,8 @@ class HistogramDataClient
   readonly #field: ExprNode;
   readonly #source: ClauseSource = {};
   #extent: [number, number] | null;
-  /** Bin spec of the last built query — pairs result rows with boundaries. */
-  #spec: { min: number; max: number; steps: number } | null = null;
+  /** Binning of the last built query — pairs result rows with boundaries. */
+  #binning: HistogramBinning | null = null;
   #range: [number, number] | null = null;
   #persist: PersisterLifecycle<[number, number]> | null = null;
   /** Set when writing to `publish.into`, to suppress our own store-mirror. */
@@ -87,7 +81,6 @@ class HistogramDataClient
     );
     this.#options = options;
     this.#field = columnAccess(options.column, options.columnPaths);
-    this.#scale = scaleTransform({ type: options.scale ?? 'linear' });
     this.#extent = options.extent ?? null;
     this.#persist = this.#resolvePersist();
     this.#wireExternalClear();
@@ -131,57 +124,31 @@ class HistogramDataClient
     if (extent === null) {
       throw new Error('Histogram extent unresolved — prepare() has not completed.');
     }
-    const binOptions = {
+    const binning = histogramBinning({
+      extent,
+      scale: this.#options.scale,
       step: ctx.inputs.step,
-      steps: ctx.inputs.bins ?? 25,
-      // Nice log boundaries can extend below a positive discovered extent and
-      // produce an off-domain partial bar. Keep log bins pinned to the exact
-      // fixed extent; preserve existing nice linear behavior.
-      nice: this.#options.scale === 'log' ? false : undefined,
-    };
-    this.#spec = binSpec(this.#scale.apply(extent[0]), this.#scale.apply(extent[1]), binOptions);
+      bins: ctx.inputs.bins,
+    });
+    this.#binning = binning;
 
     const field = this.#field;
     return Query.from(this.resolveBase(ctx))
-      .select({
-        x0: binHistogram(field, extent, binOptions, this.#scale),
-        count: count(),
-      })
-      .where(and(isNotNull(field), this.#options.scale === 'log' ? gt(field, 0) : []))
+      .select(histogramSelect(field, binning))
+      .where(histogramFilter(field, binning))
       .groupby('x0')
       .orderby(asc('x0'));
   }
 
   protected onResult(data: unknown): Partial<HistogramClientState> {
-    const spec = this.#spec;
-    if (spec === null || !Number.isFinite(spec.steps) || spec.steps <= 0) {
+    const binning = this.#binning;
+    if (binning === null) {
       return { bins: [], maxCount: 0 };
     }
-
-    const step = (spec.max - spec.min) / spec.steps;
-    const bins: Array<HistogramBin> = Array.from({ length: spec.steps }, (_, index) => ({
-      x0: this.#scale.invert(spec.min + index * step),
-      x1: this.#scale.invert(spec.min + (index + 1) * step),
-      count: 0,
-    }));
-
-    let maxCount = 0;
-    for (const row of toResultRows(data)) {
-      const x0 = Number(row.x0);
-      const binCount = Number(row.count);
-      const transformedX0 = this.#scale.apply(x0);
-      const index = Math.min(
-        bins.length - 1,
-        Math.max(0, Math.round((transformedX0 - spec.min) / step)),
-      );
-      const bin = bins[index];
-      if (bin === undefined) {
-        continue;
-      }
-      bin.count += binCount;
-      maxCount = Math.max(maxCount, bin.count);
+    const { bins, maxCount } = histogramBinsFromRows(toResultRows(data), binning);
+    if (bins.length === 0) {
+      return { bins, maxCount };
     }
-
     return { bins, maxCount, extent: this.#extent };
   }
 
@@ -247,20 +214,13 @@ class HistogramDataClient
     if (this.#extent !== null) {
       return;
     }
-    const field = this.#field;
     const base = this.resolveBase({
       where: [],
       having: [],
       inputs: this.store.state.inputs,
     });
-    const query = Query.from(base)
-      .select({
-        min: min(field),
-        max: max(field),
-      })
-      .where(this.#options.scale === 'log' ? gt(field, 0) : []);
-    const rows = toResultRows(await this.#options.coordinator.query(query));
-    const first = rows[0];
+    const query = histogramExtentQuery(base, this.#field, { scale: this.#options.scale });
+    const first = firstResultRow(await this.#options.coordinator.query(query));
     if (first === undefined || first.min == null || first.max == null) {
       throw new Error(
         `Histogram extent discovery returned no data for column "${this.#options.column}".`,

@@ -452,6 +452,44 @@ cascading.destroy();
 
 These are the same factories the `useComposedSelection` / `useCascadingContexts` hooks call; `createTopology` wires composes with the same `wiring.ts` primitives, so declared and hand-written topology behave identically.
 
+### Mapped Selections
+
+`createMappedSelection(parent, map, options?)` derives a Selection whose clauses are a function of the parent's: every clause the parent receives is passed through `map`, and a `null` result drops it. Use it to rewrite a shared Selection's predicates for one group of consumers, for example a clause on one table's column re-expressed against another table, without publishing twice.
+
+```ts
+import { clausePoint } from '@uwdata/mosaic-core';
+import { createMappedSelection } from '@nozzleio/mosaic-core';
+
+const mapped = createMappedSelection($page, (clause) => {
+  if (clause.source !== sportFacetSource || !clause.predicate) {
+    return clause; // pass other clauses and removals through
+  }
+  return clausePoint('discipline', clause.value, {
+    source: clause.source, // keep the source identity
+    clients: clause.clients,
+  });
+});
+mapped.selection; // → Selection: pass it as a client's `filterBy`, or `include` it
+mapped.refresh(); // re-derive after state the map reads changes
+mapped.destroy(); // detach from the parent (idempotent)
+```
+
+- **Derivation.** The derived Selection seeds from the parent's current clauses (`parent._resolved`), follows relayed `update()` / `reset()` / `activate()` like an `include` relay, and also follows a parent that emits whole snapshots (upstream `clone()`/`remove()`). Relayed updates are forwarded one-for-one, as upstream relays are, with the mapped clause as the active clause. Snapshot follows and `refresh()` compare the derived list by content (source, predicate SQL, `clients`), so a map that mints fresh clause objects does not re-query consumers whose inputs are unchanged. Sources compare by their string `id` when they have one, and `value`, `fields` and `meta` do not count (they do not change the SQL). A content-equal list made of different clause objects is still adopted without re-querying: a snapshot that swaps in a new source object with the same `id`, or a `refresh()`/snapshot that changes a clause's `value`, `fields` or `meta` under the same predicate, so `valueFor`, removal, `reset` and clause data follow the parent. Adoption carries through mapped Selections derived from a mapped Selection; a nested map that reads more of the clause than its SQL (the source object, `value` or `meta`) and so derives a different clause (or drops it) emits that change, without an active clause. A Selection that `include`s the derived one follows its relayed updates only, not its snapshot follows or `refresh()`.
+- **Resolver.** The derived list is always the parent's list, mapped clause by clause and folded through the derived Selection's resolver. That resolver defaults to the parent's, so `intersect`, `union`, `single`, `empty` and `crossfilter` semantics carry over. Pass `{ resolver }` to override it; the override applies to the whole mapped list, so `{ resolver: Selection.single().resolver }` on an `intersect` parent carries only the parent's last kept clause, and falls back to the previous one when that clause is removed. The derived Selection never resets clause sources when it resolves: the parent owns them. (With a `single` parent, upstream's `include` relay would call `reset()` on the displaced clause's source a second time; the derived Selection does not, which is intended.)
+- **Dropping.** A `null` result, or a passed-through removal, for a source the derived Selection does not carry is not an event. A `null` result for a source it still carries (the map stopped keeping it) removes that clause.
+- **`refresh()`.** Emits a list with no active clause, so every consumer re-queries instead of short-circuiting on one source.
+- **Read-only.** Treat `mapped.selection` as read-only. A direct `update()` on it is honoured with upstream semantics, but the next re-derivation from the parent (its next `'value'`, or `refresh()`) overwrites it.
+
+The map's contract:
+
+- **Keep `source` identity.** Mosaic resolves, replaces and removes clauses by `source`; crossfilter self-exclusion, `reset` and external-removal tracking all depend on it. A mapped clause must carry the input clause's `source` object.
+- **Keep `fields`/`meta` consistent with the predicate, or drop `meta`.** Mosaic's pre-aggregation optimizer derives its columns from a clause's `meta` and `fields`, not from its predicate. A map that rewrites the predicate but keeps the original `meta` can make pre-aggregated consumers filter the wrong column.
+- **Pass removals through.** The map also receives removal clauses (a `null` predicate). Return them unchanged unless you mean to drop the source entirely.
+- **Stay pure and never throw.** The map runs inside the parent's `update()`.
+- **Stay cheap.** The derived list is re-derived from the parent's whole list, so the map may be called for every parent clause on each update.
+
+`skipSources` on the data clients is built on this primitive: `createSkipProjectedSelection(parent, skip)` is a mapped Selection whose map drops clauses with a `source.id` in `skip` and passes every other clause through by reference.
+
 ## See also
 
 - [React topology bindings](../react/topology.md) — `useTopology`, the provider/consumer hooks, `useMosaicSelectionRef`, and the active-clause hooks.
