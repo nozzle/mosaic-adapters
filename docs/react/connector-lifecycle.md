@@ -122,24 +122,18 @@ Keying the topology subtree on `connectionId` makes React unmount and remount it
 
 ## The vgplot gotcha: bind plots to the provided coordinator
 
-This one bit during the migration and is easy to miss. `useVgPlot` mounts whatever element the factory returns and disconnects its mark clients on unmount — it does **not** rebind those marks to the provider's coordinator. The bare `vg.plot(...)` / `vg.dot(...)` / `vg.rectY(...)` namespace builds marks against Mosaic's **global** singleton coordinator. So a plot built with the bare namespace inside an app that owns an explicit coordinator publishes and queries on the _wrong_ coordinator — it silently ignores the one in `MosaicProvider`.
+This one bit during the migration and is easy to miss. The bare `vg.plot(...)` namespace connects marks to Mosaic's **global** singleton coordinator. So a plot built with the bare namespace inside an app that owns an explicit coordinator publishes and queries on the _wrong_ coordinator — it silently ignores the one in `MosaicProvider`, and half the page queries a different (possibly unloaded) database.
 
-Build plots through `vg.createAPIContext({ coordinator })` and use that context's factories (`api.plot`, `api.rectY`, `api.from`, `api.intervalX`, …) instead of the bare `vg.*` ones. Resolve the provided coordinator with `useMosaicCoordinator()`:
+Build the plot through the `api` that [`useVgPlot`](./use-vg-plot.md#the-api-factory-argument) passes its factory. It is the vgplot namespace bound (via upstream `createAPIContext`) to the same coordinator the data hooks resolve — `MosaicProvider`'s here — and it is typed, so no cast is needed:
 
 ```tsx
-import * as vg from '@uwdata/vgplot';
-import { useMosaicCoordinator } from '@nozzleio/react-mosaic';
 import { useVgPlot } from '@nozzleio/react-mosaic/vgplot';
 
 function VolumePanel() {
-  // Bare `vg.*` binds to the GLOBAL coordinator; this app owns an explicit one
-  // via MosaicProvider. Build an API context bound to the resolved coordinator
-  // so the marks and brush interactor live on the SAME coordinator as the hooks.
-  const coordinator = useMosaicCoordinator();
-  const api = useMemo(() => vg.createAPIContext({ coordinator }), [coordinator]);
-
+  // `api` is bound to the coordinator from MosaicProvider, so the marks and the
+  // brush interactor live on the SAME coordinator as the hooks.
   const attachPlot = useVgPlot(
-    () =>
+    (api) =>
       api.plot(
         api.rectY(api.from(tableName, { filterBy: $context }), {
           x: api.bin('search_volume'),
@@ -147,21 +141,24 @@ function VolumePanel() {
         }),
         api.intervalX({ as: $brush }),
       ),
-    [api, $brush, $context],
+    [$brush, $context],
   );
 
   return <div ref={attachPlot} />;
 }
 ```
 
-Two things to keep straight:
+Things to keep straight:
 
-- Every mark and interactor must come from the same `api` context — mixing `api.rectY(...)` with a bare `vg.intervalX(...)` re-splits the plot across two coordinators.
-- Include `api` in the `useVgPlot` deps so a recreated connection (new coordinator → new `api`) rebuilds the plot against the live coordinator. The full reference — including in-place resize and syncing the brush overlay to external clears — is the volume-brush panel in [`examples/react/nozzle-paa/src/components/volume-brush-panel.tsx`](../../examples/react/nozzle-paa/src/components/volume-brush-panel.tsx).
+- The coordinator binding is decided by the calls that read the API context: `plot(...)` connects all of the plot's marks to its context's coordinator, and the inputs (`menu`, `search`, `slider`, `table`, …) connect themselves. Interactors such as `intervalX` attach to the plot's marks and don't read a context, so a bare `vg.plot(api.rectY(...))` lands on the global coordinator while `api.plot(...)` doesn't. Using `api` for the whole plot keeps that straight. Call `api.*` as methods; a destructured `const { plot } = api` loses the binding.
+- A recreated connection (new coordinator from the provider) rebuilds the plot against the live coordinator automatically — the resolved coordinator is an implicit `useVgPlot` dep, so `api` doesn't go in `deps`.
+- In development, `useVgPlot` warns once when a plot's marks end up on a different coordinator than the one it resolved, so a stray bare-namespace plot is loud instead of silent.
+
+The full reference — including in-place resize and syncing the brush overlay to external clears — is the volume-brush panel in [`examples/react/nozzle-paa/src/components/volume-brush-panel.tsx`](../../examples/react/nozzle-paa/src/components/volume-brush-panel.tsx).
 
 ## See also
 
 - [React hooks](./hooks.md#provider-setup) — coordinator resolution order (`coordinator` option → `MosaicProvider` → global) and `useMosaicCoordinator`.
 - [Data loading](./data-loading.md) — the readiness half of the gate: serializable source config, sequential exec, and per-table status.
-- [useVgPlot](./use-vg-plot.md) — mounting sugar, `deps`-driven rebuilds, and the `createAPIContext` note.
+- [useVgPlot](./use-vg-plot.md) — mounting sugar, the coordinator-bound `api` factory argument, and `deps`-driven rebuilds.
 - [nozzle-paa](../../examples/react/nozzle-paa) — the wired reference (`src/connector.tsx`, `src/App.tsx`).
