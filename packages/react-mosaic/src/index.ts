@@ -56,4 +56,7 @@ export type { UseMosaicSelectionValueOptions } from './use-mosaic-selection-valu
 
 export { useMosaicParamValue } from './use-mosaic-param-value';
 
+export { useMosaicParamValues } from './use-mosaic-param-values';
+export type { ParamValueOf, UseMosaicParamValuesResult } from './use-mosaic-param-values';
+
 export { useFilterSetChips, useFilterSetState } from './use-filter-set';
