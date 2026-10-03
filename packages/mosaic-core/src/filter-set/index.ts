@@ -1,5 +1,7 @@
 export { createFilterSet } from './filter-set';
 export { emitFilterSpec, filterSpecPredicate } from './emit';
+export { THRESHOLD_OPERATORS, aggregateThresholdFilterKind } from './aggregate-threshold';
+export type { AggregateThresholdKindOptions, ThresholdOperator } from './aggregate-threshold';
 export {
   builtinFilterKinds,
   conditionFilterKind,
@@ -9,7 +11,12 @@ export {
   pointsFilterKind,
   subqueryFilterKind,
 } from './kinds';
-export type { ConditionKindOptions, ConditionOperator, MatchOperator } from './kinds';
+export type {
+  ConditionKindOptions,
+  ConditionOperator,
+  MatchOperator,
+  SubqueryFilterKindOptions,
+} from './kinds';
 export { formatFilterValue, formatRange } from './format';
 export type {
   EmitFilterSpecOptions,

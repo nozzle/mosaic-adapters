@@ -50,7 +50,12 @@ export {
   buildSubqueryPredicate,
   normalizeSubqueryFilterQuery,
 } from './subquery-predicate';
-export type { BuildSubqueryPredicateOptions, SubqueryFilterQuery } from './subquery-predicate';
+export type {
+  BuildSubqueryPredicateOptions,
+  SubqueryClauseParts,
+  SubqueryColumn,
+  SubqueryFilterQuery,
+} from './subquery-predicate';
 
 export { applyRoutedFilters, routeFilter } from './filter-routing';
 export type { RoutedFilterExpr, SqlFilterClauseTarget } from './filter-routing';

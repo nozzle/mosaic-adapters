@@ -1,140 +1,45 @@
-import {
-  SqlIdentifier,
-  buildSubqueryClauseParts,
-  builtinFilterKinds,
-  createStructAccess,
-} from '@nozzleio/react-mosaic';
-import type { FilterKind, FilterKindArgs, OperatorDescriptor } from '@nozzleio/react-mosaic';
+import { aggregateThresholdFilterKind, builtinFilterKinds } from '@nozzleio/react-mosaic';
+import type { FilterKind } from '@nozzleio/react-mosaic';
 /**
  * The FilterKind registry, built from the spec. The app ships GENERIC behavior
  * factories (keyed by behavior name); the spec's `filter_kinds:` section
  * instantiates them with config. Nothing here hard-codes a table, column, or
- * target — every domain value arrives through {@link AggregateThresholdConfig}.
+ * target — every domain value arrives through {@link AggregateThresholdConfig}
+ * or the spec's own `column`.
  *
- * The one shipped behavior, `aggregate-threshold`, compares a per-group
- * aggregate against a threshold and emits two clauses —
+ * The one shipped behavior, `aggregate-threshold`, is the library's
+ * `aggregateThresholdFilterKind`: it compares a per-group aggregate against a
+ * threshold and emits two clauses —
  *
  * 1. `config.having_target` — `<aggregate> >/< N` on the widget's own grouped
  *    query, and
- * 2. `config.members_target` — `<group_by> IN (SELECT <group_by> FROM <table>
- *    WHERE <context predicate> GROUP BY <group_by> HAVING <aggregate cmp N>)`,
+ * 2. `config.members_target` — `<column> IN (SELECT <column> FROM <table>
+ *    WHERE <context predicate> GROUP BY <column> HAVING <aggregate cmp N>)`,
  *    so every sibling narrows to the matching subset.
  *
- * Reading `contextPredicate` registers the spec as context-dependent, so the
- * set rebuilds the subquery on context changes.
+ * The group key is the spec's `column` (the widget's `metric_threshold.group_by`
+ * or the placement's `spec_column`). The kind embeds the context predicate, so
+ * the set rebuilds the subquery on context changes.
  */
 import * as mSql from '@uwdata/mosaic-sql';
 
-import type {
-  AggregateThresholdConfig,
-  DashboardSpec,
-  FilterKindDef,
-  ThresholdOperator,
-} from './schema';
-
-// ── Threshold operator vocabulary ─────────────────────────────────────────────
-
-/** mosaic-sql comparison builder per operator id. */
-const COMPARATORS: Record<
-  ThresholdOperator,
-  (left: mSql.ExprNode, right: mSql.ExprNode) => mSql.ExprNode
-> = {
-  gt: mSql.gt,
-  lt: mSql.lt,
-  gte: mSql.gte,
-  lte: mSql.lte,
-};
-
-/** Descriptor metadata per operator id (for UI enumeration). */
-const OPERATOR_META: Record<ThresholdOperator, OperatorDescriptor> = {
-  gt: { id: 'gt', label: 'greater than', arity: 'unary' },
-  lt: { id: 'lt', label: 'less than', arity: 'unary' },
-  gte: { id: 'gte', label: 'at least', arity: 'unary' },
-  lte: { id: 'lte', label: 'at most', arity: 'unary' },
-};
-
-/** Chip glyph per operator id. */
-const OPERATOR_GLYPH: Record<ThresholdOperator, string> = {
-  gt: '>',
-  lt: '<',
-  gte: '≥',
-  lte: '≤',
-};
-
-function isThresholdOperator(value: unknown): value is ThresholdOperator {
-  return value === 'gt' || value === 'lt' || value === 'gte' || value === 'lte';
-}
+import type { AggregateThresholdConfig, DashboardSpec, FilterKindDef } from './schema';
 
 // ── The `aggregate-threshold` behavior factory ────────────────────────────────
 
 /**
  * Build a {@link FilterKind} from an aggregate-threshold config. The `aggregate`
- * string compiles to a raw mosaic-sql fragment; `group_by` routes through
- * `SqlIdentifier` + `createStructAccess`. The kind advertises exactly the
- * configured operators; `emit` is the source of truth.
+ * string compiles to a raw mosaic-sql fragment, built fresh for each emission.
+ * The kind advertises exactly the configured operators; `emit` is the source of
+ * truth.
  */
 export function aggregateThresholdBehavior(config: AggregateThresholdConfig): FilterKind {
-  const allowed = new Set<ThresholdOperator>(config.operators);
-  const operators: ReadonlyArray<OperatorDescriptor> = config.operators.map(
-    (id) => OPERATOR_META[id],
-  );
-  const aggExpr = (): mSql.ExprNode => mSql.sql`${config.aggregate}`;
-
-  return {
-    operators,
-    emit: (args: FilterKindArgs) => {
-      const operator = args.spec.operator;
-      const value = args.spec.value;
-      if (
-        !isThresholdOperator(operator) ||
-        !allowed.has(operator) ||
-        typeof value !== 'number' ||
-        !Number.isFinite(value) ||
-        value < 0
-      ) {
-        return [];
-      }
-
-      const compare = COMPARATORS[operator];
-      const havingPredicate = compare(aggExpr(), mSql.literal(value));
-
-      const groupKey = createStructAccess(SqlIdentifier.from(config.group_by));
-      const subquery = mSql.Query.select({ member: groupKey })
-        .from(config.table)
-        .groupby(groupKey)
-        .having(compare(aggExpr(), mSql.literal(value)));
-      const contextPredicate = args.contextPredicate;
-      if (contextPredicate !== null) {
-        subquery.where(contextPredicate);
-      }
-
-      // `field` is the exact group_by node embedded in the IN-subquery
-      // predicate, so `fields: [field]` satisfies Mosaic 0.29 field identity
-      // for pre-aggregation on the members target.
-      const { predicate: membersPredicate, field } = buildSubqueryClauseParts({
-        column: config.group_by,
-        query: subquery,
-      });
-
-      return [
-        {
-          // The HAVING predicate tests a post-aggregate expression, not the
-          // spec's resolved column, so the default `fields` would be wrong;
-          // an aggregate has no scannable input field, so `fields` is empty.
-          target: config.having_target,
-          clause: { value, predicate: havingPredicate, fields: [] },
-        },
-        {
-          target: config.members_target,
-          clause: { value, predicate: membersPredicate, fields: [field] },
-        },
-      ];
-    },
-    formatValue: (spec) => {
-      const glyph = isThresholdOperator(spec.operator) ? OPERATOR_GLYPH[spec.operator] : '?';
-      return `${glyph} ${String(spec.value)}`;
-    },
-  };
+  return aggregateThresholdFilterKind({
+    from: config.table,
+    aggregate: () => mSql.sql`${config.aggregate}`,
+    targets: { having: config.having_target, members: config.members_target },
+    operators: config.operators,
+  });
 }
 
 // ── Behavior registry + spec-driven kind registry ────────────────────────────

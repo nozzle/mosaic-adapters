@@ -25,7 +25,7 @@ import {
   identifierAccess,
 } from '../sql-access';
 import { buildSubqueryClauseParts, normalizeSubqueryFilterQuery } from '../subquery-predicate';
-import type { SubqueryFilterQuery } from '../subquery-predicate';
+import type { SubqueryColumn, SubqueryFilterQuery } from '../subquery-predicate';
 import { formatRange } from './format';
 import type { FilterKind, FilterKindArgs, FilterSpec, OperatorDescriptor } from './types';
 
@@ -289,7 +289,11 @@ export const matchFilterKind: FilterKind = {
  * Options for {@link conditionFilterKind}.
  */
 export interface ConditionKindOptions {
-  /** `'array'` treats the column as a list (list_has_* / array emptiness). */
+  /**
+   * `'array'` treats the column as a list: `list_has_*` collection tests, list
+   * emptiness, and "any element matches" for the text operators (`contains`,
+   * `starts_with`, `ends_with`, `matches` and their `not_*` forms).
+   */
   columnType?: 'scalar' | 'array';
   /** Overrides the type coercion; defaults are inferred from the JS value. */
   dataType?: 'string' | 'number' | 'boolean' | 'date';
@@ -308,6 +312,8 @@ type CanonicalOperator =
   | 'not_starts_with'
   | 'ends_with'
   | 'not_ends_with'
+  | 'matches'
+  | 'not_matches'
   | 'is_null'
   | 'not_null'
   | 'between'
@@ -348,6 +354,8 @@ const CANONICAL_OPERATORS = new Set<CanonicalOperator>([
   'not_starts_with',
   'ends_with',
   'not_ends_with',
+  'matches',
+  'not_matches',
   'is_null',
   'not_null',
   'between',
@@ -378,6 +386,8 @@ const CONDITION_OPERATORS = [
   { id: 'not_starts_with', label: 'does not start with', arity: 'unary' },
   { id: 'ends_with', label: 'ends with', arity: 'unary' },
   { id: 'not_ends_with', label: 'does not end with', arity: 'unary' },
+  { id: 'matches', label: 'matches regex', arity: 'unary' },
+  { id: 'not_matches', label: 'does not match regex', arity: 'unary' },
   { id: 'is_null', label: 'is null', arity: 'none' },
   { id: 'not_null', label: 'is not null', arity: 'none' },
   { id: 'is_empty', label: 'is empty', arity: 'none' },
@@ -435,6 +445,95 @@ function likePattern(
     return `${escaped}%`;
   }
   return `%${escaped}`;
+}
+
+/** A text operator's positive form; `not_*` operators negate it. */
+type TextMatch = 'contains' | 'starts_with' | 'ends_with' | 'matches';
+
+type TextOperator = Extract<
+  CanonicalOperator,
+  | 'contains'
+  | 'not_contains'
+  | 'starts_with'
+  | 'not_starts_with'
+  | 'ends_with'
+  | 'not_ends_with'
+  | 'matches'
+  | 'not_matches'
+>;
+
+const TEXT_OPERATORS: Record<TextOperator, { match: TextMatch; negate: boolean }> = {
+  contains: { match: 'contains', negate: false },
+  not_contains: { match: 'contains', negate: true },
+  starts_with: { match: 'starts_with', negate: false },
+  not_starts_with: { match: 'starts_with', negate: true },
+  ends_with: { match: 'ends_with', negate: false },
+  not_ends_with: { match: 'ends_with', negate: true },
+  matches: { match: 'matches', negate: false },
+  not_matches: { match: 'matches', negate: true },
+};
+
+/**
+ * The lambda parameter naming one list element inside the array-column text
+ * predicates (`list_filter(col, x -> ...)`). The outer column is evaluated
+ * outside the lambda, so a column that is itself named `x` is unaffected.
+ */
+const LIST_ELEMENT = mSql.sql`x`;
+
+/**
+ * Tests one string-valued expression: `ILIKE` with an escaped pattern for
+ * `contains` / `starts_with` / `ends_with` (case-insensitive), or DuckDB's
+ * `regexp_matches` for `matches` (RE2 syntax, case-sensitive unless the
+ * pattern opts out with `(?i)`). A missing or empty value → `null` (inactive).
+ */
+function buildTextMatchPredicate(
+  subject: ExprNode,
+  match: TextMatch,
+  value: unknown,
+  negate: boolean,
+): ExprNode | null {
+  if (typeof value !== 'string' || value.length === 0) {
+    return null;
+  }
+  if (match === 'matches') {
+    const test = mSql.regexp_matches(subject, mSql.literal(value));
+    return negate ? mSql.not(test) : test;
+  }
+  const pattern = likePattern(value, match);
+  if (pattern === null) {
+    return null;
+  }
+  return negate
+    ? mSql.sql`${subject} NOT ILIKE ${mSql.literal(pattern)} ESCAPE '\\'`
+    : mSql.sql`${subject} ILIKE ${mSql.literal(pattern)} ESCAPE '\\'`;
+}
+
+/**
+ * Builds a text operator's predicate. A scalar column is tested directly. On
+ * an array column (`columnType: 'array'`) the operator means "any element
+ * matches": `len(list_filter(col, x -> <test x>)) > 0`, and the `not_*` form
+ * negates the whole test ("no element matches"). A NULL list makes both forms
+ * NULL, so the row is dropped either way, as a NULL scalar is under `ILIKE` /
+ * `NOT ILIKE`. An empty list has no matching element (kept by `not_*` only),
+ * and NULL elements never match.
+ */
+function buildTextOperatorPredicate(
+  operator: TextOperator,
+  rawColumn: ExprNode,
+  value: unknown,
+  options: Required<ConditionKindOptions>,
+): ExprNode | null {
+  const { match, negate } = TEXT_OPERATORS[operator];
+  if (options.columnType !== 'array') {
+    return buildTextMatchPredicate(rawColumn, match, value, negate);
+  }
+  const element = buildTextMatchPredicate(LIST_ELEMENT, match, value, false);
+  if (element === null) {
+    return null;
+  }
+  const matching = mSql.sql`len(list_filter(${rawColumn}, ${LIST_ELEMENT} -> ${element}))`;
+  const anyElement = mSql.gt(matching, mSql.literal(0));
+  return negate ? mSql.not(anyElement) : anyElement;
 }
 
 function inList(values: Array<unknown>): ReturnType<typeof mSql.sql> {
@@ -564,42 +663,15 @@ function buildConditionPredicate(
       return filled ? mSql.lt(col, mSql.literal(value)) : null;
     case 'lte':
       return filled ? mSql.lte(col, mSql.literal(value)) : null;
-    case 'contains': {
-      const pattern = likePattern(value, 'contains');
-      return pattern === null
-        ? null
-        : mSql.sql`${rawColumn} ILIKE ${mSql.literal(pattern)} ESCAPE '\\'`;
-    }
-    case 'not_contains': {
-      const pattern = likePattern(value, 'contains');
-      return pattern === null
-        ? null
-        : mSql.sql`${rawColumn} NOT ILIKE ${mSql.literal(pattern)} ESCAPE '\\'`;
-    }
-    case 'starts_with': {
-      const pattern = likePattern(value, 'starts_with');
-      return pattern === null
-        ? null
-        : mSql.sql`${rawColumn} ILIKE ${mSql.literal(pattern)} ESCAPE '\\'`;
-    }
-    case 'not_starts_with': {
-      const pattern = likePattern(value, 'starts_with');
-      return pattern === null
-        ? null
-        : mSql.sql`${rawColumn} NOT ILIKE ${mSql.literal(pattern)} ESCAPE '\\'`;
-    }
-    case 'ends_with': {
-      const pattern = likePattern(value, 'ends_with');
-      return pattern === null
-        ? null
-        : mSql.sql`${rawColumn} ILIKE ${mSql.literal(pattern)} ESCAPE '\\'`;
-    }
-    case 'not_ends_with': {
-      const pattern = likePattern(value, 'ends_with');
-      return pattern === null
-        ? null
-        : mSql.sql`${rawColumn} NOT ILIKE ${mSql.literal(pattern)} ESCAPE '\\'`;
-    }
+    case 'contains':
+    case 'not_contains':
+    case 'starts_with':
+    case 'not_starts_with':
+    case 'ends_with':
+    case 'not_ends_with':
+    case 'matches':
+    case 'not_matches':
+      return buildTextOperatorPredicate(operator, rawColumn, value, options);
     case 'between':
       return buildBetweenPredicate(col, spec);
     case 'in':
@@ -679,26 +751,49 @@ export function conditionFilterKind(options?: ConditionKindOptions): FilterKind 
 }
 
 /**
+ * Options for {@link subqueryFilterKind}.
+ */
+export interface SubqueryFilterKindOptions {
+  /**
+   * Outer columns tested for membership. Defaults to the spec's own `column`.
+   * Pass several for a composite key: the kind then emits
+   * `(a, b) [NOT] IN (SELECT ...)` and the query must select one column per
+   * entry, in order. `spec.column` still labels the spec's chip, and
+   * `spec.columnPaths` applies to every entry.
+   */
+  columns?: ReadonlyArray<SubqueryColumn>;
+}
+
+/**
  * Builds a `column [NOT] IN (SELECT ...)` membership kind from a query
  * factory. NOT registered by default (a membership query is consumer logic).
- * Emissions never carry `meta`; the set publishes them via `createSubqueryClause`.
+ * Emissions carry `fields` for every outer column and never carry `meta`; the
+ * set publishes them via `createSubqueryClause`.
+ *
+ * Throws when `options.columns` is an empty array.
  */
 export function subqueryFilterKind(
   build: (args: FilterKindArgs) => SubqueryFilterQuery,
+  options?: SubqueryFilterKindOptions,
 ): FilterKind {
+  const columns = options?.columns;
+  if (columns !== undefined && columns.length === 0) {
+    throw new Error('[mosaic-core] subqueryFilterKind `columns` must name at least one column.');
+  }
+
   return {
     emit: (args) => {
       const normalized = normalizeSubqueryFilterQuery(build(args));
       if (normalized === null) {
         return [];
       }
-      const { predicate, field } = buildSubqueryClauseParts({
-        column: args.spec.column,
+      const { predicate, fields } = buildSubqueryClauseParts({
+        column: columns ?? args.spec.column,
         columnPaths: args.spec.columnPaths,
         query: normalized.query,
         negate: normalized.negate,
       });
-      return [{ clause: { value: args.spec.value, predicate, fields: [field] } }];
+      return [{ clause: { value: args.spec.value, predicate, fields } }];
     },
   };
 }
