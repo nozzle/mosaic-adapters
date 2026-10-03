@@ -127,7 +127,12 @@ export interface DataClientOptions<TInputs extends object> {
    *   nothing.
    */
   inputMode?: 'append' | 'manual';
-  /** Passed through to MosaicClient; gates pre-aggregation. Default true. */
+  /**
+   * Passed through to MosaicClient; gates pre-aggregation. Default true
+   * (upstream parity). `true` promises that filtering can't change which
+   * groups the query produces — fixed histogram bins qualify, a `GROUP BY` over
+   * a data key usually does not.
+   */
   filterStable?: boolean;
   /**
    * Clause sources to ignore when resolving `filterBy` (WHERE) and `havingBy`

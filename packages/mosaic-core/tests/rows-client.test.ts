@@ -2,8 +2,10 @@ import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
 import type { TestDb } from '@nozzleio/test-support/duckdb';
 import { Selection, clausePoint } from '@uwdata/mosaic-core';
 import type { ClauseSource } from '@uwdata/mosaic-core';
-import { Query } from '@uwdata/mosaic-sql';
+import { Query, count, max, row_number, sum } from '@uwdata/mosaic-sql';
+import type { FilterExpr } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 
 import { createRowsClient } from '../src/index';
 
@@ -475,5 +477,215 @@ describe('prefetch', () => {
     expect(db.connectorQueries.length).toBe(connectorCount);
 
     client.destroy();
+  });
+});
+
+describe('defaulted filterStable warning', () => {
+  function filterStableWarnings(warn: MockInstance<typeof console.warn>): Array<string> {
+    return warn.mock.calls
+      .map((call: Array<unknown>) => String(call[0]))
+      .filter((message: string) => message.includes('filterStable was left at its default'));
+  }
+
+  function groupedBySport(where: FilterExpr) {
+    return Query.from('athletes').select('sport', { total: count() }).where(where).groupby('sport');
+  }
+
+  async function settle(client: { store: { state: { status: string } } }) {
+    await waitFor(() => {
+      expect(client.store.state.status).toBe('success');
+    });
+  }
+
+  test('warns once for a grouped query with filterBy and a defaulted filterStable', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const $page = Selection.crossfilter();
+      const client = createRowsClient({
+        coordinator: db.coordinator,
+        query: ({ where }) => groupedBySport(where),
+        filterBy: $page,
+        inputs: { orderBy: [{ column: 'sport' }] },
+      });
+      await settle(client);
+      client.setInputs({ limit: 1 });
+      await waitFor(() => {
+        expect(client.store.state.rows).toHaveLength(1);
+      });
+
+      const warnings = filterStableWarnings(warn);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('uses GROUP BY while');
+      client.destroy();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('warns for grouping nested in a CTE or FROM subquery under an outer aggregate', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const $page = Selection.crossfilter();
+      const cte = createRowsClient({
+        coordinator: db.coordinator,
+        query: ({ where }) =>
+          Query.with({ g: groupedBySport(where) })
+            .from('g')
+            .select({ total: sum('total') }),
+        filterBy: $page,
+      });
+      const subquery = createRowsClient({
+        coordinator: db.coordinator,
+        query: ({ where }) => Query.from(groupedBySport(where)).select({ total: sum('total') }),
+        filterBy: $page,
+      });
+      await settle(cte);
+      await settle(subquery);
+
+      const warnings = filterStableWarnings(warn);
+      expect(warnings).toHaveLength(2);
+      for (const message of warnings) {
+        expect(message).toContain('uses GROUP BY inside a CTE, FROM subquery or set operation');
+      }
+      cte.destroy();
+      subquery.destroy();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('warns for a window function used only in a nested ORDER BY', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const $page = Selection.crossfilter();
+      const client = createRowsClient({
+        coordinator: db.coordinator,
+        query: ({ where }) =>
+          Query.from(
+            Query.from('athletes')
+              .select('id')
+              .where(where)
+              .orderby(row_number().orderby('weight'))
+              .limit(10),
+          ).select({ total: count() }),
+        filterBy: $page,
+      });
+      await settle(client);
+
+      const warnings = filterStableWarnings(warn);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain(
+        'uses a window function inside a CTE, FROM subquery or set operation',
+      );
+      client.destroy();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('stays silent when pre-aggregation cannot apply or the caller decided', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const $page = Selection.crossfilter();
+      const clients = [
+        // No filterBy: nothing can drive pre-aggregation.
+        createRowsClient({
+          coordinator: db.coordinator,
+          query: ({ where }) => groupedBySport(where),
+        }),
+        // Explicit filterStable either way.
+        createRowsClient({
+          coordinator: db.coordinator,
+          query: ({ where }) => groupedBySport(where),
+          filterBy: $page,
+          filterStable: false,
+        }),
+        createRowsClient({
+          coordinator: db.coordinator,
+          query: ({ where }) => groupedBySport(where),
+          filterBy: $page,
+          filterStable: true,
+        }),
+        // A non-empty skipSources already forces filterStable off.
+        createRowsClient({
+          coordinator: db.coordinator,
+          query: ({ where }) => groupedBySport(where),
+          filterBy: $page,
+          skipSources: new Set(['other-widget']),
+        }),
+        // rowCount: 'window' wraps the base in a non-aggregating SELECT.
+        createRowsClient({
+          coordinator: db.coordinator,
+          query: ({ where }) => groupedBySport(where),
+          filterBy: $page,
+          rowCount: 'window',
+        }),
+        // Grouping only inside a subquery under a plain outer SELECT.
+        createRowsClient({
+          coordinator: db.coordinator,
+          query: ({ where }) => Query.from(groupedBySport(where)).select('*'),
+          filterBy: $page,
+        }),
+        // DISTINCT and window functions on a plain row list.
+        createRowsClient({
+          coordinator: db.coordinator,
+          query: ({ where }) => athleteQuery().where(where).distinct(),
+          filterBy: $page,
+        }),
+        createRowsClient({
+          coordinator: db.coordinator,
+          query: ({ where }) =>
+            athleteQuery()
+              .select({ rank: row_number().orderby('weight') })
+              .where(where),
+          filterBy: $page,
+        }),
+        // A global aggregate has a single, filter-stable group.
+        createRowsClient({
+          coordinator: db.coordinator,
+          query: ({ where }) => Query.from('athletes').select({ total: count() }).where(where),
+          filterBy: $page,
+        }),
+      ];
+      for (const client of clients) {
+        await settle(client);
+      }
+
+      expect(filterStableWarnings(warn)).toHaveLength(0);
+      for (const client of clients) {
+        client.destroy();
+      }
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('re-checks later query shapes until the warning fires', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const $page = Selection.crossfilter();
+      const client = createRowsClient<Record<string, unknown>>({
+        coordinator: db.coordinator,
+        query: ({ where }) => athleteQuery().where(where),
+        filterBy: $page,
+      });
+      await settle(client);
+      expect(filterStableWarnings(warn)).toHaveLength(0);
+
+      client.setQuery(({ where }) =>
+        Query.from('athletes')
+          .select({ top: max('weight') })
+          .where(where)
+          .distinct(),
+      );
+      await client.refetch();
+      await waitFor(() => {
+        expect(filterStableWarnings(warn)).toHaveLength(1);
+      });
+      expect(filterStableWarnings(warn)[0]).toContain('uses SELECT DISTINCT while');
+      client.destroy();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

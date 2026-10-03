@@ -6,6 +6,7 @@ import type { SelectQuery } from '@uwdata/mosaic-sql';
 import { BaseDataClient } from './base-client';
 import { createClearClause } from './clause-factory';
 import type { FilterSpec } from './filter-set/types';
+import { canPreAggregate, findFilterUnstableShape } from './filter-stability';
 import { PersisterLifecycle } from './persistence';
 import { SqlIdentifier, createStructAccess } from './sql-access';
 import { isFilterSetPublishTarget } from './types';
@@ -71,7 +72,7 @@ class RowsDataClient<TRow>
    * next build to issue (initial state, and after `refetch()` / a failed count).
    */
   #lastCountQuerySql: string | undefined;
-  #warnedGroupedFilterStable = false;
+  #warnedFilterUnstable = false;
 
   constructor(options: RowsClientOptions<TRow>) {
     const rowCount = options.rowCount ?? 'none';
@@ -189,8 +190,8 @@ class RowsDataClient<TRow>
 
   protected buildQuery(ctx: QueryContext<RowsInputs>): SelectQuery {
     const base = this.resolveBase(ctx);
-    this.#warnGroupedFilterStable(base);
     if (this.#inputMode === 'manual') {
+      this.#warnFilterUnstable(base);
       return base;
     }
 
@@ -220,6 +221,7 @@ class RowsDataClient<TRow>
     if (offset !== undefined) {
       query.offset(offset);
     }
+    this.#warnFilterUnstable(query);
     return query;
   }
 
@@ -428,38 +430,55 @@ class RowsDataClient<TRow>
   }
 
   /**
-   * A grouped main query whose group domain changes under filtering breaks
-   * Mosaic's pre-aggregation assumptions, and `filterStable` defaults to
-   * upstream's `true`. Mosaic then answers selection updates from a
-   * materialized view it builds once from `client.query()` with the *active*
-   * clause removed (sibling clauses still applied) — every part of the query
-   * that varies with the active filter beyond the WHERE clause, the GROUP BY
-   * domain included, is frozen at that pre-active shape and never rebuilt
-   * while the brush moves. Mosaic 0.30's `updateSelection` retries the standard
-   * query when the pre-aggregated update returns a `QueryError`, and Mosaic
-   * 0.31 additionally catches a failing view-*creation* query (logged via the
-   * coordinator's logger, then the standard path is used), so a *failing*
-   * optimizer path degrades to a correct (slower) query at either stage; a
-   * wrong-but-valid one still returns incorrect rows with no error. Surface
-   * the hazard once instead of failing silently.
+   * `filterStable` defaults to upstream's `true`, which promises Mosaic's
+   * pre-aggregation optimizer that filtering cannot change which groups the
+   * query produces. When the promise is wrong, Mosaic answers selection
+   * updates from a materialized view it builds once from `client.query()` with
+   * the *active* clause removed (sibling clauses still applied) — every part of
+   * the query that varies with the active filter beyond the WHERE clause is
+   * frozen at that pre-active shape and never rebuilt while the brush moves.
+   * A *failing* optimizer path degrades to the standard query (Mosaic 0.31+
+   * catches failed view creation and failed updates alike); a wrong-but-valid
+   * one returns incorrect rows with no error. Surface the hazard once instead
+   * of failing silently.
+   *
+   * Only warns when the hazard is reachable: a `filterBy` Selection exists
+   * (pre-aggregation is driven by it), `filterStable` was left defaulted and is
+   * not forced off by `skipSources`, the query Mosaic sees is one it could
+   * pre-aggregate (outer aggregates — never the `rowCount: 'window'` wrapper),
+   * and the query has a filter-unstable shape (GROUP BY, DISTINCT, QUALIFY,
+   * window functions or PIVOT, at the top level or nested in a CTE, FROM
+   * subquery or set operation). Re-checked on each build until it fires once.
    */
-  #warnGroupedFilterStable(base: SelectQuery): void {
-    if (this.#warnedGroupedFilterStable) {
+  #warnFilterUnstable(query: SelectQuery): void {
+    if (this.#warnedFilterUnstable) {
       return;
     }
-    this.#warnedGroupedFilterStable = true;
     if (this.#options.filterStable !== undefined) {
       return;
     }
-    if (base._groupby.length === 0) {
+    if (this.#options.filterBy === undefined) {
       return;
     }
+    if (!this.mosaicClient.filterStable) {
+      return;
+    }
+    if (!canPreAggregate(query)) {
+      return;
+    }
+    const shape = findFilterUnstableShape(query);
+    if (shape === null) {
+      return;
+    }
+    this.#warnedFilterUnstable = true;
+    const where = shape.nested ? ' inside a CTE, FROM subquery or set operation' : '';
     console.warn(
-      '[mosaic-core] A rows client query uses GROUP BY while filterStable ' +
-        'was left at its default (true). Filtering usually changes a ' +
-        'grouped query’s group domain, which invalidates pre-aggregation ' +
-        '— pass filterStable: false (or an explicit true if the group ' +
-        'domain really is filter-stable).',
+      `[mosaic-core] A rows client query uses ${shape.clause}${where} while ` +
+        'filterStable was left at its default (true). filterStable promises ' +
+        'that filtering cannot change which groups the query produces; this ' +
+        'shape usually breaks that promise, and pre-aggregation then returns ' +
+        'incorrect rows. Pass filterStable: false, or an explicit true if ' +
+        'filtering really cannot change the groups (e.g. fixed histogram bins).',
     );
   }
 
