@@ -419,7 +419,7 @@ const filters = createFilterSet({
 
 `destroy()` detaches the set's listeners and, by default, **clears every clause it published** from its targets — the right default when the targets outlive the set (page-scope Selections shared with other widgets). It never writes to the persister. Idempotent; `set.destroyed` reports it.
 
-Clearing publishes a `value` update on each target, so every client still connected to a target runs one query on the way out. When the targets die with the set — nothing will read them again — pass `{ silent: true }` to skip the clears: the targets keep their last clauses and emit nothing.
+Clearing publishes a `value` update on each target, so a client still connected to a target may run one query on the way out. Clients that can pre-aggregate (or set `coalesceFilterBy: false`) run it at once; clients on the [coalesced path](./concepts.md#one-query-per-action) defer it to their next batch, which is dropped if the client is destroyed first — as it usually is when it is torn down alongside the set. When the targets die with the set — nothing will read them again — pass `{ silent: true }` to skip the clears: the targets keep their last clauses and emit nothing.
 
 ```ts
 filters.destroy(); // detach, then clear published clauses (default)
