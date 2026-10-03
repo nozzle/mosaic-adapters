@@ -10,6 +10,7 @@
 import { describe, expect, test } from 'vitest';
 
 import type {
+  DataClientMeta,
   DataClientOptions,
   DataClientSettled,
   DataClientStatus,
@@ -18,6 +19,8 @@ import type {
   ParamValue,
   Persister,
   QueryKeyOptions,
+  QueryPreview,
+  QueryPreviewOptions,
   Topology,
   TopologyConfig,
   TopologyOptions,
@@ -43,6 +46,10 @@ describe('public type surface', () => {
       Reexported<DataClientOptions<Record<string, unknown>>>,
       Reexported<DataClientSettled<Record<string, unknown>>>,
       Reexported<Persister<unknown>>,
+      // Debugging aids: client `meta` and `previewQuery()`.
+      Reexported<DataClientMeta>,
+      Reexported<QueryPreview>,
+      Reexported<QueryPreviewOptions<Record<string, unknown>>>,
       // The hooks' shared `queryKey` option, exported for hook wrappers.
       Reexported<QueryKeyOptions>,
     ];

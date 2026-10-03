@@ -130,7 +130,11 @@ class HistogramDataClient
       step: ctx.inputs.step,
       bins: ctx.inputs.bins,
     });
-    this.#binning = binning;
+    // `onResult` reads the binning of the last real build; a preview must
+    // not replace it.
+    if (!this.previewing) {
+      this.#binning = binning;
+    }
 
     const field = this.#field;
     return Query.from(this.resolveBase(ctx))

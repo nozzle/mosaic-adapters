@@ -21,6 +21,8 @@ const client = createRowsClient({
 - `having` is the same for `havingBy`. Predicate validity in HAVING position (aggregate references) is the caller's responsibility.
 - `inputs` is the current inputs object; only consume it with `inputMode: 'manual'`.
 
+A factory that drops `where` or `having` while it carries an active predicate silently shows unfiltered data. In development, the client warns once when that happens — see [ignored-filter warning](#ignored-filter-warning).
+
 The factory is held by **latest-ref** (React-Query `queryFn` style): a new function identity never re-queries. Swap it with `client.setQuery(fn)`; the next trigger uses the latest factory. This structurally eliminates function-identity re-query bugs. When the swapped factory is a genuinely new query (recompiled pivot columns, a rule set, picked columns), say so with `client.invalidate()` — see [re-query triggers](#re-query-triggers).
 
 ## Re-query triggers
@@ -225,6 +227,69 @@ Two lanes drive the same setters: the passive **persister** (above), and reactiv
 `resetAll` across N filters produces N per-entry `write` calls — coalesce/debounce consumer-side if a single storage commit is wanted.
 
 For wiring either lane behind a router — `navigate({ search })` in `write`, `reason` → push/replace, driving the setters from reactive search params, and coalescing the per-client fan-out — see the [router persistence recipe](../react/router-persistence.md).
+
+## Debugging
+
+### Client `meta`
+
+`meta` is a consumer-owned bag of debugging metadata — a widget id, a label, a route. The library never reads it and it never reaches the query:
+
+```ts
+const kpi = createValuesClient({
+  coordinator,
+  query: ({ where }) => Query.from('events').select({ total: count() }).where(where),
+  filterBy: $page,
+  meta: { widget: 'kpi-total' },
+});
+
+kpi.meta; // { widget: 'kpi-total' }
+kpi.setMeta({ widget: 'kpi-total', route: '/overview' }); // never re-queries
+```
+
+It is held by **latest-ref**: `setMeta` replaces it without re-querying, and the React hooks sync their `meta` option the same way (a new `meta` never recreates the client). The client also mirrors it onto the wrapped upstream `MosaicClient` under the registered symbol `MOSAIC_CLIENT_META`, so coordinator-level observers — which only ever see `MosaicClient`s — can attribute each query to the widget that issued it. Read it with `getClientMeta`, which returns `undefined` for any client without one (vgplot marks, plain `makeClient` clients):
+
+```ts
+import { getClientMeta } from '@nozzleio/mosaic-core';
+
+const updateClient = coordinator.updateClient.bind(coordinator);
+coordinator.updateClient = (client, query, priority) => {
+  console.debug(getClientMeta(client)?.widget ?? '(unknown)', String(query));
+  return updateClient(client, query, priority);
+};
+```
+
+The mirror is a non-enumerable getter that always returns the latest `meta`. A query log or devtools panel is out of scope for this package; `meta` is the hook such a tool needs.
+
+### `previewQuery()`
+
+`client.previewQuery()` builds the SQL the client would issue for its current filters and inputs — **without issuing anything**: no request, no store update, no COUNT side-channel query. It returns `{ main, count }`:
+
+- `main` — the main query, or `null` when the client would issue none (an empty round, such as a sparkline client with no keys and no `filterBy`).
+- `count` — the rows client's separate COUNT query with `rowCount: 'query'`; `null` for every other client and row-count mode (`'window'` counts inside `main`).
+
+Every part can be overridden; overrides are not applied to the client:
+
+```ts
+rows.previewQuery(); // what refetch() would issue right now
+rows.previewQuery({ inputs: { offset: 50 } }); // the next page (merged over current inputs)
+rows.previewQuery({ where: [] }); // ...as if unfiltered
+rows.previewQuery({ where: eq('sport', literal('swim')), having: [] });
+```
+
+It is a **debugging and testing aid**: the SQL text is whatever `@uwdata/mosaic-sql` renders, and its exact format is not stable across versions — assert on fragments, not whole strings. It throws when the client cannot build yet (a histogram before its extent is discovered), and your query factory runs as it would for a real query, so any side effects of its own still happen.
+
+### Ignored-filter warning
+
+In development, a client warns once (`console.warn`, with its `meta` attached when set) if its query factory was handed an active `where` or `having` predicate and **never read it** — the query it built silently ignores that filter:
+
+```ts
+// Warns: `where` is never read, so the page filter is ignored.
+query: () => Query.from('events').select({ total: count() }),
+```
+
+It only fires when there is something to ignore: an unfiltered client, a predicate that is empty because of cross-filter self-exclusion, and a table-name `query` (the client applies both predicates itself) never warn. Reads are detected by property access, so destructuring or spreading the context counts as reading both predicates. If dropping a predicate is deliberate, read it to acknowledge (`void ctx.where`) — or, to render a widget fully unfiltered, omit `filterBy`. `previewQuery()` never warns.
+
+"Development" means `process.env.NODE_ENV` is set and not `'production'`. Bundlers replace that expression, so the check is stripped from production builds; where nothing sets it (an unbundled browser, a plain Node script) the warning stays off.
 
 ## Lifecycle
 

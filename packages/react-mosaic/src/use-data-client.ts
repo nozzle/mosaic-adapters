@@ -1,5 +1,10 @@
 import { isSameQuerySource } from '@nozzleio/mosaic-core';
-import type { DataClient, DataClientStatus, QuerySource } from '@nozzleio/mosaic-core';
+import type {
+  DataClient,
+  DataClientMeta,
+  DataClientStatus,
+  QuerySource,
+} from '@nozzleio/mosaic-core';
 import type { Param } from '@uwdata/mosaic-core';
 import { useEffect, useReducer, useRef } from 'react';
 
@@ -27,9 +32,9 @@ export interface QueryKeyOptions {
  *
  * - **Structural identity** (`structuralKey`): any change destroys and
  *   recreates the client. Every option without a core setter is structural.
- * - **Latest-ref** (`sync`): `query`/`coerce` are swapped into the client on
- *   every committed render; a new function identity never recreates the
- *   client and never re-queries.
+ * - **Latest-ref** (`sync`, `meta`): `query`/`coerce` and the debugging
+ *   `meta` are swapped into the client on every committed render; a new
+ *   identity never recreates the client and never re-queries.
  * - **Value-diffed**: `inputs` is forwarded as a controlled merge-patch
  *   (keys that disappear between renders are explicitly cleared) and deep
  *   value-diffed by the core — a re-query happens iff the value changed;
@@ -64,10 +69,15 @@ export function useBoundClient<
    * `undefined` (omitted) never re-queries.
    */
   queryKey: ReadonlyArray<unknown> | undefined;
+  /**
+   * The hook's `meta` option, synced through `setMeta` on every committed
+   * render (latest-ref; never structural, never re-queries).
+   */
+  meta: DataClientMeta | undefined;
   /** Latest-ref swaps (`setQuery`, `setCoerce`); runs before input/enabled sync. */
   sync: (client: TClient) => void;
 }): TClient {
-  const { create, structuralKey, inputs, enabled, queryKey, sync } = binding;
+  const { create, structuralKey, inputs, enabled, queryKey, meta, sync } = binding;
 
   const clientRef = useRef<TClient | null>(null);
   const keyRef = useRef<ReadonlyArray<unknown> | null>(null);
@@ -109,6 +119,7 @@ export function useBoundClient<
     // coalesce into one query; `enabled` last so the deferred first query
     // sees current inputs.
     sync(client);
+    client.setMeta(meta);
     client.setInputs(controlledInputsPatch(lastInputsRef.current, inputs));
     lastInputsRef.current = inputs;
     if (queryKeyChanged(lastQueryKeyRef.current, client, queryKey)) {

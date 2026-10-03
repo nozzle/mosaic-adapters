@@ -34,8 +34,8 @@ export type UseMosaicPivotResult<TRow> = PivotClientState<TRow> & {
  * Controlled binding over `createPivotClient`. The pivot shape (`on`,
  * `using`, `groupBy`, `in`) is structural — it is plain JSON, so it is
  * compared by value, and changing it recreates the client; `from` and
- * `coerce` are latest-ref (a `queryKey` change re-queries without
- * recreating); `inputs` (orderBy/limit/offset) value-diffed.
+ * `coerce` (and the debugging `meta`) are latest-ref (a `queryKey` change
+ * re-queries without recreating); `inputs` (orderBy/limit/offset) value-diffed.
  */
 export function useMosaicPivot<TRow>(
   options: UseMosaicPivotOptions<TRow>,
@@ -64,6 +64,7 @@ export function useMosaicPivot<TRow>(
     inputs: options.inputs,
     enabled,
     queryKey: options.queryKey,
+    meta: options.meta,
     sync: (c) => {
       c.setQuery(from);
       c.setCoerce(options.coerce);

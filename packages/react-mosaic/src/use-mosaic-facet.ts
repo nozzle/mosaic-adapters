@@ -33,7 +33,7 @@ export type UseMosaicFacetResult = FacetClientState & {
 /**
  * Controlled binding over `createFacetClient`. Same identity rules as
  * `useMosaicRows`: everything without a core setter is structural, `from`
- * is latest-ref, `inputs` (search/limit) value-diffed, `enabled` via
+ * and `meta` are latest-ref, `inputs` (search/limit) value-diffed, `enabled` via
  * `setEnabled` — so `enabled: open` gates option queries to while a
  * dropdown is actually open.
  *
@@ -78,6 +78,7 @@ export function useMosaicFacet(options: UseMosaicFacetOptions): UseMosaicFacetRe
     inputs: options.inputs,
     enabled,
     queryKey: options.queryKey,
+    meta: options.meta,
     sync: (c) => {
       c.setQuery(from);
     },
