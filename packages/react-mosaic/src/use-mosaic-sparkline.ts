@@ -51,6 +51,7 @@ export function useMosaicSparkline(options: UseMosaicSparklineOptions): UseMosai
       skipSourcesKey(options.skipSources),
       options.inputMode,
       options.filterStable,
+      options.coalesceFilterBy,
       options.key,
       options.columnPaths,
       options.x.column,

@@ -28,12 +28,52 @@ The factory is held by **latest-ref** (React-Query `queryFn` style): a new funct
 Exactly five things trigger a query:
 
 1. **Inputs change** — `setInputs(patch)` merge-patches and value-diffs; a value-equal patch is a no-op, a changed patch issues exactly one query.
-2. **Selection updates** — `filterBy` via the native coordinator wiring; `havingBy` via the client's own wiring. Passing the same Selection as both routes its predicate into both WHERE and HAVING on a single re-query per activation (rarely what you want; prefer a separate Selection for aggregate predicates).
+2. **Selection updates** — `filterBy` via the native coordinator wiring (or, when the client cannot pre-aggregate, the client's own wiring — see [one query per action](#one-query-per-action)); `havingBy` via the client's own wiring. Passing the same Selection as both routes its predicate into both WHERE and HAVING on a single re-query per activation (rarely what you want; prefer a separate Selection for aggregate predicates).
 3. **Param change** — every Param in `params` re-queries the client on its `'value'` event (upstream never does this automatically).
 4. **`refetch()`** — force a query with current state. It queries immediately and also resets query-derived memos (the rows client re-issues its `rowCount: 'query'` COUNT), because the underlying data may have changed. Use it after replacing the data.
 5. **`invalidate()`** — the query itself changed: re-query with the current factory, inputs and filters. Call it after `setQuery(...)` with a recompiled factory. Unlike `refetch()`, it is coalesced like an inputs change (an `invalidate()` in the same tick as a `setInputs` issues one query) and keeps query-derived memos, which already key on the SQL they derive from (a recompiled query whose COUNT SQL changed re-counts on its own). While the client is disabled, the re-query runs once it is enabled. In React, the hooks' [`queryKey`](../react/hooks.md#re-querying-a-compiled-query-querykey) option calls it for you.
 
-The input-driven triggers (`setInputs`, Param and `havingBy` `'value'` events) and `invalidate()` are **coalesced**: a burst of synchronous changes in one tick collapses into a single query build (the last state wins) instead of one query per event. In a visible browser tab this rides upstream `requestUpdate()`, which throttles on an animation frame. Browsers pause animation frames in hidden tabs, so while `document.visibilityState === 'hidden'` (and in environments without `requestAnimationFrame`, such as Node) the client falls back to a macrotask flush with the same one-build-per-tick semantics, and re-queries triggered in a background tab still complete. `status` still flips to `'pending'` synchronously so loading stays responsive. `refetch()` bypasses coalescing and queries immediately.
+The input-driven triggers (`setInputs`, Param and `havingBy` `'value'` events, and `filterBy` `'value'` events on clients that cannot pre-aggregate) and `invalidate()` are **coalesced**: a burst of synchronous changes in one tick collapses into a single query build (the last state wins) instead of one query per event. In a visible browser tab this rides upstream `requestUpdate()`, which throttles on an animation frame. Browsers pause animation frames in hidden tabs, so while `document.visibilityState === 'hidden'` (and in environments without `requestAnimationFrame`, such as Node) the client falls back to a macrotask flush with the same one-build-per-tick semantics, and re-queries triggered in a background tab still complete. `status` still flips to `'pending'` synchronously so loading stays responsive. `refetch()` bypasses coalescing and queries immediately.
+
+### One query per action
+
+A single user action often writes a Selection clause **and** Params — a date-range brush that sets a range filter plus `$from`/`$to` Params a query interpolates. How many queries that sends depends on which path the client's `filterBy` takes.
+
+**Clients that cannot pre-aggregate** — `filterStable: false` (the default or forced value for the facet, sparkline, rollup and pivot clients) or a non-empty [`skipSources`](#per-widget-filter-scoping) — re-query `filterBy` changes through the same coalesced batch as Params, `havingBy` and `setInputs`. A clause and a Param written in the same tick, in either order, build **one** query carrying both. Two smaller differences from upstream come with it: a `filterBy` change while the client is still initializing (its `prepare` step pending) is answered by the initial query alone instead of a second query after it, and the Selection's latest resolved clause list is read when the query is built. A batch holding only `filterBy` changes is issued the way upstream `Coordinator.updateSelection` issues a standard selection update, so it leaves the coordinator's pre-aggregation state — and every pre-aggregating sibling's materialized table — in place; a batch that also carries a Param, `havingBy`, `setInputs` or `invalidate()` change goes through upstream `Coordinator.requestQuery`, which clears that state, exactly as the Param's own re-query always has. The trade-off is one animation frame of latency on brush-driven re-queries in a visible tab, where upstream queries synchronously. Opt a client back into upstream's immediate path with `coalesceFilterBy: false`:
+
+```ts
+const sparkline = createSparklineClient({
+  coordinator,
+  from: 'events',
+  filterBy: $page,
+  // keep upstream's synchronous Coordinator.updateSelection re-query
+  coalesceFilterBy: false,
+  // …
+});
+```
+
+**Clients that can pre-aggregate** — `filterStable` left on (the default for rows, values and histogram clients) and no `skipSources` — keep upstream `Coordinator.updateSelection` unchanged: it is what feeds Mosaic's pre-aggregation optimizer, so `coalesceFilterBy` has no effect on them, and coalesced siblings' brush-driven re-queries do not discard their pre-aggregated tables. This follows the client's own `filterStable` / `skipSources`, not the coordinator: disabling pre-aggregation on the coordinator does not move a `filterStable: true` client onto the coalesced path. Selection changes re-query immediately there, while Param changes re-query one batch later, so the write order matters:
+
+- **Write the Params first, then the clause.** The clause's immediate query is built after the Params changed, so it already reads their new values. When that query is the client's ordinary query, the Param's batched re-query produces the identical SQL, and the coordinator's query cache (on by default) answers it without a second database round trip.
+- Clause first, then Params, sends **two** different queries: the clause's query with the old Param values, then the Param's re-query with the new ones. The screen ends up correct, but the database runs both.
+
+The cache only merges requests whose SQL is identical, so Params first does not reach one query when upstream's optimizer answers the clause from a pre-aggregated table (pre-aggregation enabled on the coordinator — the upstream default — and an aggregate query with a clause the optimizer can index). The clause's query then reads the materialized table (built first if needed), while the Param's batched re-query goes through upstream `Coordinator.requestQuery`, which clears the optimizer's state, and queries the base table. The two statements differ, so both reach the database in either write order, and the next clause change rebuilds the materialized table. That is upstream's behavior for any Param change on such a client; if a combined clause-and-Param action is frequent and pre-aggregation is not paying off for that client, `filterStable: false` puts it on the coalesced path above.
+
+```ts
+// Params first: one database query on coalesced clients, and on pre-aggregating
+// clients whose clause query is not answered from a pre-aggregated table.
+$from.update(range.from);
+$to.update(range.to);
+filterSet.set({
+  id: 'date',
+  column: 'day',
+  kind: 'interval',
+  value: range.from,
+  valueTo: range.to,
+});
+```
+
+Writing Params first is harmless on coalesced clients, so it is the safe default for app code that does not know which path every consumer takes. For state restored at page load, seed it before any client connects instead — see [seeding in `initialize`](../react/topology.md#seed-bootstrap-state-in-initialize).
 
 ### The current-request guarantee
 

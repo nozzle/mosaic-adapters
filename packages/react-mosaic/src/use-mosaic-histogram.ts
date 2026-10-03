@@ -63,6 +63,7 @@ export function useMosaicHistogram(options: UseMosaicHistogramOptions): UseMosai
       skipSourcesKey(options.skipSources),
       options.inputMode,
       options.filterStable,
+      options.coalesceFilterBy,
       options.column,
       options.columnPaths,
       options.scale,

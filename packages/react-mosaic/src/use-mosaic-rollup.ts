@@ -52,6 +52,7 @@ export function useMosaicRollup<TRow>(
       skipSourcesKey(options.skipSources),
       options.inputMode,
       options.filterStable,
+      options.coalesceFilterBy,
       options.groupBy.join('\u0000'),
       ...paramsKey(options.params),
     ],

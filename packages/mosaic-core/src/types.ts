@@ -194,6 +194,30 @@ export interface DataClientOptions<TInputs extends object> {
    * leak a skipped clause back in.
    */
   skipSources?: ReadonlySet<string>;
+  /**
+   * Whether `filterBy` changes re-query through the client's own coalesced
+   * batch — the one Param, `havingBy`, `setInputs` and `invalidate()` already
+   * share — instead of upstream `Coordinator.updateSelection`. Default `true`.
+   *
+   * Only applies while pre-aggregation is off for the client (`filterStable:
+   * false`, the default or forced value for several clients, or a non-empty
+   * `skipSources`): such a client gives up nothing by leaving the upstream
+   * path, and a clause change plus a Param change made in the same tick then
+   * issue one query instead of two. A client that can still pre-aggregate
+   * always keeps the upstream path, whatever this option says. The decision
+   * follows the client's own `filterStable` / `skipSources`, not the
+   * coordinator: a `filterStable: true` client on a coordinator with
+   * pre-aggregation disabled keeps the upstream path.
+   *
+   * A batch of `filterBy` changes alone is issued like upstream's standard
+   * selection update, without clearing the coordinator's pre-aggregation
+   * state, so pre-aggregating siblings keep their materialized tables.
+   *
+   * The trade-off is one animation frame of latency on selection-driven
+   * re-queries in a visible tab (upstream issues them synchronously). Set
+   * `false` to keep upstream's immediate path for this client.
+   */
+  coalesceFilterBy?: boolean;
   enabled?: boolean;
 }
 
