@@ -138,6 +138,18 @@ navigation — see [`docs/react/router-persistence.md`](../../../docs/react/rout
 pnpm --filter example-react-nozzle-paa dev
 ```
 
+## Unit tests
+
+```bash
+pnpm --filter example-react-nozzle-paa test:lib
+```
+
+`tests/connector.unit.test.tsx` covers the `ConnectorProvider` lifecycle with a
+fake `wasmConnector()`: reconnect, provider unmount, and StrictMode each tear the
+subtree down before `coordinator.clear()`, a started DuckDB instance is
+terminated once its start settles, and an unused connector is disposed without
+starting DuckDB.
+
 ## E2E
 
 ```bash

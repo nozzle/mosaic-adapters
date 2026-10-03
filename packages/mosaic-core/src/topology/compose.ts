@@ -7,6 +7,7 @@
  */
 import { Selection } from '@uwdata/mosaic-core';
 
+import type { CompositionDestroyOptions } from './wiring';
 import {
   attachIncludedSelection,
   clearSeededClauses,
@@ -18,8 +19,12 @@ import {
 export interface ComposedSelectionHandle {
   /** The composed Selection mirroring every included Selection. */
   readonly selection: Selection;
-  /** Detach every relay link and clear seeded clauses. Idempotent. */
-  destroy: () => void;
+  /**
+   * Detach every relay link and clear seeded clauses. Idempotent. Pass
+   * `{ silent: true }` to detach without clearing (see
+   * {@link CompositionDestroyOptions}).
+   */
+  destroy: (options?: CompositionDestroyOptions) => void;
   /** True once {@link ComposedSelectionHandle.destroy} has run. */
   readonly destroyed: boolean;
 }
@@ -77,7 +82,7 @@ export function createComposedSelection(
 
   let destroyed = false;
 
-  function destroy(): void {
+  function destroy(destroyOptions: CompositionDestroyOptions = {}): void {
     if (destroyed) {
       return;
     }
@@ -86,6 +91,9 @@ export function createComposedSelection(
     selections.forEach((selection) => {
       detachIncludedSelection(selection, context);
     });
+    if (destroyOptions.silent === true) {
+      return;
+    }
     clearSeededClauses(selections, context);
   }
 

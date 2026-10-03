@@ -39,6 +39,7 @@ import type {
   TopologyDeclaration,
   TopologyOptions,
 } from './types';
+import type { CompositionDestroyOptions } from './wiring';
 import {
   attachIncludedSelection,
   clearSeededClauses,
@@ -104,6 +105,9 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
   const suppliedParams = options.params ?? {};
   const filterSetOptions = options.filterSets ?? {};
   const paramOptions = options.paramOptions ?? {};
+  // Read once at construction: `destroy()` detaches owned contexts and
+  // FilterSets silently unless the caller opted back into clearing.
+  const clearOnDestroy = options.clearOnDestroy === true;
 
   // --- Structural validation over entry names (before any wiring). ---
   const entryNames = Object.keys(config);
@@ -309,8 +313,8 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
   let destroyed = false;
   const nodes = new Map<string, EntryNode>();
   // Per-compose teardown handles, built in phase 2. Each detaches its own
-  // relays and clears its seeded clauses.
-  const composeHandles: Array<{ destroy: () => void }> = [];
+  // relays and, unless silent, clears its seeded clauses.
+  const composeHandles: Array<{ destroy: (options: CompositionDestroyOptions) => void }> = [];
   const cascadingHandles: Array<CascadingContextsHandle> = [];
   const filterSets: Record<string, FilterSet> = {};
   // Detachers for the `value` listeners wired for owned-param persistence.
@@ -636,11 +640,12 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
       seedContext(sources, context);
     }
   }
-  // Build a teardown handle per compose (detach relays, clear seeded clauses).
+  // Build a teardown handle per compose (detach relays, then clear seeded
+  // clauses unless the teardown is silent).
   for (const { context, sources } of composeWirings) {
     let handleDestroyed = false;
     composeHandles.push({
-      destroy: () => {
+      destroy: (destroyOptions) => {
         if (handleDestroyed) {
           return;
         }
@@ -648,9 +653,10 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
         for (const source of sources) {
           detachIncludedSelection(source, context);
         }
-        if (sources.length > 0) {
-          clearSeededClauses(sources, context);
+        if (destroyOptions.silent === true || sources.length === 0) {
+          return;
         }
+        clearSeededClauses(sources, context);
       },
     });
   }
@@ -878,6 +884,14 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
   }
 
   // --- destroy(): tear down owned compositions/FilterSets, unsubscribe all. ---
+  //
+  // Owned compose/cascading contexts and FilterSets die with the topology, so
+  // by default they detach SILENTLY: no clear clause is published and no
+  // `value` event fires. Clearing would make every client still connected to
+  // them (React runs effect cleanups parent-first, so children are still
+  // connected when a parent `useTopology` unmounts) run one unfiltered query on
+  // its way out — and fail noisily if the coordinator is being cleared too.
+  // `options.clearOnDestroy: true` restores the clearing teardown.
   function destroy(): void {
     if (destroyed) {
       return;
@@ -895,14 +909,15 @@ export function createTopology(config: TopologyConfig, options: TopologyOptions 
       detach();
     }
     paramPersistDetachers.length = 0;
+    const silent = !clearOnDestroy;
     for (const handle of composeHandles) {
-      handle.destroy();
+      handle.destroy({ silent });
     }
     for (const handle of cascadingHandles) {
-      handle.destroy();
+      handle.destroy({ silent });
     }
     for (const filterSet of Object.values(filterSets)) {
-      filterSet.destroy();
+      filterSet.destroy({ silent });
     }
     // External instances are not owned and are never destroyed.
   }

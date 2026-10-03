@@ -230,6 +230,22 @@ export interface FilterSetOptions {
 }
 
 /**
+ * Options for {@link FilterSet.destroy}.
+ */
+export interface FilterSetDestroyOptions {
+  /**
+   * When `true`, tear down without publishing clear clauses: the target
+   * Selections keep the set's last clauses and emit no `value` event, so
+   * clients still connected to them do not re-query. Use it when the targets
+   * die with the set (as `createTopology` does for its own `filter-set`
+   * entries). Defaults to `false`: every published clause is cleared from its
+   * target, which is what a set publishing into longer-lived (external)
+   * targets needs.
+   */
+  silent?: boolean;
+}
+
+/**
  * A page-level filter set. Framework bindings subscribe to `store`; the
  * mutators publish/clear clauses on the target Selections and persist intent.
  */
@@ -246,8 +262,11 @@ export interface FilterSet {
   reset: () => void;
   /** Remove one chip: exploded → narrow the value; otherwise `remove(id)`. */
   removeChip: (chip: FilterSetChip) => void;
-  /** Clear published clauses, detach listeners; never writes to the persister. */
-  destroy: () => void;
+  /**
+   * Clear published clauses (skipped with `{ silent: true }`), detach
+   * listeners; never writes to the persister. Idempotent.
+   */
+  destroy: (options?: FilterSetDestroyOptions) => void;
   /** True once {@link FilterSet.destroy} has run. */
   readonly destroyed: boolean;
   /**

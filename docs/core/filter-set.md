@@ -295,3 +295,16 @@ const filters = createFilterSet({
   },
 });
 ```
+
+## `destroy()`
+
+`destroy()` detaches the set's listeners and, by default, **clears every clause it published** from its targets — the right default when the targets outlive the set (page-scope Selections shared with other widgets). It never writes to the persister. Idempotent; `set.destroyed` reports it.
+
+Clearing publishes a `value` update on each target, so every client still connected to a target runs one query on the way out. When the targets die with the set — nothing will read them again — pass `{ silent: true }` to skip the clears: the targets keep their last clauses and emit nothing.
+
+```ts
+filters.destroy(); // detach, then clear published clauses (default)
+filters.destroy({ silent: true }); // detach only — no clear, no `value` event, no query
+```
+
+A `filter-set` entry owned by a [topology](./selection-topology.md#teardown-is-silent) is torn down silently, because its target Selections are owned by the topology too.

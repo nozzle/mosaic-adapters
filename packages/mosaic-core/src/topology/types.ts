@@ -175,6 +175,15 @@ export interface TopologyOptions {
    * (including an `external-param`) is a construction error.
    */
   paramOptions?: Record<string, ParamEntryOptions>;
+  /**
+   * When `true`, {@link Topology.destroy} clears the clauses seeded onto every
+   * owned `compose` / `cascading` context and every clause an owned FilterSet
+   * published, as it did before teardown went silent. Defaults to `false`:
+   * owned contexts and FilterSets detach silently (no clear is published, no
+   * `value` event fires), so clients still connected to them do not each run
+   * one unfiltered query on teardown. Read once at construction.
+   */
+  clearOnDestroy?: boolean;
 }
 
 /**
@@ -258,6 +267,12 @@ export interface Topology {
   /**
    * Tear down every composition and FilterSet the topology created and
    * unsubscribe all listeners. External instances are never destroyed.
+   *
+   * Teardown is silent by default: owned contexts and FilterSets detach
+   * without publishing clear clauses, so clients still connected to them issue
+   * no query. They keep their last clauses but stop relaying — they die with
+   * the topology. Opt back into clearing with
+   * {@link TopologyOptions.clearOnDestroy}.
    */
   destroy: () => void;
   /** True once {@link Topology.destroy} has run. */

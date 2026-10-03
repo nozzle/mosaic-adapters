@@ -88,6 +88,12 @@ Seeding after children mount lands as a change on clients that are already initi
 
 `initialize` runs once per created topology, so it re-seeds after a recreation (a new `config` identity, StrictMode's simulated remount). Persisted state that already has a home — a FilterSet's or Param's own `persist` — hydrates itself at construction and needs no `initialize` step.
 
+### Teardown on unmount
+
+Unmounting (or rebuilding) a `useTopology` owner destroys the topology **silently**: owned compose/cascading contexts and FilterSets detach without publishing clear clauses. React runs effect cleanups **parent-first**, so the clients of a `useMosaicValues` / `useMosaicRows` / … child are still connected to the topology's Selections when the parent's cleanup destroys the topology — and an app cannot reorder its own effects to change that. A clearing teardown would make every such child run one unfiltered query on its way out (each then rejected and logged if the coordinator is being cleared too); silent teardown issues none. The children's own cleanups then disconnect their clients as usual.
+
+To opt back into the clearing teardown, pass `clearOnDestroy: true` in the options bag (`useTopology(config, { ...options, clearOnDestroy: true })`). Like `initialize`, it is not a recreation key — it is read when each topology is constructed. See [teardown is silent](../core/selection-topology.md#teardown-is-silent) for the core semantics, and the [connector lifecycle recipe](./connector-lifecycle.md#teardown-order) for where the coordinator and its DuckDB worker fit in the teardown order.
+
 ## Provider and consumer hooks
 
 `MosaicTopologyProvider` distributes **one** topology instance to descendants. It is deliberately dumb — it holds a single instance and has no registry semantics of its own; construction, validation, and teardown all live on the topology object.

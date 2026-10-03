@@ -123,6 +123,8 @@ Clients are created once per mount and destroyed on unmount; StrictMode's double
 - `useComposedSelection(selections, options?)` — one Selection that mirrors the AND of the given Selections (relay-linked, seeded, cleaned up on unmount). `options.as` picks the resolution strategy (`'intersect'`, default, or `'crossfilter'` for per-client self-exclusion); changing it rebuilds the composite.
 - `useCascadingContexts(inputs, externals?)` — peer-minus-self contexts for facet inputs: each input's context includes every _other_ input plus the externals, so a dropdown is filtered by everything except its own value.
 
+Unlike `useTopology`, which [tears down silently](./topology.md#teardown-on-unmount), these two hooks keep the clearing teardown on unmount: their cleanup clears the clauses they seeded, so any client still reading the composite re-queries once. See [`destroy({ silent })`](../core/selection-topology.md#teardown-is-silent) for the difference.
+
 For a topology known up front, prefer composing statically at module scope with upstream-native `Selection.intersect({ include: [...] })` — the hooks above exist for graphs assembled inside React lifecycles.
 
 When widgets need to reference selections **by name** (spec-driven pages, hand-editable dashboard configs), declare the whole graph as data with [`useTopology`](./topology.md) instead of passing instances around — the hooks above stay first-class and share the same composition logic. See [Selection topology](../core/selection-topology.md).

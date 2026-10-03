@@ -25,7 +25,7 @@ In React, build it with [`useTopology`](../react/topology.md) and distribute it 
 A topology has two arguments, and the split is deliberate:
 
 - **`config`** — a **pure JSON** document naming every Selection and how they relate. No functions, no instances. This is the part a hand-editor or a spec loader can author and round-trip.
-- **`options`** — everything that is **code**, keyed by the names the config declares: `external` Selection instances (`options.selections`) and the code-only parts of a FilterSet (`options.filterSets[entry].kinds` / `.persist`).
+- **`options`** — everything that is **code**, keyed by the names the config declares: `external` Selection instances (`options.selections`) and the code-only parts of a FilterSet (`options.filterSets[entry].kinds` / `.persist`). The one non-keyed field, `clearOnDestroy`, opts out of [silent teardown](#teardown-is-silent).
 
 The config is the **complete namespace document**: every name, including code-created ones, is declared there. A hand-editor sees every hole the code must fill, and `validNames` (below) is total.
 
@@ -270,6 +270,22 @@ There is **no chip model in the package** — no chip shapes, groups, or label m
 
 `topology.destroy()` tears down every composition and FilterSet the topology created and unsubscribes all its clause listeners. **`external` instances are never destroyed** — the topology does not own them. Idempotent; `topology.destroyed` reports it (the React binding uses this for StrictMode remount detection). Calling `reset()` or reading `activeClauses` after `destroy()` is a safe no-op.
 
+### Teardown is silent
+
+Owned `compose` / `cascading` contexts and owned FilterSets **die with the topology**, so `destroy()` detaches them **silently**: every relay link is cut and every listener removed, but no clear clause is published and no `value` event fires. Each owned Selection keeps its last clauses and simply stops relaying.
+
+This matters because clients are usually still connected when the topology goes away. React runs effect cleanups parent-first, so when a `useTopology` parent unmounts (route change, connection-identity remount, topology rebuild) its children's clients are still connected to the topology's Selections. A clearing teardown would make each of them run **one unfiltered query** on its way out — and, if the coordinator is being cleared at the same time, each of those queries is rejected and logged as an error. Silent teardown issues no query at all.
+
+Tear clients down before (or together with) the topology, and only then the coordinator — see the [connector lifecycle recipe](../react/connector-lifecycle.md#teardown-order).
+
+**Opting out.** Pass `clearOnDestroy: true` in the options bag to restore the clearing teardown (seeded context clauses and FilterSet-published clauses are cleared, one `value` update each):
+
+```ts
+const topology = createTopology(config, { clearOnDestroy: true });
+```
+
+Use it only if something outside the topology keeps observing an owned Selection after `destroy()` and must see it empty. The option is read once at construction. The [standalone composition factories](#standalone-composition-factories) and a standalone [`createFilterSet`](./filter-set.md#destroy) keep clearing by default; they accept `destroy({ silent: true })` for the same silent teardown.
+
 ## Params
 
 The topology models a second axis of page state alongside **which rows pass** (Selections and their clauses): **which knobs exist** — the named reactive scalars that shape _what a query computes_ rather than _which rows survive it_: the metric column a KPI aggregates, the date grain a trend bins by, the top-N a bar chart cuts at. In Mosaic those are `Param`s, not `Selection`s. A param enters a query by **value interpolation** — its current value is spliced into the SQL as a literal at codegen — never as a `WHERE` / `HAVING` predicate.
@@ -442,6 +458,7 @@ import { createComposedSelection, createCascadingContexts } from '@nozzleio/mosa
 const composed = createComposedSelection([$where, $brush], { as: 'intersect' });
 composed.selection; // → Selection
 composed.destroy(); // detach relays, clear seeded clauses (idempotent)
+// composed.destroy({ silent: true }); // detach relays only — no clear, no `value` event
 
 // Peer-minus-self contexts: each key's context includes every OTHER input
 // plus the externals, never the key's own input.
@@ -449,6 +466,8 @@ const cascading = createCascadingContexts({ sport: $sport, country: $country }, 
 cascading.contexts.sport; // → Selection (sees country + where, not sport)
 cascading.destroy();
 ```
+
+By default `destroy()` clears the clauses it seeded onto each context, which publishes one `value` update per cleared clause — clients still connected to the context re-query. When the context dies with its readers, `destroy({ silent: true })` only detaches the relays (the topology tears its own contexts down this way; see [teardown is silent](#teardown-is-silent)).
 
 These are the same factories the `useComposedSelection` / `useCascadingContexts` hooks call; `createTopology` wires composes with the same `wiring.ts` primitives, so declared and hand-written topology behave identically.
 
