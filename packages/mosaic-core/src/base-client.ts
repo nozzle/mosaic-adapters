@@ -4,6 +4,12 @@ import type { MosaicClient, QueryError, Selection } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
 import type { FilterExpr, Query as MosaicQuery, SelectQuery } from '@uwdata/mosaic-sql';
 
+import {
+  assertQuerySource,
+  dottedTableNameWarning,
+  isDevelopment,
+  isDottedTableName,
+} from './query-source';
 import { createSkipProjectedSelection } from './skip-projection';
 import type {
   DataClient,
@@ -54,6 +60,8 @@ export abstract class BaseDataClient<
   readonly #filterBy: Selection | undefined;
   readonly #havingBy: Selection | undefined;
   #destroyed = false;
+  /** The dotted-table-name warning fires at most once per client. */
+  #warnedDottedSource = false;
   #teardown: Array<() => void> = [];
   /** Pending macrotask flush for the non-browser coalescing fallback. */
   #coalesceHandle: ReturnType<typeof setTimeout> | null = null;
@@ -85,7 +93,9 @@ export abstract class BaseDataClient<
     },
   ) {
     this.options = options;
+    assertQuerySource(query);
     this.#querySource = query;
+    this.#warnOnDottedSource(query);
     this.inputs = options.inputs ?? ({} as TInputs);
 
     this.store = new Store({
@@ -193,7 +203,26 @@ export abstract class BaseDataClient<
   }
 
   setQuery(query: QuerySource<TInputs>): void {
+    assertQuerySource(query);
     this.#querySource = query;
+    this.#warnOnDottedSource(query);
+  }
+
+  /**
+   * Development-only hint, once per client: a plain-string source with a dot
+   * renders as ONE quoted table name, which is rarely what `'main.events'`
+   * meant. The string is never split automatically, because a quoted table
+   * name can legitimately contain dots — a `TableRefNode` says which.
+   */
+  #warnOnDottedSource(query: QuerySource<TInputs>): void {
+    if (this.#warnedDottedSource || !isDottedTableName(query)) {
+      return;
+    }
+    if (!isDevelopment()) {
+      return;
+    }
+    this.#warnedDottedSource = true;
+    console.warn(dottedTableNameWarning(query));
   }
 
   setInputs(patch: Partial<TInputs>): void {
@@ -427,13 +456,15 @@ export abstract class BaseDataClient<
   }
 
   /**
-   * Resolve the query source to its base query. String sources become
-   * `SELECT * FROM <name>` with WHERE/HAVING applied by the client; factory
-   * sources receive the context and own predicate placement.
+   * Resolve the query source to its base query. Table-name and
+   * table-reference sources become `SELECT * FROM <table>` with WHERE/HAVING
+   * applied by the client (a `TableRefNode` renders its qualified name,
+   * `"main"."events"`); factory sources receive the context and own
+   * predicate placement.
    */
   protected resolveBase(ctx: QueryContext<TInputs>): SelectQuery {
     const source = this.#querySource;
-    if (typeof source !== 'string') {
+    if (typeof source === 'function') {
       return source(ctx);
     }
     const query = Query.from(source).select('*');

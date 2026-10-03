@@ -6,7 +6,6 @@ import {
   asc,
   binHistogram,
   binSpec,
-  column,
   count,
   gt,
   isNotNull,
@@ -14,11 +13,12 @@ import {
   min,
   scaleTransform,
 } from '@uwdata/mosaic-sql';
-import type { Scale, SelectQuery } from '@uwdata/mosaic-sql';
+import type { ExprNode, Scale, SelectQuery } from '@uwdata/mosaic-sql';
 
 import { BaseDataClient } from './base-client';
 import type { FilterSpec } from './filter-set/types';
 import { PersisterLifecycle } from './persistence';
+import { columnAccess } from './sql-access';
 import { isFilterSetPublishTarget } from './types';
 import type {
   FilterSetPublishTarget,
@@ -58,6 +58,12 @@ class HistogramDataClient
 {
   readonly #options: HistogramClientOptions;
   readonly #scale: Scale<number>;
+  /**
+   * Access expression for `column` (struct-path aware). One node serves
+   * extent discovery, the bin query, and the published clause `fields`, so
+   * pre-aggregation matches the predicate's field by identity.
+   */
+  readonly #field: ExprNode;
   readonly #source: ClauseSource = {};
   #extent: [number, number] | null;
   /** Bin spec of the last built query — pairs result rows with boundaries. */
@@ -80,6 +86,7 @@ class HistogramDataClient
       { prepare: () => this.#prepareAndHydrate() },
     );
     this.#options = options;
+    this.#field = columnAccess(options.column, options.columnPaths);
     this.#scale = scaleTransform({ type: options.scale ?? 'linear' });
     this.#extent = options.extent ?? null;
     this.#persist = this.#resolvePersist();
@@ -134,7 +141,7 @@ class HistogramDataClient
     };
     this.#spec = binSpec(this.#scale.apply(extent[0]), this.#scale.apply(extent[1]), binOptions);
 
-    const field = column(this.#options.column);
+    const field = this.#field;
     return Query.from(this.resolveBase(ctx))
       .select({
         x0: binHistogram(field, extent, binOptions, this.#scale),
@@ -240,7 +247,7 @@ class HistogramDataClient
     if (this.#extent !== null) {
       return;
     }
-    const field = column(this.#options.column);
+    const field = this.#field;
     const base = this.resolveBase({
       where: [],
       having: [],
@@ -279,7 +286,7 @@ class HistogramDataClient
       return;
     }
     publish.as.update(
-      clauseInterval(column(this.#options.column), range, {
+      clauseInterval(this.#field, range, {
         source: this.#source,
         clients: new Set<MosaicClient>([this.mosaicClient]),
       }),
@@ -298,16 +305,19 @@ class HistogramDataClient
         target.into.remove(target.id);
         return;
       }
-      target.into.set(
-        {
-          id: target.id,
-          column: this.#options.column,
-          kind: target.kind ?? 'interval',
-          value: [range[0], range[1]],
-          label: target.label,
-        },
-        { clients: new Set<MosaicClient>([this.mosaicClient]) },
-      );
+      const spec: FilterSpec = {
+        id: target.id,
+        column: this.#options.column,
+        kind: target.kind ?? 'interval',
+        value: [range[0], range[1]],
+        label: target.label,
+      };
+      // Carry the opt-out so the set resolves the column as the same single
+      // identifier the bin query reads.
+      if (this.#options.columnPaths === 'literal') {
+        spec.columnPaths = 'literal';
+      }
+      target.into.set(spec, { clients: new Set<MosaicClient>([this.mosaicClient]) });
     } finally {
       this.#writingToSet = false;
     }

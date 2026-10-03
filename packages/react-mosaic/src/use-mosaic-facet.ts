@@ -9,7 +9,13 @@ import { useSelector } from '@tanstack/react-store';
 import type { Coordinator } from '@uwdata/mosaic-core';
 
 import { useMosaicCoordinator } from './context';
-import { deriveStatus, paramsKey, skipSourcesKey, useBoundClient } from './use-data-client';
+import {
+  deriveStatus,
+  paramsKey,
+  skipSourcesKey,
+  useBoundClient,
+  useStableQuerySource,
+} from './use-data-client';
 
 export type UseMosaicFacetOptions = Omit<FacetClientOptions, 'coordinator'> & {
   /**
@@ -38,6 +44,7 @@ export type UseMosaicFacetResult = FacetClientState & {
 export function useMosaicFacet(options: UseMosaicFacetOptions): UseMosaicFacetResult {
   const coordinator = useMosaicCoordinator(options.coordinator);
   const enabled = options.enabled ?? true;
+  const from = useStableQuerySource(options.from);
 
   // publish is a union: `{ as: Selection }` (Selection identity) vs a
   // FilterSetPublishTarget (`into`) — capture whichever arm is active so a
@@ -57,6 +64,7 @@ export function useMosaicFacet(options: UseMosaicFacetOptions): UseMosaicFacetRe
       options.inputMode,
       options.filterStable,
       options.column,
+      options.columnPaths,
       options.arrayColumn,
       options.counts,
       options.sort,
@@ -68,7 +76,7 @@ export function useMosaicFacet(options: UseMosaicFacetOptions): UseMosaicFacetRe
     inputs: options.inputs,
     enabled,
     sync: (c) => {
-      c.setQuery(options.from);
+      c.setQuery(from);
     },
   });
 

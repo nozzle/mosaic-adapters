@@ -23,6 +23,8 @@ export {
   escapeSqlLikePattern,
 } from './sql-access';
 
+export { isSameQuerySource } from './query-source';
+
 export {
   buildSubqueryClauseParts,
   buildSubqueryPredicate,
@@ -50,6 +52,8 @@ export type {
   CoerceDescriptor,
   CoerceDescriptorMap,
   CoerceOption,
+  ColumnPathMode,
+  ColumnPathOptions,
   DataClient,
   DataClientOptions,
   DataClientState,

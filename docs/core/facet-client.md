@@ -19,11 +19,15 @@ Under a crossfilter Selection the published clause carries the client in its `cl
 
 ## Options query
 
-The base relation (`from`: table name or query factory) is wrapped as `SELECT value[, count(*)] FROM (…) WHERE value IS NOT NULL GROUP BY value`. NULLs are excluded.
+The base relation (`from`: table name, `TableRefNode`, or query factory) is wrapped as `SELECT value[, count(*)] FROM (…) WHERE value IS NOT NULL GROUP BY value`. NULLs are excluded.
 
 - `counts` (default `true`) — `count(*)` per value.
 - `sort` — `'count'` (descending, default) or `'alpha'`; without counts, sort falls back to `'alpha'`.
 - `arrayColumn` — the column is a DuckDB list (e.g. `VARCHAR[]`): options explode through `unnest()`, and published clauses match rows whose list contains any selected value (`list_has_any`).
+
+## Struct columns
+
+`column` accepts a struct path: `column: 'meta.country'` reads `"meta"."country"` in the options query and publishes clauses over the same expression, matching the rows client and [FilterSet](./filter-set.md). Names without a dot render exactly as before. For a column whose name itself contains a dot, pass `columnPaths: 'literal'`: the name is then one identifier (`"meta.country"`, mosaic-sql's `column()` behaviour) in both the options query and the published clause. Under `publish.into` the mode travels on the spec (`columnPaths: 'literal'`), so the [FilterSet](./filter-set.md) resolves the same identifier.
 
 ## Inputs
 

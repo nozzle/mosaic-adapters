@@ -37,6 +37,7 @@ Three layers: a `FilterSpec` is intent (what the user chose), the kind registry 
 type FilterSpec = {
   id: string; // stable key — replacement, chips, persistence
   column: string; // column name or struct path ('related_phrase.phrase')
+  columnPaths?: 'struct' | 'literal'; // 'literal': a dotted name is ONE identifier
   kind: string; // registry key
   operator?: string;
   value?: unknown; // plain JSON only
@@ -47,6 +48,8 @@ type FilterSpec = {
 ```
 
 `set(spec)` upserts by `id` (replace-on-update, publish suppressed when the SQL is unchanged), `remove(id)` deletes the spec and clears its clauses, `clear(id)` keeps the spec but drops its value (inactive — a builder row with no value yet), `reset()` empties the set. Two specs on the same column coexist — `id` is the key, not `column`.
+
+A dotted `column` is a struct path by default: `meta.country` resolves to `"meta"."country"`. For a column whose name itself contains a dot, set `columnPaths: 'literal'` and the set reads it as one identifier, `"meta.country"`, in the kind's `args.column`, in the columns of a multi-column `points` envelope, and in a `subqueryFilterKind`'s outer column. The field is plain JSON, so it persists and hydrates with the spec. Facet and histogram clients created with `columnPaths: 'literal'` write it onto their `publish.into` specs.
 
 ## One primitive, two authoring styles
 

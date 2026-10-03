@@ -6,7 +6,7 @@ The mental model is "React Query for Mosaic": serializable intent flows in (sort
 
 ## The query factory
 
-Every client is fed by a `QuerySource`: a table name, or a factory receiving a `QueryContext`:
+Every client is fed by a `QuerySource`: a table name, a table reference, or a factory receiving a `QueryContext`. A plain string is always one table identifier: `'main.events'` renders `FROM "main.events"` and logs a development-only warning. For a schema-qualified table, pass `new TableRefNode(['main', 'events'])` from `@uwdata/mosaic-sql`, which renders `FROM "main"."events"`. A `string[]` is rejected, because mosaic-sql renders it as a cross join. The React hooks compare sources with `isSameQuerySource(a, b)`: table references compare by SQL form, strings and factories by identity. Factories cover everything else:
 
 ```ts
 const client = createRowsClient({

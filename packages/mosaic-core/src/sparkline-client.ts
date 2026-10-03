@@ -2,7 +2,6 @@ import {
   Query,
   asc,
   avg,
-  column,
   count,
   dateBin,
   isIn,
@@ -15,7 +14,9 @@ import {
 import type { ExprNode, SelectQuery } from '@uwdata/mosaic-sql';
 
 import { BaseDataClient } from './base-client';
+import { columnAccess } from './sql-access';
 import type {
+  ColumnPathMode,
   QueryContext,
   SparklineClient,
   SparklineClientOptions,
@@ -48,6 +49,8 @@ class SparklineDataClient
   implements SparklineClient
 {
   readonly #options: SparklineClientOptions;
+  /** Access expression for `key` (struct-path aware), shared by SELECT and IN. */
+  readonly #key: ExprNode;
 
   constructor(options: SparklineClientOptions) {
     // Filtering changes which (key, x) groups exist, so pre-aggregation is
@@ -56,6 +59,7 @@ class SparklineDataClient
       series: new Map(),
     });
     this.#options = options;
+    this.#key = columnAccess(options.key, options.columnPaths);
   }
 
   protected buildQuery(ctx: QueryContext<SparklineInputs>): SelectQuery | null {
@@ -72,9 +76,9 @@ class SparklineDataClient
 
     const query = Query.from(this.resolveBase(ctx))
       .select({
-        [KEY_COLUMN]: column(this.#options.key),
+        [KEY_COLUMN]: this.#key,
         [X_COLUMN]: this.#xExpression(),
-        [Y_COLUMN]: yExpression(this.#options.y),
+        [Y_COLUMN]: yExpression(this.#options.y, this.#options.columnPaths),
       })
       .groupby(KEY_COLUMN, X_COLUMN)
       .orderby(asc(KEY_COLUMN), asc(X_COLUMN));
@@ -87,7 +91,7 @@ class SparklineDataClient
     } else {
       query.where(
         isIn(
-          column(this.#options.key),
+          this.#key,
           keys.map((key) => literal(key)),
         ),
       );
@@ -118,7 +122,7 @@ class SparklineDataClient
 
   #xExpression(): ExprNode {
     const { column: xColumn, step, interval } = this.#options.x;
-    const field = column(xColumn);
+    const field = columnAccess(xColumn, this.#options.columnPaths);
     if (interval !== undefined) {
       return dateBin(field, interval);
     }
@@ -129,18 +133,18 @@ class SparklineDataClient
   }
 }
 
-function yExpression(y: SparklineY): ExprNode {
+function yExpression(y: SparklineY, mode: ColumnPathMode | undefined): ExprNode {
   switch (y.agg) {
     case 'count':
       return count();
     case 'sum':
-      return sum(column(y.column!));
+      return sum(columnAccess(y.column!, mode));
     case 'avg':
-      return avg(column(y.column!));
+      return avg(columnAccess(y.column!, mode));
     case 'min':
-      return min(column(y.column!));
+      return min(columnAccess(y.column!, mode));
     case 'max':
-      return max(column(y.column!));
+      return max(columnAccess(y.column!, mode));
   }
 }
 

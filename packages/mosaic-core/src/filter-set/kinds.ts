@@ -20,9 +20,9 @@ import type { ExprNode } from '@uwdata/mosaic-sql';
 
 import {
   SqlIdentifier,
-  createStructAccess,
   createTypedAccess,
   escapeSqlLikePattern,
+  identifierAccess,
 } from '../sql-access';
 import { buildSubqueryClauseParts, normalizeSubqueryFilterQuery } from '../subquery-predicate';
 import type { SubqueryFilterQuery } from '../subquery-predicate';
@@ -117,7 +117,7 @@ export const pointsFilterKind: FilterKind = {
       if (tuples.length === 0 || columns.length === 0) {
         return [];
       }
-      const fields = columns.map((c) => createStructAccess(SqlIdentifier.from(c)));
+      const fields = columns.map((c) => identifierAccess(SqlIdentifier.from(c), spec.columnPaths));
       const extracted = extractClause(clausePoints(fields, tuples, { source: SCRATCH_SOURCE }));
       if (extracted === null) {
         return [];
@@ -694,6 +694,7 @@ export function subqueryFilterKind(
       }
       const { predicate, field } = buildSubqueryClauseParts({
         column: args.spec.column,
+        columnPaths: args.spec.columnPaths,
         query: normalized.query,
         negate: normalized.negate,
       });

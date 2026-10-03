@@ -28,6 +28,8 @@ Dependent clients compose in userland through this input — there is no host co
 - `x: { column, interval: 'hour' | 'day' | 'week' | 'month' | 'year' }` — date bins (DuckDB `time_bucket`); takes precedence over `step`.
 - `y: { agg: 'count' | 'sum' | 'avg' | 'min' | 'max', column? }` — every agg except `'count'` requires a column (validated at creation).
 
+`key`, `x.column`, and `y.column` accept struct paths (`'meta.country'` → `"meta"."country"`); names without a dot render exactly as before. `columnPaths: 'literal'` reads every dotted name as one identifier (`"meta.country"`) instead.
+
 Points come back sorted by key then x; date x values surface as `Date`.
 
 ## Pre-aggregation

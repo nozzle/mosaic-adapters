@@ -9,7 +9,13 @@ import { useSelector } from '@tanstack/react-store';
 import type { Coordinator } from '@uwdata/mosaic-core';
 
 import { useMosaicCoordinator } from './context';
-import { deriveStatus, paramsKey, skipSourcesKey, useBoundClient } from './use-data-client';
+import {
+  deriveStatus,
+  paramsKey,
+  skipSourcesKey,
+  useBoundClient,
+  useStableQuerySource,
+} from './use-data-client';
 
 export type UseMosaicValuesOptions = Omit<ValuesClientOptions, 'coordinator'> & {
   /**
@@ -34,6 +40,7 @@ export function useMosaicValues<TValues extends Record<string, unknown>>(
 ): UseMosaicValuesResult<TValues> {
   const coordinator = useMosaicCoordinator(options.coordinator);
   const enabled = options.enabled ?? true;
+  const query = useStableQuerySource(options.query);
 
   const client = useBoundClient<ValuesInputs, ValuesClient<TValues>>({
     create: () => createValuesClient<TValues>({ ...options, coordinator, enabled: false }),
@@ -49,7 +56,7 @@ export function useMosaicValues<TValues extends Record<string, unknown>>(
     inputs: options.inputs,
     enabled,
     sync: (c) => {
-      c.setQuery(options.query);
+      c.setQuery(query);
     },
   });
 

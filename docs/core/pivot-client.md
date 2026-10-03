@@ -26,6 +26,8 @@ DuckDB derives one output column per distinct `on` value. The client surfaces th
 
 `using` is declarative (serializable): `Array<{ agg: 'count' | 'sum' | 'avg' | 'min' | 'max', column?, as? }>` — at least one required; every agg except `'count'` requires a column.
 
+`on`, `groupBy`, and `using[].column` accept struct paths (`'meta.country'`). DuckDB rejects qualified column references inside `PIVOT`, so the client first projects each path onto the source under its dotted name (`SELECT *, "meta"."country" AS "meta.country" FROM (…)`); a `groupBy` path therefore keeps its dotted name as the output column, and `inputs.orderBy` can sort by it. Without dotted names the source is not wrapped and the SQL is unchanged. If the source already has a column literally named `meta.country`, the projection would shadow it ambiguously — pass `columnPaths: 'literal'` to read every dotted name as one identifier and skip the projection.
+
 `inputs` follows the rows client (`orderBy` / `limit` / `offset`, appended to the pivot query). `coerce` (closure or descriptor map) maps raw rows, latest-ref'd via `setCoerce`.
 
 ## Pre-aggregation
