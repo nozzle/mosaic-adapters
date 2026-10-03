@@ -36,7 +36,7 @@ Any hook that resolves its coordinator below a `null` provider throws a clear `[
 
 Gate on readiness by not rendering the hook — `enabled: false` is not enough. A hook with `enabled: false` still creates (and connects) its client during render; `enabled` only defers querying. So an `enabled: false` hook below a `null` provider throws too.
 
-The library ships `MosaicProvider` and stops there — connector choice, retry, reconnect, and keying page state to the connection are app policy. For that app-owned lifecycle (a `ConnectorProvider`, connection-identity keying on reconnect, and the vgplot `createAPIContext` gotcha), see the [connector lifecycle recipe](./connector-lifecycle.md); for loading tables into the coordinator, the [data loading recipe](./data-loading.md).
+The library ships `MosaicProvider` and stops there — connector choice, retry, reconnect, and keying page state to the connection are app policy. For that app-owned lifecycle (a `ConnectorProvider`, connection-identity keying on reconnect, and binding vgplot plots to the provided coordinator), see the [connector lifecycle recipe](./connector-lifecycle.md); for loading tables into the coordinator, the [data loading recipe](./data-loading.md).
 
 ## The hooks
 

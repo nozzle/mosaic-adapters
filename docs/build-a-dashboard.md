@@ -135,6 +135,12 @@ return <div ref={plotRef} />;
 Because `$page` is a crossfilter Selection, the brush filters every _other_
 view while the scatterplot keeps showing the full distribution.
 
+The bare `vg.*` namespace binds to the global coordinator, which is the one
+this tutorial uses. If you provide your own coordinator through
+`MosaicProvider`, build the plot through the `api` the factory receives
+instead — `useVgPlot((api) => api.plot(...))` — so it queries the same
+coordinator as the hooks (see [`useVgPlot`](react/use-vg-plot.md#the-api-factory-argument)).
+
 ## 5. The table — rows client + manual-mode TanStack Table
 
 You own `useTable`, in fully manual mode: the core row model (built in under
