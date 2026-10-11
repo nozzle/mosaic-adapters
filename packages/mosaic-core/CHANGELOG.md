@@ -1,5 +1,13 @@
 # @nozzleio/mosaic-core
 
+## 0.10.1
+
+### Patch Changes
+
+- [#306](https://github.com/nozzle/mosaic-adapters/pull/306) [`12348ac`](https://github.com/nozzle/mosaic-adapters/commit/12348ac09b9feb4bd04c15f5738b5736dc1112c6) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Support Mosaic 0.32.1 and update `@tanstack/store` / `@tanstack/react-store` to `^0.11.2`. The Mosaic peer range stays `>=0.32.0 <1`, so nothing changes for apps on 0.32.0.
+
+  Mosaic 0.32.1 itself removes `socketConnector` / `SocketConnector`, and `new Coordinator()` without a connector now defaults to a REST connector. Apps that used the socket connector need `restConnector`, `wasmConnector` or their own connector before upgrading Mosaic. The remote-connector example in the connector lifecycle docs now uses `restConnector`.
+
 ## 0.10.0
 
 ### Minor Changes
