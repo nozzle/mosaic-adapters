@@ -125,7 +125,7 @@ Until the effect has run there is no connection, so the provider renders nothing
 `createConnection` / `disposeConnection` are the one place connector choice lives. Swapping DuckDB-WASM for a remote backend changes only those two functions — the provider contract (a `Coordinator` plus a `connectionId`) is unchanged. A remote connector has no worker to terminate, so disposal is just `coordinator.clear()`:
 
 ```ts
-import { Coordinator, socketConnector } from '@uwdata/mosaic-core';
+import { Coordinator, restConnector } from '@uwdata/mosaic-core';
 
 interface Connection {
   id: number;
@@ -133,8 +133,11 @@ interface Connection {
 }
 
 function createConnection(id: number): Connection {
-  // A remote DuckDB / data server over a socket instead of in-browser WASM.
-  return { id, coordinator: new Coordinator(socketConnector('wss://data.example.com/socket')) };
+  // A remote DuckDB / data server over HTTP instead of in-browser WASM.
+  return {
+    id,
+    coordinator: new Coordinator(restConnector({ uri: 'https://data.example.com/query' })),
+  };
 }
 
 function disposeConnection(connection: Connection): void {
@@ -142,7 +145,7 @@ function disposeConnection(connection: Connection): void {
 }
 ```
 
-Retry and reconnect are app policy layered on top: a `socketConnector` that drops its connection is exactly the case `recreate()` exists for. Wire a socket `onclose`/`onerror` (or a health-check ping) to call `recreate()`, and the connection-identity keying below does the rest — the whole page rebuilds against a fresh coordinator. The library takes no stance on _when_ to retry (immediate, backoff, user-triggered "Reconnect" button); that decision is yours.
+Retry and reconnect are app policy layered on top: a remote backend that goes away is exactly the case `recreate()` exists for. Wire a health-check ping (or your own connector's error handling) to call `recreate()`, and the connection-identity keying below does the rest — the whole page rebuilds against a fresh coordinator. The library takes no stance on _when_ to retry (immediate, backoff, user-triggered "Reconnect" button); that decision is yours.
 
 ## Teardown order
 
