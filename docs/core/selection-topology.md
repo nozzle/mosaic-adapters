@@ -294,7 +294,7 @@ import { clauseNone } from '@uwdata/mosaic-core';
 topology.resolve(active.ref).update(clauseNone(active.clause.source));
 ```
 
-`clauseNone(source)` (Mosaic 0.29+) is the canonical clear clause — `{ source, value: null, predicate: null, fields: [] }`. Hand-roll that literal only when the clear clause must also carry `clients`, which `clauseNone` does not accept.
+`clauseNone(source)` is the canonical clear clause — `{ source, value: null, predicate: null, fields: [] }`. Hand-roll that literal only when the clear clause must also carry `clients`, which `clauseNone` does not accept.
 
 There is **no chip model in the package** — no chip shapes, groups, or label maps. That union of FilterSet chips and foreign clauses is a few lines of app code over two subscribable sources, and its shape is exactly where apps differ, so it lives in the [recipes](../react/topology-recipes.md) and example apps only.
 

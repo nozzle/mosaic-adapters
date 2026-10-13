@@ -176,7 +176,7 @@ export const metricThresholdKind: FilterKind = {
     // The membership predicate references its own `column IN (...)` node, not
     // the spec's resolved `args.column`, so the emission's default `fields`
     // would carry the wrong node identity. Take `field` from the builder so
-    // `fields: [field]` is the exact node embedded in the predicate (0.29
+    // `fields: [field]` is the exact node embedded in the predicate (Mosaic's
     // pre-aggregation identity requirement).
     const members = buildSubqueryClauseParts({
       column: card.groupBy,

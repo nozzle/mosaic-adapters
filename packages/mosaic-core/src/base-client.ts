@@ -277,7 +277,7 @@ export abstract class BaseDataClient<
           ...this.onResult(data),
         });
       },
-      // Mosaic 0.30 wraps main-query failures in QueryError (a subclass of
+      // Mosaic wraps main-query failures in QueryError (a subclass of
       // Error carrying `.sql`/`.cause`) before dispatch. It lands on the store
       // intact; `state.error` stays typed `Error | null` so consumers narrow.
       queryError: (error: QueryError) => {

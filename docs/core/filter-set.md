@@ -338,7 +338,7 @@ const kind: FilterKind = {
 };
 ```
 
-An emission's `clause.fields` (Mosaic 0.29+) lists the input expressions its predicate filters over; it defaults to the resolved `column` node, so a kind that tests that single column directly can omit it (as the `where` emission above does). Set it explicitly when the predicate references different or no columns, using the exact node instances the predicate holds. Subquery predicates never carry clause metadata (Mosaic's pre-aggregator only understands point/interval shapes).
+An emission's `clause.fields` lists the input expressions its predicate filters over; it defaults to the resolved `column` node, so a kind that tests that single column directly can omit it (as the `where` emission above does). Set it explicitly when the predicate references different or no columns, using the exact node instances the predicate holds. Subquery predicates never carry clause metadata (Mosaic's pre-aggregator only understands point/interval shapes).
 
 ## Aggregate threshold kind
 

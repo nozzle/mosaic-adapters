@@ -103,7 +103,7 @@ export type DataClientStatus = 'idle' | 'pending' | 'success' | 'error';
 export interface DataClientState<TInputs extends object> {
   status: DataClientStatus;
   /**
-   * The latest failure. On Mosaic 0.30+, main-query failures are upstream
+   * The latest failure. Main-query failures are upstream
    * `QueryError` instances carrying the issued SQL in `.sql` and the
    * underlying error in `.cause`; consumers can narrow with
    * `instanceof QueryError` imported from `@uwdata/mosaic-core`. Other paths,

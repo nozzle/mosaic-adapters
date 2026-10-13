@@ -1,11 +1,12 @@
 import { createTestDb } from '@nozzleio/test-support/duckdb';
-import { Query } from '@uwdata/mosaic-sql';
+import { CastNode, Query, column } from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
 
 import {
   SqlIdentifier,
   conditionFilterKind,
   createStructAccess,
+  createTypedAccess,
   matchFilterKind,
 } from '../src/index';
 import type {
@@ -336,5 +337,38 @@ describe('condition text operators on array columns', () => {
     expect(await ids('matches', '^[A-Z]')).toEqual([1, 6]);
     expect(await ids('matches', '(?i)^alp')).toEqual([1, 6]);
     expect(await ids('not_matches', '^[A-Z]')).toEqual([2, 3, 5]);
+  });
+});
+
+describe('createTypedAccess', () => {
+  test('renders TRY_CAST for numbers and dates, and passes other types through', () => {
+    const weight = column('weight');
+
+    const number = createTypedAccess(weight, 'number');
+    expect(String(number)).toBe('TRY_CAST("weight" AS DOUBLE)');
+    expect(number).toBeInstanceOf(CastNode);
+    expect((number as CastNode).isTry).toBe(true);
+    expect(String(createTypedAccess(weight, 'date'))).toBe('TRY_CAST("weight" AS TIMESTAMP)');
+    expect(createTypedAccess(weight, 'string')).toBe(weight);
+    expect(createTypedAccess(weight, 'boolean')).toBe(weight);
+  });
+
+  test('turns failed conversions into NULL on DuckDB', async () => {
+    const db = await createTestDb();
+    await db.exec(`
+      CREATE TABLE vals(id INTEGER, v VARCHAR);
+      INSERT INTO vals VALUES (1, '1.5'), (2, 'abc'), (3, '2026-01-02');
+    `);
+    const result = await db.coordinator.query(
+      Query.from('vals')
+        .select('id', {
+          n: createTypedAccess(column('v'), 'number'),
+          d: createTypedAccess(column('v'), 'date'),
+        })
+        .orderby('id'),
+    );
+    const rows = result.toArray().map((row) => ({ id: row.id, n: row.n, d: row.d }));
+    expect(rows.map((row) => row.n)).toEqual([1.5, null, null]);
+    expect(rows.map((row) => row.d === null)).toEqual([true, true, false]);
   });
 });

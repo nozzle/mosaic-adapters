@@ -338,10 +338,8 @@ const moduleOnlyExports = [
   'Coordinator',
   'MosaicClient',
   'RestConnector',
-  'SocketConnector',
   'DuckDBWASMConnector',
   'restConnector',
-  'socketConnector',
   'wasmConnector',
   'namedPlots',
   'requestNamedPlot',
@@ -370,5 +368,10 @@ describe('VgPlotApi drift guard', () => {
     const actual = Object.keys(vg.createAPIContext({ coordinator: db.coordinator })).sort();
 
     expect(actual).toEqual(expected);
+  });
+
+  test('every module-only export exists on the installed vgplot', () => {
+    const missing = moduleOnlyExports.filter((key) => !(key in vg));
+    expect(missing).toEqual([]);
   });
 });

@@ -80,7 +80,7 @@ function isColumnList(
  * Builds a `column [NOT] IN (SELECT ...)` membership predicate together with
  * the outer column node(s) it references. Callers emitting a Selection clause
  * should use `fields` as the clause's `fields`: those are the same node
- * instances embedded in the predicate (Mosaic 0.29 field-identity
+ * instances embedded in the predicate (Mosaic's field-identity
  * requirement).
  *
  * With several columns the predicate is a tuple test,

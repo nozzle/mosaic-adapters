@@ -1,15 +1,17 @@
 /**
- * Temporary helpers for gaps in `@uwdata/mosaic-sql` 0.32.
+ * Temporary helpers for gaps in `@uwdata/mosaic-sql`.
  *
- * Each helper covers one thing mosaic-sql does not offer yet. Without them,
- * callers write to private query fields or cast types, and those workarounds
- * break on upgrades (0.32 already removed `Query.setCteFor`). The helpers keep
- * that dependency in one place, and `tests/sql-helpers.test.ts` pins the SQL
- * each one renders, so a mosaic-sql upgrade that changes the internals fails
- * loudly there instead of in an app.
+ * Each helper covers one thing mosaic-sql's public API does not offer.
+ * Without them, callers write to private query fields or cast types, and
+ * that code breaks whenever mosaic-sql changes its internals. The helpers
+ * keep that dependency in one place, and `tests/sql-helpers.test.ts` pins the
+ * SQL each one renders, so a mosaic-sql upgrade that changes the internals
+ * fails loudly there instead of in an app.
  *
  * TEMPORARY: each helper is removed, or becomes an alias, once mosaic-sql
- * ships the equivalent. Keep these minimal; don't grow them into a SQL layer.
+ * ships the equivalent. `selectStarExclude` builds its clause with
+ * mosaic-sql's `star()` and only adds append-without-de-duplication on top.
+ * Keep these minimal; don't grow them into a SQL layer.
  */
 import {
   SelectClauseNode,
@@ -20,6 +22,7 @@ import {
   isQuery,
   literal,
   sql,
+  star,
 } from '@uwdata/mosaic-sql';
 import type {
   ExprNode,
@@ -42,7 +45,7 @@ const CUSTOM_NODE_TYPE = 'CUSTOM';
 /**
  * The first entry of a WITH clause that renders `RECURSIVE "name" AS (…)`.
  *
- * mosaic-sql 0.32 always renders a WITH clause as `WITH <entries>` and has no
+ * mosaic-sql always renders a WITH clause as `WITH <entries>` and has no
  * RECURSIVE flag. DuckDB reads `WITH RECURSIVE` as a property of the whole
  * clause, so prefixing the first entry is enough.
  *
@@ -105,8 +108,8 @@ export interface WithRecursiveOptions {
  * lineage still resolves the CTE. A self-referencing body has no single base
  * table, so pre-aggregation backs off to the standard query path for it.
  *
- * TEMPORARY: covers the missing `WITH RECURSIVE` support in mosaic-sql 0.32.
- * It is removed or aliased once mosaic-sql can render recursive CTEs.
+ * TEMPORARY: covers the missing `WITH RECURSIVE` support in mosaic-sql. It is
+ * removed or aliased once mosaic-sql can render recursive CTEs.
  *
  * @example
  * ```ts
@@ -165,14 +168,17 @@ export function withRecursive<Q extends Query>(
  * against earlier SELECT entries, so a second call (or a `select('*')`)
  * adds another star and the result repeats those columns.
  *
- * Mosaic's pre-aggregation lineage only follows a plain `*`, so a query that
- * reads a column through `* EXCLUDE` from a subquery or CTE takes the
- * standard (non-pre-aggregated) query path. That is the conservative outcome.
+ * The clause is mosaic-sql's own star node, `star(null, { exclude })`, so it
+ * takes part in Mosaic's pre-aggregation like any other star. Lineage
+ * resolves a column the star still selects through it; for an excluded
+ * column the pre-aggregator appends that column to the SELECT list instead.
+ * See `docs/core/rows-client.md` for the query shapes (such as a filtered
+ * top-k subquery) that need `filterStable: false`.
  *
- * TEMPORARY: covers the missing star `EXCLUDE` support in mosaic-sql 0.32.
- * mosaic-sql's `select()` would render a node as `<expr> AS "<expr>"`, so this
- * appends to the query's `_select` list directly. It is removed or aliased
- * once mosaic-sql can render star exclusions.
+ * The star is appended to the query's `_select` list directly, with an empty
+ * alias. `query.select(star(…))` would key the clause as `*` and replace an
+ * earlier `select('*')` (or be replaced by a later one), which would change
+ * the de-duplication rules above.
  *
  * @example
  * ```ts
@@ -193,22 +199,9 @@ export function selectStarExclude<Q extends SelectQuery>(
     return query.select('*');
   }
 
-  // Quote names here rather than through `column()`: mosaic-sql's code
-  // generator renders a column named `*` as a bare wildcard, which would
-  // turn `EXCLUDE ("*")` into `EXCLUDE (*)`.
-  const excluded = columns.map(quoteIdentifier).join(', ');
-  const expr = sqlFromParts([`* EXCLUDE (${excluded})`]);
+  const expr = star(null, { exclude: [...columns] });
   query._select = query._select.concat(new SelectClauseNode(expr, ''));
   return query;
-}
-
-/**
- * Quotes `name` as a SQL identifier, doubling any embedded double quotes.
- * Same rules as mosaic-sql's internal `quoteIdentifier`, which it does not
- * export, but with no wildcard special case.
- */
-function quoteIdentifier(name: string): string {
-  return `"${name.replaceAll('"', '""')}"`;
 }
 
 /**
@@ -263,8 +256,8 @@ export function sqlFromParts(
  * throws on an empty list or an empty name, so the result is always a
  * `TableRefNode`.
  *
- * TEMPORARY: mosaic-sql 0.32 exports `TableRefNode` but not its `tableRef`
- * helper. This is removed or aliased once mosaic-sql exports it.
+ * TEMPORARY: mosaic-sql exports `TableRefNode` but not its `tableRef` helper.
+ * This is removed or aliased once mosaic-sql exports it.
  */
 export function tableRef(...names: ReadonlyArray<string | ReadonlyArray<string>>): TableRefNode {
   const parts = names.flat();
@@ -293,7 +286,7 @@ export function tableRef(...names: ReadonlyArray<string | ReadonlyArray<string>>
  * as a clause still renders empty. (An empty OR is not neutral, so it is not
  * dropped.)
  *
- * TEMPORARY: covers mosaic-sql 0.32 rendering an empty `and()` as `''`. It is
+ * TEMPORARY: covers mosaic-sql rendering an empty `and()` as `''`. It is
  * removed or aliased once mosaic-sql renders an empty conjunction as `TRUE`.
  */
 export function andOrTrue(...clauses: Array<ExprVarArgs>): ExprNode {

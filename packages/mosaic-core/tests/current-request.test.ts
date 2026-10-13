@@ -413,7 +413,7 @@ describe('current-request guarantee', () => {
   });
 
   test('a refetch with identical SQL joins the in-flight request and settles once', async () => {
-    // Mosaic 0.32's QueryManager shares one connector request between
+    // Mosaic's QueryManager shares one connector request between
     // concurrent requests for the same SQL; both completions carry the same
     // rows, so the superseded one is dropped and the current one settles.
     const db = createControlledDb();

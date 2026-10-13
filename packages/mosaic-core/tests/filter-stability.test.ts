@@ -1,11 +1,14 @@
 import {
   FromClauseNode,
   Query,
+  compareAll,
+  compareAny,
   count,
   cross_join,
   max,
   row_number,
   sql,
+  star,
   sum,
 } from '@uwdata/mosaic-sql';
 import { describe, expect, test } from 'vitest';
@@ -63,6 +66,12 @@ describe('findFilterUnstableShape', () => {
       ),
     ).toBeNull();
     expect(findFilterUnstableShape(undefined)).toBeNull();
+    // A star with modifiers is still a plain row list.
+    expect(
+      findFilterUnstableShape(
+        athletes().select(star(null, { exclude: ['name'], rename: { sport: 's' } })),
+      ),
+    ).toBeNull();
   });
 
   test('top-level GROUP BY, DISTINCT, QUALIFY, window functions and PIVOT', () => {
@@ -73,6 +82,14 @@ describe('findFilterUnstableShape', () => {
       clause: 'SELECT DISTINCT',
       nested: false,
     });
+    // DISTINCT ON keeps one row per key, so filtering changes which row (and
+    // which keys) survive, like a plain DISTINCT. It wins over the flag.
+    expect(
+      findFilterUnstableShape(athletes().select('sport', 'weight').distinctOn('sport')),
+    ).toEqual({ clause: 'SELECT DISTINCT ON', nested: false });
+    expect(
+      findFilterUnstableShape(athletes().select('sport').distinct().distinctOn('sport')),
+    ).toEqual({ clause: 'SELECT DISTINCT ON', nested: false });
     expect(
       findFilterUnstableShape(
         athletes()
@@ -97,6 +114,12 @@ describe('findFilterUnstableShape', () => {
       clause: 'a window function',
       nested: false,
     });
+    // A window function inside a star's REPLACE list is found too.
+    expect(
+      findFilterUnstableShape(
+        athletes().select(star(null, { replace: { weight: sum('weight').window() } })),
+      ),
+    ).toEqual({ clause: 'a window function', nested: false });
     expect(findFilterUnstableShape(Query.pivot('athletes').on('sport').using(count()))).toEqual({
       clause: 'PIVOT',
       nested: false,
@@ -123,6 +146,27 @@ describe('findFilterUnstableShape', () => {
     });
     // A plain ORDER BY is not a window function.
     expect(findFilterUnstableShape(athletes().select('id').orderby('weight'))).toBeNull();
+  });
+
+  test('quantified comparisons: the ANY / ALL subquery is not inspected, the compared expression is', () => {
+    const ranked = athletes().select({ w: max('weight').window() });
+    expect(
+      findFilterUnstableShape(athletes().select({ heavy: compareAny('weight', '>', ranked) })),
+    ).toBeNull();
+    expect(
+      findFilterUnstableShape(
+        athletes()
+          .select({ id: 'id' })
+          .orderby(compareAll('weight', '>=', ranked)),
+      ),
+    ).toBeNull();
+    expect(
+      findFilterUnstableShape(
+        athletes().select({
+          top: compareAny(sum('weight').window(), '>', athletes().select('weight')),
+        }),
+      ),
+    ).toEqual({ clause: 'a window function', nested: false });
   });
 
   test('raw SQL text without OVER is not a window function', () => {
@@ -176,6 +220,14 @@ describe('findFilterUnstableShape', () => {
           .select({ n: count() }),
       ),
     ).toEqual({ clause: 'SELECT DISTINCT', nested: true });
+    // DISTINCT ON nested in a FROM subquery.
+    expect(
+      findFilterUnstableShape(
+        Query.from(athletes().select('sport', 'weight').distinctOn('sport')).select({
+          n: count(),
+        }),
+      ),
+    ).toEqual({ clause: 'SELECT DISTINCT ON', nested: true });
   });
 
   test('fixed histogram bins are still reported (callers opt in with an explicit true)', () => {

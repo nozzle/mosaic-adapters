@@ -12,10 +12,10 @@ catalog:
   '@testing-library/dom': ^10.4.2
   '@testing-library/react': ^16.3.3
   '@types/node': ^26.6.2
-  '@uwdata/flechette': ^2.6.0
-  '@uwdata/mosaic-core': ^0.32.1
-  '@uwdata/mosaic-sql': ^0.32.1
-  '@uwdata/vgplot': ^0.32.1
+  '@uwdata/flechette': ^2.7.0
+  '@uwdata/mosaic-core': ^0.33.0
+  '@uwdata/mosaic-sql': ^0.33.0
+  '@uwdata/vgplot': ^0.33.0
   '@vitejs/plugin-react': ^6.1.1
   jsdom: ^30.1.1
   oxfmt: ^0.70.0
@@ -45,6 +45,7 @@ minimumReleaseAgeExclude:
   - '@uwdata/flechette'
   - '@uwdata/mosaic-*'
   - '@uwdata/vgplot'
+  - '@uwdata/wk-geojson'
 
 overrides:
   '@nozzleio/mosaic-tanstack-table-core': 'workspace:*'
