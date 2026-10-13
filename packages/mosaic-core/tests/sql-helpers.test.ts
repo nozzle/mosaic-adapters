@@ -2,9 +2,9 @@
  * The mosaic-sql gap helpers (`withRecursive`, `selectStarExclude`,
  * `sqlFromParts`, `tableRef`, `andOrTrue`) depend on mosaic-sql internals, so
  * every test pins the exact SQL a helper renders. A mosaic-sql upgrade that
- * changes those internals fails here. The "upstream gaps" block fails once
- * mosaic-sql ships an equivalent, which is the cue to remove or alias the
- * helper.
+ * changes those internals fails here. The "upstream gaps" block pins the
+ * mosaic-sql behaviour each helper exists for; a failure there is the cue to
+ * remove or alias the helper.
  */
 import { createAthletesDb } from '@nozzleio/test-support/duckdb';
 import type { TestDb } from '@nozzleio/test-support/duckdb';
@@ -13,6 +13,7 @@ import * as mSql from '@uwdata/mosaic-sql';
 import {
   FragmentNode,
   Query,
+  StarNode,
   TableRefNode,
   WithClauseNode,
   and,
@@ -26,6 +27,7 @@ import {
   literal,
   not,
   sql,
+  star,
 } from '@uwdata/mosaic-sql';
 import type { ExprNode, FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, expectTypeOf, test } from 'vitest';
@@ -269,6 +271,96 @@ describe('selectStarExclude', () => {
     expect(String(selectStarExclude(Query.from('t'), []))).toBe('SELECT * FROM "t"');
   });
 
+  test("appends mosaic-sql's own star node", () => {
+    const columns = ['name', 'weight'];
+    const query = selectStarExclude(Query.from('athletes'), columns);
+    const expr = query._select[0]?.expr;
+    if (!(expr instanceof StarNode)) {
+      throw new Error(`expected a StarNode, received ${String(expr)}`);
+    }
+
+    expect(expr.exclude).toEqual(['name', 'weight']);
+    expect(expr.exclude).not.toBe(columns);
+    expect(String(expr)).toBe(String(star(null, { exclude: columns })));
+  });
+
+  test('does not de-duplicate against other stars', () => {
+    const before = selectStarExclude(Query.from('t').select('*'), ['a']);
+    expect(String(before)).toBe('SELECT *, * EXCLUDE ("a") FROM "t"');
+
+    const after = selectStarExclude(Query.from('t'), ['a']).select('*');
+    expect(String(after)).toBe('SELECT * EXCLUDE ("a"), * FROM "t"');
+  });
+
+  test.each([
+    {
+      via: 'FROM subquery',
+      build: (filter: FilterExpr) =>
+        Query.from(selectStarExclude(Query.from('athletes'), ['name']))
+          .select({ weight: 'weight', n: count() })
+          .groupby('weight')
+          .where(filter),
+    },
+    {
+      via: 'CTE',
+      build: (filter: FilterExpr) =>
+        Query.from('src')
+          .with(cte('src', selectStarExclude(Query.from('athletes'), ['name'])))
+          .select({ weight: 'weight', n: count() })
+          .groupby('weight')
+          .where(filter),
+    },
+  ])('pre-aggregates through a * EXCLUDE $via', async ({ build }) => {
+    const selection = Selection.crossfilter();
+    const clause = clausePoint('sport', 'swim', { source: {} });
+    const client = new QueryClient(selection, build);
+
+    // Lineage resolves "sport" through the star (it is not excluded), so the
+    // pre-aggregator reads it from the star instead of appending a column.
+    const info = db.coordinator.preaggregator.request(client, selection, clause);
+    if (info === null || !('create' in info)) {
+      throw new Error(`expected pre-aggregation info, received ${String(info)}`);
+    }
+    expect(String(info.create)).toContain('SELECT * EXCLUDE ("name") FROM "athletes"');
+    expect(String(info.query(clause))).toMatch(/FROM "mosaic"."preagg_[0-9a-f]+"/);
+    await info.result;
+
+    const optimized = await rows(Query.from(info.query(clause)).select('*').orderby(asc('weight')));
+    const direct = await rows(
+      Query.from(client.query(clause.predicate ?? []))
+        .select('*')
+        .orderby(asc('weight')),
+    );
+    expect(optimized).toEqual(direct);
+    expect(direct.length).toBeGreaterThan(0);
+  });
+
+  test('an excluded column does not resolve through the star', async () => {
+    const selection = Selection.crossfilter();
+    const clause = clausePoint('sport', 'swim', { source: {} });
+    const client = new QueryClient(selection, (filter) =>
+      Query.from(selectStarExclude(Query.from('athletes'), ['sport']))
+        .select({ weight: 'weight', n: count() })
+        .groupby('weight')
+        .where(filter),
+    );
+
+    // "sport" is excluded, so lineage cannot read it from the star and the
+    // pre-aggregator appends it to the subquery's SELECT list instead.
+    const info = db.coordinator.preaggregator.request(client, selection, clause);
+    if (info === null || !('create' in info)) {
+      throw new Error(`expected pre-aggregation info, received ${String(info)}`);
+    }
+    expect(String(info.create)).toContain('SELECT * EXCLUDE ("sport"), "sport" FROM "athletes"');
+    await info.result;
+
+    // The optimized query answers, while the same query on the standard path
+    // cannot bind the excluded column.
+    const optimized = await rows(Query.from(info.query(clause)).select('*'));
+    expect(optimized.length).toBeGreaterThan(0);
+    await expect(rows(client.query(clause.predicate ?? []))).rejects.toThrow(/Binder Error/);
+  });
+
   test('rejects an empty column name', () => {
     expect(() => selectStarExclude(Query.from('t'), ['a', ''])).toThrow(TypeError);
   });
@@ -404,5 +496,14 @@ describe('upstream gaps', () => {
 
   test('mosaic-sql has no recursive CTE flag', () => {
     expect(Object.keys(cte('t', countToThree()))).not.toContain('recursive');
+  });
+
+  // `selectStarExclude` appends its star directly instead of going through
+  // `select()`, which keys a star clause as `*` and so replaces an earlier one.
+  test("mosaic-sql's select() de-duplicates star clauses", () => {
+    const query = Query.from('t')
+      .select('*')
+      .select(star(null, { exclude: ['a'] }));
+    expect(String(query)).toBe('SELECT * EXCLUDE ("a") FROM "t"');
   });
 });

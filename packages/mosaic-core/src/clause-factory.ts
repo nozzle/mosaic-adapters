@@ -35,7 +35,7 @@ export interface ValueClauseSpec {
   /** SQL predicate; `null` removes the source's clause from the Selection. */
   predicate: SelectionClause['predicate'];
   /**
-   * Input field expressions this clause filters over (Mosaic 0.29+). Every
+   * Input field expressions this clause filters over. Every
    * field reference inside `predicate` must be one of these exact node
    * instances — the PreAggregator maps predicate nodes to fields by object
    * identity, so a structurally-equal-but-distinct node silently disables

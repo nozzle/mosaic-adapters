@@ -425,7 +425,7 @@ class RowsDataClient<TRow>
     tuples: Array<Array<unknown>>,
   ): void {
     const clients = new Set<MosaicClient>([this.mosaicClient]);
-    // Mosaic 0.32's `clausePoints` turns `[]` into a `FALSE` predicate (an
+    // Mosaic's `clausePoints` turns `[]` into a `FALSE` predicate (an
     // active clause matching nothing); an empty row selection must instead
     // remove the source's clause.
     if (tuples.length === 0) {
@@ -446,7 +446,7 @@ class RowsDataClient<TRow>
    * the *active* clause removed (sibling clauses still applied) — every part of
    * the query that varies with the active filter beyond the WHERE clause is
    * frozen at that pre-active shape and never rebuilt while the brush moves.
-   * A *failing* optimizer path degrades to the standard query (Mosaic 0.31+
+   * A *failing* optimizer path degrades to the standard query (Mosaic
    * catches failed view creation and failed updates alike); a wrong-but-valid
    * one returns incorrect rows with no error. Surface the hazard once instead
    * of failing silently.
@@ -455,9 +455,10 @@ class RowsDataClient<TRow>
    * (pre-aggregation is driven by it), `filterStable` was left defaulted and is
    * not forced off by `skipSources`, the query Mosaic sees is one it could
    * pre-aggregate (outer aggregates — never the `rowCount: 'window'` wrapper),
-   * and the query has a filter-unstable shape (GROUP BY, DISTINCT, QUALIFY,
-   * window functions or PIVOT, at the top level or nested in a CTE, FROM
-   * subquery or set operation). Re-checked on each build until it fires once.
+   * and the query has a filter-unstable shape (GROUP BY, DISTINCT or DISTINCT
+   * ON, QUALIFY, window functions or PIVOT, at the top level or nested in a
+   * CTE, FROM subquery or set operation). Re-checked on each build until it
+   * fires once.
    */
   #warnFilterUnstable(query: SelectQuery): void {
     if (this.#warnedFilterUnstable || this.previewing) {

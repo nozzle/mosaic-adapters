@@ -22,7 +22,7 @@ pnpm add @uwdata/mosaic-core @uwdata/mosaic-sql @uwdata/vgplot @tanstack/react-t
 ```
 
 All four published adapter packages declare `@uwdata/mosaic-core` and
-`@uwdata/mosaic-sql` as peers at `>=0.32.0 <1` — install Mosaic 0.32 or newer.
+`@uwdata/mosaic-sql` as peers at `>=0.33.0 <1` — install Mosaic 0.33 or newer.
 Keep the two on the same release line: Mosaic Core depends on a matching Mosaic
 SQL, and two copies of the SQL AST in one tree break pre-aggregation.
 
@@ -277,7 +277,8 @@ Its Playwright suite asserts each of those flows end-to-end.
 - [Membership subqueries](core/subquery-predicates.md) — `IN (SELECT …)`
   predicates, context embedding, and change-suppressed republishing.
 - [mosaic-sql helpers](core/sql-helpers.md) — temporary typed helpers for
-  mosaic-sql gaps (`WITH RECURSIVE`, `* EXCLUDE`, `tableRef`, …).
+  mosaic-sql gaps (`WITH RECURSIVE`, `tableRef`, a `* EXCLUDE` that appends
+  without `select()` de-duplication, …).
 - [React hooks](react/hooks.md) — controlled-binding rules (what recreates a client, what never re-queries).
 - [TanStack Table integration](tanstack-table/integration.md) — translators, clause kinds, bridge lifecycle, and when _not_ to use the bridge.
 - The [`nozzle-paa` example](../examples/react/nozzle-paa) — a bigger page

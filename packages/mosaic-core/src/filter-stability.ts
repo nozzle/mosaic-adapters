@@ -3,8 +3,8 @@
  *
  * `filterStable: true` (upstream's default) promises Mosaic's pre-aggregation
  * optimizer that filtering cannot change which groups a client query produces.
- * These helpers decide (1) whether Mosaic 0.32's `PreAggregator` could engage
- * on a query at all, and (2) whether the query has a shape that usually breaks
+ * These helpers decide (1) whether Mosaic's `PreAggregator` could engage on a
+ * query at all, and (2) whether the query has a shape that usually breaks
  * the promise. Both are heuristics behind a console warning — they never
  * change behaviour.
  */
@@ -62,10 +62,11 @@ export function canPreAggregate(query: unknown): boolean {
 }
 
 /**
- * Finds the first filter-unstable shape in `query`: GROUP BY, SELECT DISTINCT,
- * QUALIFY, window functions (in SELECT or ORDER BY) or PIVOT — in the query itself, its CTEs
- * (`Query.with()`), FROM subqueries (including join sides) and set operation
- * members. Predicate subqueries (`IN (SELECT ...)`, scalar subqueries) are not
+ * Finds the first filter-unstable shape in `query`: GROUP BY, SELECT DISTINCT
+ * (or DISTINCT ON), QUALIFY, window functions (in SELECT or ORDER BY) or
+ * PIVOT — in the query itself, its CTEs (`Query.with()`), FROM subqueries
+ * (including join sides) and set operation members. Predicate subqueries
+ * (`IN (SELECT ...)`, scalar and `ANY` / `ALL` subqueries) are not
  * inspected: they come from filter clauses and do not shape the row domain.
  * Returns null when none is found.
  */
@@ -115,6 +116,10 @@ function ownShape(query: Query): string | null {
   if (query._groupby.length > 0) {
     return 'GROUP BY';
   }
+  // DISTINCT ON takes precedence over the plain DISTINCT flag when rendered.
+  if (query._distinctOn.length > 0) {
+    return 'SELECT DISTINCT ON';
+  }
   if (query._distinct) {
     return 'SELECT DISTINCT';
   }
@@ -154,7 +159,10 @@ function visitRelation(node: SQLNode, seen: Set<unknown>): FilterUnstableShape |
  * declares a named WINDOW. Those are the clauses where a window shapes which
  * rows the query returns (ORDER BY together with a LIMIT, say). WHERE and
  * HAVING are not inspected — a window is invalid in either — and QUALIFY is
- * reported as its own clause. Scalar subqueries are not descended into.
+ * reported as its own clause. Scalar subqueries are not descended into,
+ * including the subquery of an `ANY` / `ALL` comparison (`compareAny` /
+ * `compareAll` hold it as a `ScalarSubqueryNode`); the compared expression on
+ * the left is still inspected.
  */
 function hasWindowFunction(query: SelectQuery): boolean {
   if (query._window.length > 0) {
@@ -177,6 +185,7 @@ function exprHasWindow(expr: ExprNode): boolean {
       state.found = true;
       return -1;
     }
+    // Also reached through an ANY / ALL comparison's subquery.
     if (node.type === 'SCALAR_SUBQUERY') {
       return 1;
     }

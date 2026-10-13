@@ -126,11 +126,11 @@ const isStale = settled !== null && settled.query !== lastQuery;
 
 ### Query errors and cancellation
 
-With Mosaic 0.30+, a main-query failure sets `error` to the upstream
-`QueryError` class. Narrow it with `instanceof QueryError` (imported from
-`@uwdata/mosaic-core`) to inspect `.sql`, the SQL the coordinator actually
-issued, and `.cause`, the underlying database error. `Error | null` remains the
-public state type because non-client paths are not all wrapped; notably,
+A main-query failure sets `error` to the upstream `QueryError` class. Narrow
+it with `instanceof QueryError` (imported from `@uwdata/mosaic-core`) to
+inspect `.sql`, the SQL the coordinator actually issued, and `.cause`, the
+underlying database error. `Error | null` remains the public state type
+because non-client paths are not all wrapped; notably,
 [`createSchemaClient`](./schema-client.md) runs `queryFieldInfo` through
 `coordinator.query()` directly and can surface a plain `Error`.
 

@@ -1,13 +1,13 @@
 # mosaic-sql helpers (temporary)
 
-`@uwdata/mosaic-sql` 0.32 is missing a few query-building pieces. Without them, apps write to private query fields or cast types, and those workarounds break on upgrades (0.32 already removed `Query.setCteFor`). `@nozzleio/mosaic-core` (and `@nozzleio/react-mosaic`, which re-exports it) ships small typed helpers for these gaps instead.
+`@uwdata/mosaic-sql`'s public API is missing a few query-building pieces. Without them, apps write to private query fields or cast types, and that code breaks whenever mosaic-sql changes its internals. `@nozzleio/mosaic-core` (and `@nozzleio/react-mosaic`, which re-exports it) ships small typed helpers for these gaps instead.
 
-**These helpers are temporary.** Each one is removed, or becomes an alias, once mosaic-sql ships the equivalent. Some of them depend on mosaic-sql internals (`_with`, `_select`), so the package's tests pin the exact SQL each one renders. A mosaic-sql upgrade that changes those internals fails the tests instead of breaking your queries.
+**These helpers are temporary.** Each one is removed, or becomes an alias, once mosaic-sql ships the equivalent. `selectStarExclude` builds its clause with mosaic-sql's own `star()` and only adds append-without-de-duplication on top. Some of them depend on mosaic-sql internals (`_with`, `_select`), so the package's tests pin the exact SQL each one renders. A mosaic-sql upgrade that changes those internals fails the tests instead of breaking your queries.
 
 | Helper                                    | Gap it covers                                            | Renders                                 |
 | ----------------------------------------- | -------------------------------------------------------- | --------------------------------------- |
 | `withRecursive(query, name, body, opts?)` | No `WITH RECURSIVE`                                      | `WITH RECURSIVE "name" AS (…)`          |
-| `selectStarExclude(query, columns)`       | No star `EXCLUDE`                                        | `SELECT * EXCLUDE ("a", "b")`           |
+| `selectStarExclude(query, columns)`       | Star `EXCLUDE` without `select()` de-duplication         | `SELECT * EXCLUDE ("a", "b")`           |
 | `sqlFromParts(strings, ...values)`        | `sql` only accepts a `TemplateStringsArray`              | Same as the `sql` tag                   |
 | `tableRef(...names)`                      | `TableRefNode` is exported, its `tableRef` helper is not | `"main"."events"`                       |
 | `andOrTrue(...clauses)`                   | `and()` with no clauses renders an empty string          | `TRUE` when empty, otherwise like `and` |
@@ -45,7 +45,9 @@ selectStarExclude(Query.from('events'), ['payload', 'raw']);
 - Every name is quoted as an identifier, including `*`: `['*']` excludes a column literally named `*` and renders `EXCLUDE ("*")`. DuckDB rejects a name that is not in the FROM clause.
 - Call it once per query. Unlike `query.select()`, it does not de-duplicate against earlier SELECT entries, so a second call (or a later `select('*')`) adds another star and repeats those columns.
 - An empty list appends a plain `*`.
-- Mosaic's pre-aggregation lineage only follows a plain `*`. A client that reads columns through a `* EXCLUDE` subquery or CTE therefore uses the standard query path.
+- The clause is mosaic-sql's `star(null, { exclude: columns })`, appended with an empty alias. `query.select(star(…))` keys a star as `*`, so it replaces an earlier `select('*')` and is replaced by a later one; this helper keeps both.
+- Like any mosaic-sql star, the clause takes part in pre-aggregation: a client that reads columns through a `* EXCLUDE` subquery or CTE can be pre-aggregated, with the same limits as any other query (see [nested top-k](./rows-client.md#grouped-queries-and-filterstable)).
+- Mosaic's lineage resolves a column through the star unless it is excluded. When the active clause filters on an excluded column, the pre-aggregator appends that column to the subquery's SELECT list (`SELECT * EXCLUDE ("sport"), "sport" FROM …`). The optimized query then returns rows, while the same query on the standard path fails with a DuckDB Binder Error because the subquery does not output the column. Do not rely on this: the standard path fails whenever its predicate still references the excluded column — with `filterStable: false`, when a clause on that column cannot be pre-aggregated, or when the client first queries while the clause is already active.
 
 ## `sqlFromParts`
 

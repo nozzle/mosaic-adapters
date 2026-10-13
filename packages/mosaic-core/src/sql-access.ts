@@ -130,19 +130,26 @@ export function isColumnPathMode(value: unknown): value is ColumnPathMode {
 }
 
 /**
- * Creates a typed SQL accessor using DuckDB's TRY_CAST, allowing flexible
- * filtering (e.g. a numeric filter on a string column) without runtime
- * errors: failed conversions become NULL instead of throwing.
+ * Creates a typed SQL accessor using DuckDB's TRY_CAST (mosaic-sql's
+ * `tryCast`), allowing flexible filtering (e.g. a numeric filter on a string
+ * column) without runtime errors: failed conversions become NULL instead of
+ * throwing. `'number'` renders `TRY_CAST(<expr> AS DOUBLE)`, `'date'` renders
+ * `TRY_CAST(<expr> AS TIMESTAMP)`, and any other type returns `colExpr` as-is.
+ *
+ * For number/date targets the result is a mosaic-sql `CastNode`, which
+ * Mosaic's pre-aggregation optimizer analyses like any other mosaic-sql
+ * node. See `docs/core/rows-client.md` for the query shapes (such as a
+ * filtered top-k subquery) that need `filterStable: false`.
  */
 export function createTypedAccess(
   colExpr: ExprNode,
   targetType: 'string' | 'number' | 'date' | 'boolean',
 ): ExprNode {
   if (targetType === 'number') {
-    return mSql.sql`TRY_CAST(${colExpr} AS DOUBLE)`;
+    return mSql.tryCast(colExpr, 'DOUBLE');
   }
   if (targetType === 'date') {
-    return mSql.sql`TRY_CAST(${colExpr} AS TIMESTAMP)`;
+    return mSql.tryCast(colExpr, 'TIMESTAMP');
   }
   return colExpr;
 }

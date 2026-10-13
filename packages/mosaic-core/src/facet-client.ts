@@ -286,7 +286,7 @@ class FacetDataClient extends BaseDataClient<FacetInputs, FacetClientState> impl
       });
     }
     if ((this.#options.select ?? 'single') === 'multi') {
-      // Mosaic 0.32's `clausePoints` turns `[]` into a `FALSE` predicate; an
+      // Mosaic's `clausePoints` turns `[]` into a `FALSE` predicate; an
       // empty multi-selection must instead remove the source's clause.
       if (selected.length === 0) {
         return createClearClause(this.#source, clients);

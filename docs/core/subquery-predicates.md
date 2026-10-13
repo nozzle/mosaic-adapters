@@ -15,7 +15,7 @@ const subquery = Query.select({ question: sql`"related_phrase"."phrase"` })
   .having(gt(count(), literal(5)));
 
 // `predicate` and `fields` share the same column node instances, which the
-// clause's `fields` must reference (Mosaic 0.29 field-identity requirement).
+// clause's `fields` must reference (Mosaic's field-identity requirement).
 const { predicate, fields } = buildSubqueryClauseParts({
   column: 'related_phrase.phrase', // dotted paths become struct access
   query: subquery,

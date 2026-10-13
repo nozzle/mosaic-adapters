@@ -17,7 +17,7 @@ import type { Selection } from '@uwdata/mosaic-core';
  * brush overlay) mutate the built plot's `width`/`height`/`margin*`/`*Ticks`
  * attributes in place — the exact set this module writes as geometry directives.
  *
- * ## vgplot API verification (against @uwdata/vgplot 0.28)
+ * ## vgplot API verification (against @uwdata/vgplot 0.33)
  *
  * - marks: `rectY`, `dot`, `lineY`, `areaY`, `regressionY` — `(data, channels)`.
  * - `from(table, { filterBy })` — the mark data source.

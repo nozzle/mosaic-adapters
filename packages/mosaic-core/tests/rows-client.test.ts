@@ -1,13 +1,13 @@
 import { createAthletesDb, waitFor } from '@nozzleio/test-support/duckdb';
 import type { TestDb } from '@nozzleio/test-support/duckdb';
-import { Selection, clausePoint } from '@uwdata/mosaic-core';
+import { MosaicClient, Selection, clausePoint } from '@uwdata/mosaic-core';
 import type { ClauseSource } from '@uwdata/mosaic-core';
-import { Query, count, max, row_number, sum } from '@uwdata/mosaic-sql';
-import type { FilterExpr } from '@uwdata/mosaic-sql';
+import { Query, asc, count, max, row_number, sum } from '@uwdata/mosaic-sql';
+import type { FilterExpr, SelectQuery } from '@uwdata/mosaic-sql';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
 
-import { createRowsClient } from '../src/index';
+import { createRowsClient, createValuesClient, toResultRows } from '../src/index';
 
 interface AthleteRow {
   id: number;
@@ -687,5 +687,75 @@ describe('defaulted filterStable warning', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+/**
+ * The nested top-k example in docs/core/rows-client.md (`filterStable`): a
+ * filter inside a subquery with `ORDER BY … LIMIT`, under an outer aggregate.
+ */
+function lightestTwoTotal(filter: FilterExpr): SelectQuery {
+  return Query.from(
+    Query.from('athletes').select('weight').where(filter).orderby(asc('weight')).limit(2),
+  ).select({ total: sum('weight') });
+}
+
+/** A bare MosaicClient over {@link lightestTwoTotal}, left at `filterStable: true`. */
+class LightestTwoClient extends MosaicClient {
+  override query(filter: FilterExpr = []): SelectQuery {
+    return lightestTwoTotal(filter);
+  }
+}
+
+describe('nested top-k under pre-aggregation', () => {
+  // Pins an upstream Mosaic optimizer limitation: pre-aggregation lifts the
+  // active predicate out of the subquery, materializes the top k of the
+  // unfiltered rows and re-filters them, and filtering does not commute with
+  // ORDER BY … LIMIT. If this test fails because the results now agree,
+  // upstream has fixed it: revisit the docs/core/rows-client.md note.
+  test('upstream limitation: the pre-aggregated result differs from the direct query', async () => {
+    const selection = Selection.crossfilter();
+    const clause = clausePoint('sport', 'swim', { source: {} });
+    const client = new LightestTwoClient(selection);
+
+    const info = db.coordinator.preaggregator.request(client, selection, clause);
+    if (info === null || !('create' in info)) {
+      throw new Error(`expected pre-aggregation info, received ${String(info)}`);
+    }
+    await info.result;
+
+    const optimized = toResultRows(
+      await db.coordinator.query(info.query(clause), { cache: false }),
+    );
+    const direct = toResultRows(
+      await db.coordinator.query(client.query(clause.predicate ?? []), { cache: false }),
+    );
+    // The two lightest swimmers weigh 130 together; the two lightest athletes
+    // overall include only one swimmer.
+    expect(direct.map((row) => Number(row.total))).toEqual([130]);
+    expect(optimized.map((row) => Number(row.total))).toEqual([60]);
+  });
+
+  test('filterStable: false returns the direct result on a selection update', async () => {
+    const $page = Selection.crossfilter();
+    const widget = createValuesClient<{ total: unknown }>({
+      coordinator: db.coordinator,
+      filterBy: $page,
+      filterStable: false,
+      query: ({ where }) => lightestTwoTotal(where as FilterExpr),
+    });
+    await waitFor(() => {
+      expect(widget.store.state.status).toBe('success');
+    });
+
+    const clause = clausePoint('sport', 'swim', { source: {} });
+    $page.update(clause);
+    await waitFor(() => {
+      expect(Number(widget.store.state.values?.total)).toBe(130);
+    });
+    // The update took the standard query path.
+    expect(db.coordinator.preaggregator.request(widget.mosaicClient, $page, clause)).toBeNull();
+
+    widget.destroy();
   });
 });
