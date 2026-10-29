@@ -4,7 +4,7 @@
 
 ## TanStack Table v9
 
-The library targets TanStack Table v9 — install `@tanstack/react-table@beta` (v9 is not yet the npm `latest` tag). TanStack Table is a peer dependency of the glue packages, matching what you install: `@nozzleio/mosaic-tanstack-react-table` peers on `@tanstack/react-table`, and the framework-agnostic `@nozzleio/mosaic-tanstack-table-core` peers on `@tanstack/table-core` (satisfied transitively by any TanStack Table framework adapter). The glue's public API is unchanged across the v8→v9 migration; the new v9 surfaces (`table.atoms`, `<table.Subscribe>`, `createTableHook`) are intentionally not used by the glue — you wire `useTable` and its state yourself, exactly as below.
+The library targets TanStack Table v9 (`^9.0.0`) — install `@tanstack/react-table`. TanStack Table is a peer dependency of the glue packages, matching what you install: `@nozzleio/mosaic-tanstack-react-table` peers on `@tanstack/react-table`, and the framework-agnostic `@nozzleio/mosaic-tanstack-table-core` peers on `@tanstack/table-core` (satisfied transitively by any TanStack Table framework adapter). The glue's public API is unchanged across the v8→v9 migration; the new v9 surfaces (`table.atoms`, `<table.Subscribe>`, `createTableHook`) are intentionally not used by the glue — you wire `useTable` and its state yourself, exactly as below.
 
 The model is strictly server-side: Mosaic is the server, TanStack Table is a client in fully manual mode. The table renders `data` and `rowCount` verbatim from a [rows client](../core/rows-client.md) and never re-processes rows — the core row model (built in under v9) is the only row model, and a manual-mode table registers no other row-model factories. The one exception is [expanding children that arrive with each row](#expanding-client-side-children): that only reshapes the rows already on the page. The glue translates TanStack Table state _into_ the native path (serializable inputs and Selection clauses); `@nozzleio/mosaic-core` never imports TanStack Table, and the bridge never touches a data client.
 
@@ -407,7 +407,7 @@ Retained specs belong to nobody until a bridge adopts them, so two things are yo
 
 ### Atom-controlled filter state
 
-v9's [recommended controlled-state pattern](https://tanstack.com/table/beta/docs/framework/react/guide/table-state#controlled-state) is external atoms: pass a writable atom via the table's `atoms` option and it takes ownership of that state slice (no `onColumnFiltersChange` needed). The bridge's contract is value-in/callback-out, so an atom-owned `columnFilters` slice drives it through a read-and-write-back adapter:
+v9's [recommended controlled-state pattern](https://tanstack.com/table/latest/docs/framework/react/guide/table-state#controlled-state) is external atoms: pass a writable atom via the table's `atoms` option and it takes ownership of that state slice (no `onColumnFiltersChange` needed). The bridge's contract is value-in/callback-out, so an atom-owned `columnFilters` slice drives it through a read-and-write-back adapter:
 
 ```tsx
 import { useAtom, useCreateAtom } from '@tanstack/react-store';

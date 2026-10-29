@@ -66,7 +66,7 @@
     "typescript": "catalog:"
   },
   "peerDependencies": {
-    "@tanstack/react-table": "^9.0.0-beta.34",
+    "@tanstack/react-table": "^9.0.0",
     "@uwdata/mosaic-core": ">=0.34.3 <1",
     "@uwdata/mosaic-sql": ">=0.34.3 <1",
     "react": ">=19.2.0"
