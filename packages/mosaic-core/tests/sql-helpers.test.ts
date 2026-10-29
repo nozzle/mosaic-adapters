@@ -279,8 +279,7 @@ describe('selectStarExclude', () => {
       throw new Error(`expected a StarNode, received ${String(expr)}`);
     }
 
-    expect(expr.exclude).toEqual(['name', 'weight']);
-    expect(expr.exclude).not.toBe(columns);
+    expect(expr.exclude.map((ref) => ref.column)).toEqual(['name', 'weight']);
     expect(String(expr)).toBe(String(star(null, { exclude: columns })));
   });
 
@@ -359,6 +358,51 @@ describe('selectStarExclude', () => {
     const optimized = await rows(Query.from(info.query(clause)).select('*'));
     expect(optimized.length).toBeGreaterThan(0);
     await expect(rows(client.query(clause.predicate ?? []))).rejects.toThrow(/Binder Error/);
+  });
+
+  test('an excluded "*" survives deepClone and walk, and pre-aggregates', async () => {
+    await db.coordinator.exec('CREATE TABLE starred AS SELECT "name" AS "*", * FROM athletes');
+    const sub = selectStarExclude(Query.from('starred'), ['*']);
+
+    const copy = deepClone(sub);
+    expect(String(copy)).toBe('SELECT * EXCLUDE ("*") FROM "starred"');
+    const excluded: Array<string> = [];
+    mSql.walk(copy, (node) => {
+      if (
+        node instanceof mSql.ColumnNameRefNode &&
+        node.column === '*' &&
+        !(node instanceof StarNode)
+      ) {
+        excluded.push(String(node));
+      }
+    });
+    expect(excluded).toEqual(['"*"']);
+
+    // Lineage reads "sport" through the star; the excluded "*" does not
+    // shadow it.
+    const selection = Selection.crossfilter();
+    const clause = clausePoint('sport', 'swim', { source: {} });
+    const client = new QueryClient(selection, (filter) =>
+      Query.from(selectStarExclude(Query.from('starred'), ['*']))
+        .select({ weight: 'weight', n: count() })
+        .groupby('weight')
+        .where(filter),
+    );
+    const info = db.coordinator.preaggregator.request(client, selection, clause);
+    if (info === null || !('create' in info)) {
+      throw new Error(`expected pre-aggregation info, received ${String(info)}`);
+    }
+    expect(String(info.create)).toContain('SELECT * EXCLUDE ("*") FROM "starred"');
+    await info.result;
+
+    const optimized = await rows(Query.from(info.query(clause)).select('*').orderby(asc('weight')));
+    const direct = await rows(
+      Query.from(client.query(clause.predicate ?? []))
+        .select('*')
+        .orderby(asc('weight')),
+    );
+    expect(optimized).toEqual(direct);
+    expect(direct.length).toBeGreaterThan(0);
   });
 
   test('rejects an empty column name', () => {
@@ -492,6 +536,11 @@ describe('upstream gaps', () => {
 
   test('mosaic-sql renders an empty and() as an empty string', () => {
     expect(String(and())).toBe('');
+  });
+
+  // `selectStarExclude` passes an excluded `*` as a custom node for this.
+  test('mosaic-sql renders an excluded column named * as the bare wildcard', () => {
+    expect(String(star(null, { exclude: ['*'] }))).toBe('* EXCLUDE (*)');
   });
 
   test('mosaic-sql has no recursive CTE flag', () => {

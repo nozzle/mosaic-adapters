@@ -78,9 +78,25 @@ describe('built-in kinds → predicate SQL', () => {
         ],
       },
     });
-    const sql = predicateSql($b);
-    expect(sql).toContain('"sport"');
-    expect(sql).toContain('"weight"');
+    // A multi-field points clause resolves to a tuple IN list.
+    expect(predicateSql($b)).toBe(`(("sport", "weight") IN (('swim', 60), ('run', 55)))`);
+
+    // A tuple holding NULL is matched explicitly, outside the IN list.
+    setB.set({
+      id: 'pt',
+      column: 'sport',
+      kind: 'points',
+      value: {
+        columns: ['sport', 'weight'],
+        tuples: [
+          ['swim', 60],
+          ['run', null],
+        ],
+      },
+    });
+    expect(predicateSql($b)).toBe(
+      `((("sport", "weight") IN (('swim', 60))) OR (("sport" = 'run') AND ("weight" IS NULL)))`,
+    );
     setB.destroy();
   });
 

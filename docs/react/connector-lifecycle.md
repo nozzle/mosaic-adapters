@@ -113,7 +113,7 @@ export function useConnector(): ConnectorState {
 
 A `Coordinator` over `wasmConnector()` owns a DuckDB-WASM **Web Worker** once it runs its first query. `useMemo` has no cleanup, so a memoized coordinator leaks that worker on every reconnect — and StrictMode's throwaway mount mints a second one in dev. Create the connection in an effect (or a ref managed by one) whose cleanup disposes it:
 
-- **Clear the coordinator** with `coordinator.clear()`: rejects queued queries, disconnects any straggling client, and drops the cache.
+- **Clear the coordinator** with `coordinator.clear()`: rejects queued and pending queries, aborts in-flight connector queries (not `exec` statements), disconnects any straggling client, and drops the cache.
 - **Terminate DuckDB only if it started.** `wasmConnector()` is lazy: it starts nothing until its first query, at which point it sets the public `_loadPromise` field. No `_loadPromise` means no worker, so there is nothing to terminate (the StrictMode throwaway connection is the usual case). Otherwise wait for `_loadPromise` to settle — it may still be starting, or have failed part-way — and call `_db?.terminate()`.
 
 One limitation: upstream assigns `_db` only after DuckDB-WASM instantiation succeeds. A start that fails later (opening the database or connecting) still leaves `_db` set, so its worker is reclaimed; a start that fails _during_ instantiation leaves the worker unreachable from the connector, and `_db?.terminate()` cannot reclaim it. If that case matters to you, construct the `AsyncDuckDB` yourself and pass it in with `wasmConnector({ duckdb })`, so you hold the instance to terminate.
@@ -153,7 +153,7 @@ Tear a connection down in this order:
 
 1. **Clients** — disconnect every Mosaic client (unmount the hooks).
 2. **Topology** — destroy the page topology (and any standalone FilterSets / compositions).
-3. **`coordinator.clear()`** — cancel what is still queued and drop the cache.
+3. **`coordinator.clear()`** — cancel what is still queued or in flight and drop the cache.
 4. **Terminate the worker** — `_db.terminate()`, only if DuckDB started.
 
 Steps 3–4 come last because a coordinator cleared while clients are still connected rejects their queries, and each rejection is logged as an error. The provider above enforces that by unmounting the subtree before disposing, and by deferring disposal to a microtask so it runs after every cleanup in the commit — including when the provider itself unmounts, where React runs cleanups parent-first.

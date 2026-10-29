@@ -12,7 +12,7 @@ Most apps install a framework package instead (e.g. `@nozzleio/react-mosaic`), w
 npm install @nozzleio/mosaic-core @uwdata/mosaic-core @uwdata/mosaic-sql
 ```
 
-`@uwdata/mosaic-core` and `@uwdata/mosaic-sql` are peer dependencies (`>=0.33.0 <1`). Keep them on the same minor version: a mismatched pair installs a second copy of `@uwdata/mosaic-sql`, which breaks the pre-aggregator.
+`@uwdata/mosaic-core` and `@uwdata/mosaic-sql` are peer dependencies (`>=0.34.3 <1`). Keep them on the same minor version: a mismatched pair installs a second copy of `@uwdata/mosaic-sql`, which breaks the pre-aggregator.
 
 ## What lives here
 

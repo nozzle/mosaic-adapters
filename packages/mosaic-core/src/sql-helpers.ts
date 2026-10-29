@@ -10,10 +10,12 @@
  *
  * TEMPORARY: each helper is removed, or becomes an alias, once mosaic-sql
  * ships the equivalent. `selectStarExclude` builds its clause with
- * mosaic-sql's `star()` and only adds append-without-de-duplication on top.
+ * mosaic-sql's `star()` and only adds append-without-de-duplication (and
+ * quoting for a column named `*`) on top.
  * Keep these minimal; don't grow them into a SQL layer.
  */
 import {
+  ColumnNameRefNode,
   SelectClauseNode,
   TableRefNode,
   WithClauseNode,
@@ -78,6 +80,31 @@ class RecursiveWithClauseNode extends WithClauseNode {
   override toString(visitor?: SQLCodeGenerator): string {
     const plain = new WithClauseNode(this.name, this.query, this.materialized, this.columnNames);
     return `RECURSIVE ${plain.toString(visitor)}`;
+  }
+}
+
+/**
+ * An EXCLUDE entry for a column literally named `*`.
+ *
+ * mosaic-sql renders every column reference named `*` as the bare wildcard,
+ * so `star(null, { exclude: ['*'] })` renders `EXCLUDE (*)`. This node is
+ * `CUSTOM`-typed so the code generator calls its `toString`, which renders
+ * the quoted identifier instead. It is still a `ColumnNameRefNode` named `*`,
+ * so Mosaic's pre-aggregation lineage treats it like any other excluded
+ * column. Unlike `RecursiveWithClauseNode` it needs no `clone()` override:
+ * the node has no children, and the base `clone()` builds the same class,
+ * whose constructor takes no arguments, so a clone keeps the `CUSTOM` type
+ * and the quoted rendering.
+ */
+class QuotedStarColumnRefNode extends ColumnNameRefNode {
+  override readonly type: string = CUSTOM_NODE_TYPE;
+
+  constructor() {
+    super('*');
+  }
+
+  override toString(): string {
+    return '"*"';
   }
 }
 
@@ -169,7 +196,9 @@ export function withRecursive<Q extends Query>(
  * adds another star and the result repeats those columns.
  *
  * The clause is mosaic-sql's own star node, `star(null, { exclude })`, so it
- * takes part in Mosaic's pre-aggregation like any other star. Lineage
+ * takes part in Mosaic's pre-aggregation like any other star. The one
+ * difference is an excluded `*`: mosaic-sql would render it as the bare
+ * wildcard, so it is passed as a custom node that renders `"*"`. Lineage
  * resolves a column the star still selects through it; for an excluded
  * column the pre-aggregator appends that column to the SELECT list instead.
  * See `docs/core/rows-client.md` for the query shapes (such as a filtered
@@ -199,7 +228,9 @@ export function selectStarExclude<Q extends SelectQuery>(
     return query.select('*');
   }
 
-  const expr = star(null, { exclude: [...columns] });
+  const expr = star(null, {
+    exclude: columns.map((name) => (name === '*' ? new QuotedStarColumnRefNode() : name)),
+  });
   query._select = query._select.concat(new SelectClauseNode(expr, ''));
   return query;
 }
