@@ -69,9 +69,9 @@
     "typescript": "catalog:"
   },
   "peerDependencies": {
-    "@uwdata/mosaic-core": ">=0.33.0 <1",
-    "@uwdata/mosaic-sql": ">=0.33.0 <1",
-    "@uwdata/vgplot": ">=0.33.0 <1",
+    "@uwdata/mosaic-core": ">=0.34.3 <1",
+    "@uwdata/mosaic-sql": ">=0.34.3 <1",
+    "@uwdata/vgplot": ">=0.34.3 <1",
     "react": ">=19.2.0"
   },
   "peerDependenciesMeta": {

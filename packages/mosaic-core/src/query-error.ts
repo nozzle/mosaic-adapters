@@ -4,7 +4,9 @@ import { QueryError } from '@uwdata/mosaic-core';
  * The reasons Mosaic's `QueryManager` rejects a request it never ran to
  * completion: `coordinator.cancel(requests)` rejects with `'Canceled'`,
  * `coordinator.clear()` (with or without `clients`) with `'Cleared'`.
- * Upstream rejects with these bare strings rather than a typed error.
+ * Upstream rejects with these bare strings rather than a typed error. A query
+ * timeout (`new Coordinator(db, { timeout })`) rejects with a `TimeoutError`
+ * DOMException instead; that is a failure, not a cancellation.
  */
 const CANCELLATION_REASONS: ReadonlySet<string> = new Set(['Canceled', 'Cleared']);
 

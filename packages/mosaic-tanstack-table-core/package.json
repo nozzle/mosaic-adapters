@@ -59,7 +59,7 @@
   },
   "peerDependencies": {
     "@tanstack/table-core": "^9.0.0-beta.34",
-    "@uwdata/mosaic-core": ">=0.33.0 <1",
-    "@uwdata/mosaic-sql": ">=0.33.0 <1"
+    "@uwdata/mosaic-core": ">=0.34.3 <1",
+    "@uwdata/mosaic-sql": ">=0.34.3 <1"
   }
 }

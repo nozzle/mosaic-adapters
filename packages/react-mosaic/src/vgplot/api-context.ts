@@ -11,7 +11,7 @@ type VgPlotModule = typeof vgplot;
  * vgplot's internal `api.js` (marks, attributes, interactors, legends, inputs,
  * layout, SQL helpers, `Param`/`Selection`, …); the package entry adds these
  * on top, and the context overrides `coordinator` with a bound getter.
- * Verified against @uwdata/vgplot v0.33 (`src/index.js`, `src/context.js`).
+ * Verified against @uwdata/vgplot v0.34.3 (`src/index.js`, `src/context.js`).
  */
 type ModuleOnlyExport =
   | 'Coordinator'

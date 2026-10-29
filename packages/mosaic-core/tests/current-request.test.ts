@@ -533,15 +533,15 @@ describe('cancellation of the current request', () => {
     expect(client.store.state.error).toBeNull();
 
     // Still connected: the next trigger re-queries and settles the store.
-    // `coordinator.query()` defaults the per-request `cache` flag to true, so
-    // even with the coordinator's result cache off the query manager joins
-    // the refetch's identical SQL to the still-open connector request
-    // (its `inflight` map) instead of issuing a second one.
+    // `clear()` aborts the open connector request and drops it from the query
+    // manager's `inflight` map, so the refetch issues a fresh request instead
+    // of joining the aborted one.
     expect(db.coordinator.clients.has(client.mosaicClient)).toBe(true);
     const refetch = client.refetch();
     await settle(0);
-    expect(db.requests).toHaveLength(1);
-    db.requests[0]!.resolve([{ total: 1 }]);
+    expect(db.requests).toHaveLength(2);
+    expect(db.requests[1]!.sql).toBe(db.requests[0]!.sql);
+    db.requests[1]!.resolve([{ total: 1 }]);
     await refetch;
     expect(client.store.state.status).toBe('success');
     expect(log.some((s) => s.status === 'error')).toBe(false);
