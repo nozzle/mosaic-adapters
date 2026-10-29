@@ -18,7 +18,7 @@ Params, SQL builders, and vgplot are the native vocabulary, not wrapped
 concepts:
 
 ```bash
-pnpm add @uwdata/mosaic-core @uwdata/mosaic-sql @uwdata/vgplot @tanstack/react-table@beta
+pnpm add @uwdata/mosaic-core @uwdata/mosaic-sql @uwdata/vgplot @tanstack/react-table
 ```
 
 All four published adapter packages declare `@uwdata/mosaic-core` and
