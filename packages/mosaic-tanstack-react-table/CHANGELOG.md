@@ -1,5 +1,23 @@
 # @nozzleio/mosaic-tanstack-react-table
 
+## 0.17.0
+
+### Minor Changes
+
+- [#313](https://github.com/nozzle/mosaic-adapters/pull/313) [`bc080d6`](https://github.com/nozzle/mosaic-adapters/commit/bc080d62bb336cc4353b98b516558dba73128839) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Support Mosaic 0.34.3. The `@uwdata/mosaic-core`, `@uwdata/mosaic-sql` and `@uwdata/vgplot` peer ranges are now `>=0.34.3 <1`, so apps must upgrade Mosaic to 0.34.3 alongside this release.
+
+  - Multi-column point clauses use Mosaic's new tuple form. Row selections published by the rows client, and `points` FilterSet specs with a `{ columns, tuples }` value, now render `("a", "b") IN (("x", 1), ("y", 2))` instead of an `OR` of per-row `IS NOT DISTINCT FROM` conjunctions. Tuples that contain `NULL` are still matched explicitly, so the selected rows are unchanged.
+  - `coordinator.clear()` now also aborts in-flight connector queries (not `exec` statements), so a refetch after a clear sends a fresh request instead of joining the aborted one. A client whose current query is cleared still stays `'pending'` without an error.
+  - `selectStarExclude` still quotes an excluded column literally named `*` (`EXCLUDE ("*")`). mosaic-sql 0.34 would render it as the bare wildcard, so the helper now passes that entry as a custom node.
+
+- [#314](https://github.com/nozzle/mosaic-adapters/pull/314) [`afaf53f`](https://github.com/nozzle/mosaic-adapters/commit/afaf53ffe18867018572e0485044e4f938fee8a5) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Require stable TanStack Table v9. The `@tanstack/table-core` peer range (for `@nozzleio/mosaic-tanstack-table-core`) and the `@tanstack/react-table` peer range (for `@nozzleio/mosaic-tanstack-react-table`) are now `^9.0.0` instead of `^9.0.0-beta.34`, so v9 beta releases no longer satisfy them. TanStack Table v9 is the npm `latest` release, so install it without the `@beta` tag.
+
+### Patch Changes
+
+- Updated dependencies [[`bc080d6`](https://github.com/nozzle/mosaic-adapters/commit/bc080d62bb336cc4353b98b516558dba73128839), [`afaf53f`](https://github.com/nozzle/mosaic-adapters/commit/afaf53ffe18867018572e0485044e4f938fee8a5)]:
+  - @nozzleio/mosaic-core@0.12.0
+  - @nozzleio/mosaic-tanstack-table-core@0.16.0
+
 ## 0.16.0
 
 ### Minor Changes
