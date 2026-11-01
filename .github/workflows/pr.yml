@@ -26,13 +26,13 @@ jobs:
           persist-credentials: false
 
       - name: Setup Tools
-        uses: TanStack/config/.github/setup@7bbdf583c2fc1a7f596283cd01e0e44c43f574f2 # main
+        uses: TanStack/config/.github/setup@0e4c94811ee024520b2ea330855f2d38549a7d92 # main
 
       - name: Check GitHub Action pins
         run: pnpm run actions:pin-check
 
       - name: Get base and head commits for `nx affected`
-        uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+        uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
         with:
           main-branch-name: main
 
