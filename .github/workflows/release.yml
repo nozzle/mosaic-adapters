@@ -35,7 +35,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Tools
-        uses: TanStack/config/.github/setup@7bbdf583c2fc1a7f596283cd01e0e44c43f574f2 # main
+        uses: TanStack/config/.github/setup@0e4c94811ee024520b2ea330855f2d38549a7d92 # main
 
       - name: Check GitHub Action pins
         run: pnpm run actions:pin-check
@@ -73,7 +73,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Tools
-        uses: TanStack/config/.github/setup@7bbdf583c2fc1a7f596283cd01e0e44c43f574f2 # main
+        uses: TanStack/config/.github/setup@0e4c94811ee024520b2ea330855f2d38549a7d92 # main
 
       - name: Create or update release PR
         uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
@@ -98,7 +98,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Tools
-        uses: TanStack/config/.github/setup@7bbdf583c2fc1a7f596283cd01e0e44c43f574f2 # main
+        uses: TanStack/config/.github/setup@0e4c94811ee024520b2ea330855f2d38549a7d92 # main
 
       - name: Show release tool versions
         run: |
