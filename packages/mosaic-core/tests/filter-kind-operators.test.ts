@@ -251,31 +251,31 @@ describe('condition text operators on array columns', () => {
 
   test('mean "any element matches", reusing the LIKE escape path', () => {
     expect(emitSql(arrayKind, textSpec('tags', 'contains'))).toBe(
-      "(len(list_filter(\"tags\", x -> x ILIKE '%a\\%b%' ESCAPE '\\')) > 0)",
+      "(len(list_filter(\"tags\", lambda x: x ILIKE '%a\\%b%' ESCAPE '\\')) > 0)",
     );
     expect(emitSql(arrayKind, textSpec('tags', 'starts_with'))).toBe(
-      "(len(list_filter(\"tags\", x -> x ILIKE 'a\\%b%' ESCAPE '\\')) > 0)",
+      "(len(list_filter(\"tags\", lambda x: x ILIKE 'a\\%b%' ESCAPE '\\')) > 0)",
     );
     expect(emitSql(arrayKind, textSpec('tags', 'ends_with'))).toBe(
-      "(len(list_filter(\"tags\", x -> x ILIKE '%a\\%b' ESCAPE '\\')) > 0)",
+      "(len(list_filter(\"tags\", lambda x: x ILIKE '%a\\%b' ESCAPE '\\')) > 0)",
     );
     expect(emitSql(arrayKind, textSpec('tags', 'matches', '^a'))).toBe(
-      '(len(list_filter("tags", x -> regexp_matches(x, \'^a\'))) > 0)',
+      '(len(list_filter("tags", lambda x: regexp_matches(x, \'^a\'))) > 0)',
     );
   });
 
   test('not_* forms negate the whole any-element test', () => {
     expect(emitSql(arrayKind, textSpec('tags', 'not_contains'))).toBe(
-      "(NOT (len(list_filter(\"tags\", x -> x ILIKE '%a\\%b%' ESCAPE '\\')) > 0))",
+      "(NOT (len(list_filter(\"tags\", lambda x: x ILIKE '%a\\%b%' ESCAPE '\\')) > 0))",
     );
     expect(emitSql(arrayKind, textSpec('tags', 'not_matches', '^a'))).toBe(
-      '(NOT (len(list_filter("tags", x -> regexp_matches(x, \'^a\'))) > 0))',
+      '(NOT (len(list_filter("tags", lambda x: regexp_matches(x, \'^a\'))) > 0))',
     );
   });
 
   test('struct-path array columns resolve outside the lambda', () => {
     expect(emitSql(arrayKind, textSpec('page.tags', 'contains', 'x'))).toBe(
-      '(len(list_filter("page"."tags", x -> x ILIKE \'%x%\' ESCAPE \'\\\')) > 0)',
+      '(len(list_filter("page"."tags", lambda x: x ILIKE \'%x%\' ESCAPE \'\\\')) > 0)',
     );
   });
 

@@ -56,10 +56,12 @@ const { predicate, fields } = buildSubqueryClauseParts({
 
 `field` is then the mosaic-sql `TupleNode` that wraps the columns, and `fields` holds one node per column. Both are the same instances the predicate holds. A one-element array behaves exactly like a single column. An empty array throws.
 
-How NULLs behave (checked on DuckDB):
+How NULLs behave (checked on DuckDB 2.0):
 
-- A row whose key tuple holds a NULL (`(NULL, 'x')`) is never matched. Against a nonempty subquery, `negate: true` drops it too: the test is unknown, not false, and `NOT unknown` is still unknown. Against an empty subquery every test is false, so `negate: true` keeps every row, NULL keys included.
-- If any tuple the subquery returns holds a NULL, every row that matches no tuple tests as unknown instead of false, even when another column already differs. So `negate: true` drops those rows as well, the same as single-column `NOT IN` with a NULL in the list. Filter NULL keys out of the subquery (`WHERE domain IS NOT NULL AND …`) when a negated membership should keep those rows.
+- The tuple test compares column by column, as standard SQL does: it is true when some subquery tuple equals the row's key in every column, false when every subquery tuple differs from it in at least one column where neither side is NULL, and unknown otherwise. `negate: true` keeps only the rows whose test is false, because `NOT unknown` is still unknown.
+- So a row whose key holds a NULL (`(NULL, 'x')`) is never matched. `negate: true` drops it as well, unless every subquery tuple differs from it in a non-NULL column: against `(1, 'x')`, `(NULL, 'z')` tests false and is kept. Against an empty subquery every test is false, so `negate: true` keeps every row, NULL keys included.
+- A NULL in a subquery tuple (`(NULL, 'x')`) makes the test unknown for a row that matches no tuple but equals that one in every other column (`(2, 'x')`), so `negate: true` drops it. A row that differs in a non-NULL column (`(2, 'y')`) still tests false and is kept. Filter NULL keys out of the subquery (`WHERE domain IS NOT NULL AND …`) so that only NULLs in a row's own key can make its test unknown.
+- DuckDB releases before 2.0 treated a NULL on either side as making the test unknown: a row whose own key held a NULL was always unknown against a nonempty subquery (so `negate: true` dropped it), and once any subquery tuple held a NULL, every row that matched no tuple tested as unknown.
 
 `subqueryFilterKind(build, { columns })` emits the composite form from a FilterSet kind (see below).
 

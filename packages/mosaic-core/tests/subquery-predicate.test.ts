@@ -132,11 +132,11 @@ describe('buildSubqueryClauseParts', () => {
     );
   });
 
-  test('a tuple holding a NULL never matches, negated or not (DuckDB)', async () => {
+  test('a tuple holding a NULL never matches; NOT keeps only false tests (DuckDB)', async () => {
     const db = await createTestDb();
     await db.exec(`
       CREATE TABLE pairs(id INTEGER, a INTEGER, b TEXT);
-      INSERT INTO pairs VALUES (1, 1, 'x'), (2, 2, 'y'), (3, NULL, 'x'), (4, 1, NULL);
+      INSERT INTO pairs VALUES (1, 1, 'x'), (2, 2, 'y'), (3, NULL, 'x'), (4, 1, NULL), (5, 2, 'x'), (6, NULL, 'z');
       CREATE TABLE allowed(a INTEGER, b TEXT);
       INSERT INTO allowed VALUES (1, 'x'), (NULL, 'x');
     `);
@@ -152,15 +152,18 @@ describe('buildSubqueryClauseParts', () => {
       return result.toArray().map((row) => row.id as number);
     };
 
-    // Row 3 (NULL a) and row 4 (NULL b) are dropped by both forms.
+    // Rows with a NULL key never match.
     expect(await ids(false)).toEqual([1]);
-    // Row 2 is dropped from the NOT form too: the allowed set holds
-    // (NULL, 'x'), so `(2, 'y') IN (...)` is unknown, not false.
-    expect(await ids(true)).toEqual([]);
+    // Tuples compare column by column (DuckDB 2). Row 3 (NULL, 'x') and
+    // row 4 (1, NULL) are unknown against (1, 'x'), so NOT drops them too.
+    // Row 6 (NULL, 'z') differs from every allowed tuple in `b`: false, so
+    // NOT keeps it. The allowed (NULL, 'x') makes row 5 (2, 'x') unknown,
+    // while row 2 (2, 'y') differs in `b`, so NOT keeps rows 2 and 6.
+    expect(await ids(true)).toEqual([2, 6]);
     // An empty subquery makes every test false, never unknown: nothing
     // matches, and the NOT form keeps every row, NULL keys included.
     expect(await ids(false, true)).toEqual([]);
-    expect(await ids(true, true)).toEqual([1, 2, 3, 4]);
+    expect(await ids(true, true)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 });
 

@@ -475,8 +475,10 @@ const TEXT_OPERATORS: Record<TextOperator, { match: TextMatch; negate: boolean }
 
 /**
  * The lambda parameter naming one list element inside the array-column text
- * predicates (`list_filter(col, x -> ...)`). The outer column is evaluated
- * outside the lambda, so a column that is itself named `x` is unaffected.
+ * predicates (`list_filter(col, lambda x: ...)`). The outer column is
+ * evaluated outside the lambda, so a column that is itself named `x` is
+ * unaffected. DuckDB 2 rejects the older `x -> ...` arrow syntax by default
+ * (unless `lambda_syntax` is set to allow it); `lambda` needs DuckDB 1.3+.
  */
 const LIST_ELEMENT = mSql.sql`x`;
 
@@ -511,7 +513,7 @@ function buildTextMatchPredicate(
 /**
  * Builds a text operator's predicate. A scalar column is tested directly. On
  * an array column (`columnType: 'array'`) the operator means "any element
- * matches": `len(list_filter(col, x -> <test x>)) > 0`, and the `not_*` form
+ * matches": `len(list_filter(col, lambda x: <test x>)) > 0`, and the `not_*` form
  * negates the whole test ("no element matches"). A NULL list makes both forms
  * NULL, so the row is dropped either way, as a NULL scalar is under `ILIKE` /
  * `NOT ILIKE`. An empty list has no matching element (kept by `not_*` only),
@@ -531,7 +533,7 @@ function buildTextOperatorPredicate(
   if (element === null) {
     return null;
   }
-  const matching = mSql.sql`len(list_filter(${rawColumn}, ${LIST_ELEMENT} -> ${element}))`;
+  const matching = mSql.sql`len(list_filter(${rawColumn}, lambda ${LIST_ELEMENT}: ${element}))`;
   const anyElement = mSql.gt(matching, mSql.literal(0));
   return negate ? mSql.not(anyElement) : anyElement;
 }

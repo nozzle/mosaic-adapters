@@ -32,16 +32,12 @@ export async function createTestDb(): Promise<TestDb> {
   // The blocking build is CJS-only; load it through require for stable interop.
 
   const duckdb = require('@duckdb/duckdb-wasm/blocking') as typeof DuckDBBlocking;
-  // The blocking runtime never spawns the worker, but the bundle type
-  // requires the path.
+  // Only the single-threaded `base` bundle is needed. The blocking runtime
+  // never spawns the worker, but the bundle type requires the path.
   const bundles = {
-    mvp: {
-      mainModule: require.resolve('@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm'),
-      mainWorker: require.resolve('@duckdb/duckdb-wasm/dist/duckdb-node-mvp.worker.cjs'),
-    },
-    eh: {
-      mainModule: require.resolve('@duckdb/duckdb-wasm/dist/duckdb-eh.wasm'),
-      mainWorker: require.resolve('@duckdb/duckdb-wasm/dist/duckdb-node-eh.worker.cjs'),
+    base: {
+      mainModule: require.resolve('@duckdb/duckdb-wasm/dist/duckdb-base.wasm'),
+      mainWorker: require.resolve('@duckdb/duckdb-wasm/dist/duckdb-node-base.worker.cjs'),
     },
   };
   const db = await duckdb.createDuckDB(bundles, new duckdb.VoidLogger(), duckdb.NODE_RUNTIME);
