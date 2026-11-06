@@ -40,7 +40,7 @@
     "@uwdata/mosaic-sql": "catalog:",
     "@uwdata/vgplot": "catalog:",
     "jsdom": "catalog:",
-    "nx": "^24.0.1",
+    "nx": "^24.0.2",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",

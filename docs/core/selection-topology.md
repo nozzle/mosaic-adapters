@@ -510,8 +510,8 @@ These are the same factories the `useComposedSelection` / `useCascadingContexts`
 `createMappedSelection(parent, map, options?)` derives a Selection whose clauses are a function of the parent's: every clause the parent receives is passed through `map`, and a `null` result drops it. Use it to rewrite a shared Selection's predicates for one group of consumers, for example a clause on one table's column re-expressed against another table, without publishing twice.
 
 ```ts
-import { clausePoint } from '@uwdata/mosaic-core';
 import { createMappedSelection } from '@nozzleio/mosaic-core';
+import { clausePoint } from '@uwdata/mosaic-core';
 
 const mapped = createMappedSelection($page, (clause) => {
   if (clause.source !== sportFacetSource || !clause.predicate) {

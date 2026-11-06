@@ -15,8 +15,8 @@
 ## `withRecursive`
 
 ```ts
-import { Query, literal, sql } from '@uwdata/mosaic-sql';
 import { withRecursive } from '@nozzleio/mosaic-core';
+import { Query, literal, sql } from '@uwdata/mosaic-sql';
 
 const seed = Query.select({ n: literal(1) });
 const step = Query.from('t')
