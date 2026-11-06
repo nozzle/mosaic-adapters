@@ -1,5 +1,18 @@
 # @nozzleio/mosaic-core
 
+## 0.13.0
+
+### Minor Changes
+
+- [#321](https://github.com/nozzle/mosaic-adapters/pull/321) [`509332d`](https://github.com/nozzle/mosaic-adapters/commit/509332dc90e2ff7add5134187c70de346d0bd386) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Support Mosaic 0.35.0. The `@uwdata/mosaic-core`, `@uwdata/mosaic-sql` and `@uwdata/vgplot` peer ranges are now `>=0.35.0 <1`, so apps must upgrade Mosaic to 0.35.0 alongside this release. Mosaic 0.35 moves its in-browser connector to DuckDB 2.0 (`@duckdb/duckdb-wasm` 1.33.1-dev114.0).
+
+  - Array-column text operators (`columnType: 'array'`) now render their element test with DuckDB's `lambda x: …` syntax, e.g. `len(list_filter("tags", lambda x: x ILIKE '%beta%' ESCAPE '\')) > 0`. DuckDB 2.0 rejects the old `x -> …` arrow by default, so the previous SQL failed with a Binder Error. The `lambda` keyword needs DuckDB 1.3 or newer, which matters only if you run these predicates on your own (server-side) DuckDB.
+  - Composite-key membership subqueries (`buildSubqueryClauseParts` / `subqueryFilterKind` with several columns) follow DuckDB 2.0's standard SQL row comparison: a row that differs from every subquery tuple in a column where neither side is NULL now tests false instead of unknown, so `negate: true` keeps it. That covers both sides. A row whose own key holds a NULL (`(NULL, 'z')` against `(1, 'x')`) was always dropped by `negate: true` before and is now kept, and a NULL in a subquery tuple no longer makes every non-matching row unknown. Negated composite membership can therefore return more rows than before. The predicate SQL is unchanged; the membership docs describe the new rules.
+
+### Patch Changes
+
+- [#322](https://github.com/nozzle/mosaic-adapters/pull/322) [`e4efde6`](https://github.com/nozzle/mosaic-adapters/commit/e4efde6b0305736fe7a04a6dbe28db0116079e27) Thanks [@SeanCassiere](https://github.com/SeanCassiere)! - Refresh development dependencies and the build toolchain: TanStack Table 9.3.1, React 19.3.1, tsdown 0.23.4, Vite 8.3.5, Vitest 5.0.5, Playwright 1.64.1, oxlint 1.90.0, oxfmt 0.75.0 and publint 0.3.25. Packages are now built with tsdown 0.23.4. Public APIs and peer dependency ranges are unchanged.
+
 ## 0.12.0
 
 ### Minor Changes
