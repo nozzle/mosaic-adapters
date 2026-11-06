@@ -9,9 +9,9 @@ This recipe is the shape that policy takes: an app-owned `ConnectorProvider` tha
 Construct the coordinator explicitly — `new Coordinator(connector)`, never the global singleton — so every client hook resolves _this_ instance through context. Track a `connectionId` that changes whenever the connector is rebuilt; that id is the connection's identity, and it is what downstream state keys on.
 
 ```tsx
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Coordinator, wasmConnector } from '@uwdata/mosaic-core';
 import type { DuckDBWASMConnector } from '@uwdata/mosaic-core';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export interface ConnectorState {
@@ -166,6 +166,7 @@ The connector provider owns only the coordinator identity. Readiness — the asy
 
 ```tsx
 import { MosaicProvider, MosaicTopologyProvider } from '@nozzleio/react-mosaic';
+
 import { ConnectorProvider, useConnector } from './connector';
 import { useDataLoad } from './data-loader';
 

@@ -15,9 +15,10 @@ The reference implementation is the "Builder" view in [`examples/react/nozzle-pa
 Keep the in-progress edit in `useState`, build the spec from the draft on submit, and write it with `set()`. `set()` upserts by `id`, so re-submitting the same editor replaces its spec (and publish is suppressed when the SQL is unchanged).
 
 ```tsx
-import { useState } from 'react';
-import { usePageFilterSet } from './topology';
 import type { FilterSpec } from '@nozzleio/react-mosaic';
+import { useState } from 'react';
+
+import { usePageFilterSet } from './topology';
 
 function ConditionEditor(props: { id: string; column: string; label: string }) {
   const filterSet = usePageFilterSet();

@@ -7,8 +7,8 @@
 Hooks resolve their coordinator in order: explicit `coordinator` option → nearest `MosaicProvider` → upstream Mosaic's global default coordinator (the one bare vgplot calls use). The global fallback applies only when there is **no** `MosaicProvider` above the hook at all.
 
 ```tsx
-import { Coordinator } from '@uwdata/mosaic-core';
 import { MosaicProvider } from '@nozzleio/react-mosaic';
+import { Coordinator } from '@uwdata/mosaic-core';
 
 const coordinator = new Coordinator(connector);
 
@@ -159,8 +159,8 @@ function MetricToggle() {
 - `useMosaicParamValues(params)` — the record form: read several Params in one subscription. Pass a `Record<string, Param>` and get back `{ [key]: value | undefined }`, each entry typed from its Param (`ParamValueOf<Param<T>>` is `T`). Entries are each Param's `value` as upstream reports it: `undefined` when never set, and an explicit `null` stays `null` (the singular `useMosaicParamValue` keeps its existing `null` → `undefined` normalization). The returned snapshot is frozen and keeps its identity while every value is `Object.is`-equal, so it is safe as a hook dependency. `params` **must be memoized** (module scope, `useMemo`, or `topology.params` itself) — the same contract as a client's `params` / `inputs`; the subscription is keyed on the record's identity, so an inline literal re-subscribes every render.
 
 ```tsx
-import { useMemo } from 'react';
 import { useMosaicParamValues, useMosaicTopology } from '@nozzleio/react-mosaic';
+import { useMemo } from 'react';
 
 function KnobSummary() {
   const { params } = useMosaicTopology();

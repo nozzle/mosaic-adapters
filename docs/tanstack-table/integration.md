@@ -17,7 +17,13 @@ You own `useTable` and its state, exactly where TanStack Table manual mode wants
 - `clampPagination(pagination, totalRows)` → `PaginationState` — clamp a stale `pageIndex` into `[0, lastPage]` when a filter shrinks the result under the current page. This is the sharp edge of the manual-pagination model: an unclamped `pageIndex` renders an empty table with a broken pager and no error. `totalRows` of `0`/`undefined` → page 0; a `pageIndex` already in range is returned unchanged. **Caveat:** under `rowCount: 'window'`, `totalRows: 0` is ambiguous between "empty result" and "past the end", so past-the-end recovers only to page 0, not the true last page — use `rowCount: 'query'` when exact last-page recovery matters. Apply it to the table's `pagination` state in an effect — see [Clamping a stale page](#clamping-a-stale-page).
 
 ```tsx
-import { useEffect, useState } from 'react';
+import {
+  clampPagination,
+  paginationToWindow,
+  sortingToOrderBy,
+  useTanStackTableFilterBridge,
+} from '@nozzleio/mosaic-tanstack-react-table';
+import { createFilterSet, useMosaicRows } from '@nozzleio/react-mosaic';
 import {
   columnFilteringFeature,
   rowPaginationFeature,
@@ -30,13 +36,7 @@ import {
 } from '@tanstack/react-table';
 import { Selection } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
-import { createFilterSet, useMosaicRows } from '@nozzleio/react-mosaic';
-import {
-  clampPagination,
-  paginationToWindow,
-  sortingToOrderBy,
-  useTanStackTableFilterBridge,
-} from '@nozzleio/mosaic-tanstack-react-table';
+import { useEffect, useState } from 'react';
 
 // v9 requires an explicit feature set; register exactly the features this
 // table's state uses (sorting, pagination, column filtering). The core row
@@ -142,13 +142,13 @@ The effect avoids all three: it runs once per committed `totalRows` change, afte
 A rows client with `publish.select` exposes what it published as `selected` — tuples aligned to `publish.select.columns` (see [the rows client](../core/rows-client.md#publishing)). Derive TanStack Table's `rowSelection` from it rather than storing a second copy, and route `onRowSelectionChange` back through `setSelectedValues`. The only glue you supply is `toId`, which turns a selected tuple into the same id your `getRowId` returns:
 
 ```tsx
-import { useMemo } from 'react';
 import {
   functionalUpdate,
   rowSelectionFeature,
   type OnChangeFn,
   type RowSelectionState,
 } from '@tanstack/react-table';
+import { useMemo } from 'react';
 
 const $picked = Selection.crossfilter();
 
@@ -214,7 +214,6 @@ const table = useTable({
 A query can return each parent row's children with it, as a `LIST(STRUCT)` column: `list(...)` in an aggregate query, or a nested column already in the table. In that case expansion is pure TanStack Table UI over the current page and needs no extra query. Register `rowExpandingFeature` **and** its row model, `createExpandedRowModel()`. Without the row model, `toggleExpanded()` updates the state, but no child rows render. Then point `getSubRows` at the list column:
 
 ```tsx
-import { useState } from 'react';
 import {
   createExpandedRowModel,
   functionalUpdate,
@@ -226,6 +225,7 @@ import {
   type OnChangeFn,
   type PaginationState,
 } from '@tanstack/react-table';
+import { useState } from 'react';
 // …plus useMosaicRows, Query, paginationToWindow and $page as in the manual-mode example above.
 
 interface MedalRow {

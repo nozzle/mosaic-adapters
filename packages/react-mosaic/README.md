@@ -15,9 +15,9 @@ vgplot interop lives on a separate entry point — add `@uwdata/vgplot` (an opti
 ## Usage
 
 ```tsx
+import { MosaicProvider, useMosaicRows } from '@nozzleio/react-mosaic';
 import { Selection } from '@uwdata/mosaic-core';
 import { Query } from '@uwdata/mosaic-sql';
-import { MosaicProvider, useMosaicRows } from '@nozzleio/react-mosaic';
 
 const $page = Selection.crossfilter();
 

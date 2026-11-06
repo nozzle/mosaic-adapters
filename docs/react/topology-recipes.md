@@ -77,13 +77,13 @@ An active-filter bar has to render **two** sources as one list:
 The union normalizes both to one app-local chip shape. The shape is yours — this is the exact recipe from the example:
 
 ```tsx
-import { useMemo } from 'react';
 import {
   useFilterSetChips,
   useMosaicActiveClauses,
   useMosaicTopology,
 } from '@nozzleio/react-mosaic';
 import type { FilterSet, FilterSetChip } from '@nozzleio/react-mosaic';
+import { useMemo } from 'react';
 
 interface ActiveFilterChip {
   key: string;
@@ -173,11 +173,11 @@ Read the brush back with `useFilterSetState(filterSet)` rather than keeping a co
 If the chart is a histogram, prefer [`useMosaicHistogram`](../core/histogram-client.md) with `publish: { into: filterSet, id }`. It writes the same `interval` spec and handles the remount re-keying below for you. The recipe is for charts the packages do not model.
 
 ```tsx
-import { useEffect } from 'react';
 import { useFilterSetState, useMosaicRows } from '@nozzleio/react-mosaic';
 import type { FilterSet, FilterSpec } from '@nozzleio/react-mosaic';
 import type { MosaicClient, Selection } from '@uwdata/mosaic-core';
 import { Query, count, dateBin } from '@uwdata/mosaic-sql';
+import { useEffect } from 'react';
 
 const BRUSH_ID = 'signup-date';
 
@@ -299,13 +299,13 @@ A [`param`](../core/selection-topology.md#params) is a scalar knob: it shapes _w
 The widget reads the param's scalar value and publishes a clause into a sibling Selection under a stable source, so the clause updates in place and clears as a whole clause on [`reset()`](../core/selection-topology.md#reset-semantics) or from a chip bar:
 
 ```tsx
-import { useEffect } from 'react';
 import {
   useMosaicParamRef,
   useMosaicParamValue,
   useMosaicSelectionRef,
 } from '@nozzleio/react-mosaic';
 import { sql } from '@uwdata/mosaic-sql';
+import { useEffect } from 'react';
 
 // Config declares the knob and the Selection it filters into:
 //   minMedals: { type: 'param', default: 0 },
@@ -355,8 +355,8 @@ Two things this makes explicit:
 The reverse bridge: one control publishes a filter **and** drives Params that other queries interpolate — a date-range picker that filters rows by `day` and also sets `$from`/`$to` for a period-over-period comparison query. Do both in the control's own handler, in one tick, **Params first**:
 
 ```tsx
-import { useEffect } from 'react';
 import { useMosaicParamRef, useMosaicTopology } from '@nozzleio/react-mosaic';
+import { useEffect } from 'react';
 
 // Config declares the Params and the FilterSet the spec lands in:
 //   filters: { type: 'filter-set', targets: { where: 'crossfilter' } },
