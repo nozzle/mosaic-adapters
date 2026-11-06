@@ -60,8 +60,8 @@
     "@uwdata/mosaic-core": "catalog:",
     "@uwdata/mosaic-sql": "catalog:",
     "@vitejs/plugin-react": "catalog:",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "rimraf": "catalog:",
     "typescript": "catalog:"
   },
