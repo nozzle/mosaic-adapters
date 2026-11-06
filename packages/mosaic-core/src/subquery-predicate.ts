@@ -84,13 +84,16 @@ function isColumnList(
  * requirement).
  *
  * With several columns the predicate is a tuple test,
- * `(a, b) IN (SELECT a, b ...)`. A row whose tuple holds a NULL never
- * matches: against a nonempty subquery the test is unknown, so the row is
- * dropped, and with `negate` it is dropped too (`NOT unknown` is still
- * unknown). Against an empty subquery every test is false, so `negate` keeps
- * every row, NULL keys included. In DuckDB, a NULL in any
- * tuple the subquery returns also makes every non-matching row unknown, so a
- * negated test drops those rows; exclude NULL keys in the subquery to avoid it.
+ * `(a, b) IN (SELECT a, b ...)`, compared column by column as in standard SQL
+ * (DuckDB 2 and later). The test is true when a subquery tuple equals the
+ * row's tuple in every column, false when every subquery tuple differs from
+ * it in a column where neither side is NULL, and unknown otherwise. A row
+ * whose tuple holds a NULL never matches, since no tuple equals it in every
+ * column. An unknown test drops the row with or without `negate` (`NOT
+ * unknown` is still unknown). An empty
+ * subquery makes every test false, so `negate` keeps every row, NULL keys
+ * included. Exclude NULL keys in the subquery so that only NULLs in a row's
+ * own tuple can make its test unknown.
  *
  * Throws when `column` is an empty array.
  */

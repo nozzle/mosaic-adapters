@@ -173,11 +173,11 @@ const filters = createFilterSet({
 
 `contains` / `starts_with` / `ends_with` (and their `not_*` forms) are case-insensitive `ILIKE` tests; `%`, `_` and `\` in the value match literally. `matches` / `not_matches` use DuckDB's `regexp_matches(column, pattern)`: the value is an RE2 pattern, case-sensitive unless it starts with `(?i)`. A pattern DuckDB cannot compile fails the query, so validate free-text patterns before writing them to a spec. An empty or non-string value leaves the spec inactive. A NULL column value is dropped by both a test and its `not_*` form, as with `ILIKE` / `NOT ILIKE`.
 
-With `columnType: 'array'`, the same operator ids test the list's elements: the positive form keeps rows where **any element** matches (`len(list_filter(col, x -> <test>)) > 0`), and the `not_*` form keeps rows where **no element** matches.
+With `columnType: 'array'`, the same operator ids test the list's elements: the positive form keeps rows where **any element** matches (`len(list_filter(col, lambda x: <test>)) > 0`), and the `not_*` form keeps rows where **no element** matches. The `lambda` keyword needs DuckDB 1.3 or newer, which matters only when you run these predicates on your own (server-side) DuckDB.
 
 ```ts
 filters.set({ id: 'tag', column: 'tags', kind: 'tags', operator: 'contains', value: 'beta' });
-// (len(list_filter("tags", x -> x ILIKE '%beta%' ESCAPE '\')) > 0)
+// (len(list_filter("tags", lambda x: x ILIKE '%beta%' ESCAPE '\')) > 0)
 ```
 
 | list value         | `contains 'beta'` | `not_contains 'beta'` |

@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     '@duckdb/duckdb-wasm':
-      specifier: 1.33.1-dev57.0
-      version: 1.33.1-dev57.0
+      specifier: 1.33.1-dev114.0
+      version: 1.33.1-dev114.0
     '@playwright/test':
       specifier: ^1.63.0
       version: 1.63.0
@@ -37,14 +37,14 @@ catalogs:
       specifier: ^2.7.1
       version: 2.7.1
     '@uwdata/mosaic-core':
-      specifier: ^0.34.3
-      version: 0.34.3
+      specifier: ^0.35.0
+      version: 0.35.0
     '@uwdata/mosaic-sql':
-      specifier: ^0.34.3
-      version: 0.34.3
+      specifier: ^0.35.0
+      version: 0.35.0
     '@uwdata/vgplot':
-      specifier: ^0.34.3
-      version: 0.34.3
+      specifier: ^0.35.0
+      version: 0.35.0
     '@vitejs/plugin-react':
       specifier: ^6.1.1
       version: 6.1.1
@@ -101,13 +101,13 @@ importers:
         version: 1.63.0
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/vgplot':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       jsdom:
         specifier: 'catalog:'
         version: 30.1.1
@@ -155,13 +155,13 @@ importers:
         version: 9.2.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/vgplot':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -213,13 +213,13 @@ importers:
         version: 9.2.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/vgplot':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -277,13 +277,13 @@ importers:
         version: 9.2.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/vgplot':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -345,10 +345,10 @@ importers:
         version: link:../test-support
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       rimraf:
         specifier: 'catalog:'
         version: 6.1.3
@@ -385,10 +385,10 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.1.1(vite@8.3.5(@types/node@26.6.2)(jiti@2.7.0)(yaml@2.9.1))
@@ -419,10 +419,10 @@ importers:
         version: 9.2.4
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       rimraf:
         specifier: 'catalog:'
         version: 6.1.3
@@ -450,13 +450,13 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/mosaic-sql':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@uwdata/vgplot':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.1.1(vite@8.3.5(@types/node@26.6.2)(jiti@2.7.0)(yaml@2.9.1))
@@ -477,7 +477,7 @@ importers:
     dependencies:
       '@duckdb/duckdb-wasm':
         specifier: 'catalog:'
-        version: 1.33.1-dev57.0
+        version: 1.33.1-dev114.0
       '@testing-library/dom':
         specifier: 'catalog:'
         version: 10.4.2
@@ -489,7 +489,7 @@ importers:
         version: 2.7.1
       '@uwdata/mosaic-core':
         specifier: 'catalog:'
-        version: 0.34.3
+        version: 0.35.0
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -649,8 +649,8 @@ packages:
     resolution: {integrity: sha512-bPlN9S9O1A0euCpEWE4qnvB5YDuyYVsUTrxSgmAM1Is0j4tICHoVyOVAXfWMP/kS9ZrjvyIXWV2PmomiAXXqOw==}
     engines: {node: '>=20.19.0'}
 
-  '@duckdb/duckdb-wasm@1.33.1-dev57.0':
-    resolution: {integrity: sha512-ndn5l2EHq1PEMvCg8G6lRV0vjhSUcbqdM/niNBTTqH4/PyyUUVKbge0uUyCnj27b9SF/CiqBwDsgKLTqBvaxdw==}
+  '@duckdb/duckdb-wasm@1.33.1-dev114.0':
+    resolution: {integrity: sha512-0sk+bv9iY7GuDQ0n0BlXBO6FucZ8PPVzGswOJh6kXoGuPe0SJRc49oyn+PNcz2JNE2XmD+Wi60fRUjTloHn6bw==}
 
   '@emnapi/core@1.4.5':
     resolution: {integrity: sha512-XsLw1dEOpkSX/WucdqUhPWP7hDxSvZiY+fsUC14h+FtQ2Ifni4znbBt8punRX+Uj2JG/uDb8nEHVKvrVlvdZ5Q==}
@@ -1547,25 +1547,25 @@ packages:
   '@uwdata/flechette@2.7.1':
     resolution: {integrity: sha512-7rj4kkFmeePTuspAz5r/k0Esa18JplC5c5uLsaKQWmSBY2+SGdKRJRSqiRaA8HI19lfjh6+VSBXXyne0iVG68Q==}
 
-  '@uwdata/mosaic-core@0.34.3':
-    resolution: {integrity: sha512-rBz75UMX/EinFx3w1rtTBMJ2ySQHqrDuO+Ikvthsv75Ll/YZv58Zv0dXIWE56xqm2t3g4lU5z6iTMPJfSl25iw==}
+  '@uwdata/mosaic-core@0.35.0':
+    resolution: {integrity: sha512-lTcEio+6FwdPA/Z2nt6SBmvCkku9aNRxPSbgPIlMgHKfmQDyE0RYf0J4Xpd6wTNPN0cx9YIYHk378wKMpoTr8g==}
     peerDependencies:
-      '@uwdata/mosaic-duckdb': ^0.34.3
+      '@uwdata/mosaic-duckdb': ^0.35.0
     peerDependenciesMeta:
       '@uwdata/mosaic-duckdb':
         optional: true
 
-  '@uwdata/mosaic-inputs@0.34.3':
-    resolution: {integrity: sha512-/RifuasFxAAPIHU/zUH7Xt1dznSAcveJYZI+dRK4vDZfHma0PP+CKYr8y8SXwcyKAorF+z73ao1TutssbHo2jQ==}
+  '@uwdata/mosaic-inputs@0.35.0':
+    resolution: {integrity: sha512-ZGTna0B+oeN8YMrMw6kcIZxvrUpkRyoY4F3N60G56I/w8HRi8orlpycpej10ESFgGAnSvO4SO4mQBPdy326Ljg==}
 
-  '@uwdata/mosaic-plot@0.34.3':
-    resolution: {integrity: sha512-oqNXxrhidrUBMeOlej93JtdLqTuUnp/mUYQXSz9W+85UyJcv14aNMqr9AvfKxTyhOg8dQNVbR1aCi2uOXYofOA==}
+  '@uwdata/mosaic-plot@0.35.0':
+    resolution: {integrity: sha512-gBhcKqI/KOUAQCmjdTUltfgyGZFWqVJetZS2AEKdUpcnBz+gA4Gro4Lms1DUiCYtd4XcAYu4AlrbWkuU+sAyoQ==}
 
-  '@uwdata/mosaic-sql@0.34.3':
-    resolution: {integrity: sha512-ToA+18YIu6QDmLG+7r9kHHcmsuxwGm/8esoWkpE/jcU2xBBXbR/r2w8Fxwm/Q4ULqFz4kTChKhVXcyZ2pljXmQ==}
+  '@uwdata/mosaic-sql@0.35.0':
+    resolution: {integrity: sha512-KDE3dt7bZu4fH5AvNzHe6lpiKvi2BFmSry8jQSwS419sxqAToE//rfFDmCmuhlNi3kcBNYQnytR0YaH6NEHvaA==}
 
-  '@uwdata/vgplot@0.34.3':
-    resolution: {integrity: sha512-Wj6fPW1y3am4id7rSAW9w27j5u+d8/zwbNKziPy2W/Jz093KyFiifF1XRs1ZuttpoC9wuyTdJ7qLfd0GuJXCDQ==}
+  '@uwdata/vgplot@0.35.0':
+    resolution: {integrity: sha512-O89XWWyn6y8/wBVCDR0M0pXk1YwQuw0uKjfbRP4aPZjkXhyY9tzQabeADEo6SGgmpgDtEfOlnuL3ciGk2hv7lQ==}
 
   '@uwdata/wk-geojson@0.0.1':
     resolution: {integrity: sha512-4RpnKbdrphwzP+BwgzuGRqA/s03oT1rzHAKdU43Ozn8J1BCTwS+2iAGQ7YQAnrCkCi213WtQ7VYaFjVtvZotPQ==}
@@ -3289,7 +3289,7 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.1': {}
 
-  '@duckdb/duckdb-wasm@1.33.1-dev57.0':
+  '@duckdb/duckdb-wasm@1.33.1-dev114.0':
     dependencies:
       apache-arrow: 17.0.0
       qs: 6.15.1
@@ -3842,37 +3842,37 @@ snapshots:
     dependencies:
       '@uwdata/wk-geojson': 0.0.1
 
-  '@uwdata/mosaic-core@0.34.3':
+  '@uwdata/mosaic-core@0.35.0':
     dependencies:
-      '@duckdb/duckdb-wasm': 1.33.1-dev57.0
+      '@duckdb/duckdb-wasm': 1.33.1-dev114.0
       '@uwdata/flechette': 2.7.1
-      '@uwdata/mosaic-sql': 0.34.3
+      '@uwdata/mosaic-sql': 0.35.0
 
-  '@uwdata/mosaic-inputs@0.34.3':
+  '@uwdata/mosaic-inputs@0.35.0':
     dependencies:
-      '@uwdata/mosaic-core': 0.34.3
-      '@uwdata/mosaic-sql': 0.34.3
+      '@uwdata/mosaic-core': 0.35.0
+      '@uwdata/mosaic-sql': 0.35.0
     transitivePeerDependencies:
       - '@uwdata/mosaic-duckdb'
 
-  '@uwdata/mosaic-plot@0.34.3':
+  '@uwdata/mosaic-plot@0.35.0':
     dependencies:
       '@observablehq/plot': 0.6.17
       '@uwdata/flechette': 2.7.1
-      '@uwdata/mosaic-core': 0.34.3
-      '@uwdata/mosaic-sql': 0.34.3
+      '@uwdata/mosaic-core': 0.35.0
+      '@uwdata/mosaic-sql': 0.35.0
       d3: 7.9.0
     transitivePeerDependencies:
       - '@uwdata/mosaic-duckdb'
 
-  '@uwdata/mosaic-sql@0.34.3': {}
+  '@uwdata/mosaic-sql@0.35.0': {}
 
-  '@uwdata/vgplot@0.34.3':
+  '@uwdata/vgplot@0.35.0':
     dependencies:
-      '@uwdata/mosaic-core': 0.34.3
-      '@uwdata/mosaic-inputs': 0.34.3
-      '@uwdata/mosaic-plot': 0.34.3
-      '@uwdata/mosaic-sql': 0.34.3
+      '@uwdata/mosaic-core': 0.35.0
+      '@uwdata/mosaic-inputs': 0.35.0
+      '@uwdata/mosaic-plot': 0.35.0
+      '@uwdata/mosaic-sql': 0.35.0
     transitivePeerDependencies:
       - '@uwdata/mosaic-duckdb'
 
